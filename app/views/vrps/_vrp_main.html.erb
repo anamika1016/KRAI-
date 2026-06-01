@@ -1,0 +1,193 @@
+<div class="row gx-3 vrp-form-grid">
+  <div class="vrp-section-title">
+    <span>Personal Details</span>
+  </div>
+
+  <div class="col-md-3 mb-3">
+  <label class="form-label required">Name</label>
+  <%= f.text_field :name, class: "form-control", placeholder: "Enter Name", required: true %>
+  </div>
+
+  <%= f.hidden_field :user_id %>
+
+  <div class="col-md-3 mb-3">
+  <label class="form-label required">VRP Type</label>
+  <%= select_tag "vrp[vrp_type_ids][]", options_for_select(@vrp_type_options || [], Array(f&.object&.vrp_type_ids).first), prompt: 'Select Vrp Type', class: 'form-select select2', required: true %>
+  </div>
+
+  <div class="col-md-3 mb-3">
+    <label class="form-label required">Father Or Husband Name</label>
+    <%= f.text_field :father_husband_name, class: "form-control", placeholder: "Enter Father Or Husband Name", required: true %>
+  </div>
+
+  <div class="col-md-3 mb-3">
+    <label for="" class="form-label required">Gender</label>
+    <%= f.select :gender, [["Male", "male"], ["Female", "female"]], { prompt: "Select Gender" }, { class: "form-select", required: true } %>
+  </div>
+
+  <div class="col-md-3 mb-3">
+    <label for="" class="form-label required">Date of Birth</label>
+    <%= f.date_field :date_of_birth, class: "form-control", required: true  %>
+  </div>
+
+  <div class="col-md-3 mb-3">
+    <label for="" class="form-label required">Date of Joining</label>
+    <%= f.date_field :date_of_joining, class: "form-control", required: true  %>
+  </div>
+
+  <div class="col-md-3 mb-3">
+    <label for="" class="form-label required">Aadhar No</label>
+    <%= f.text_field :aadhar_no, class: "form-control", placeholder: "Enter Aadhar No", minlength: 12,  maxlength: 12, required: true %>
+    <div id="aadhar_error" style="color: red;"></div>
+  </div>
+
+  <div class="col-md-3 mb-3">
+    <label for="" class="form-label required">Account No</label>
+    <%= f.text_field :account_no, class: "form-control", placeholder: "Enter Account No", required: true %>
+  </div>
+
+  <div class="col-md-3 mb-3">
+    <label class="form-label required">IFSC CODE</label>
+    <%= f.text_field :ifsc_code, class: "form-control ifsc-code", placeholder: "Enter IFSC CODE", required: true,onkeyup:"validateRegistration(this,'ifsc')" %>
+    <div id="ifsc_error" style="color: red;"></div>
+  </div>
+
+  <div class="col-md-3 mb-3">
+    <label class="form-label required">Bank Name</label>
+    <%= f.select :vrp_bank_master_id, options_for_select(@bank_options || [], f&.object&.vrp_bank_master_id), { prompt: 'Select Bank' }, { class: 'form-select select2 bank-select', required: true} %>
+  </div>
+
+  <div class="col-md-3 mb-3">
+    <label class="form-label required">Branch</label>
+    <%= f.text_field :branch, class: "form-control branch-field", placeholder: "Enter Branch", required: true %>
+  </div>
+
+  <div class="col-md-3 mb-3">
+    <label class="form-label required">Address</label>
+    <%= f.text_field :address, class: "form-control", placeholder: "Enter Bank Address", required: true %>
+  </div>
+
+   <div class="col-md-3 mb-3">
+    <label for="" class="form-label required">Mobile No</label>
+    <%= f.text_field :mobile_no, autofocus: true,class:'form-control' ,required:true, placeholder:"Enter Mobile No", minlength: 10, maxlength: 10,onkeyup:"validateRegistration(this,'mobile')"%>
+      <div id="mobile_no_error" style="color: red;"></div>
+  </div>
+
+   <div class="col-md-3 mb-3">
+    <label for="" class="form-label">Email</label>
+    <%= f.email_field :email, autofocus: true, autocomplete: "email", class: 'form-control', placeholder: "Enter your Email", onkeyup: "validateRegistration(this,'email')" %>
+      <div id="email_error" style="color: red;"></div>
+  </div>
+
+  <div class="col-md-3 mb-3">
+    <label class="form-label required">Experience in Years</label>
+    <%= f.number_field :experience_in_years, class: "form-control", placeholder: "Enter Experience in Years", required: true %>
+  </div>
+
+  <div class="vrp-section-title">
+    <span>Location & Assignment</span>
+  </div>
+
+  <%= f.fields_for :vrp_profile do |t| %>
+    <% profile = t.object %>
+    <div class="col-md-3 mb-3">
+    <label class="form-label required">State</label>
+    <%= t.select :state_id, options_for_select(@state_options || [], profile&.state_id), { prompt: 'Select State',required:true }, class: 'form-select fstates ofs', label: false, onchange: 'handleDropdownChange("vrp_profile_attributes", this.value)' %>
+    </div>
+
+    <div class="col-md-3 mb-3">
+    <label class="form-label required">District</label>
+    <%= t.select :district_id, options_for_select(@district_options || [], profile&.district_id), { prompt: 'Select District'}, { class: 'form-select fdistricts ofs', label: false, onchange: 'handleDropdownChange("vrp_profile_attributes", this.value)' } %>
+    </div>
+
+    <div class="col-md-3 mb-3">
+    <label class="form-label required">Block</label>
+    <%= t.select :block_id, options_for_select(@block_options || [], profile&.block_id), { prompt: 'Select Block '},class: 'form-select fblocks ofs', label: false, onchange: 'handleDropdownChange("vrp_profile_attributes", this.value)' %>
+    </div>
+
+    <div class="col-md-3 mb-3">
+    <label class="form-label required">Gram Panchyat</label>
+    <%= t.select :gram_panchayat_id, options_for_select(@gram_panchayat_options || [], profile&.gram_panchayat_id), { prompt: 'Select GP'},class: 'form-select fgram_panchayats ofs', label: false,onchange: 'handleDropdownChange("vrp_profile_attributes", this.value)' %>
+    </div>
+
+    <div class="col-md-3 mb-3">
+    <label class="form-label required">Village</label>
+    <%= t.select :village_id, options_for_select(@village_options || [], profile&.village_id), { prompt: 'Select Village'},class: 'form-select fvillage ofs', label: false, onchange: 'handleDropdownChange("vrp_profile_attributes", this.value)' %>
+    </div>
+  <% end %>
+
+  <div class="col-md-3 mb-3">
+    <label class="form-label required">Project</label>
+    <%= select_tag "vrp[project_master_ids][]", options_for_select(@project_options || [], Array(f&.object&.project_master_ids).first), prompt: 'Select Project', class: 'form-select select2', required: true %>
+  </div>
+
+  <div class="vrp-section-title">
+    <span>Documents</span>
+  </div>
+
+  <div class="col-md-3 mb-3">
+    <label class="form-label required">Upload Photo (JPEG, JPG, PNG)</label>
+    <%= f.file_field :photo, accept: '.jpeg, .jpg, .png', class: 'form-control' %>
+    <% if f.object.persisted? && f.object.photo.attached? %>
+      <div class="mt-2">
+        <%= link_to "View/Download Uploaded Photo", rails_blob_path(f.object.photo, disposition: "attachment"), target: "_blank", class: "text-primary small" %>
+      </div>
+    <% end %>
+  </div>
+
+  <div class="col-md-3 mb-3">
+    <label class="form-label required">Upload Aadhar (JPEG, JPG, PNG)</label>
+    <%= f.file_field :aadhar_upload, accept: '.jpeg, .jpg, .png', class: 'form-control' %>
+    <% if f.object.persisted? && f.object.aadhar_upload.attached? %>
+      <div class="mt-2">
+        <%= link_to "View/Download Uploaded Aadhar", rails_blob_path(f.object.aadhar_upload, disposition: "attachment"), target: "_blank", class: "text-primary small" %>
+      </div>
+    <% end %>
+  </div>
+
+  <div class="col-md-3 mb-3">
+    <label class="form-label required">Upload Bank Passbook(JPEG, JPG, PNG)</label>
+    <%= f.file_field :bank_passbook_upload, accept: '.jpeg, .jpg, .png', class: 'form-control' %>
+    <% if f.object.persisted? && f.object.bank_passbook_upload.attached? %>
+      <div class="mt-2">
+        <%= link_to "View/Download Uploaded Passbook", rails_blob_path(f.object.bank_passbook_upload, disposition: "attachment"), target: "_blank", class: "text-primary small" %>
+      </div>
+    <% end %>
+  </div>
+</div>
+
+<script>
+  function validateRegistration(obj, type) {
+    const value = obj.value.trim();
+
+    if (type === 'email') {
+      if (/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value)) {
+        document.getElementById('email_error').textContent = '';
+      } else {
+        document.getElementById('email_error').textContent = 'Please enter a valid email address.';
+      }
+
+    } else if (type === 'mobile') {
+      if (/^[6-9]\d{9}$/.test(value)) {
+        document.getElementById('mobile_no_error').textContent = '';
+      } else {
+        document.getElementById('mobile_no_error').textContent = 'Mobile number must be 10 digits starting with 6-9.';
+      }
+
+    } else if (type === 'aadhar') {
+      if (/^[0-9]{12}$/.test(value)) {
+        document.getElementById('aadhar_error').textContent = '';
+      } else {
+        document.getElementById('aadhar_error').textContent = 'Aadhar number must be exactly 12 digits.';
+      }
+
+    } else if (type === 'ifsc') {
+      if (/^[A-Za-z]{4}0[A-Za-z0-9]{6}$/.test(value)) {
+        document.getElementById('ifsc_error').textContent = '';
+      } else {
+        document.getElementById('ifsc_error').textContent = 'IFSC code format: 4 letters, followed by 0, then 6 alphanumeric characters.';
+      }
+    }
+  }
+
+</script>

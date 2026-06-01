@@ -1,0 +1,146 @@
+# This file is auto-generated from the current state of the database. Instead
+# of editing this file, please use the migrations feature of Active Record to
+# incrementally modify your database, and then regenerate this schema definition.
+#
+# This file is the source Rails uses to define your schema when running `bin/rails
+# db:schema:load`. When creating a new database, `bin/rails db:schema:load` tends to
+# be faster and is potentially less error prone than running all of your
+# migrations from scratch. Old migrations may fail to apply correctly if those
+# migrations use external dependencies or application code.
+#
+# It's strongly recommended that you check this file into your version control system.
+
+ActiveRecord::Schema[8.1].define(version: 2026_05_27_092000) do
+  create_table "active_storage_attachments", force: :cascade do |t|
+    t.integer "blob_id", null: false
+    t.datetime "created_at", null: false
+    t.string "name", null: false
+    t.integer "record_id", null: false
+    t.string "record_type", null: false
+    t.index ["blob_id"], name: "index_active_storage_attachments_on_blob_id"
+    t.index ["record_type", "record_id", "name", "blob_id"], name: "index_active_storage_attachments_uniqueness", unique: true
+  end
+
+  create_table "active_storage_blobs", force: :cascade do |t|
+    t.bigint "byte_size", null: false
+    t.string "checksum"
+    t.string "content_type"
+    t.datetime "created_at", null: false
+    t.string "filename", null: false
+    t.string "key", null: false
+    t.text "metadata"
+    t.string "service_name", null: false
+    t.index ["key"], name: "index_active_storage_blobs_on_key", unique: true
+  end
+
+  create_table "active_storage_variant_records", force: :cascade do |t|
+    t.integer "blob_id", null: false
+    t.string "variation_digest", null: false
+    t.index ["blob_id", "variation_digest"], name: "index_active_storage_variant_records_uniqueness", unique: true
+  end
+
+  create_table "module_records", force: :cascade do |t|
+    t.datetime "created_at", null: false
+    t.text "data", null: false
+    t.string "module_slug", null: false
+    t.datetime "updated_at", null: false
+    t.index ["module_slug"], name: "index_module_records_on_module_slug"
+  end
+
+  create_table "users", force: :cascade do |t|
+    t.integer "age"
+    t.string "block"
+    t.datetime "created_at", null: false
+    t.string "district"
+    t.string "email"
+    t.string "emergency_no"
+    t.string "first_name"
+    t.text "full_address"
+    t.string "gender"
+    t.string "gram_panchayat"
+    t.string "last_name"
+    t.string "mobile_no"
+    t.string "office"
+    t.string "parent_office"
+    t.string "password"
+    t.string "pincode"
+    t.string "role"
+    t.string "stakeholder"
+    t.string "state"
+    t.string "status", default: "Active", null: false
+    t.datetime "updated_at", null: false
+    t.string "user_name", null: false
+    t.string "user_type"
+    t.string "village"
+    t.index ["email"], name: "index_users_on_email"
+    t.index ["mobile_no"], name: "index_users_on_mobile_no"
+    t.index ["user_name"], name: "index_users_on_user_name"
+  end
+
+  create_table "vrp_bank_masters", force: :cascade do |t|
+    t.datetime "created_at", null: false
+    t.boolean "is_active", default: true, null: false
+    t.boolean "is_deleted", default: false, null: false
+    t.string "name", null: false
+    t.datetime "updated_at", null: false
+  end
+
+  create_table "vrp_profiles", force: :cascade do |t|
+    t.integer "block_id", null: false
+    t.datetime "created_at", null: false
+    t.integer "district_id", null: false
+    t.integer "gram_panchayat_id", null: false
+    t.integer "state_id", null: false
+    t.datetime "updated_at", null: false
+    t.integer "village_id", null: false
+    t.integer "vrp_id", null: false
+    t.index ["vrp_id"], name: "index_vrp_profiles_on_vrp_id"
+  end
+
+  create_table "vrp_types", force: :cascade do |t|
+    t.datetime "created_at", null: false
+    t.boolean "is_active", default: true, null: false
+    t.boolean "is_deleted", default: false, null: false
+    t.string "type_name", null: false
+    t.datetime "updated_at", null: false
+  end
+
+  create_table "vrps", force: :cascade do |t|
+    t.string "aadhar_no", null: false
+    t.string "account_no", null: false
+    t.text "address", null: false
+    t.string "branch", null: false
+    t.datetime "created_at", null: false
+    t.integer "created_by_id"
+    t.date "date_of_birth", null: false
+    t.date "date_of_joining", null: false
+    t.string "email", null: false
+    t.integer "experience_in_years", null: false
+    t.string "father_husband_name", null: false
+    t.integer "gender", null: false
+    t.text "gram_panchayat_ids"
+    t.string "ifsc_code", null: false
+    t.boolean "is_active", default: true, null: false
+    t.boolean "is_deleted", default: false, null: false
+    t.string "mobile_no", null: false
+    t.string "name", null: false
+    t.integer "office_detail_id", null: false
+    t.text "project_master_ids"
+    t.integer "status", default: 25, null: false
+    t.integer "to_office_detail_id", null: false
+    t.datetime "updated_at", null: false
+    t.integer "user_id"
+    t.text "village_ids"
+    t.integer "vrp_bank_master_id", null: false
+    t.text "vrp_type_ids"
+    t.index ["aadhar_no"], name: "index_vrps_on_aadhar_no"
+    t.index ["email"], name: "index_vrps_on_email"
+    t.index ["mobile_no"], name: "index_vrps_on_mobile_no"
+    t.index ["vrp_bank_master_id"], name: "index_vrps_on_vrp_bank_master_id"
+  end
+
+  add_foreign_key "active_storage_attachments", "active_storage_blobs", column: "blob_id"
+  add_foreign_key "active_storage_variant_records", "active_storage_blobs", column: "blob_id"
+  add_foreign_key "vrp_profiles", "vrps"
+  add_foreign_key "vrps", "vrp_bank_masters"
+end

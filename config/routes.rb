@@ -1,0 +1,38 @@
+Rails.application.routes.draw do
+  get "up" => "rails/health#show", as: :rails_health_check
+
+  get    "login",  to: "sessions#new",     as: :login
+  post   "login",  to: "sessions#create"
+  get    "logout", to: "sessions#destroy", as: nil
+  delete "logout", to: "sessions#destroy", as: :logout
+
+  root "modules#dashboard"
+  get "dashboard", to: "modules#dashboard", as: :dashboard
+
+  resources :users, except: [:show] do
+    patch :toggle_status, on: :member
+    patch :set_status, on: :member
+  end
+
+  resources :modules, param: :slug, only: [:show], controller: :modules do
+    post :records, action: :create, on: :member
+
+    resources :records, controller: :modules, only: [:edit, :update, :destroy] do
+      patch :toggle, action: :toggle_status, on: :member
+      patch :set_status, action: :set_status, on: :member
+    end
+  end
+
+  resources :vrps, only: [:index, :new, :create, :edit, :update, :show, :destroy] do
+    collection do
+      get :approvals
+    end
+
+    member do
+      patch :set_active
+      patch :send_for_approval
+      patch :approve
+      patch :reject
+    end
+  end
+end

@@ -1,0 +1,93 @@
+<% form_url = user.persisted? ? user_path(user) : users_path %>
+<% form_method = user.persisted? ? :patch : :post %>
+
+<section class="module-card">
+  <%= form_with model: user, url: form_url, method: form_method, html: { class: "module-entry-form" } do |f| %>
+    <div class="module-form-grid user-registration-grid">
+      <% [
+        ["Stakeholder", :stakeholder, @stakeholder_options],
+        ["Role", :role, @role_options],
+        ["State", :state, @state_options],
+        ["District", :district, @district_options],
+        ["Block", :block, @block_options],
+        ["Gram Panchayat", :gram_panchayat, @gram_panchayat_options],
+        ["Village", :village, @village_options]
+      ].each do |label, field, options| %>
+        <label>
+          <span><%= label %></span>
+          <% if options.any? %>
+            <%= f.select field, options_for_select(options, user.public_send(field)), { include_blank: "Select #{label}" } %>
+          <% else %>
+            <%= f.text_field field, placeholder: "Enter #{label}" %>
+          <% end %>
+        </label>
+      <% end %>
+
+      <label>
+        <span>Office</span>
+        <%= f.select :office, options_for_select(@office_options, user.office), { include_blank: "Select Office" } %>
+      </label>
+      <label>
+        <span>Full Address</span>
+        <%= f.text_area :full_address, rows: 3, placeholder: "Enter Full Address" %>
+      </label>
+      <label>
+        <span>Pincode</span>
+        <%= f.text_field :pincode, placeholder: "Enter Pincode" %>
+      </label>
+      <label>
+        <span>First Name <em>*</em></span>
+        <%= f.text_field :first_name, required: true, placeholder: "Enter First Name" %>
+      </label>
+      <label>
+        <span>Last Name</span>
+        <%= f.text_field :last_name, placeholder: "Enter Last Name" %>
+      </label>
+      <label>
+        <span>Gender</span>
+        <%= f.select :gender, options_for_select(@gender_options, user.gender), { include_blank: "Select Gender" } %>
+      </label>
+      <label>
+        <span>Age</span>
+        <%= f.number_field :age, min: 0, placeholder: "Enter Age" %>
+      </label>
+      <label>
+        <span>Email</span>
+        <%= f.email_field :email, placeholder: "Enter Email" %>
+      </label>
+      <label>
+        <span>Password <em>*</em></span>
+        <%= f.password_field :password, required: true, value: user.password, placeholder: "Enter Password" %>
+      </label>
+      <label>
+        <span>Confirmed Password <em>*</em></span>
+        <input type="password" name="user[confirmed_password]" value="<%= user.password %>" required placeholder="Enter Confirmed Password">
+      </label>
+      <label>
+        <span>User Name <em>*</em></span>
+        <%= f.text_field :user_name, required: true, placeholder: "Enter User Name" %>
+      </label>
+      <label>
+        <span>Mobile No</span>
+        <%= f.text_field :mobile_no, placeholder: "Enter Mobile No" %>
+      </label>
+      <label>
+        <span>Emergency No</span>
+        <%= f.text_field :emergency_no, placeholder: "Enter Emergency No" %>
+      </label>
+      <label>
+        <span>User Type</span>
+        <%= f.select :user_type, options_for_select(@user_type_options, user.user_type), { include_blank: "Select User Type" } %>
+      </label>
+      <label>
+        <span>Status</span>
+        <%= f.select :status, options_for_select(@status_options, user.status.presence || "Active") %>
+      </label>
+    </div>
+
+    <div class="module-form-actions">
+      <%= link_to "Clear", new_user_path, class: "btn btn-secondary" %>
+      <%= f.submit user.persisted? ? "Update" : "Save", class: "btn btn-primary" %>
+    </div>
+  <% end %>
+</section>
