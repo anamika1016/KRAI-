@@ -10,12 +10,15 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2026_05_27_092000) do
+ActiveRecord::Schema[8.1].define(version: 2026_06_01_093000) do
+  # These are extensions that must be enabled in order to support this database
+  enable_extension "pg_catalog.plpgsql"
+
   create_table "active_storage_attachments", force: :cascade do |t|
-    t.integer "blob_id", null: false
+    t.bigint "blob_id", null: false
     t.datetime "created_at", null: false
     t.string "name", null: false
-    t.integer "record_id", null: false
+    t.bigint "record_id", null: false
     t.string "record_type", null: false
     t.index ["blob_id"], name: "index_active_storage_attachments_on_blob_id"
     t.index ["record_type", "record_id", "name", "blob_id"], name: "index_active_storage_attachments_uniqueness", unique: true
@@ -34,7 +37,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_05_27_092000) do
   end
 
   create_table "active_storage_variant_records", force: :cascade do |t|
-    t.integer "blob_id", null: false
+    t.bigint "blob_id", null: false
     t.string "variation_digest", null: false
     t.index ["blob_id", "variation_digest"], name: "index_active_storage_variant_records_uniqueness", unique: true
   end
@@ -58,6 +61,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_05_27_092000) do
     t.text "full_address"
     t.string "gender"
     t.string "gram_panchayat"
+    t.string "ics"
     t.string "last_name"
     t.string "mobile_no"
     t.string "office"
@@ -93,7 +97,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_05_27_092000) do
     t.integer "state_id", null: false
     t.datetime "updated_at", null: false
     t.integer "village_id", null: false
-    t.integer "vrp_id", null: false
+    t.bigint "vrp_id", null: false
     t.index ["vrp_id"], name: "index_vrp_profiles_on_vrp_id"
   end
 
@@ -109,6 +113,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_05_27_092000) do
     t.string "aadhar_no", null: false
     t.string "account_no", null: false
     t.text "address", null: false
+    t.string "bank_name"
     t.string "branch", null: false
     t.datetime "created_at", null: false
     t.integer "created_by_id"
@@ -119,6 +124,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_05_27_092000) do
     t.string "father_husband_name", null: false
     t.integer "gender", null: false
     t.text "gram_panchayat_ids"
+    t.text "ics_master_ids"
     t.string "ifsc_code", null: false
     t.boolean "is_active", default: true, null: false
     t.boolean "is_deleted", default: false, null: false
@@ -131,7 +137,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_05_27_092000) do
     t.datetime "updated_at", null: false
     t.integer "user_id"
     t.text "village_ids"
-    t.integer "vrp_bank_master_id", null: false
+    t.bigint "vrp_bank_master_id"
     t.text "vrp_type_ids"
     t.index ["aadhar_no"], name: "index_vrps_on_aadhar_no"
     t.index ["email"], name: "index_vrps_on_email"

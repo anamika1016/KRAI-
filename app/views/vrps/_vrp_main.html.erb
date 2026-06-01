@@ -54,7 +54,7 @@
 
   <div class="col-md-3 mb-3">
     <label class="form-label required">Bank Name</label>
-    <%= f.select :vrp_bank_master_id, options_for_select(@bank_options || [], f&.object&.vrp_bank_master_id), { prompt: 'Select Bank' }, { class: 'form-select select2 bank-select', required: true} %>
+    <%= f.text_field :bank_name, class: "form-control bank-name-field", placeholder: "Enter Bank Name", required: true %>
   </div>
 
   <div class="col-md-3 mb-3">
@@ -117,8 +117,8 @@
   <% end %>
 
   <div class="col-md-3 mb-3">
-    <label class="form-label required">Project</label>
-    <%= select_tag "vrp[project_master_ids][]", options_for_select(@project_options || [], Array(f&.object&.project_master_ids).first), prompt: 'Select Project', class: 'form-select select2', required: true %>
+    <label class="form-label required">ICS</label>
+    <%= select_tag "vrp[ics_master_ids][]", options_for_select(@ics_options || [], Array(f&.object&.ics_master_ids).first), prompt: 'Select ICS', class: 'form-select select2', required: true %>
   </div>
 
   <div class="vrp-section-title">

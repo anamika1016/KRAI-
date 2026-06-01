@@ -152,7 +152,7 @@ class ModulesController < ApplicationController
     "approval-master" => {
       title: "Approval Form",
       group: "Role Management",
-      purpose: "VRP registration aur bill approval ke approver maintain karne ke liye.",
+      purpose: "Farmer registration aur bill approval ke approver maintain karne ke liye.",
       fields: ["Module Name", "Role Name", "Office", "Approval Level", "Stakeholder Name", "Approver (Approved By)", "Status"]
     },
     "approval-list" => {
@@ -168,29 +168,29 @@ class ModulesController < ApplicationController
       fields: ["ICS Name", "Status"]
     },
     "vrp-registration-list" => {
-      title: "VRP Registration List",
-      group: "VRP Registration",
-      purpose: "Registered VRP records manage karne ke liye.",
+      title: "Farmer Registration List",
+      group: "Farmer Registration",
+      purpose: "Registered farmer records manage karne ke liye.",
       fields: ["Search", "Filter", "Export Excel/PDF", "Active/Inactive Status"],
-      features: ["View VRP", "Edit VRP", "Delete VRP", "Approval Status", "Document Download"]
+      features: ["View Farmer", "Edit Farmer", "Delete Farmer", "Approval Status", "Document Download"]
     },
     "vrp-bill-add" => {
       title: "Add VRP Bill",
       group: "VRP Bills",
       purpose: "VRP bill submit karne ke liye.",
-      fields: ["Select VRP", "Select Financial Year", "Select Bill Month", "Select Project", "Select Activity Group", "Grand Total", "Status"]
+      fields: ["Select VRP", "Select Financial Year", "Select Bill Month", "Select ICS", "Select Activity Group", "Grand Total", "Status"]
     },
     "vrp-bill-list" => {
       title: "VRP Bill List",
       group: "VRP Bills",
       purpose: "Bills aur payment status track karne ke liye.",
-      fields: ["Select VRP", "Select Financial Year", "Select Bill Month", "Select Project", "Select Activity Group", "Grand Total", "Status"]
+      fields: ["Select VRP", "Select Financial Year", "Select Bill Month", "Select ICS", "Select Activity Group", "Grand Total", "Status"]
     },
     "weekly-target-add" => {
       title: "Add Weekly Target",
       group: "Weekly Target Allocation",
       purpose: "VRP wise weekly target assign karne ke liye.",
-      fields: ["Financial Year", "Month", "Week", "Select VRP", "Select VRP Type", "Select Project", "State", "District", "Block", "Gram Panchayat", "Village", "Activity", "Task Indicator", "Target Quantity", "Unit", "Start Date", "End Date", "Priority", "Remarks", "Assigned By", "Assigned Date", "Status"]
+      fields: ["Financial Year", "Month", "Week", "Select VRP", "Select VRP Type", "Select ICS", "State", "District", "Block", "Gram Panchayat", "Village", "Activity", "Task Indicator", "Target Quantity", "Unit", "Start Date", "End Date", "Priority", "Remarks", "Assigned By", "Assigned Date", "Status"]
     },
     "weekly-target-list" => {
       title: "Weekly Target List",
@@ -232,13 +232,13 @@ class ModulesController < ApplicationController
       title: "New User",
       group: "User Register",
       purpose: "System login user create karne ke liye.",
-      fields: ["Stakeholder", "Role", "State", "District", "Block", "Gram Panchayat", "Village", "Office", "Full Address", "Pincode", "First Name", "Last Name", "Gender", "Age", "Email", "Password", "Confirmed Password", "User Name", "Mobile No", "Emergency No", "User Type", "Status"]
+      fields: ["Stakeholder", "Role", "State", "District", "Block", "Gram Panchayat", "Village", "Office", "Full Address", "Pincode", "First Name", "Last Name", "Gender", "Age", "Email", "Password", "Confirmed Password", "User Name", "Mobile No", "Emergency No", "ICS", "Aadhaar Upload", "User Type", "Status"]
     },
     "all-user" => {
       title: "All User",
       group: "User Register",
       purpose: "Registered users dekhne ke liye.",
-      fields: ["Stakeholder", "Role", "State", "District", "Block", "Gram Panchayat", "Village", "Office", "Full Address", "Pincode", "First Name", "Last Name", "Gender", "Age", "Email", "Password", "Confirmed Password", "User Name", "Mobile No", "Emergency No", "User Type", "Status"]
+      fields: ["Stakeholder", "Role", "State", "District", "Block", "Gram Panchayat", "Village", "Office", "Full Address", "Pincode", "First Name", "Last Name", "Gender", "Age", "Email", "Password", "Confirmed Password", "User Name", "Mobile No", "Emergency No", "ICS", "Aadhaar Upload", "User Type", "Status"]
     },
     "role-management" => {
       title: "Role Management",
@@ -593,7 +593,7 @@ class ModulesController < ApplicationController
     @dashboard_approval_steps
       .select do |record|
         record.data["status"].to_s != "Inactive" &&
-          record.data["module_name"] == "VRP Registration" &&
+          ["Farmer Registration", "VRP Registration"].include?(record.data["module_name"].to_s) &&
           identities.any? do |identity|
             dashboard_value_matches?(record.data["role_name"], identity[:role]) &&
               dashboard_value_matches?(record.data["stakeholder_name"], identity[:stakeholder]) &&
@@ -697,8 +697,8 @@ class ModulesController < ApplicationController
     month_master_rows = active_month_master_rows
     @bill_financial_year_options = month_master_rows.filter_map { |record| record.data["financial_year"].presence }.uniq
     @bill_month_options = month_master_rows.filter_map { |record| record.data["month_name"].presence }.uniq
-    @bill_project_options = module_record_values("project-master", "project_name", "name", "project", "select_project") +
-      module_record_values("add-vrp-activity", "project", "select_project", "project_name")
+    @bill_project_options = module_record_values("ics-master", "ics_name", "name", "ics", "select_ics") +
+      module_record_values("add-vrp-activity", "ics", "select_ics", "ics_name")
     @bill_project_options = @bill_project_options.compact_blank.uniq
 
     @bill_activity_group_options = module_record_values("add-activity-group", "activity_group_name", "activity_group", "group_name", "name") +
@@ -962,7 +962,7 @@ class ModulesController < ApplicationController
       "Can Delete" => ["Yes", "No"],
       "Select Mandatory" => ["Yes", "No"],
       "Office Level" => ["State", "District", "Block", "Gram Panchayat", "Village"],
-      "Module Name" => ["VRP Registration", "VRP Bill"],
+      "Module Name" => ["Farmer Registration", "VRP Registration", "VRP Bill"],
       "Sub Module Name" => sidebar_submodule_names
     }[field] || []
   end
@@ -993,8 +993,8 @@ class ModulesController < ApplicationController
       "Select Financial Year" => { module: "month-master", field: "financial_year" },
       "Select Bill Month" => { module: "month-master", field: "month_name" },
       "Month" => { module: "month-master", field: "month_name" },
-      "Project" => { module: "project-master", field: "project_name" },
-      "Select Project" => { module: "project-master", field: "project_name" },
+      "ICS" => { module: "ics-master", field: "ics_name" },
+      "Select ICS" => { module: "ics-master", field: "ics_name" },
       "Activity" => { module: "add-vrp-activity", field: "activity_name" },
       "Select Activity" => { module: "add-vrp-activity", field: "activity_name" },
       "Task Indicator" => { module: "task-indicator-master", field: "task_indicator_name" },

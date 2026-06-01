@@ -3,12 +3,13 @@ class Vrp < ApplicationRecord
 
   default_scope { where(is_deleted: false) }
 
-  belongs_to :vrp_bank_master
+  belongs_to :vrp_bank_master, optional: true
 
   has_one :vrp_profile, dependent: :destroy
   enum :gender, { male: 1, female: 2 }
   serialize :vrp_type_ids, coder: JSON
   serialize :project_master_ids, coder: JSON
+  serialize :ics_master_ids, coder: JSON
   serialize :gram_panchayat_ids, coder: JSON
   serialize :village_ids, coder: JSON
 
@@ -27,7 +28,7 @@ class Vrp < ApplicationRecord
             :account_no,
             :branch,
             :ifsc_code,
-            :vrp_bank_master,
+            :bank_name,
             :address,
             :mobile_no,
             :experience_in_years,
@@ -39,6 +40,7 @@ class Vrp < ApplicationRecord
   validate :selected_registration_lists_are_present
   validate :uploaded_documents_are_images
   before_validation :set_default_office_values
+  before_validation :sync_bank_name_from_master
   before_validation :sync_location_lists_from_profile
   before_save :remove_blank_array_values
   validate :mobile_or_email_should_not_exist_in_users, if: -> { "User".safe_constantize.present? }
@@ -62,6 +64,7 @@ class Vrp < ApplicationRecord
     self.gram_panchayat_ids = cleaned_ids(gram_panchayat_ids)
     self.village_ids = cleaned_ids(village_ids)
     self.project_master_ids = cleaned_ids(project_master_ids)
+    self.ics_master_ids = cleaned_ids(ics_master_ids)
   end
 
   def cleaned_ids(ids)
@@ -71,7 +74,7 @@ class Vrp < ApplicationRecord
   def selected_registration_lists_are_present
     {
       vrp_type_ids: "Select at least one VRP type",
-      project_master_ids: "Select at least one project",
+      ics_master_ids: "Select at least one ICS",
       gram_panchayat_ids: "Select at least one gram panchayat",
       village_ids: "Select at least one village"
     }.each do |attribute, message|
@@ -90,6 +93,10 @@ class Vrp < ApplicationRecord
 
       errors.add(attribute, "must be a JPEG, JPG, or PNG file")
     end
+  end
+
+  def sync_bank_name_from_master
+    self.bank_name = vrp_bank_master&.name if bank_name.blank? && vrp_bank_master
   end
 
   def mobile_or_email_should_not_exist_in_users

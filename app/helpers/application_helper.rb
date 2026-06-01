@@ -15,10 +15,8 @@ module ApplicationHelper
       title: "Master Setup",
       icon: "▣",
       links: [
-        ["Training Material", :module, "training-material"],
-        ["Bank Entry", :module, "bank-master"],
+        # ["Training Material", :module, "training-material"],
         ["Month Entry", :module, "month-master"],
-        ["Project Entry", :module, "project-master"],
         ["ICS Entry", :module, "ics-master"]
       ]
     },
@@ -50,11 +48,11 @@ module ApplicationHelper
       ]
     },
     {
-      title: "User Register",
+      title: "VRP Register",
       icon: "▩",
       links: [
         ["All User", :route, :users_path],
-        ["New User", :route, :new_user_path]
+        ["Registration", :route, :new_user_path]
       ]
     },
     {
@@ -69,12 +67,12 @@ module ApplicationHelper
       ]
     },
     {
-      title: "VRP Management",
+      title: "Farmer Registration",
       icon: "▥",
       links: [
-        ["VRP Registration", :route, :new_vrp_path],
-        ["VRP List", :route, :vrps_path],
-        ["VRP Approval", :route, :approvals_vrps_path]
+        ["Farmer Registration", :route, :new_vrp_path],
+        ["Farmer List", :route, :vrps_path],
+        ["Farmer Approval", :route, :approvals_vrps_path]
       ]
     },
     {

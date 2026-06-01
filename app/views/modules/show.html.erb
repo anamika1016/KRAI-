@@ -178,7 +178,7 @@
     <% raw_bill_items = @record&.data&.[]("bill_items") %>
     <% bill_items = raw_bill_items.is_a?(Hash) ? raw_bill_items.values : Array(raw_bill_items) %>
     <% selected_activity_groups = Array(@record&.data&.[]("select_activity_group")) %>
-    <% selected_projects = Array(@record&.data&.[]("select_project")) %>
+    <% selected_ics = Array(@record&.data&.[]("select_ics").presence || @record&.data&.[]("select_project")) %>
     <section class="module-card vrp-bill-card"
       data-vrp-bill-form
       data-activity-map="<%= json_escape(@bill_activity_map.to_json) %>"
@@ -217,11 +217,11 @@
           </label>
 
           <label>
-            <span>Select Project <em>*</em></span>
-            <select name="module_record[select_project][]" data-bill-project-select required>
-              <option value="">Select Project</option>
+            <span>Select ICS <em>*</em></span>
+            <select name="module_record[select_ics][]" data-bill-ics-select required>
+              <option value="">Select ICS</option>
               <% @bill_project_options.each do |option| %>
-                <option value="<%= option %>" <%= "selected" if selected_projects.include?(option) %>><%= option %></option>
+                <option value="<%= option %>" <%= "selected" if selected_ics.include?(option) %>><%= option %></option>
               <% end %>
             </select>
           </label>

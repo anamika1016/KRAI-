@@ -1,9 +1,9 @@
-<% content_for :title, "VRP Details" %>
+<% content_for :title, "Farmer Details" %>
 
 <main class="vrp-detail-page compact-detail">
   <section class="module-card">
     <div class="module-card-header">
-      <h2>VRP Details</h2>
+      <h2>Farmer Details</h2>
       <%= link_to "Back to List", vrps_path, class: "table-action" %>
     </div>
 
@@ -30,7 +30,7 @@
             <th>IFSC Code</th>
             <td><%= blank_display(@vrp&.ifsc_code) %></td>
             <th>Bank</th>
-            <td><%= blank_display(@vrp&.vrp_bank_master&.name) %></td>
+            <td><%= blank_display(@vrp&.bank_name.presence || @vrp&.vrp_bank_master&.name) %></td>
             <th>Experience (Years)</th>
             <td><%= blank_display(@vrp&.experience_in_years) %></td>
           </tr>
@@ -47,8 +47,8 @@
             <td colspan="9"><%= vrp_type_labels(@vrp&.vrp_type_ids) %></td>
           </tr>
           <tr>
-            <th>Projects</th>
-            <td colspan="9"><%= module_record_labels("project-master", @vrp&.project_master_ids, "project_name") %></td>
+            <th>ICS</th>
+            <td colspan="9"><%= module_record_labels("ics-master", @vrp&.ics_master_ids, "ics_name") %></td>
           </tr>
           <tr>
             <th>Gram Panchayats</th>
@@ -101,7 +101,7 @@
           </tr>
         </thead>
         <tbody>
-          <% [["VRP Photo", @vrp&.photo], ["VRP Aadhaar Card", @vrp&.aadhar_upload], ["VRP Bank Passbook", @vrp&.bank_passbook_upload]].each do |label, attachment| %>
+          <% [["Farmer Photo", @vrp&.photo], ["Farmer Aadhaar Card", @vrp&.aadhar_upload], ["Farmer Bank Passbook", @vrp&.bank_passbook_upload]].each do |label, attachment| %>
             <tr>
               <td><%= label %></td>
               <td>
@@ -127,7 +127,7 @@
 
   <% if @approval_steps.present? %>
     <section class="approval-progress-section">
-      <h2>VRP Approval Progress</h2>
+      <h2>Farmer Approval Progress</h2>
 
       <div class="approval-progress-grid">
         <% @approval_steps.each do |step| %>

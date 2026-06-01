@@ -2,7 +2,7 @@
 <% form_method = user.persisted? ? :patch : :post %>
 
 <section class="module-card">
-  <%= form_with model: user, url: form_url, method: form_method, html: { class: "module-entry-form" } do |f| %>
+  <%= form_with model: user, url: form_url, method: form_method, html: { class: "module-entry-form", multipart: true } do |f| %>
     <div class="module-form-grid user-registration-grid">
       <% [
         ["Stakeholder", :stakeholder, @stakeholder_options],
@@ -74,6 +74,21 @@
       <label>
         <span>Emergency No</span>
         <%= f.text_field :emergency_no, placeholder: "Enter Emergency No" %>
+      </label>
+      <label>
+        <span>ICS</span>
+        <% if @ics_options.any? %>
+          <%= f.select :ics, options_for_select(@ics_options, user.ics), { include_blank: "Select ICS" } %>
+        <% else %>
+          <%= f.text_field :ics, placeholder: "Enter ICS" %>
+        <% end %>
+      </label>
+      <label>
+        <span>Upload Aadhaar</span>
+        <%= f.file_field :aadhar_upload, accept: ".jpeg,.jpg,.png" %>
+        <% if user.persisted? && user.aadhar_upload.attached? %>
+          <small><%= link_to "View/Download Aadhaar", rails_blob_path(user.aadhar_upload, disposition: "attachment"), target: "_blank" %></small>
+        <% end %>
       </label>
       <label>
         <span>User Type</span>

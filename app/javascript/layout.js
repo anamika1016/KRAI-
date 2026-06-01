@@ -534,7 +534,7 @@ document.addEventListener("turbo:load", () => {
     const activityMap = JSON.parse(billForm.dataset.activityMap || "{}");
     const tciMap = JSON.parse(billForm.dataset.tciMap || "{}");
     const villageOptions = JSON.parse(billForm.dataset.villageOptions || "[]");
-    const projectSelect = billForm.querySelector("[data-bill-project-select]");
+    const icsSelect = billForm.querySelector("[data-bill-ics-select]");
     const groupSelect = billForm.querySelector("[data-bill-activity-group]");
     const activityShell = billForm.querySelector("[data-bill-activity-shell]");
     const rowsBody = billForm.querySelector("[data-bill-activity-rows]");
@@ -581,18 +581,18 @@ document.addEventListener("turbo:load", () => {
 
     const selectedValues = (select) => Array.from(select?.selectedOptions || []).map((option) => option.value).filter(Boolean);
     const selectedGroups = () => selectedValues(groupSelect);
-    const selectedProjects = () => selectedValues(projectSelect);
+    const selectedIcs = () => selectedValues(icsSelect);
     const normalizedActivityKey = (groupName) => {
       const normalizedGroup = String(groupName || "").trim().toLowerCase();
       return Object.keys(activityMap).find((key) => String(key || "").trim().toLowerCase() === normalizedGroup) || groupName;
     };
 
     const syncActivityGroupState = () => {
-      if (!groupSelect || !projectSelect) return;
+      if (!groupSelect || !icsSelect) return;
 
-      const hasProject = selectedProjects().length > 0;
+      const hasIcs = selectedIcs().length > 0;
 
-      if (!hasProject) {
+      if (!hasIcs) {
         buildActivityRows([]);
       }
 
@@ -670,7 +670,7 @@ document.addEventListener("turbo:load", () => {
       `);
     };
 
-    projectSelect?.addEventListener("change", syncActivityGroupState);
+    icsSelect?.addEventListener("change", syncActivityGroupState);
     groupSelect?.addEventListener("change", () => buildActivityRows(selectedGroups()));
 
     rowsBody?.addEventListener("input", (event) => {

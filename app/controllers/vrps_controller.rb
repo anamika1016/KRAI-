@@ -18,7 +18,7 @@ class VrpsController < ApplicationController
         aadhar_no: vrp.aadhar_no.to_s.gsub(/\d(?=\d{4})/, "x"),
         account_no: vrp.account_no,
         ifsc_code: vrp.ifsc_code,
-        bank_name: vrp.vrp_bank_master&.name,
+        bank_name: vrp.bank_name.presence || vrp.vrp_bank_master&.name,
         address: vrp.address,
         mobile_no: vrp.mobile_no,
         email: vrp.email,
@@ -39,7 +39,7 @@ class VrpsController < ApplicationController
     @vrp.status = 10 if @vrp.respond_to?(:status=)
 
     if @vrp.save
-      redirect_to vrps_path, notice: "VRP registration successfully."
+      redirect_to vrps_path, notice: "Farmer registration successfully."
     else
       @vrp.build_vrp_profile unless @vrp.vrp_profile
       render :new, status: :unprocessable_entity
@@ -50,7 +50,7 @@ class VrpsController < ApplicationController
 
   def update
     if @vrp.update(vrp_params)
-      redirect_to vrps_path, notice: "VRP updated successfully."
+      redirect_to vrps_path, notice: "Farmer updated successfully."
     else
       @vrp.build_vrp_profile unless @vrp.vrp_profile
       render :edit, status: :unprocessable_entity
@@ -68,7 +68,7 @@ class VrpsController < ApplicationController
       return
     end
 
-    redirect_to vrps_path, alert: "VRP record not found."
+    redirect_to vrps_path, alert: "Farmer record not found."
   end
 
   def destroy
@@ -76,9 +76,9 @@ class VrpsController < ApplicationController
 
     if @vrp
       @vrp.update_columns(is_deleted: true, updated_at: Time.current)
-      redirect_to vrps_path, notice: "VRP deleted successfully."
+      redirect_to vrps_path, notice: "Farmer deleted successfully."
     else
-      redirect_to vrps_path, alert: "VRP record not found."
+      redirect_to vrps_path, alert: "Farmer record not found."
     end
   end
 
@@ -86,13 +86,13 @@ class VrpsController < ApplicationController
     @vrp = find_visible_vrp(params[:id])
 
     unless @vrp
-      redirect_to vrps_path, alert: "VRP record not found."
+      redirect_to vrps_path, alert: "Farmer record not found."
       return
     end
 
     active = ActiveModel::Type::Boolean.new.cast(params[:active])
     @vrp.update_columns(is_active: active, updated_at: Time.current)
-    redirect_to vrps_path, notice: "VRP marked #{active ? "active" : "inactive"}."
+    redirect_to vrps_path, notice: "Farmer marked #{active ? "active" : "inactive"}."
   end
 
   def approvals
@@ -112,7 +112,7 @@ class VrpsController < ApplicationController
     vrp = own_vrps.find_by(id: params[:id])
 
     unless vrp
-      redirect_to vrps_path, alert: "VRP record not found."
+      redirect_to vrps_path, alert: "Farmer record not found."
       return
     end
 
@@ -125,14 +125,14 @@ class VrpsController < ApplicationController
     end
 
     if approval_sent?(vrp) || [31, 32, 55].include?(vrp.status.to_i)
-      redirect_to vrps_path, alert: "This VRP is already in approval process."
+      redirect_to vrps_path, alert: "This farmer is already in approval process."
       return
     end
 
     update_vrp_status!(vrp, 25)
     log_approval_history(vrp, first_step, "Sent for Approval", "Pending at #{approval_approver_name(first_step)}")
 
-    redirect_to vrps_path, notice: "VRP sent for approval. Pending at #{approval_approver_name(first_step)}."
+    redirect_to vrps_path, notice: "Farmer sent for approval. Pending at #{approval_approver_name(first_step)}."
   end
 
   def approve
@@ -154,7 +154,7 @@ class VrpsController < ApplicationController
       next_step = current_approval_step(vrp)
       "Approved and moved to #{approval_approver_name(next_step)}."
     else
-      "VRP final approved."
+      "Farmer final approved."
     end
 
     redirect_to vrp_path(vrp), notice: message
@@ -164,14 +164,14 @@ class VrpsController < ApplicationController
     vrp = approvable_vrps.find { |record| record.id == params[:id].to_i }
 
     unless vrp
-      redirect_to approvals_vrps_path, alert: "This VRP is not pending for your approval."
+      redirect_to approvals_vrps_path, alert: "This farmer is not pending for your approval."
       return
     end
 
     step = current_approval_step(vrp)
     update_vrp_status!(vrp, 99)
     log_approval_history(vrp, step, "Rejected", params[:remarks])
-    redirect_to vrp_path(vrp), notice: "VRP rejected."
+    redirect_to vrp_path(vrp), notice: "Farmer rejected."
   end
 
   private
@@ -195,6 +195,7 @@ class VrpsController < ApplicationController
       :date_of_joining,
       :aadhar_no,
       :account_no,
+      :bank_name,
       :branch,
       :ifsc_code,
       :vrp_bank_master_id,
@@ -209,6 +210,7 @@ class VrpsController < ApplicationController
       :aadhar_upload,
       :bank_passbook_upload,
       project_master_ids: [],
+      ics_master_ids: [],
       vrp_type_ids: [],
       village_ids: [],
       gram_panchayat_ids: [],
@@ -413,7 +415,7 @@ class VrpsController < ApplicationController
         record_office = record.data["office"].to_s
 
         active_module_record?(record) &&
-          record.data["module_name"] == "VRP Registration" &&
+          ["Farmer Registration", "VRP Registration"].include?(record.data["module_name"].to_s) &&
           creator_identities.any? do |identity|
             module_value_matches?(record_role, identity[:role]) &&
               module_value_matches?(record_stakeholder, identity[:stakeholder]) &&
@@ -683,13 +685,12 @@ class VrpsController < ApplicationController
     sync_existing_vrp_master_records
 
     @vrp_type_options = vrp_type_options
-    @bank_options = bank_options
     @state_options = module_record_options("state-master", "state_name")
     @district_options = module_record_options("district-master", "district_name")
     @block_options = module_record_options("block-master", "block_name")
     @gram_panchayat_options = module_record_options("gram-panchayat-master", "gram_panchayat_name")
     @village_options = module_record_options("village-master", "village_name")
-    @project_options = project_options
+    @ics_options = ics_options
   end
 
   def vrp_type_options
@@ -702,22 +703,8 @@ class VrpsController < ApplicationController
       module_record_options("position-type", "position_type_name")
   end
 
-  def bank_options
-    if model_ready?(:VrpBankMaster)
-      options = VrpBankMaster.where(is_active: true, is_deleted: false).order(:name).pluck(:name, :id)
-      return options if options.any?
-    end
-
-    module_record_options("bank-master", "bank_name")
-  end
-
-  def project_options
-    if model_ready?(:ProjectMaster)
-      options = ProjectMaster.order(:name).pluck(:name, :id)
-      return options if options.any?
-    end
-
-    module_record_options("project-master", "project_name")
+  def ics_options
+    module_record_options("ics-master", "ics_name")
   end
 
   def module_record_options(module_slug, field_key)

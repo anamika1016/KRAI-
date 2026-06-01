@@ -73,7 +73,7 @@ class UsersController < ApplicationController
       :stakeholder, :role, :state, :district, :block, :gram_panchayat, :village,
       :office, :full_address, :pincode, :first_name, :last_name,
       :gender, :age, :email, :password, :user_name, :mobile_no, :emergency_no,
-      :user_type, :status
+      :user_type, :status, :ics, :aadhar_upload
     )
   end
 
@@ -89,6 +89,7 @@ class UsersController < ApplicationController
     @gram_panchayat_options = module_record_options("gram-panchayat-master", "gram_panchayat_name")
     @village_options = module_record_options("village-master", "village_name")
     @office_options = module_record_options("office-category-add", "category_name")
+    @ics_options = module_record_options("ics-master", "ics_name")
   end
 
   def module_record_options(module_slug, field_key)

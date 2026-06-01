@@ -35,6 +35,8 @@
             <th>Block</th>
             <th>Gram Panchayat</th>
             <th>Village</th>
+            <th>ICS</th>
+            <th>Aadhaar</th>
             <th>User Type</th>
             <th>Enrollment Date</th>
             <th>Status</th>
@@ -57,6 +59,14 @@
                 <td><%= user.block.presence || "-" %></td>
                 <td><%= user.gram_panchayat.presence || "-" %></td>
                 <td><%= user.village.presence || "-" %></td>
+                <td><%= user.ics.presence || "-" %></td>
+                <td>
+                  <% if user.aadhar_upload.attached? %>
+                    <%= link_to "View", rails_blob_path(user.aadhar_upload, disposition: "inline"), target: "_blank", class: "table-action" %>
+                  <% else %>
+                    -
+                  <% end %>
+                </td>
                 <td><%= user.user_type.presence || "-" %></td>
                 <td><%= user.created_at&.strftime("%d-%m-%Y %I:%M %p") %></td>
                 <td><span class="status-pill <%= user.status == "Inactive" ? "inactive" : "active" %>"><%= user.status.presence || "Active" %></span></td>
@@ -64,7 +74,7 @@
             <% end %>
           <% else %>
             <tr>
-              <td colspan="17">No users registered yet.</td>
+              <td colspan="18">No users registered yet.</td>
             </tr>
           <% end %>
         </tbody>
