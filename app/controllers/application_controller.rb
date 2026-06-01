@@ -5,9 +5,15 @@ class ApplicationController < ActionController::Base
   # Changes to the importmap will invalidate the etag for HTML responses
   stale_when_importmap_changes
 
+  before_action :require_app_login
+
   helper_method :current_app_user
 
   private
+
+  def require_app_login
+    redirect_to login_path, alert: "Please login first." unless current_app_user
+  end
 
   def current_app_user
     return @current_app_user if defined?(@current_app_user)

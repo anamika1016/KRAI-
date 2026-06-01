@@ -1,5 +1,9 @@
 class SessionsController < ApplicationController
-  def new; end
+  skip_before_action :require_app_login
+
+  def new
+    redirect_to dashboard_path if current_app_user
+  end
 
   def create
     user = find_app_user

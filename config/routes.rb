@@ -6,7 +6,7 @@ Rails.application.routes.draw do
   get    "logout", to: "sessions#destroy", as: nil
   delete "logout", to: "sessions#destroy", as: :logout
 
-  root "modules#dashboard"
+  root "sessions#new"
   get "dashboard", to: "modules#dashboard", as: :dashboard
 
   resources :users, except: [:show] do
