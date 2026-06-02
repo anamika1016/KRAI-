@@ -109,28 +109,28 @@ class ModulesController < ApplicationController
       fields: ["VRP Type Name", "Status"]
     },
     "add-activity-group" => {
-      title: "Add Activity Group",
+      title: "Main Activity",
       group: "Activity Setup",
-      purpose: "Activity group add karne ke liye.",
-      fields: ["Activity Group Name", "Status"]
+      purpose: "Main activity add karne ke liye.",
+      fields: ["Main Activity Name", "Status"]
     },
     "activity-group-list" => {
-      title: "Activity Group List",
+      title: "Main Activity List",
       group: "Activity Setup",
-      purpose: "Saved activity groups dekhne ke liye.",
-      fields: ["Activity Group Name", "Status"]
+      purpose: "Saved main activities dekhne ke liye.",
+      fields: ["Main Activity Name", "Status"]
     },
     "add-vrp-activity" => {
-      title: "Add Activity",
+      title: "Sub Activity",
       group: "Activity Setup",
-      purpose: "Activity add karne ke liye.",
-      fields: ["Activity Group", "Activity Name", "Unit", "Status"]
+      purpose: "Sub activity add karne ke liye.",
+      fields: ["Main Activity", "Sub Activity Name", "Unit", "Status"]
     },
     "vrp-activity-list" => {
-      title: "VRP Activity List",
+      title: "Sub Activity List",
       group: "Activity Setup",
-      purpose: "Saved VRP activities dekhne ke liye.",
-      fields: ["Activity Group", "Activity Name", "Unit", "Status"]
+      purpose: "Saved sub activities dekhne ke liye.",
+      fields: ["Main Activity", "Sub Activity Name", "Unit", "Status"]
     },
     "task-completion-indicator" => {
       title: "Task Completion Indicator",
@@ -154,13 +154,13 @@ class ModulesController < ApplicationController
       title: "VRP Approval Form",
       group: "VRP Registration",
       purpose: "VRP registration aur bill approval ke approver maintain karne ke liye.",
-      fields: ["Module Name", "Role Name", "Office", "Approval Level", "Stakeholder Name", "Approver (Approved By)", "Status"]
+      fields: ["Module Name", "Stakeholder Name", "Stakeholder Role", "Role Name", "User Management Role", "Office", "Approval Level", "Approver (Approved By)", "Status"]
     },
     "approval-list" => {
       title: "VRP Approval List",
       group: "VRP Registration",
       purpose: "Saved approval mappings dekhne ke liye.",
-      fields: ["Module Name", "Role Name", "Office", "Approval Level", "Stakeholder Name", "Approver (Approved By)", "Status"]
+      fields: ["Module Name", "Stakeholder Name", "Stakeholder Role", "Role Name", "User Management Role", "Office", "Approval Level", "Approver (Approved By)", "Status"]
     },
     "ics-master" => {
       title: "ICS Master",
@@ -179,13 +179,13 @@ class ModulesController < ApplicationController
       title: "Add VRP Bill",
       group: "VRP Bills",
       purpose: "VRP bill submit karne ke liye.",
-      fields: ["Select VRP", "Select Financial Year", "Select Bill Month", "Select ICS", "Select Activity Group", "Grand Total", "Status"]
+      fields: ["Select VRP", "Select Financial Year", "Select Bill Month", "Select ICS", "Select Main Activity", "Grand Total", "Status"]
     },
     "vrp-bill-list" => {
       title: "VRP Bill List",
       group: "VRP Bills",
       purpose: "Bills aur payment status track karne ke liye.",
-      fields: ["Select VRP", "Select Financial Year", "Select Bill Month", "Select ICS", "Select Activity Group", "Grand Total", "Status"]
+      fields: ["Select VRP", "Select Financial Year", "Select Bill Month", "Select ICS", "Select Main Activity", "Grand Total", "Status"]
     },
     "weekly-target-add" => {
       title: "Add Weekly Target",
@@ -262,14 +262,14 @@ class ModulesController < ApplicationController
     "access-control" => {
       title: "Access Control",
       group: "Resource Person Type",
-      purpose: "Stakeholder aur role wise module access dene ke liye.",
-      fields: ["Stakeholder", "Role Name", "Module Name", "Sub Module Name", "Can View", "Can Create", "Can Edit", "Can Delete", "Status"]
+      purpose: "Resource person type wise module access dene ke liye.",
+      fields: ["Stakeholder", "Stakeholder Role", "Role Name", "User Management Role", "Module Name", "Sub Module Name", "Can View", "Can Create", "Can Edit", "Can Delete", "Status"]
     },
     "access-control-list" => {
       title: "Access Control List",
       group: "Resource Person Type",
       purpose: "Saved access control records dekhne ke liye.",
-      fields: ["Stakeholder", "Role Name", "Module Name", "Sub Module Name", "Status"]
+      fields: ["Stakeholder", "Stakeholder Role", "Role Name", "User Management Role", "Module Name", "Sub Module Name", "Status"]
     }
   }.freeze
 
@@ -610,6 +610,8 @@ class ModulesController < ApplicationController
           identities.any? do |identity|
             dashboard_value_matches?(record.data["role_name"], identity[:role]) &&
               dashboard_value_matches?(record.data["stakeholder_name"], identity[:stakeholder]) &&
+              dashboard_value_matches?(record.data["stakeholder_role"], identity[:stakeholder_role]) &&
+              dashboard_value_matches?(record.data["user_management_role"], identity[:user_management_role]) &&
               (record.data["office"].blank? || dashboard_value_matches?(record.data["office"], identity[:office]))
           end
       end
@@ -624,7 +626,7 @@ class ModulesController < ApplicationController
 
     if vrp.created_by_id.present? && model_ready?(:User)
       user = User.find_by(id: vrp.created_by_id)
-      identities << { role: user.role, stakeholder: user.stakeholder, office: user.office } if user
+      identities << user_dashboard_identity(user) if user
     end
 
     if model_ready?(:User)
@@ -632,13 +634,13 @@ class ModulesController < ApplicationController
       matched_users << User.find_by(email: vrp.email) if vrp.email.present?
       matched_users << User.find_by(mobile_no: vrp.mobile_no) if vrp.mobile_no.present?
       matched_users.compact.uniq.each do |user|
-        identities << { role: user.role, stakeholder: user.stakeholder, office: user.office }
+        identities << user_dashboard_identity(user)
       end
     end
 
     if vrp.created_by_id.present? && model_ready?(:ModuleRecord)
       record = ModuleRecord.find_by(id: vrp.created_by_id)
-      identities << { role: record.data["role"], stakeholder: record.data["stakeholder"], office: record.data["office"] } if record
+      identities << record_dashboard_identity(record) if record
     end
 
     if model_ready?(:ModuleRecord)
@@ -647,19 +649,41 @@ class ModulesController < ApplicationController
           (vrp.mobile_no.present? && record.data["mobile_no"].to_s == vrp.mobile_no.to_s)
       end
       matched_records.each do |record|
-        identities << { role: record.data["role"], stakeholder: record.data["stakeholder"], office: record.data["office"] }
+        identities << record_dashboard_identity(record)
       end
     end
 
     identities << {
       role: current_app_user&.dig("role"),
       stakeholder: current_app_user&.dig("stakeholder"),
+      stakeholder_role: current_app_user&.dig("stakeholder_role"),
+      user_management_role: current_app_user&.dig("user_management_role"),
       office: current_app_user&.dig("office")
     } if vrp.created_by_id.blank?
 
     identities
       .select { |identity| identity[:role].present? && identity[:stakeholder].present? }
       .uniq
+  end
+
+  def user_dashboard_identity(user)
+    {
+      role: user.role,
+      stakeholder: user.stakeholder,
+      stakeholder_role: user.stakeholder_role,
+      user_management_role: user.user_management_role,
+      office: user.office
+    }
+  end
+
+  def record_dashboard_identity(record)
+    {
+      role: record.data["role"],
+      stakeholder: record.data["stakeholder"],
+      stakeholder_role: record.data["stakeholder_role"],
+      user_management_role: record.data["user_management_role"],
+      office: record.data["office"]
+    }
   end
 
   def vrp_approval_sequence(record)
@@ -680,6 +704,8 @@ class ModulesController < ApplicationController
   end
 
   def dashboard_value_matches?(expected, actual)
+    return true if expected.blank?
+
     expected.to_s.strip.casecmp(actual.to_s.strip).zero?
   end
 
@@ -714,7 +740,7 @@ class ModulesController < ApplicationController
       module_record_values("add-vrp-activity", "ics", "select_ics", "ics_name")
     @bill_project_options = @bill_project_options.compact_blank.uniq
 
-    @bill_activity_group_options = module_record_values("add-activity-group", "activity_group_name", "activity_group", "group_name", "name") +
+    @bill_activity_group_options = module_record_values("add-activity-group", "main_activity_name", "activity_group_name", "activity_group", "group_name", "name") +
       module_record_values("add-vrp-activity", "activity_group", "activity_group_name", "group_name")
     @bill_activity_group_options = @bill_activity_group_options.compact_blank.uniq
     @bill_village_options = module_field_options("Village")
@@ -749,11 +775,11 @@ class ModulesController < ApplicationController
     ModuleRecord
       .where(module_slug: "add-vrp-activity")
       .select { |record| active_module_record?(record) }
-      .group_by { |record| first_present_data(record, "activity_group", "activity_group_name", "group_name").to_s }
+      .group_by { |record| first_present_data(record, "main_activity", "activity_group", "activity_group_name", "group_name").to_s }
       .transform_values do |records|
         records.map do |record|
           {
-            activity: first_present_data(record, "activity_name", "vrp_activity_name", "activity").to_s,
+            activity: first_present_data(record, "sub_activity_name", "activity_name", "vrp_activity_name", "activity").to_s,
             unit: record.data["unit"].to_s
           }
         end.reject { |row| row[:activity].blank? }
@@ -840,15 +866,19 @@ class ModulesController < ApplicationController
     return false unless model_ready?(:ModuleRecord)
 
     stakeholder = normalized_access_value(data["stakeholder_name"].presence || data["stakeholder"])
+    stakeholder_role = normalized_access_value(data["stakeholder_role"].presence || data["stakeholder_person_type"])
     role = normalized_access_value(data["role_name"].presence || data["role"])
-    return false if stakeholder.blank? || role.blank?
+    user_management_role = normalized_access_value(data["user_management_role"].presence || data["user_management_person_type"])
+    return false if stakeholder.blank?
 
     ModuleRecord
       .where(module_slug: "access-control")
       .where.not(id: except_id)
       .any? do |record|
         normalized_access_value(record.data["stakeholder_name"].presence || record.data["stakeholder"]) == stakeholder &&
+          normalized_access_value(record.data["stakeholder_role"].presence || record.data["stakeholder_person_type"]) == stakeholder_role &&
           normalized_access_value(record.data["role_name"].presence || record.data["role"]) == role &&
+          normalized_access_value(record.data["user_management_role"].presence || record.data["user_management_person_type"]) == user_management_role &&
           normalized_access_value(record.data["status"].presence || "Active") == "active"
       end
   end
@@ -1098,7 +1128,10 @@ class ModulesController < ApplicationController
       "VRP Type" => { module: "add-vrp-type", field: "vrp_type_name" },
       "Select VRP Type" => { module: "add-vrp-type", field: "vrp_type_name" },
       "Activity Group" => { module: "add-activity-group", field: "activity_group_name" },
+      "Main Activity" => { module: "add-activity-group", field: "main_activity_name" },
+      "Select Main Activity" => { module: "add-activity-group", field: "main_activity_name" },
       "VRP Activity" => { module: "add-vrp-activity", field: "activity_name" },
+      "Sub Activity" => { module: "add-vrp-activity", field: "sub_activity_name" },
       "Stakeholder" => { module: "stakeholder-master", field: "stakeholder_name_in_english" },
       "Stakeholder Name" => { module: "stakeholder-master", field: "stakeholder_name_in_english" },
       "Stakeholder Category" => { module: "stakeholder-master", field: "stakeholder_name_in_english" },
@@ -1112,6 +1145,7 @@ class ModulesController < ApplicationController
       "Select ICS" => { module: "ics-master", field: "ics_name" },
       "Activity" => { module: "add-vrp-activity", field: "activity_name" },
       "Select Activity" => { module: "add-vrp-activity", field: "activity_name" },
+      "Sub Activity Name" => { module: "add-vrp-activity", field: "sub_activity_name" },
       "Task Indicator" => { module: "task-indicator-master", field: "task_indicator_name" },
       "Select Task Indicator" => { module: "task-indicator-master", field: "task_indicator_name" },
       "Bank Name" => { module: "bank-master", field: "bank_name" },
@@ -1152,7 +1186,9 @@ class ModulesController < ApplicationController
     return approver_options if module_slug == "new-user" && field_key == "approver_name_with_role"
 
     field_keys = [field_key]
+    field_keys << "activity_group_name" if module_slug == "add-activity-group" && field_key == "main_activity_name"
     field_keys << "vrp_activity_name" if module_slug == "add-vrp-activity" && field_key == "activity_name"
+    field_keys.concat(["activity_name", "vrp_activity_name"]) if module_slug == "add-vrp-activity" && field_key == "sub_activity_name"
 
     ModuleRecord
       .where(module_slug: module_slug)

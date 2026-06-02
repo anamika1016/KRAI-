@@ -6,6 +6,8 @@ class Vrp < ApplicationRecord
   belongs_to :vrp_bank_master, optional: true
 
   has_one :vrp_profile, dependent: :destroy
+  has_many :vrp_ics_mappings, dependent: :destroy
+  has_many :target_mappings, dependent: :destroy
   enum :gender, { male: 1, female: 2 }
   serialize :vrp_type_ids, coder: JSON
   serialize :project_master_ids, coder: JSON

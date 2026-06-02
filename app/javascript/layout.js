@@ -392,6 +392,8 @@ document.addEventListener("turbo:load", () => {
       if (parentValues.length === 0) return false;
 
       const parentKey = locationKeys[parentLevel];
+      if (!row[parentKey]) return true;
+
       return parentValues.some((value) => normalizeOption(row[parentKey]) === normalizeOption(value));
     });
   };
@@ -481,6 +483,317 @@ document.addEventListener("turbo:load", () => {
     locationLevels.slice(1).forEach(refreshLocationLevel);
   });
 
+  document.querySelectorAll("[data-vrp-ics-mapping]").forEach((shell) => {
+    const vrpSelect = shell.querySelector("[data-vrp-ics-vrp]");
+    const fcoSelect = shell.querySelector("[data-vrp-ics-fco]");
+    const icsSelect = shell.querySelector("[data-vrp-ics-ics]");
+    const villageSelect = shell.querySelector("[data-vrp-ics-village]");
+    const farmersList = shell.querySelector("[data-vrp-ics-farmers]");
+    const selectAll = shell.querySelector("[data-vrp-ics-select-all]");
+    const countLabel = shell.querySelector("[data-vrp-ics-count]");
+    const hiddenFcoName = shell.querySelector("[data-vrp-ics-fco-name]");
+    const hiddenIcsName = shell.querySelector("[data-vrp-ics-ics-name]");
+    const hiddenVillageName = shell.querySelector("[data-vrp-ics-village-name]");
+    let editMapping = {};
+    try {
+      editMapping = JSON.parse(shell.dataset.editMapping || "{}");
+    } catch (_error) {
+      editMapping = {};
+    }
+
+    const escapeHtml = (value) => String(value || "")
+      .replaceAll("&", "&amp;")
+      .replaceAll("<", "&lt;")
+      .replaceAll(">", "&gt;")
+      .replaceAll('"', "&quot;")
+      .replaceAll("'", "&#039;");
+
+    const selectedText = (select) => select?.selectedOptions?.[0]?.textContent?.trim() || "";
+
+    const updateHiddenNames = () => {
+      if (hiddenFcoName) hiddenFcoName.value = fcoSelect?.value ? selectedText(fcoSelect) : "";
+      if (hiddenIcsName) hiddenIcsName.value = icsSelect?.value ? selectedText(icsSelect) : "";
+      if (hiddenVillageName) hiddenVillageName.value = villageSelect?.value ? selectedText(villageSelect) : "";
+    };
+
+    const fillSelect = (select, options, placeholder) => {
+      if (!select) return;
+
+      select.innerHTML = "";
+      const blank = document.createElement("option");
+      blank.value = "";
+      blank.textContent = placeholder;
+      select.appendChild(blank);
+
+      options.forEach((optionData) => {
+        const option = document.createElement("option");
+        option.value = optionData.value || "";
+        option.textContent = optionData.label || optionData.value || "";
+        select.appendChild(option);
+      });
+
+      select.disabled = options.length === 0;
+    };
+
+    const fetchJson = async (url, params) => {
+      const requestUrl = new URL(url, window.location.origin);
+      Object.entries(params).forEach(([key, value]) => {
+        if (value) requestUrl.searchParams.set(key, value);
+      });
+
+      const response = await fetch(requestUrl, { headers: { Accept: "application/json" } });
+      if (!response.ok) throw new Error("Request failed");
+      return response.json();
+    };
+
+    const selectedFarmerBoxes = () => Array.from(shell.querySelectorAll("[data-vrp-ics-farmer-checkbox]:checked"));
+
+    const updateFarmerCount = () => {
+      const count = selectedFarmerBoxes().length;
+      if (countLabel) countLabel.textContent = `${count} farmer selected`;
+      if (selectAll) {
+        const allBoxes = Array.from(shell.querySelectorAll("[data-vrp-ics-farmer-checkbox]:not(:disabled)"));
+        selectAll.checked = allBoxes.length > 0 && count === allBoxes.length;
+        selectAll.indeterminate = count > 0 && count < allBoxes.length;
+      }
+    };
+
+    const clearFarmers = (message = "Select FCO, ICS and Village to load farmers.") => {
+      if (farmersList) farmersList.textContent = message;
+      if (selectAll) {
+        selectAll.checked = false;
+        selectAll.indeterminate = false;
+      }
+      updateFarmerCount();
+    };
+
+    const renderFarmers = (farmers) => {
+      if (!farmersList) return;
+
+      if (!farmers.length) {
+        clearFarmers("No farmers found for selected village.");
+        return;
+      }
+
+      farmersList.innerHTML = farmers.map((farmer) => {
+        const meta = [
+          farmer.father_name ? `Father: ${farmer.father_name}` : "",
+          farmer.tracenet_no ? `Tracenet: ${farmer.tracenet_no}` : "",
+          farmer.mobile_no ? `Mobile: ${farmer.mobile_no}` : "",
+          farmer.khasara_no ? `Khasara: ${farmer.khasara_no}` : ""
+        ].filter(Boolean).join(" | ");
+
+        return `
+          <label class="vrp-ics-farmer-item${farmer.mapped_to_other ? " disabled" : ""}">
+            <input type="checkbox" name="vrp_ics_mapping[afl_ids][]" value="${escapeHtml(farmer.id)}" data-vrp-ics-farmer-checkbox${farmer.mapped_to_other ? " disabled" : ""}${(editMapping.afl_ids || []).map(String).includes(String(farmer.id)) ? " checked" : ""}>
+            <span>
+              <strong>${escapeHtml(farmer.farmer_name || `Farmer #${farmer.id}`)}</strong>
+              <small>${escapeHtml(meta)}${farmer.mapped_to_other ? " | Already mapped" : ""}</small>
+            </span>
+          </label>
+        `;
+      }).join("");
+
+      farmersList.querySelectorAll("[data-vrp-ics-farmer-checkbox]").forEach((checkbox) => {
+        checkbox.addEventListener("change", updateFarmerCount);
+      });
+      updateFarmerCount();
+    };
+
+    fcoSelect?.addEventListener("change", async () => {
+      fillSelect(icsSelect, [], "Select ICS");
+      fillSelect(villageSelect, [], "Select Village");
+      clearFarmers();
+      updateHiddenNames();
+
+      if (!fcoSelect.value) return;
+
+      try {
+        const data = await fetchJson(shell.dataset.icsUrl, { fco_id: fcoSelect.value });
+        fillSelect(icsSelect, data.options || [], "Select ICS");
+      } catch (_error) {
+        window.alert("ICS list load nahi ho payi.");
+      }
+    });
+
+    icsSelect?.addEventListener("change", async () => {
+      fillSelect(villageSelect, [], "Select Village");
+      clearFarmers();
+      updateHiddenNames();
+
+      if (!fcoSelect?.value || !icsSelect.value) return;
+
+      try {
+        const data = await fetchJson(shell.dataset.villagesUrl, { fco_id: fcoSelect.value, ics_id: icsSelect.value });
+        fillSelect(villageSelect, data.options || [], "Select Village");
+      } catch (_error) {
+        window.alert("Village list load nahi ho payi.");
+      }
+    });
+
+    villageSelect?.addEventListener("change", async () => {
+      clearFarmers(villageSelect.value ? "Loading farmers..." : "Select village to load farmers.");
+      updateHiddenNames();
+
+      if (!fcoSelect?.value || !icsSelect?.value || !villageSelect.value) return;
+
+      try {
+        const data = await fetchJson(shell.dataset.farmersUrl, {
+          vrp_id: vrpSelect?.value,
+          edit_id: editMapping.id,
+          fco_id: fcoSelect.value,
+          ics_id: icsSelect.value,
+          village_id: villageSelect.value
+        });
+        renderFarmers(data.farmers || []);
+      } catch (_error) {
+        clearFarmers("Farmers load nahi ho paye.");
+      }
+    });
+
+    selectAll?.addEventListener("change", () => {
+      shell.querySelectorAll("[data-vrp-ics-farmer-checkbox]:not(:disabled)").forEach((checkbox) => {
+        checkbox.checked = selectAll.checked;
+      });
+      updateFarmerCount();
+    });
+
+    const loadEditMapping = async () => {
+      if (!editMapping.id || !fcoSelect?.value) return;
+
+      try {
+        const icsData = await fetchJson(shell.dataset.icsUrl, { fco_id: fcoSelect.value });
+        fillSelect(icsSelect, icsData.options || [], "Select ICS");
+        icsSelect.value = editMapping.ics_id || "";
+
+        const villageData = await fetchJson(shell.dataset.villagesUrl, { fco_id: fcoSelect.value, ics_id: icsSelect.value });
+        fillSelect(villageSelect, villageData.options || [], "Select Village");
+        villageSelect.value = editMapping.village_id || "";
+        updateHiddenNames();
+
+        const farmersData = await fetchJson(shell.dataset.farmersUrl, {
+          vrp_id: vrpSelect?.value,
+          edit_id: editMapping.id,
+          fco_id: fcoSelect.value,
+          ics_id: icsSelect.value,
+          village_id: villageSelect.value
+        });
+        renderFarmers(farmersData.farmers || []);
+      } catch (_error) {
+        clearFarmers("Saved mapping load nahi ho payi.");
+      }
+    };
+
+    loadEditMapping();
+  });
+
+  document.querySelectorAll("[data-target-mapping]").forEach((shell) => {
+    const vrpSelect = shell.querySelector("[data-target-vrp]");
+    const rowsBody = shell.querySelector("[data-target-mapping-rows]");
+    const countLabel = shell.querySelector("[data-target-mapping-count]");
+    let editTarget = {};
+    try {
+      editTarget = JSON.parse(shell.dataset.editTarget || "{}");
+    } catch (_error) {
+      editTarget = {};
+    }
+
+    const escapeHtml = (value) => String(value || "")
+      .replaceAll("&", "&amp;")
+      .replaceAll("<", "&lt;")
+      .replaceAll(">", "&gt;")
+      .replaceAll('"', "&quot;")
+      .replaceAll("'", "&#039;");
+
+    const setCount = (text) => {
+      if (countLabel) countLabel.textContent = text;
+    };
+
+    const renderRows = (mappings) => {
+      if (!rowsBody) return;
+
+      if (!mappings.length) {
+        rowsBody.innerHTML = `<tr><td colspan="6">No VRP ICS mapping found for selected VRP.</td></tr>`;
+        setCount("0 mapping selected");
+        return;
+      }
+
+      rowsBody.innerHTML = mappings.map((mapping) => `
+        <tr>
+          <td>
+            <input type="radio" name="target_mapping[vrp_ics_mapping_id]" value="${escapeHtml(mapping.id)}" required data-target-mapping-radio>
+          </td>
+          <td>${escapeHtml(mapping.fco)}</td>
+          <td>${escapeHtml(mapping.ics)}</td>
+          <td>${escapeHtml(mapping.village)}</td>
+          <td>${escapeHtml(mapping.farmer_count)}</td>
+          <td>
+            <input type="number" min="0" step="0.01" placeholder="Enter target" disabled data-target-quantity-input>
+          </td>
+        </tr>
+      `).join("");
+
+      let preselected = false;
+      rowsBody.querySelectorAll("[data-target-mapping-radio]").forEach((radio) => {
+        radio.addEventListener("change", () => {
+          rowsBody.querySelectorAll("[data-target-quantity-input]").forEach((input) => {
+            input.disabled = true;
+            input.required = false;
+            input.removeAttribute("name");
+          });
+          const row = radio.closest("tr");
+          const farmers = row?.children?.[4]?.textContent?.trim() || "0";
+          const targetInput = row?.querySelector("[data-target-quantity-input]");
+          if (targetInput) {
+            targetInput.disabled = false;
+            targetInput.required = true;
+            targetInput.name = "target_mapping[target_quantity]";
+            targetInput.focus();
+          }
+          setCount(`${farmers} registered farmers selected`);
+        });
+
+        if (String(radio.value) === String(editTarget.vrp_ics_mapping_id)) {
+          radio.checked = true;
+          radio.dispatchEvent(new Event("change", { bubbles: true }));
+          const targetInput = radio.closest("tr")?.querySelector("[data-target-quantity-input]");
+          if (targetInput) targetInput.value = editTarget.target_quantity || "";
+          preselected = true;
+        }
+      });
+      if (!preselected) setCount("0 mapping selected");
+    };
+
+    vrpSelect?.addEventListener("change", async () => {
+      if (!rowsBody) return;
+
+      if (!vrpSelect.value) {
+        rowsBody.innerHTML = `<tr><td colspan="6">Select VRP to load mapped villages.</td></tr>`;
+        setCount("0 mapping selected");
+        return;
+      }
+
+      rowsBody.innerHTML = `<tr><td colspan="6">Loading mapped villages...</td></tr>`;
+
+      const url = new URL(shell.dataset.mappingsUrl, window.location.origin);
+      url.searchParams.set("vrp_id", vrpSelect.value);
+
+      try {
+        const response = await fetch(url, { headers: { Accept: "application/json" } });
+        if (!response.ok) throw new Error("Request failed");
+        const data = await response.json();
+        renderRows(data.mappings || []);
+      } catch (_error) {
+        rowsBody.innerHTML = `<tr><td colspan="6">Mapped villages load nahi ho paye.</td></tr>`;
+        setCount("0 mapping selected");
+      }
+    });
+
+    if (editTarget.id && vrpSelect?.value) {
+      vrpSelect.dispatchEvent(new Event("change", { bubbles: true }));
+    }
+  });
+
   document.querySelectorAll("[data-export-table]").forEach((button) => {
     button.addEventListener("click", () => {
       const table = document.getElementById(button.dataset.exportTable);
@@ -489,7 +802,10 @@ document.addEventListener("turbo:load", () => {
       const rows = Array.from(table.querySelectorAll("tr")).map((row) => {
         return Array.from(row.children)
           .slice(1)
-          .map((cell) => `"${cell.innerText.replaceAll('"', '""')}"`)
+          .map((cell) => {
+            const value = cell.matches("th") ? (cell.querySelector(".column-filter-label")?.innerText || cell.innerText) : cell.innerText;
+            return `"${value.replaceAll('"', '""')}"`;
+          })
           .join(",");
       });
 
@@ -507,7 +823,28 @@ document.addEventListener("turbo:load", () => {
     const query = (document.querySelector(`[data-table-search='${table.id}']`)?.value || "").toLowerCase();
     const rows = Array.from(table.querySelectorAll("tbody tr"));
     const dataRows = rows.filter((row) => !row.dataset.emptyRow);
-    const matchedRows = dataRows.filter((row) => row.innerText.toLowerCase().includes(query));
+    const columnFilters = JSON.parse(table.dataset.columnFilters || "{}");
+    const matchedRows = dataRows.filter((row) => {
+      const globalMatch = row.innerText.toLowerCase().includes(query);
+      if (!globalMatch) return false;
+
+      return Object.entries(columnFilters).every(([columnIndex, filter]) => {
+        const cellText = (row.children[Number(columnIndex)]?.innerText || "").toLowerCase();
+        const filterValue = (filter.value || "").toLowerCase();
+        if (!filterValue) return true;
+
+        switch (filter.operator) {
+          case "equals":
+            return cellText === filterValue;
+          case "starts":
+            return cellText.startsWith(filterValue);
+          case "ends":
+            return cellText.endsWith(filterValue);
+          default:
+            return cellText.includes(filterValue);
+        }
+      });
+    });
     const totalPages = Math.max(1, Math.ceil(matchedRows.length / pageSize));
     const currentPage = Math.min(Math.max(page, 1), totalPages);
     const start = (currentPage - 1) * pageSize;
@@ -545,12 +882,97 @@ document.addEventListener("turbo:load", () => {
     }
   };
 
+  const closeColumnFilters = (exceptPanel = null) => {
+    document.querySelectorAll(".column-filter-panel.open").forEach((panel) => {
+      if (panel !== exceptPanel) panel.classList.remove("open");
+    });
+  };
+
+  const renderColumnFilterState = (table, header, columnIndex, operator, value) => {
+    const filters = JSON.parse(table.dataset.columnFilters || "{}");
+    if (value) {
+      filters[columnIndex] = { operator, value };
+    } else {
+      delete filters[columnIndex];
+    }
+
+    table.dataset.columnFilters = JSON.stringify(filters);
+    header.classList.toggle("filtered", Boolean(value));
+    paginateTable(table, 1);
+  };
+
+  const setupColumnFilters = (table) => {
+    if (table.dataset.columnFiltersReady) return;
+
+    table.dataset.columnFiltersReady = "true";
+    table.dataset.columnFilters ||= "{}";
+
+    table.querySelectorAll("thead th").forEach((header, columnIndex) => {
+      if (header.querySelector("input[type='checkbox']")) return;
+      if (header.querySelector(".column-filter-trigger")) return;
+
+      const label = document.createElement("span");
+      label.className = "column-filter-label";
+      label.textContent = header.textContent.trim();
+
+      const trigger = document.createElement("button");
+      trigger.type = "button";
+      trigger.className = "column-filter-trigger";
+      trigger.textContent = "≡";
+      trigger.setAttribute("aria-label", `Filter ${label.textContent || "column"}`);
+
+      const panel = document.createElement("div");
+      panel.className = "column-filter-panel";
+
+      const operator = document.createElement("select");
+      operator.innerHTML = `
+        <option value="contains">Contains</option>
+        <option value="equals">Equals</option>
+        <option value="starts">Starts with</option>
+        <option value="ends">Ends with</option>
+      `;
+
+      const input = document.createElement("input");
+      input.type = "search";
+      input.placeholder = "Filter...";
+
+      panel.appendChild(operator);
+      panel.appendChild(input);
+      header.textContent = "";
+      header.classList.add("column-filter-header");
+      header.appendChild(label);
+      header.appendChild(trigger);
+      header.appendChild(panel);
+
+      trigger.addEventListener("click", (event) => {
+        event.stopPropagation();
+        const shouldOpen = !panel.classList.contains("open");
+        closeColumnFilters(panel);
+        panel.classList.toggle("open", shouldOpen);
+        if (shouldOpen) input.focus();
+      });
+
+      panel.addEventListener("click", (event) => event.stopPropagation());
+
+      operator.addEventListener("change", () => {
+        renderColumnFilterState(table, header, columnIndex, operator.value, input.value.trim());
+      });
+
+      input.addEventListener("input", () => {
+        renderColumnFilterState(table, header, columnIndex, operator.value, input.value.trim());
+      });
+    });
+  };
+
+  document.addEventListener("click", () => closeColumnFilters());
+
   document.querySelectorAll("[data-paginated-table]").forEach((table) => {
     table.querySelectorAll("tbody tr").forEach((row) => {
       if (row.children.length === 1 || row.innerText.toLowerCase().includes("no records")) {
         row.dataset.emptyRow = "true";
       }
     });
+    setupColumnFilters(table);
     paginateTable(table, 1);
   });
 
@@ -724,13 +1146,72 @@ document.addEventListener("turbo:load", () => {
     window.dashboardClockTimer = window.setInterval(renderDashboardClock, 1000);
   }
 
-  document.querySelectorAll("[data-clear-approval-level]").forEach((button) => {
-    button.addEventListener("click", () => {
-      const rowCells = [button.closest(".approval-level-cell")?.previousElementSibling, button.closest(".approval-level-cell")];
-      rowCells.forEach((cell) => {
-        const select = cell?.querySelector("select");
-        if (select) select.value = "";
+  document.querySelectorAll("[data-approval-levels]").forEach((shell) => {
+    const table = shell.querySelector("[data-approval-level-table]");
+    const addButton = shell.querySelector("[data-add-approval-level]");
+    const firstSelect = table?.querySelector("select[name^='module_record[approval_steps]']");
+    const approverOptions = firstSelect
+      ? Array.from(firstSelect.options).map((option) => ({ value: option.value, label: option.textContent }))
+      : [{ value: "", label: "Select approval user" }];
+
+    const approvalRowCount = () => new Set(Array.from(table?.querySelectorAll("[data-approval-row]") || []).map((cell) => cell.dataset.approvalRow)).size;
+
+    const removeApprovalRow = (rowIndex) => {
+      if (!table || approvalRowCount() <= 1) return;
+
+      table.querySelectorAll(`[data-approval-row="${rowIndex}"]`).forEach((cell) => cell.remove());
+    };
+
+    const addApprovalRow = () => {
+      if (!table) return;
+
+      const rowIndex = Number(shell.dataset.nextApprovalLevel || approvalRowCount() + 1);
+      const level = `Approval ${rowIndex}`;
+      shell.dataset.nextApprovalLevel = String(rowIndex + 1);
+
+      const levelCell = document.createElement("div");
+      levelCell.className = "approval-level-cell";
+      levelCell.dataset.approvalRow = String(rowIndex);
+      levelCell.innerHTML = `<strong>${level}</strong><small>Approval step ${rowIndex}</small>`;
+
+      const userCell = document.createElement("div");
+      userCell.className = "approval-level-cell";
+      userCell.dataset.approvalRow = String(rowIndex);
+      const select = document.createElement("select");
+      select.name = `module_record[approval_steps][${level}]`;
+      approverOptions.forEach((optionData) => {
+        const option = document.createElement("option");
+        option.value = optionData.value;
+        option.textContent = optionData.label;
+        select.appendChild(option);
       });
+      userCell.appendChild(select);
+      const hint = document.createElement("small");
+      hint.textContent = "Select the user responsible at this approval stage.";
+      userCell.appendChild(hint);
+
+      const actionCell = document.createElement("div");
+      actionCell.className = "approval-level-cell";
+      actionCell.dataset.approvalRow = String(rowIndex);
+      const removeButton = document.createElement("button");
+      removeButton.type = "button";
+      removeButton.className = "remove-level-btn";
+      removeButton.dataset.removeApprovalLevel = "true";
+      removeButton.textContent = "Remove";
+      actionCell.appendChild(removeButton);
+
+      table.appendChild(levelCell);
+      table.appendChild(userCell);
+      table.appendChild(actionCell);
+    };
+
+    addButton?.addEventListener("click", addApprovalRow);
+
+    table?.addEventListener("click", (event) => {
+      const button = event.target.closest("[data-remove-approval-level]");
+      if (!button) return;
+
+      removeApprovalRow(button.closest("[data-approval-row]")?.dataset.approvalRow);
     });
   });
 

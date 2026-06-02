@@ -8,29 +8,15 @@ module ApplicationHelper
         ["District Entry", :module, "district-master"],
         ["Block Entry", :module, "block-master"],
         ["GP Entry", :module, "gram-panchayat-master"],
-        ["Village Entry", :module, "village-master"]
-      ]
-    },
-    {
-      title: "Master Setup",
-      icon: "▣",
-      links: [
-        # ["Training Material", :module, "training-material"],
-        ["Month Entry", :module, "month-master"],
-        ["ICS Entry", :module, "ics-master"]
+        ["Village Entry", :module, "village-master"],
+        ["Month Entry", :module, "month-master"]
       ]
     },
     {
       title: "Stakeholder",
       icon: "▩",
       links: [
-        ["Stakeholder Name", :module, "stakeholder-master"]
-      ]
-    },
-    {
-      title: "Office Management",
-      icon: "▥",
-      links: [
+        ["Stakeholder Name", :module, "stakeholder-master"],
         ["Office Category Add", :module, "office-category-add"]
       ]
     },
@@ -39,12 +25,10 @@ module ApplicationHelper
       icon: "▤",
       links: [
         ["Add VRP Type", :module, "add-vrp-type"],
-        ["Add Activity Group", :module, "add-activity-group"],
-        ["Activity Group List", :module, "activity-group-list"],
-        ["Add Activity", :module, "add-vrp-activity"],
-        ["VRP Activity List", :module, "vrp-activity-list"],
-        ["Task Completion Indicator", :module, "task-completion-indicator"],
-        ["TCI List", :module, "task-completion-indicator-list"]
+        ["Main Activity", :module, "add-activity-group"],
+        ["Main Activity List", :module, "activity-group-list"],
+        ["Sub Activity", :module, "add-vrp-activity"],
+        ["Sub Activity List", :module, "vrp-activity-list"]
       ]
     },
     {
@@ -56,12 +40,13 @@ module ApplicationHelper
       ]
     },
     {
-      title: "Resource Person Type Management",
+      title: "Resource Person Type",
       icon: "▧",
       links: [
         ["Stakeholder Person Type", :module, "stakeholder-role"],
         ["Resource Person Type", :module, "role-management"],
         ["User Management Person Type", :module, "user-management-role"],
+        ["VRP Type", :module, "add-vrp-type"],
         ["Access Control", :module, "access-control"],
         ["Access Control List", :module, "access-control-list"]
       ]
@@ -92,6 +77,15 @@ module ApplicationHelper
         ["Target Entry", :module, "weekly-target-add"],
         ["Target List", :module, "weekly-target-list"],
         ["Progress Report", :module, "weekly-progress-report"]
+      ]
+    },
+    {
+      title: "AFL",
+      icon: "▤",
+      links: [
+        ["AFL Upload", :route, :afls_path],
+        ["VRP ICS Mapping", :route, :vrp_ics_mappings_path],
+        ["Target Mapping Master", :route, :target_mappings_path]
       ]
     }
   ].freeze
@@ -132,10 +126,15 @@ module ApplicationHelper
 
   def resource_person_label(label)
     {
+      "Stakeholder" => "Stakeholder Category",
       "Role" => "Resource Person Type",
       "Role Name" => "Resource Person Type",
       "Stakeholder Role" => "Stakeholder Person Type",
-      "User Management Role" => "User Management Person Type"
+      "User Management Role" => "User Management Person Type",
+      "Activity Group" => "Main Activity",
+      "Activity Group Name" => "Main Activity Name",
+      "Activity Name" => "Sub Activity Name",
+      "VRP Activity" => "Sub Activity"
     }.fetch(label.to_s, label)
   end
 
@@ -150,23 +149,20 @@ module ApplicationHelper
       .select { |record| record.data["status"].blank? || record.data["status"].to_s.casecmp("Active").zero? }
       .select do |record|
         record_stakeholder = record.data["stakeholder_name"].presence || record.data["stakeholder"]
-        stakeholder_match = record_stakeholder.blank? || record_stakeholder.to_s.strip.casecmp(current_app_user["stakeholder"].to_s.strip).zero?
+        stakeholder_match = access_value_matches?(record_stakeholder, current_app_user["stakeholder"])
+        record_stakeholder_role = record.data["stakeholder_role"].presence || record.data["stakeholder_person_type"]
+        stakeholder_role_match = access_value_matches?(record_stakeholder_role, current_app_user["stakeholder_role"])
         record_role = record.data["role_name"].presence || record.data["role"]
-        role_match = record_role.blank? || record_role.to_s.strip.casecmp(current_app_user["role"].to_s.strip).zero?
+        role_match = access_value_matches?(record_role, current_app_user["role"])
+        record_user_management_role = record.data["user_management_role"].presence || record.data["user_management_person_type"]
+        user_management_role_match = access_value_matches?(record_user_management_role, current_app_user["user_management_role"])
         can_view = record.data["can_view"].blank? || record.data["can_view"].to_s.casecmp("Yes").zero?
-        stakeholder_match && role_match && can_view
+        stakeholder_match && stakeholder_role_match && role_match && user_management_role_match && can_view
       end
 
     access_records.flat_map do |record|
       submodule_keys = access_values(record.data["sub_module_names"].presence || record.data["sub_module_name"])
         .filter_map { |name| name.presence&.parameterize }
-
-      section_keys = access_values(record.data["module_names"].presence || record.data["module_name"]).flat_map do |section_name|
-        section = SIDEBAR_SECTIONS.find { |sidebar_section| sidebar_section[:title].to_s.casecmp(section_name.to_s).zero? }
-        section ? section[:links].map { |link| sidebar_access_key(link) } : []
-      end
-
-      submodule_keys + section_keys
     end.uniq
   end
 
@@ -175,6 +171,10 @@ module ApplicationHelper
       .flat_map { |item| item.to_s.split(",") }
       .map(&:strip)
       .reject(&:blank?)
+  end
+
+  def access_value_matches?(record_value, user_value)
+    record_value.blank? || (user_value.present? && record_value.to_s.strip.casecmp(user_value.to_s.strip).zero?)
   end
 
   def current_stakeholder

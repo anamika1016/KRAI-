@@ -14,6 +14,23 @@ Rails.application.routes.draw do
     patch :set_status, on: :member
   end
 
+  resources :afls, only: [:index] do
+    post :import, on: :collection
+    get "import_reports/:id", action: :import_report, as: :import_report, on: :collection
+  end
+
+  resources :vrp_ics_mappings, only: [:index, :create, :destroy] do
+    collection do
+      get :ics_options
+      get :village_options
+      get :farmers
+    end
+  end
+
+  resources :target_mappings, only: [:index, :create, :destroy] do
+    get :vrp_mappings, on: :collection
+  end
+
   resources :modules, param: :slug, only: [:show], controller: :modules do
     post :records, action: :create, on: :member
 

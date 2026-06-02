@@ -439,6 +439,8 @@ class VrpsController < ApplicationController
       .select do |record|
         record_role = record.data["role_name"].to_s
         record_stakeholder = record.data["stakeholder_name"].to_s
+        record_stakeholder_role = record.data["stakeholder_role"].to_s
+        record_user_management_role = record.data["user_management_role"].to_s
         record_office = record.data["office"].to_s
 
         active_module_record?(record) &&
@@ -446,6 +448,8 @@ class VrpsController < ApplicationController
           creator_identities.any? do |identity|
             module_value_matches?(record_role, identity[:role]) &&
               module_value_matches?(record_stakeholder, identity[:stakeholder]) &&
+              module_value_matches?(record_stakeholder_role, identity[:stakeholder_role]) &&
+              module_value_matches?(record_user_management_role, identity[:user_management_role]) &&
               (record_office.blank? || module_value_matches?(record_office, identity[:office]))
           end
       end
@@ -548,6 +552,8 @@ class VrpsController < ApplicationController
   end
 
   def module_value_matches?(expected, actual)
+    return true if expected.blank?
+
     expected.to_s.strip.casecmp(actual.to_s.strip).zero?
   end
 
@@ -598,7 +604,7 @@ class VrpsController < ApplicationController
 
     if vrp.created_by_id.present? && model_ready?(:User)
       user = User.find_by(id: vrp.created_by_id)
-      identities << { role: user.role, stakeholder: user.stakeholder, office: user.office } if user
+      identities << user_approval_identity(user) if user
     end
 
     if model_ready?(:User)
@@ -606,13 +612,13 @@ class VrpsController < ApplicationController
       matched_users << User.find_by(email: vrp.email) if vrp.email.present?
       matched_users << User.find_by(mobile_no: vrp.mobile_no) if vrp.mobile_no.present?
       matched_users.compact.uniq.each do |user|
-        identities << { role: user.role, stakeholder: user.stakeholder, office: user.office }
+        identities << user_approval_identity(user)
       end
     end
 
     if vrp.created_by_id.present? && model_ready?(:ModuleRecord)
       record = ModuleRecord.find_by(id: vrp.created_by_id)
-      identities << { role: record.data["role"], stakeholder: record.data["stakeholder"], office: record.data["office"] } if record
+      identities << record_approval_identity(record) if record
     end
 
     if model_ready?(:ModuleRecord)
@@ -621,19 +627,41 @@ class VrpsController < ApplicationController
           (vrp.mobile_no.present? && record.data["mobile_no"].to_s == vrp.mobile_no.to_s)
       end
       matched_records.each do |record|
-        identities << { role: record.data["role"], stakeholder: record.data["stakeholder"], office: record.data["office"] }
+        identities << record_approval_identity(record)
       end
     end
 
     identities << {
       role: current_app_user&.dig("role"),
       stakeholder: current_app_user&.dig("stakeholder"),
+      stakeholder_role: current_app_user&.dig("stakeholder_role"),
+      user_management_role: current_app_user&.dig("user_management_role"),
       office: current_app_user&.dig("office")
     } if vrp.created_by_id.blank?
 
     identities
       .select { |identity| identity[:role].present? && identity[:stakeholder].present? }
       .uniq
+  end
+
+  def user_approval_identity(user)
+    {
+      role: user.role,
+      stakeholder: user.stakeholder,
+      stakeholder_role: user.stakeholder_role,
+      user_management_role: user.user_management_role,
+      office: user.office
+    }
+  end
+
+  def record_approval_identity(record)
+    {
+      role: record.data["role"],
+      stakeholder: record.data["stakeholder"],
+      stakeholder_role: record.data["stakeholder_role"],
+      user_management_role: record.data["user_management_role"],
+      office: record.data["office"]
+    }
   end
 
   def approval_history_for(vrp)

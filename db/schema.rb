@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2026_06_02_091000) do
+ActiveRecord::Schema[8.1].define(version: 2026_06_02_115000) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "pg_catalog.plpgsql"
 
@@ -42,12 +42,82 @@ ActiveRecord::Schema[8.1].define(version: 2026_06_02_091000) do
     t.index ["blob_id", "variation_digest"], name: "index_active_storage_variant_records_uniqueness", unique: true
   end
 
+  create_table "afls", force: :cascade do |t|
+    t.string "aadhar"
+    t.string "broker_id"
+    t.datetime "created_at", null: false
+    t.date "date"
+    t.string "dispoce"
+    t.decimal "estimate_quantity", precision: 18, scale: 4
+    t.decimal "estimate_quantity_admin", precision: 18, scale: 4
+    t.string "farmer_name"
+    t.string "father_name"
+    t.string "fco"
+    t.string "fco_id"
+    t.string "fpo_id"
+    t.string "fpo_name"
+    t.string "fy"
+    t.string "ginning_id"
+    t.string "ics_id"
+    t.string "ics_name"
+    t.string "import_key"
+    t.string "ip"
+    t.string "khasara_no"
+    t.decimal "lattitude", precision: 20, scale: 8
+    t.decimal "longitude", precision: 20, scale: 8
+    t.string "mobile_no"
+    t.date "purchase_date"
+    t.string "purchase_product"
+    t.string "purchase_product_type"
+    t.decimal "purchase_quantity", precision: 18, scale: 4
+    t.decimal "purchase_quantity_amount", precision: 18, scale: 4
+    t.string "qr_aadhar"
+    t.string "qr_mobile"
+    t.text "qrcode"
+    t.datetime "qrcode_date"
+    t.string "reg_type"
+    t.string "slip_no"
+    t.string "status"
+    t.decimal "total_farm_area", precision: 18, scale: 4
+    t.string "tracenet_no"
+    t.datetime "updated_at", null: false
+    t.string "village_id"
+    t.string "village_name"
+    t.index ["created_at"], name: "index_afls_on_created_at"
+    t.index ["farmer_name"], name: "index_afls_on_farmer_name"
+    t.index ["fco_id", "ics_id", "village_id"], name: "index_afls_on_mapping_lookup"
+    t.index ["mobile_no"], name: "index_afls_on_mobile_no"
+    t.index ["slip_no"], name: "index_afls_on_slip_no"
+    t.index ["tracenet_no"], name: "index_afls_on_tracenet_no"
+  end
+
   create_table "module_records", force: :cascade do |t|
     t.datetime "created_at", null: false
     t.text "data", null: false
     t.string "module_slug", null: false
     t.datetime "updated_at", null: false
     t.index ["module_slug"], name: "index_module_records_on_module_slug"
+  end
+
+  create_table "target_mappings", force: :cascade do |t|
+    t.string "activity_name", null: false
+    t.datetime "created_at", null: false
+    t.integer "farmer_count", default: 0, null: false
+    t.string "fco_id", null: false
+    t.string "fco_name"
+    t.string "ics_id", null: false
+    t.string "ics_name"
+    t.string "main_activity_name"
+    t.string "month_name", null: false
+    t.decimal "target_quantity", precision: 18, scale: 4, null: false
+    t.datetime "updated_at", null: false
+    t.string "village_id", null: false
+    t.string "village_name"
+    t.bigint "vrp_ics_mapping_id"
+    t.bigint "vrp_id", null: false
+    t.index ["vrp_ics_mapping_id"], name: "index_target_mappings_on_vrp_ics_mapping_id"
+    t.index ["vrp_id", "vrp_ics_mapping_id", "month_name", "activity_name"], name: "index_target_mappings_on_scope"
+    t.index ["vrp_id"], name: "index_target_mappings_on_vrp_id"
   end
 
   create_table "users", force: :cascade do |t|
@@ -89,6 +159,21 @@ ActiveRecord::Schema[8.1].define(version: 2026_06_02_091000) do
     t.boolean "is_deleted", default: false, null: false
     t.string "name", null: false
     t.datetime "updated_at", null: false
+  end
+
+  create_table "vrp_ics_mappings", force: :cascade do |t|
+    t.text "afl_ids", null: false
+    t.datetime "created_at", null: false
+    t.string "fco_id", null: false
+    t.string "fco_name"
+    t.string "ics_id", null: false
+    t.string "ics_name"
+    t.datetime "updated_at", null: false
+    t.string "village_id", null: false
+    t.string "village_name"
+    t.bigint "vrp_id", null: false
+    t.index ["vrp_id", "fco_id", "ics_id", "village_id"], name: "index_vrp_ics_mappings_on_mapping_scope", unique: true
+    t.index ["vrp_id"], name: "index_vrp_ics_mappings_on_vrp_id"
   end
 
   create_table "vrp_profiles", force: :cascade do |t|
@@ -156,6 +241,9 @@ ActiveRecord::Schema[8.1].define(version: 2026_06_02_091000) do
 
   add_foreign_key "active_storage_attachments", "active_storage_blobs", column: "blob_id"
   add_foreign_key "active_storage_variant_records", "active_storage_blobs", column: "blob_id"
+  add_foreign_key "target_mappings", "vrp_ics_mappings"
+  add_foreign_key "target_mappings", "vrps"
+  add_foreign_key "vrp_ics_mappings", "vrps"
   add_foreign_key "vrp_profiles", "vrps"
   add_foreign_key "vrps", "vrp_bank_masters"
 end

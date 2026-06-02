@@ -15,18 +15,50 @@
   <% if @slug == "approval-master" && @record.blank? %>
     <% module_options = static_field_options("Module Name") %>
     <% stakeholder_options = module_field_options("Stakeholder Name") %>
+    <% stakeholder_role_options = module_field_options("Stakeholder Role") %>
     <% role_options = module_field_options("Role Name") %>
+    <% user_management_role_options = module_field_options("User Management Role") %>
     <% office_options = module_field_options("Office") %>
     <% approver_options = module_field_options("Approver (Approved By)") %>
-    <% approval_levels = static_field_options("Approval Level") %>
+    <% approval_levels = (1..3).map { |number| "Approval #{number}" } %>
     <section class="module-card approval-channel-card">
       <%= form_with url: records_module_path(@slug), method: :post, html: { class: "module-entry-form" } do %>
-        <div class="module-form-grid">
+        <div class="module-form-grid user-registration-grid">
           <label>
-            <span>Module Name</span>
-            <select name="module_record[module_name]">
+            <span>Module Name <em>*</em></span>
+            <select name="module_record[module_name]" required>
               <option value="">Select Module</option>
               <% module_options.each do |option| %>
+                <option value="<%= option %>"><%= option %></option>
+              <% end %>
+            </select>
+          </label>
+
+          <label>
+            <span>Stakeholder Category <em>*</em></span>
+            <select name="module_record[stakeholder_name]" required>
+              <option value="">Select Stakeholder Category</option>
+              <% stakeholder_options.each do |option| %>
+                <option value="<%= option %>"><%= option %></option>
+              <% end %>
+            </select>
+          </label>
+
+          <label>
+            <span>Office Name <em>*</em></span>
+            <select name="module_record[office]" required>
+              <option value="">Select Office Name</option>
+              <% office_options.each do |option| %>
+                <option value="<%= option %>"><%= option %></option>
+              <% end %>
+            </select>
+          </label>
+
+          <label>
+            <span>Stakeholder Person Type</span>
+            <select name="module_record[stakeholder_role]">
+              <option value="">Select Stakeholder Person Type</option>
+              <% stakeholder_role_options.each do |option| %>
                 <option value="<%= option %>"><%= option %></option>
               <% end %>
             </select>
@@ -43,39 +75,32 @@
           </label>
 
           <label>
-            <span>Stakeholder Name</span>
-            <select name="module_record[stakeholder_name]">
-              <option value="">Select Stakeholder</option>
-              <% stakeholder_options.each do |option| %>
-                <option value="<%= option %>"><%= option %></option>
-              <% end %>
-            </select>
-          </label>
-
-          <label>
-            <span>Office</span>
-            <select name="module_record[office]">
-              <option value="">Select Office</option>
-              <% office_options.each do |option| %>
+            <span>User Management Person Type</span>
+            <select name="module_record[user_management_role]">
+              <option value="">Select User Management Person Type</option>
+              <% user_management_role_options.each do |option| %>
                 <option value="<%= option %>"><%= option %></option>
               <% end %>
             </select>
           </label>
         </div>
 
-        <div class="approval-levels">
-          <h2>Approval Levels</h2>
-          <div class="approval-level-table">
+        <div class="approval-levels" data-approval-levels data-next-approval-level="<%= approval_levels.size + 1 %>">
+          <div class="approval-level-toolbar">
+            <h2>Approval Levels</h2>
+            <button type="button" class="add-level-btn" data-add-approval-level>Add More</button>
+          </div>
+          <div class="approval-level-table" data-approval-level-table>
             <div class="approval-level-head">Level</div>
             <div class="approval-level-head">Approval User</div>
             <div class="approval-level-head">Action</div>
 
             <% approval_levels.each_with_index do |level, index| %>
-              <div class="approval-level-cell">
+              <div class="approval-level-cell" data-approval-row="<%= index + 1 %>">
                 <strong><%= level %></strong>
                 <small>Approval step <%= index + 1 %></small>
               </div>
-              <div class="approval-level-cell">
+              <div class="approval-level-cell" data-approval-row="<%= index + 1 %>">
                 <select name="module_record[approval_steps][<%= level %>]">
                   <option value="">Select approval user</option>
                   <% approver_options.each do |option| %>
@@ -84,8 +109,8 @@
                 </select>
                 <small>Select the user responsible at this approval stage.</small>
               </div>
-              <div class="approval-level-cell">
-                <button type="button" class="remove-level-btn" data-clear-approval-level>Remove</button>
+              <div class="approval-level-cell" data-approval-row="<%= index + 1 %>">
+                <button type="button" class="remove-level-btn" data-remove-approval-level>Remove</button>
               </div>
             <% end %>
           </div>
@@ -107,22 +132,23 @@
     <section class="module-card access-control-card">
       <%= form_with url: form_url, method: form_method, html: { class: "module-entry-form" } do %>
         <div class="access-top-grid">
-          <% ["Stakeholder", "Role Name"].each do |field| %>
+          <% ["Stakeholder", "Stakeholder Role", "Role Name", "User Management Role"].each do |field| %>
             <% field_key = field.parameterize(separator: "_") %>
             <% field_value = @record&.data&.[](field_key).to_s %>
             <% field_value = @record&.data&.[]("stakeholder_name").to_s if field == "Stakeholder" && field_value.blank? %>
+            <% field_value = @record&.data&.[]("role").to_s if field == "Role Name" && field_value.blank? %>
             <% options = (module_field_options(field) + static_field_options(field)).compact_blank.uniq %>
             <label>
-              <span><%= resource_person_label(field) %> <em>*</em></span>
+              <span><%= resource_person_label(field) %><% if field == "Stakeholder" %> <em>*</em><% end %></span>
               <% if options.any? %>
-                <select name="module_record[<%= field_key %>]">
+                <select name="module_record[<%= field_key %>]" <%= "required" if field == "Stakeholder" %>>
                   <option value="">Select <%= resource_person_label(field) %></option>
                   <% options.each do |option| %>
                     <option value="<%= option %>" <%= "selected" if option == field_value %>><%= option %></option>
                   <% end %>
                 </select>
               <% else %>
-                <input name="module_record[<%= field_key %>]" type="text" value="<%= field_value %>" placeholder="Enter <%= resource_person_label(field) %>">
+                <input name="module_record[<%= field_key %>]" type="text" value="<%= field_value %>" placeholder="Enter <%= resource_person_label(field) %>" <%= "required" if field == "Stakeholder" %>>
               <% end %>
             </label>
           <% end %>
@@ -227,9 +253,9 @@
           </label>
 
           <label>
-            <span>Select Activity Group <em>*</em></span>
+            <span>Select Main Activity <em>*</em></span>
             <select name="module_record[select_activity_group][]" data-bill-activity-group required>
-              <option value="">Select Activity Group</option>
+              <option value="">Select Main Activity</option>
               <% @bill_activity_group_options.each do |option| %>
                 <option value="<%= option %>" <%= "selected" if selected_activity_groups.include?(option) %>><%= option %></option>
               <% end %>
@@ -269,7 +295,7 @@
                 <% end %>
               <% else %>
                 <tr data-empty-bill-row>
-                  <td colspan="6">Select Activity Group to load activities.</td>
+                  <td colspan="6">Select Main Activity to load sub activities.</td>
                 </tr>
               <% end %>
             </tbody>
@@ -402,7 +428,7 @@
     <% table_id = "#{@slug.tr("-", "_")}_table" %>
     <section class="module-card list-only-card">
       <div class="module-card-header list-title-header">
-        <h2><%= { "activity-group-list" => "All Activity Groups", "vrp-activity-list" => "All VRP Activities", "task-completion-indicator-list" => "All Task Completion Indicators", "approval-list" => "All Approvals", "access-control-list" => "All Access Control", "vrp-bill-list" => "All VRP Bills" }[@slug] %></h2>
+        <h2><%= { "activity-group-list" => "All Main Activities", "vrp-activity-list" => "All Sub Activities", "task-completion-indicator-list" => "All Task Completion Indicators", "approval-list" => "All Approvals", "access-control-list" => "All Access Control", "vrp-bill-list" => "All VRP Bills" }[@slug] %></h2>
       </div>
 
       <div class="vrp-list-toolbar compact">
@@ -433,7 +459,7 @@
             <tr>
               <th><input type="checkbox" data-module-select-all></th>
               <% @module[:fields].each do |field| %>
-                <th><%= field == "Activity Group Name" ? "Group Name" : resource_person_label(field) %></th>
+                <th><%= resource_person_label(field) %></th>
               <% end %>
             </tr>
           </thead>
@@ -446,7 +472,9 @@
                   <% @module[:fields].each do |field| %>
                     <% field_key = field.parameterize(separator: "_") %>
                     <% value = record.data[field_key].presence %>
-                    <% value ||= record.data["vrp_activity_name"].presence if field == "Activity Name" %>
+                    <% value ||= record.data["activity_group_name"].presence if field == "Main Activity Name" %>
+                    <% value ||= record.data["activity_group"].presence if field == "Main Activity" %>
+                    <% value ||= record.data["activity_name"].presence || record.data["vrp_activity_name"].presence if field == "Sub Activity Name" %>
                     <% value ||= Array(record.data["module_names"]).join(", ").presence if field == "Module Name" %>
                     <% value ||= Array(record.data["sub_module_names"].presence || record.data["sub_module_name"]).join(", ").presence if field == "Sub Module Name" %>
                     <% value = value.join(", ") if value.is_a?(Array) %>
