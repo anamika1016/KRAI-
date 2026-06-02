@@ -1,12 +1,29 @@
 <% form_url = user.persisted? ? user_path(user) : users_path %>
 <% form_method = user.persisted? ? :patch : :post %>
+<% stakeholder_role_value = user.respond_to?(:stakeholder_role) ? user.stakeholder_role : nil %>
+<% user_management_role_value = user.respond_to?(:user_management_role) ? user.user_management_role : nil %>
 
-<section class="module-card">
+<section class="module-card" data-user-role-form data-role-map="<%= json_escape(@role_management_mappings.to_json) %>" data-location-form data-location-map="<%= json_escape(@location_hierarchy_mappings.to_json) %>">
   <%= form_with model: user, url: form_url, method: form_method, html: { class: "module-entry-form", multipart: true } do |f| %>
     <div class="module-form-grid user-registration-grid">
+      <label>
+        <span>Stakeholder Category</span>
+        <%= f.select :stakeholder, options_for_select(@stakeholder_options, user.stakeholder), { include_blank: "Select Stakeholder Category" }, data: { role_stakeholder_select: true } %>
+      </label>
+      <label>
+        <span>Stakeholder Person Type</span>
+        <%= f.select :stakeholder_role, options_for_select(@stakeholder_role_options, stakeholder_role_value), { include_blank: "Select Stakeholder Person Type" }, data: { stakeholder_role_select: true, selected_value: stakeholder_role_value } %>
+      </label>
+      <label>
+        <span>Resource Person Type</span>
+        <%= f.select :role, options_for_select(@role_options, user.role), { include_blank: "Select Resource Person Type" }, data: { role_select: true, selected_value: user.role } %>
+      </label>
+      <label>
+        <span>User Management Person Type</span>
+        <%= f.select :user_management_role, options_for_select(@user_management_role_options, user_management_role_value), { include_blank: "Select User Management Person Type" }, data: { user_management_role_select: true, selected_value: user_management_role_value } %>
+      </label>
+
       <% [
-        ["Stakeholder", :stakeholder, @stakeholder_options],
-        ["Role", :role, @role_options],
         ["State", :state, @state_options],
         ["District", :district, @district_options],
         ["Block", :block, @block_options],
@@ -16,7 +33,7 @@
         <label>
           <span><%= label %></span>
           <% if options.any? %>
-            <%= f.select field, options_for_select(options, user.public_send(field)), { include_blank: "Select #{label}" } %>
+            <%= f.select field, options_for_select(options, user.public_send(field)), { include_blank: "Select #{label}" }, data: { location_level: field.to_s.dasherize } %>
           <% else %>
             <%= f.text_field field, placeholder: "Enter #{label}" %>
           <% end %>
@@ -57,11 +74,17 @@
       </label>
       <label>
         <span>Password <em>*</em></span>
-        <%= f.password_field :password, required: true, value: user.password, placeholder: "Enter Password" %>
+        <div class="password-field">
+          <%= f.password_field :password, required: true, value: user.password, placeholder: "Enter Password", data: { password_toggle_input: true } %>
+          <button type="button" class="password-eye-btn" data-password-toggle aria-label="Show password" title="Show password">&#128065;</button>
+        </div>
       </label>
       <label>
         <span>Confirmed Password <em>*</em></span>
-        <input type="password" name="user[confirmed_password]" value="<%= user.password %>" required placeholder="Enter Confirmed Password">
+        <div class="password-field">
+          <input type="password" name="user[confirmed_password]" value="<%= user.password %>" required placeholder="Enter Confirmed Password" data-password-toggle-input>
+          <button type="button" class="password-eye-btn" data-password-toggle aria-label="Show password" title="Show password">&#128065;</button>
+        </div>
       </label>
       <label>
         <span>User Name <em>*</em></span>
@@ -70,25 +93,6 @@
       <label>
         <span>Mobile No</span>
         <%= f.text_field :mobile_no, placeholder: "Enter Mobile No" %>
-      </label>
-      <label>
-        <span>Emergency No</span>
-        <%= f.text_field :emergency_no, placeholder: "Enter Emergency No" %>
-      </label>
-      <label>
-        <span>ICS</span>
-        <% if @ics_options.any? %>
-          <%= f.select :ics, options_for_select(@ics_options, user.ics), { include_blank: "Select ICS" } %>
-        <% else %>
-          <%= f.text_field :ics, placeholder: "Enter ICS" %>
-        <% end %>
-      </label>
-      <label>
-        <span>Upload Aadhaar</span>
-        <%= f.file_field :aadhar_upload, accept: ".jpeg,.jpg,.png" %>
-        <% if user.persisted? && user.aadhar_upload.attached? %>
-          <small><%= link_to "View/Download Aadhaar", rails_blob_path(user.aadhar_upload, disposition: "attachment"), target: "_blank" %></small>
-        <% end %>
       </label>
       <label>
         <span>User Type</span>

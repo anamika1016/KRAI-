@@ -4,7 +4,7 @@
   <div class="module-hero">
     <div>
       <p class="vrp-eyebrow"><%= @module[:group] %></p>
-      <h1><%= @slug == "access-control" ? "Role Based Access Control" : (@slug == "new-user" ? "Registration" : @module[:title]) %></h1>
+      <h1><%= @slug == "access-control" ? "Resource Person Type Access Control" : (@slug == "new-user" ? "Registration" : @module[:title]) %></h1>
       <p><%= @module[:purpose] %></p>
     </div>
   </div>
@@ -33,9 +33,9 @@
           </label>
 
           <label>
-            <span>Role</span>
+            <span>Resource Person Type</span>
             <select name="module_record[role_name]">
-              <option value="">Select Role</option>
+              <option value="">Select Resource Person Type</option>
               <% role_options.each do |option| %>
                 <option value="<%= option %>"><%= option %></option>
               <% end %>
@@ -113,16 +113,16 @@
             <% field_value = @record&.data&.[]("stakeholder_name").to_s if field == "Stakeholder" && field_value.blank? %>
             <% options = (module_field_options(field) + static_field_options(field)).compact_blank.uniq %>
             <label>
-              <span><%= field == "Role Name" ? "Role" : field %> <em>*</em></span>
+              <span><%= resource_person_label(field) %> <em>*</em></span>
               <% if options.any? %>
                 <select name="module_record[<%= field_key %>]">
-                  <option value="">Select <%= field == "Role Name" ? "Role" : field %></option>
+                  <option value="">Select <%= resource_person_label(field) %></option>
                   <% options.each do |option| %>
                     <option value="<%= option %>" <%= "selected" if option == field_value %>><%= option %></option>
                   <% end %>
                 </select>
               <% else %>
-                <input name="module_record[<%= field_key %>]" type="text" value="<%= field_value %>" placeholder="Enter <%= field == "Role Name" ? "Role" : field %>">
+                <input name="module_record[<%= field_key %>]" type="text" value="<%= field_value %>" placeholder="Enter <%= resource_person_label(field) %>">
               <% end %>
             </label>
           <% end %>
@@ -356,7 +356,7 @@
               <th>Email</th>
               <th>Mobile No</th>
               <th>Stakeholder</th>
-              <th>Role</th>
+              <th>Resource Person Type</th>
               <th>State</th>
               <th>District</th>
               <th>Block</th>
@@ -433,7 +433,7 @@
             <tr>
               <th><input type="checkbox" data-module-select-all></th>
               <% @module[:fields].each do |field| %>
-                <th><%= field == "Activity Group Name" ? "Group Name" : field %></th>
+                <th><%= field == "Activity Group Name" ? "Group Name" : resource_person_label(field) %></th>
               <% end %>
             </tr>
           </thead>
@@ -471,7 +471,9 @@
     </section>
   <% else %>
   <div class="module-grid">
-    <section class="module-card" id="module-form">
+    <% location_fields = ["State", "District", "Block", "Gram Panchayat", "Village"] %>
+    <% has_location_fields = (@module[:fields] & location_fields).any? %>
+    <section class="module-card" id="module-form" <% if ["role-management", "user-management-role"].include?(@slug) %>data-user-role-form data-role-map="<%= json_escape(role_management_mappings.to_json) %>"<% end %> <% if has_location_fields %>data-location-form data-location-map="<%= json_escape(location_hierarchy_mappings.to_json) %>"<% end %>>
       <div class="module-card-header">
         <h2><%= @slug == "new-user" ? "Registration" : (@record.present? ? "Edit Record" : "Fields") %></h2>
       </div>
@@ -483,7 +485,7 @@
             <% field_key = field.parameterize(separator: "_") %>
             <% field_value = @record&.data&.[](field_key).to_s %>
             <label>
-              <span><%= field %></span>
+              <span><%= resource_person_label(field) %></span>
               <% if field.downcase.include?("status") %>
                 <select name="module_record[<%= field_key %>]">
                   <option <%= "selected" if field_value == "Active" %>>Active</option>
@@ -496,8 +498,20 @@
                 <% end %>
               <% elsif module_select_field?(field) %>
                 <% options = (module_field_options(field) + static_field_options(field)).compact_blank.uniq %>
-                <select name="module_record[<%= field_key %>]">
-                  <option value=""><%= options.any? ? "Select #{field}" : "No #{field} saved yet" %></option>
+                <% role_dependency_attr =
+                  case field
+                  when "Stakeholder Category"
+                    "data-role-stakeholder-select"
+                  when "Stakeholder Role"
+                    "data-stakeholder-role-select data-selected-value=\"#{ERB::Util.html_escape(field_value)}\""
+                  when "Role Name"
+                    "data-role-select data-selected-value=\"#{ERB::Util.html_escape(field_value)}\""
+                  when "User Management Role"
+                    "data-user-management-role-select data-selected-value=\"#{ERB::Util.html_escape(field_value)}\""
+                  end if ["role-management", "user-management-role"].include?(@slug) %>
+                <% location_dependency_attr = "data-location-level=\"#{field.parameterize}\" data-selected-value=\"#{ERB::Util.html_escape(field_value)}\"" if location_fields.include?(field) %>
+                <select name="module_record[<%= field_key %>]" <%= role_dependency_attr&.html_safe %> <%= location_dependency_attr&.html_safe %>>
+                  <option value=""><%= options.any? ? "Select #{resource_person_label(field)}" : "No #{resource_person_label(field)} saved yet" %></option>
                   <% options.each do |option| %>
                     <option value="<%= option %>" <%= "selected" if option == field_value %>><%= option %></option>
                   <% end %>
@@ -509,7 +523,7 @@
               <% elsif field.downcase.include?("date") %>
                 <input name="module_record[<%= field_key %>]" type="date" value="<%= field_value %>">
               <% else %>
-                <input name="module_record[<%= field_key %>]" type="text" placeholder="Enter <%= field %>" value="<%= field_value %>">
+                <input name="module_record[<%= field_key %>]" type="text" placeholder="Enter <%= resource_person_label(field) %>" value="<%= field_value %>" <%= "data-role-name-input" if @slug == "role-management" && field == "Role Name" %> <%= "data-user-management-role-input" if @slug == "role-management" && field == "User Management Role" %>>
               <% end %>
             </label>
           <% end %>
@@ -548,7 +562,7 @@
             <thead>
               <tr>
                 <% saved_record_fields.each do |field| %>
-                  <th><%= field %></th>
+                  <th><%= resource_person_label(field) %></th>
                 <% end %>
                 <th>Saved At</th>
                 <th>Status</th>

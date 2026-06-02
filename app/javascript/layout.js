@@ -1,7 +1,7 @@
 document.addEventListener("turbo:load", () => {
   document.querySelectorAll("[data-password-toggle]").forEach((button) => {
     button.addEventListener("click", () => {
-      const input = button.closest(".login-password-field")?.querySelector("[data-password-toggle-input]");
+      const input = button.closest(".password-field, .login-password-field")?.querySelector("[data-password-toggle-input]");
       if (!input) return;
 
       const showPassword = input.type === "password";
@@ -235,6 +235,250 @@ document.addEventListener("turbo:load", () => {
 
       window.location.reload();
     });
+  });
+
+  const uniquePresent = (values) => Array.from(new Set(values.map((value) => `${value || ""}`.trim()).filter(Boolean)));
+  const normalizeOption = (value) => `${value || ""}`.trim().toLowerCase();
+
+  const replaceSelectOptions = (select, values, blankLabel, selectedValue) => {
+    if (!select) return;
+
+    const selected = selectedValue || select.dataset.selectedValue || select.value;
+    select.innerHTML = "";
+
+    const blankOption = document.createElement("option");
+    blankOption.value = "";
+    blankOption.textContent = blankLabel;
+    select.appendChild(blankOption);
+
+    values.forEach((value) => {
+      const option = document.createElement("option");
+      option.value = value;
+      option.textContent = value;
+      option.selected = value === selected;
+      select.appendChild(option);
+    });
+
+    if (selected && !values.includes(selected)) {
+      const option = document.createElement("option");
+      option.value = selected;
+      option.textContent = selected;
+      option.selected = true;
+      select.appendChild(option);
+    }
+  };
+
+  document.querySelectorAll("[data-user-role-form]").forEach((formShell) => {
+    const stakeholderSelect = formShell.querySelector("[data-role-stakeholder-select]");
+    const stakeholderRoleSelect = formShell.querySelector("[data-stakeholder-role-select]");
+    const roleSelect = formShell.querySelector("[data-role-select]");
+    const userManagementRoleSelect = formShell.querySelector("[data-user-management-role-select]");
+    if (!stakeholderSelect && !stakeholderRoleSelect && !roleSelect && !userManagementRoleSelect) return;
+
+    let mappings = [];
+    try {
+      mappings = JSON.parse(formShell.dataset.roleMap || "[]");
+    } catch (_error) {
+      mappings = [];
+    }
+    const mappedStakeholderRoles = (stakeholder) => {
+      const normalizedStakeholder = normalizeOption(stakeholder);
+      if (!normalizedStakeholder) return [];
+
+      const filtered = mappings.filter((mapping) => {
+        return normalizeOption(mapping.stakeholder) === normalizedStakeholder;
+      });
+      const stakeholderRoles = uniquePresent(filtered.map((mapping) => mapping.stakeholder_role));
+      return stakeholderRoles;
+    };
+
+    const mappedRoles = (stakeholder, stakeholderRole) => {
+      const normalizedStakeholder = normalizeOption(stakeholder);
+      const normalizedStakeholderRole = normalizeOption(stakeholderRole);
+      if (!normalizedStakeholder || !normalizedStakeholderRole) return [];
+
+      const filtered = mappings.filter((mapping) => {
+        const stakeholderMatches = normalizeOption(mapping.stakeholder) === normalizedStakeholder;
+        const stakeholderRoleMatches = normalizeOption(mapping.stakeholder_role) === normalizedStakeholderRole;
+        return stakeholderMatches && stakeholderRoleMatches;
+      });
+      const roles = uniquePresent(filtered.map((mapping) => mapping.role));
+      return roles;
+    };
+
+    const mappedUserManagementRoles = (stakeholder, stakeholderRole, role) => {
+      const normalizedStakeholder = normalizeOption(stakeholder);
+      const normalizedStakeholderRole = normalizeOption(stakeholderRole);
+      const normalizedRole = normalizeOption(role);
+      if (!normalizedStakeholder || !normalizedStakeholderRole || !normalizedRole) return [];
+
+      const filtered = mappings.filter((mapping) => {
+        const stakeholderMatches = normalizeOption(mapping.stakeholder) === normalizedStakeholder;
+        const stakeholderRoleMatches = normalizeOption(mapping.stakeholder_role) === normalizedStakeholderRole;
+        const roleMatches = normalizeOption(mapping.role) === normalizedRole;
+        return stakeholderMatches && stakeholderRoleMatches && roleMatches;
+      });
+      const userManagementRoles = uniquePresent(filtered.map((mapping) => mapping.user_management_role));
+      return userManagementRoles;
+    };
+
+    const refreshStakeholderRoles = () => {
+      if (!stakeholderRoleSelect) return;
+      const stakeholderRoles = mappedStakeholderRoles(stakeholderSelect?.value);
+      replaceSelectOptions(stakeholderRoleSelect, stakeholderRoles, "Select Stakeholder Person Type");
+    };
+
+    const refreshRoles = () => {
+      if (!roleSelect) return;
+      const roles = mappedRoles(stakeholderSelect?.value, stakeholderRoleSelect?.value);
+      replaceSelectOptions(roleSelect, roles, "Select Resource Person Type");
+      refreshUserManagementRoles();
+    };
+
+    const refreshUserManagementRoles = () => {
+      if (!userManagementRoleSelect) return;
+      const userManagementRoles = mappedUserManagementRoles(stakeholderSelect?.value, stakeholderRoleSelect?.value, roleSelect?.value);
+      replaceSelectOptions(userManagementRoleSelect, userManagementRoles, "Select User Management Person Type");
+    };
+
+    stakeholderSelect?.addEventListener("change", () => {
+      if (stakeholderRoleSelect) stakeholderRoleSelect.dataset.selectedValue = "";
+      if (roleSelect) roleSelect.dataset.selectedValue = "";
+      if (userManagementRoleSelect) userManagementRoleSelect.dataset.selectedValue = "";
+      refreshStakeholderRoles();
+      refreshRoles();
+      refreshUserManagementRoles();
+    });
+    stakeholderRoleSelect?.addEventListener("change", () => {
+      if (roleSelect) roleSelect.dataset.selectedValue = "";
+      if (userManagementRoleSelect) userManagementRoleSelect.dataset.selectedValue = "";
+      refreshRoles();
+      refreshUserManagementRoles();
+    });
+    roleSelect?.addEventListener("change", () => {
+      if (userManagementRoleSelect) userManagementRoleSelect.dataset.selectedValue = "";
+      refreshUserManagementRoles();
+    });
+
+    refreshStakeholderRoles();
+    refreshRoles();
+  });
+
+  const locationLevels = ["state", "district", "block", "gram-panchayat", "village"];
+  const locationKeys = {
+    "state": "state",
+    "district": "district",
+    "block": "block",
+    "gram-panchayat": "gram_panchayat",
+    "village": "village"
+  };
+  const locationParents = {
+    "district": ["state"],
+    "block": ["state", "district"],
+    "gram-panchayat": ["state", "district", "block"],
+    "village": ["state", "district", "block", "gram-panchayat"]
+  };
+
+  const selectedLocationValues = (select) => {
+    if (!select || !select.value) return [];
+
+    const option = select.selectedOptions?.[0];
+    return uniquePresent([select.value, option?.textContent]);
+  };
+
+  const locationRowMatchesParents = (row, selects, level) => {
+    return (locationParents[level] || []).every((parentLevel) => {
+      const parentValues = selectedLocationValues(selects[parentLevel]);
+      if (parentValues.length === 0) return false;
+
+      const parentKey = locationKeys[parentLevel];
+      return parentValues.some((value) => normalizeOption(row[parentKey]) === normalizeOption(value));
+    });
+  };
+
+  const optionMatchesLocationRow = (option, row, level) => {
+    const key = locationKeys[level];
+    return [row.id, row[key]].some((value) => {
+      return normalizeOption(value) === normalizeOption(option.value) ||
+        normalizeOption(value) === normalizeOption(option.textContent);
+    });
+  };
+
+  const replaceLocationOptions = (select, originalOptions, allowedRows, level) => {
+    if (!select) return;
+
+    const selected = select.dataset.selectedValue || select.value;
+    const blankOption = originalOptions.find((option) => option.value === "") || { value: "", label: `Select ${level}` };
+    const filteredOptions = originalOptions.filter((option) => {
+      if (option.value === "") return false;
+      return allowedRows.some((row) => optionMatchesLocationRow(option, row, level));
+    });
+
+    const parentSelected = (locationParents[level] || []).every((parentLevel) => {
+      return selectedLocationValues(select.closest("[data-location-form]")?.querySelector(`[data-location-level="${parentLevel}"]`)).length > 0;
+    });
+    const hasParents = (locationParents[level] || []).length > 0;
+    const finalOptions = hasParents && !parentSelected
+      ? []
+      : (allowedRows.length > 0 || parentSelected ? filteredOptions : originalOptions.filter((option) => option.value !== ""));
+    select.innerHTML = "";
+
+    const prompt = document.createElement("option");
+    prompt.value = "";
+    prompt.textContent = blankOption.label;
+    select.appendChild(prompt);
+
+    finalOptions.forEach((optionData) => {
+      const option = document.createElement("option");
+      option.value = optionData.value;
+      option.textContent = optionData.label;
+      option.selected = optionData.value === selected || optionData.label === selected;
+      select.appendChild(option);
+    });
+  };
+
+  document.querySelectorAll("[data-location-form]").forEach((formShell) => {
+    let mappings = [];
+    try {
+      mappings = JSON.parse(formShell.dataset.locationMap || "[]");
+    } catch (_error) {
+      mappings = [];
+    }
+
+    const selects = {};
+    const originalOptions = {};
+    locationLevels.forEach((level) => {
+      const select = formShell.querySelector(`[data-location-level="${level}"]`);
+      if (!select) return;
+
+      selects[level] = select;
+      originalOptions[level] = Array.from(select.options).map((option) => ({
+        value: option.value,
+        label: option.textContent
+      }));
+    });
+
+    const refreshLocationLevel = (level) => {
+      if (!selects[level]) return;
+
+      const key = locationKeys[level];
+      const allowedRows = mappings.filter((row) => row[key] && locationRowMatchesParents(row, selects, level));
+      replaceLocationOptions(selects[level], originalOptions[level], allowedRows, level);
+    };
+
+    const refreshFrom = (level) => {
+      const startIndex = locationLevels.indexOf(level) + 1;
+      locationLevels.slice(startIndex).forEach((childLevel) => {
+        if (selects[childLevel]) selects[childLevel].dataset.selectedValue = "";
+        refreshLocationLevel(childLevel);
+      });
+    };
+
+    locationLevels.forEach((level) => {
+      selects[level]?.addEventListener("change", () => refreshFrom(level));
+    });
+
+    locationLevels.slice(1).forEach(refreshLocationLevel);
   });
 
   document.querySelectorAll("[data-export-table]").forEach((button) => {

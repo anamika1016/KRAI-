@@ -1,11 +1,11 @@
-<% content_for :title, "Farmer Approval" %>
+<% content_for :title, "VRP Approval" %>
 
 <main class="vrp-list-page">
   <section class="vrp-list-shell">
     <div class="vrp-list-header">
       <div>
-        <p class="vrp-eyebrow">Farmer Registration</p>
-        <h1>Farmer Approval</h1>
+        <p class="vrp-eyebrow">VRP Registration</p>
+        <h1>VRP Approval</h1>
       </div>
     </div>
 
@@ -51,7 +51,7 @@
                       <%= link_to "View", vrp_path(vrp), class: "table-action" %>
                       <% if row[:can_act] %>
                         <%= button_to "Approve", approve_vrp_path(vrp), method: :patch, class: "table-action" %>
-                        <%= button_to "Reject", reject_vrp_path(vrp), method: :patch, class: "table-action danger", form: { data: { turbo_confirm: "Reject this farmer?" } } %>
+                        <%= button_to "Reject", reject_vrp_path(vrp), method: :patch, class: "table-action danger", form: { data: { turbo_confirm: "Reject this VRP?" } } %>
                       <% end %>
                     </div>
                   </td>
@@ -59,7 +59,7 @@
               <% end %>
             <% else %>
               <tr>
-                <td colspan="8">No farmer pending for your approval.</td>
+                <td colspan="8">No VRP pending for your approval.</td>
               </tr>
             <% end %>
           </tbody>

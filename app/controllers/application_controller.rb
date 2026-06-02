@@ -38,17 +38,26 @@ class ApplicationController < ActionController::Base
   end
 
   def app_user_session_payload(user)
+    data = user.respond_to?(:data) ? user.data : {}
+
     {
       "id" => user.id,
-      "username" => user.respond_to?(:user_name) ? user.user_name : user.data["user_name"],
-      "name" => user.respond_to?(:full_name) ? user.full_name : [user.data["first_name"], user.data["last_name"]].compact_blank.join(" "),
-      "stakeholder" => user.respond_to?(:stakeholder) ? user.stakeholder : user.data["stakeholder"],
-      "role" => user.respond_to?(:role) ? user.role : user.data["role"],
-      "office" => user.respond_to?(:office) ? user.office : user.data["office"],
-      "email" => user.respond_to?(:email) ? user.email : user.data["email"],
-      "mobile_no" => user.respond_to?(:mobile_no) ? user.mobile_no : user.data["mobile_no"],
-      "user_type" => user.respond_to?(:user_type) ? user.user_type : user.data["user_type"]
+      "username" => user.respond_to?(:user_name) ? user.user_name : data["user_name"],
+      "name" => app_user_display_name(user, data),
+      "stakeholder" => user.respond_to?(:stakeholder) ? user.stakeholder : data["stakeholder"],
+      "role" => user.respond_to?(:role) ? user.role : data["role"],
+      "office" => user.respond_to?(:office) ? user.office : data["office"],
+      "email" => user.respond_to?(:email) ? user.email : data["email"],
+      "mobile_no" => user.respond_to?(:mobile_no) ? user.mobile_no : data["mobile_no"],
+      "user_type" => user.respond_to?(:user_type) ? user.user_type : (data["user_type"].presence || "User")
     }
+  end
+
+  def app_user_display_name(user, data)
+    return user.full_name if user.respond_to?(:full_name) && user.full_name.present?
+    return user.name if user.respond_to?(:name) && user.name.present?
+
+    [data["first_name"], data["last_name"]].compact_blank.join(" ")
   end
 
   def find_current_session_user(stored_user)
@@ -58,6 +67,14 @@ class ApplicationController < ActionController::Base
 
       user = User.find_by(user_name: stored_user["username"])
       return user if user
+    end
+
+    if "Vrp".safe_constantize&.table_exists? && Vrp.column_names.include?("user_name")
+      vrp = Vrp.find_by(id: stored_user["id"])
+      return vrp if vrp
+
+      vrp = Vrp.find_by(user_name: stored_user["username"])
+      return vrp if vrp
     end
 
     return unless defined?(ModuleRecord) && ModuleRecord.table_exists?

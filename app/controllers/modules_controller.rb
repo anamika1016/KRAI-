@@ -2,7 +2,8 @@ require "fileutils"
 require "securerandom"
 
 class ModulesController < ApplicationController
-  helper_method :module_field_options, :module_select_field?, :static_field_options
+  helper_method :module_field_options, :module_select_field?, :static_field_options, :role_management_mappings,
+                :location_hierarchy_mappings
 
   DASHBOARD_CARDS = [
     ["Total VRP", "0", "Registered field resources"],
@@ -150,14 +151,14 @@ class ModulesController < ApplicationController
       fields: ["Activity", "Task Indicator Name", "Unit", "Status"]
     },
     "approval-master" => {
-      title: "Approval Form",
-      group: "Role Management",
-      purpose: "Farmer registration aur bill approval ke approver maintain karne ke liye.",
+      title: "VRP Approval Form",
+      group: "VRP Registration",
+      purpose: "VRP registration aur bill approval ke approver maintain karne ke liye.",
       fields: ["Module Name", "Role Name", "Office", "Approval Level", "Stakeholder Name", "Approver (Approved By)", "Status"]
     },
     "approval-list" => {
-      title: "Approval List",
-      group: "Role Management",
+      title: "VRP Approval List",
+      group: "VRP Registration",
       purpose: "Saved approval mappings dekhne ke liye.",
       fields: ["Module Name", "Role Name", "Office", "Approval Level", "Stakeholder Name", "Approver (Approved By)", "Status"]
     },
@@ -168,11 +169,11 @@ class ModulesController < ApplicationController
       fields: ["ICS Name", "Status"]
     },
     "vrp-registration-list" => {
-      title: "Farmer Registration List",
-      group: "Farmer Registration",
-      purpose: "Registered farmer records manage karne ke liye.",
+      title: "VRP Registration List",
+      group: "VRP Registration",
+      purpose: "Registered VRP records manage karne ke liye.",
       fields: ["Search", "Filter", "Export Excel/PDF", "Active/Inactive Status"],
-      features: ["View Farmer", "Edit Farmer", "Delete Farmer", "Approval Status", "Document Download"]
+      features: ["View VRP", "Edit VRP", "Delete VRP", "Approval Status", "Document Download"]
     },
     "vrp-bill-add" => {
       title: "Add VRP Bill",
@@ -232,29 +233,41 @@ class ModulesController < ApplicationController
       title: "New User",
       group: "User Register",
       purpose: "System login user create karne ke liye.",
-      fields: ["Stakeholder", "Role", "State", "District", "Block", "Gram Panchayat", "Village", "Office", "Full Address", "Pincode", "First Name", "Last Name", "Gender", "Age", "Email", "Password", "Confirmed Password", "User Name", "Mobile No", "Emergency No", "ICS", "Aadhaar Upload", "User Type", "Status"]
+      fields: ["Stakeholder Category", "Stakeholder Role", "Role", "User Management Role", "State", "District", "Block", "Gram Panchayat", "Village", "Office", "Full Address", "Pincode", "First Name", "Last Name", "Gender", "Age", "Email", "Password", "Confirmed Password", "User Name", "Mobile No", "User Type", "Status"]
     },
     "all-user" => {
       title: "All User",
       group: "User Register",
       purpose: "Registered users dekhne ke liye.",
-      fields: ["Stakeholder", "Role", "State", "District", "Block", "Gram Panchayat", "Village", "Office", "Full Address", "Pincode", "First Name", "Last Name", "Gender", "Age", "Email", "Password", "Confirmed Password", "User Name", "Mobile No", "Emergency No", "ICS", "Aadhaar Upload", "User Type", "Status"]
+      fields: ["Stakeholder Category", "Stakeholder Role", "Role", "User Management Role", "State", "District", "Block", "Gram Panchayat", "Village", "Office", "Full Address", "Pincode", "First Name", "Last Name", "Gender", "Age", "Email", "Password", "Confirmed Password", "User Name", "Mobile No", "User Type", "Status"]
+    },
+    "stakeholder-role" => {
+      title: "Stakeholder Person Type",
+      group: "Resource Person Type",
+      purpose: "Stakeholder category wise stakeholder person type maintain karne ke liye.",
+      fields: ["Stakeholder Category", "Stakeholder Role", "Status"]
     },
     "role-management" => {
-      title: "Role Management",
-      group: "Role Management",
-      purpose: "Role maintain karne ke liye.",
-      fields: ["Role Name", "Status"]
+      title: "Resource Person Type",
+      group: "Resource Person Type",
+      purpose: "Resource person type maintain karne ke liye.",
+      fields: ["Stakeholder Category", "Stakeholder Role", "Role Name", "Status"]
+    },
+    "user-management-role" => {
+      title: "User Management Person Type",
+      group: "Resource Person Type",
+      purpose: "Resource person type wise user management person type maintain karne ke liye.",
+      fields: ["Stakeholder Category", "Stakeholder Role", "Role Name", "User Management Role", "Status"]
     },
     "access-control" => {
       title: "Access Control",
-      group: "Role Management",
+      group: "Resource Person Type",
       purpose: "Stakeholder aur role wise module access dene ke liye.",
       fields: ["Stakeholder", "Role Name", "Module Name", "Sub Module Name", "Can View", "Can Create", "Can Edit", "Can Delete", "Status"]
     },
     "access-control-list" => {
       title: "Access Control List",
-      group: "Role Management",
+      group: "Resource Person Type",
       purpose: "Saved access control records dekhne ke liye.",
       fields: ["Stakeholder", "Role Name", "Module Name", "Sub Module Name", "Status"]
     }
@@ -946,6 +959,106 @@ class ModulesController < ApplicationController
     generic_field_options(field)
   end
 
+  def role_management_mappings
+    return [] unless model_ready?(:ModuleRecord)
+
+    stakeholder_role_mappings = ModuleRecord
+      .where(module_slug: "stakeholder-role")
+      .order(created_at: :desc)
+      .select { |record| active_module_record?(record) }
+      .map do |record|
+        {
+          stakeholder: first_present_data(record, "stakeholder_category", "stakeholder_name", "stakeholder").to_s.strip,
+          stakeholder_role: first_present_data(record, "stakeholder_role").to_s.strip,
+          role: "",
+          user_management_role: ""
+        }
+      end
+
+    role_mappings = ModuleRecord
+      .where(module_slug: "role-management")
+      .order(created_at: :desc)
+      .select { |record| active_module_record?(record) }
+      .map do |record|
+        {
+          stakeholder: first_present_data(record, "stakeholder_category", "stakeholder_name", "stakeholder").to_s.strip,
+          stakeholder_role: first_present_data(record, "stakeholder_role").to_s.strip,
+          role: first_present_data(record, "role_name", "role").to_s.strip,
+          user_management_role: ""
+        }
+      end
+
+    user_management_role_mappings = ModuleRecord
+      .where(module_slug: "user-management-role")
+      .order(created_at: :desc)
+      .select { |record| active_module_record?(record) }
+      .map do |record|
+        {
+          stakeholder: first_present_data(record, "stakeholder_category", "stakeholder_name", "stakeholder").to_s.strip,
+          stakeholder_role: first_present_data(record, "stakeholder_role").to_s.strip,
+          role: first_present_data(record, "role_name", "role").to_s.strip,
+          user_management_role: first_present_data(record, "user_management_role").to_s.strip
+        }
+      end
+
+    (stakeholder_role_mappings + role_mappings + user_management_role_mappings)
+      .reject { |mapping| mapping[:stakeholder_role].blank? && mapping[:role].blank? && mapping[:user_management_role].blank? }
+      .uniq
+  end
+
+  def location_hierarchy_mappings
+    return [] unless model_ready?(:ModuleRecord)
+
+    states = active_records_for_location("state-master").map do |record|
+      location_row(record, state: first_present_data(record, "state_name"))
+    end
+
+    districts = active_records_for_location("district-master").map do |record|
+      location_row(record,
+        state: first_present_data(record, "state"),
+        district: first_present_data(record, "district_name"))
+    end
+
+    blocks = active_records_for_location("block-master").map do |record|
+      location_row(record,
+        state: first_present_data(record, "state"),
+        district: first_present_data(record, "district"),
+        block: first_present_data(record, "block_name"))
+    end
+
+    gram_panchayats = active_records_for_location("gram-panchayat-master").map do |record|
+      location_row(record,
+        state: first_present_data(record, "state"),
+        district: first_present_data(record, "district"),
+        block: first_present_data(record, "block"),
+        gram_panchayat: first_present_data(record, "gram_panchayat_name"))
+    end
+
+    villages = active_records_for_location("village-master").map do |record|
+      location_row(record,
+        state: first_present_data(record, "state"),
+        district: first_present_data(record, "district"),
+        block: first_present_data(record, "block"),
+        gram_panchayat: first_present_data(record, "gram_panchayat"),
+        village: first_present_data(record, "village_name"))
+    end
+
+    states + districts + blocks + gram_panchayats + villages
+  end
+
+  def active_records_for_location(module_slug)
+    ModuleRecord
+      .where(module_slug: module_slug)
+      .order(created_at: :desc)
+      .select { |record| active_module_record?(record) }
+  end
+
+  def location_row(record, values)
+    row = { id: record.id.to_s }
+    values.each { |key, value| row[key] = value.to_s.strip if value.present? }
+    row
+  end
+
   def static_field_options(field)
     {
       "Month Name" => Date::MONTHNAMES.compact,
@@ -962,7 +1075,7 @@ class ModulesController < ApplicationController
       "Can Delete" => ["Yes", "No"],
       "Select Mandatory" => ["Yes", "No"],
       "Office Level" => ["State", "District", "Block", "Gram Panchayat", "Village"],
-      "Module Name" => ["Farmer Registration", "VRP Registration", "VRP Bill"],
+      "Module Name" => ["VRP Registration", "VRP Bill"],
       "Sub Module Name" => sidebar_submodule_names
     }[field] || []
   end
@@ -988,6 +1101,8 @@ class ModulesController < ApplicationController
       "VRP Activity" => { module: "add-vrp-activity", field: "activity_name" },
       "Stakeholder" => { module: "stakeholder-master", field: "stakeholder_name_in_english" },
       "Stakeholder Name" => { module: "stakeholder-master", field: "stakeholder_name_in_english" },
+      "Stakeholder Category" => { module: "stakeholder-master", field: "stakeholder_name_in_english" },
+      "Stakeholder Role" => { module: "stakeholder-role", field: "stakeholder_role" },
       "Office" => { module: "office-category-add", field: "category_name" },
       "Approver (Approved By)" => { module: "new-user", field: "approver_name_with_role" },
       "Select Financial Year" => { module: "month-master", field: "financial_year" },
@@ -1001,7 +1116,8 @@ class ModulesController < ApplicationController
       "Select Task Indicator" => { module: "task-indicator-master", field: "task_indicator_name" },
       "Bank Name" => { module: "bank-master", field: "bank_name" },
       "Role" => { module: "role-management", field: "role_name" },
-      "Role Name" => { module: "role-management", field: "role_name" }
+      "Role Name" => { module: "role-management", field: "role_name" },
+      "User Management Role" => { module: "user-management-role", field: "user_management_role" }
     }
   end
 

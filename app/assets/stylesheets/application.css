@@ -2274,11 +2274,13 @@ a {
   box-shadow: none;
 }
 
-.login-password-field {
+.login-password-field,
+.password-field {
   position: relative;
 }
 
-.login-password-field .form-control {
+.login-password-field .form-control,
+.password-field input {
   padding-right: 42px;
 }
 

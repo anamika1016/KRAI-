@@ -48,7 +48,7 @@ module ApplicationHelper
       ]
     },
     {
-      title: "VRP Register",
+      title: "User Register",
       icon: "▩",
       links: [
         ["All User", :route, :users_path],
@@ -56,23 +56,25 @@ module ApplicationHelper
       ]
     },
     {
-      title: "Role Management",
+      title: "Resource Person Type Management",
       icon: "▧",
       links: [
-        ["Role", :module, "role-management"],
-        ["Approval Form", :module, "approval-master"],
-        ["Approval List", :module, "approval-list"],
+        ["Stakeholder Person Type", :module, "stakeholder-role"],
+        ["Resource Person Type", :module, "role-management"],
+        ["User Management Person Type", :module, "user-management-role"],
         ["Access Control", :module, "access-control"],
         ["Access Control List", :module, "access-control-list"]
       ]
     },
     {
-      title: "Farmer Registration",
+      title: "VRP Registration",
       icon: "▥",
       links: [
-        ["Farmer Registration", :route, :new_vrp_path],
-        ["Farmer List", :route, :vrps_path],
-        ["Farmer Approval", :route, :approvals_vrps_path]
+        ["VRP Registration", :route, :new_vrp_path],
+        ["VRP List", :route, :vrps_path],
+        ["VRP Approval", :route, :approvals_vrps_path],
+        ["VRP Approval Form", :module, "approval-master"],
+        ["VRP Approval List", :module, "approval-list"]
       ]
     },
     {
@@ -126,6 +128,15 @@ module ApplicationHelper
   def sidebar_access_key(link)
     label, _type, _target = link
     label.parameterize
+  end
+
+  def resource_person_label(label)
+    {
+      "Role" => "Resource Person Type",
+      "Role Name" => "Resource Person Type",
+      "Stakeholder Role" => "Stakeholder Person Type",
+      "User Management Role" => "User Management Person Type"
+    }.fetch(label.to_s, label)
   end
 
   def allowed_sidebar_keys

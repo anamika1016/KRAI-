@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2026_06_01_093000) do
+ActiveRecord::Schema[8.1].define(version: 2026_06_02_091000) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "pg_catalog.plpgsql"
 
@@ -70,9 +70,11 @@ ActiveRecord::Schema[8.1].define(version: 2026_06_01_093000) do
     t.string "pincode"
     t.string "role"
     t.string "stakeholder"
+    t.string "stakeholder_role"
     t.string "state"
     t.string "status", default: "Active", null: false
     t.datetime "updated_at", null: false
+    t.string "user_management_role"
     t.string "user_name", null: false
     t.string "user_type"
     t.string "village"
@@ -120,6 +122,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_06_01_093000) do
     t.date "date_of_birth", null: false
     t.date "date_of_joining", null: false
     t.string "email", null: false
+    t.string "emergency_no"
     t.integer "experience_in_years", null: false
     t.string "father_husband_name", null: false
     t.integer "gender", null: false
@@ -131,11 +134,17 @@ ActiveRecord::Schema[8.1].define(version: 2026_06_01_093000) do
     t.string "mobile_no", null: false
     t.string "name", null: false
     t.integer "office_detail_id", null: false
+    t.string "password"
     t.text "project_master_ids"
+    t.string "role"
+    t.string "stakeholder"
+    t.string "stakeholder_role"
     t.integer "status", default: 25, null: false
     t.integer "to_office_detail_id", null: false
     t.datetime "updated_at", null: false
     t.integer "user_id"
+    t.string "user_management_role"
+    t.string "user_name"
     t.text "village_ids"
     t.bigint "vrp_bank_master_id"
     t.text "vrp_type_ids"

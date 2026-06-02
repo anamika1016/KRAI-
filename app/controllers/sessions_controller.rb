@@ -36,6 +36,14 @@ class SessionsController < ApplicationController
       return user if user
     end
 
+    if "Vrp".safe_constantize&.table_exists? && Vrp.column_names.include?("user_name") && Vrp.column_names.include?("password")
+      vrp = Vrp.where(is_active: true, is_deleted: false).find do |candidate|
+        [candidate.user_name, candidate.email, candidate.mobile_no].compact.include?(login) &&
+          candidate.password.to_s == password
+      end
+      return vrp if vrp
+    end
+
     return unless defined?(ModuleRecord) && ModuleRecord.table_exists?
 
     ModuleRecord.where(module_slug: "new-user").order(created_at: :desc).detect do |record|

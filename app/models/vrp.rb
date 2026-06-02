@@ -74,7 +74,6 @@ class Vrp < ApplicationRecord
   def selected_registration_lists_are_present
     {
       vrp_type_ids: "Select at least one VRP type",
-      ics_master_ids: "Select at least one ICS",
       gram_panchayat_ids: "Select at least one gram panchayat",
       village_ids: "Select at least one village"
     }.each do |attribute, message|

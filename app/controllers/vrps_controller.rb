@@ -38,8 +38,15 @@ class VrpsController < ApplicationController
     @vrp.created_by_id = current_app_user_id if @vrp.respond_to?(:created_by_id=)
     @vrp.status = 10 if @vrp.respond_to?(:status=)
 
+    unless vrp_password_confirmed?(@vrp)
+      @vrp.build_vrp_profile unless @vrp.vrp_profile
+      @vrp.errors.add(:password, "and Confirm Password must match")
+      render :new, status: :unprocessable_entity
+      return
+    end
+
     if @vrp.save
-      redirect_to vrps_path, notice: "Farmer registration successfully."
+      redirect_to vrps_path, notice: "VRP registration successfully."
     else
       @vrp.build_vrp_profile unless @vrp.vrp_profile
       render :new, status: :unprocessable_entity
@@ -49,8 +56,14 @@ class VrpsController < ApplicationController
   def edit; end
 
   def update
+    unless vrp_password_confirmed?(@vrp)
+      @vrp.errors.add(:password, "and Confirm Password must match")
+      render :edit, status: :unprocessable_entity
+      return
+    end
+
     if @vrp.update(vrp_params)
-      redirect_to vrps_path, notice: "Farmer updated successfully."
+      redirect_to vrps_path, notice: "VRP updated successfully."
     else
       @vrp.build_vrp_profile unless @vrp.vrp_profile
       render :edit, status: :unprocessable_entity
@@ -68,7 +81,7 @@ class VrpsController < ApplicationController
       return
     end
 
-    redirect_to vrps_path, alert: "Farmer record not found."
+    redirect_to vrps_path, alert: "VRP record not found."
   end
 
   def destroy
@@ -76,9 +89,9 @@ class VrpsController < ApplicationController
 
     if @vrp
       @vrp.update_columns(is_deleted: true, updated_at: Time.current)
-      redirect_to vrps_path, notice: "Farmer deleted successfully."
+      redirect_to vrps_path, notice: "VRP deleted successfully."
     else
-      redirect_to vrps_path, alert: "Farmer record not found."
+      redirect_to vrps_path, alert: "VRP record not found."
     end
   end
 
@@ -86,13 +99,13 @@ class VrpsController < ApplicationController
     @vrp = find_visible_vrp(params[:id])
 
     unless @vrp
-      redirect_to vrps_path, alert: "Farmer record not found."
+      redirect_to vrps_path, alert: "VRP record not found."
       return
     end
 
     active = ActiveModel::Type::Boolean.new.cast(params[:active])
     @vrp.update_columns(is_active: active, updated_at: Time.current)
-    redirect_to vrps_path, notice: "Farmer marked #{active ? "active" : "inactive"}."
+    redirect_to vrps_path, notice: "VRP marked #{active ? "active" : "inactive"}."
   end
 
   def approvals
@@ -112,7 +125,7 @@ class VrpsController < ApplicationController
     vrp = own_vrps.find_by(id: params[:id])
 
     unless vrp
-      redirect_to vrps_path, alert: "Farmer record not found."
+      redirect_to vrps_path, alert: "VRP record not found."
       return
     end
 
@@ -125,14 +138,14 @@ class VrpsController < ApplicationController
     end
 
     if approval_sent?(vrp) || [31, 32, 55].include?(vrp.status.to_i)
-      redirect_to vrps_path, alert: "This farmer is already in approval process."
+      redirect_to vrps_path, alert: "This VRP is already in approval process."
       return
     end
 
     update_vrp_status!(vrp, 25)
     log_approval_history(vrp, first_step, "Sent for Approval", "Pending at #{approval_approver_name(first_step)}")
 
-    redirect_to vrps_path, notice: "Farmer sent for approval. Pending at #{approval_approver_name(first_step)}."
+    redirect_to vrps_path, notice: "VRP sent for approval. Pending at #{approval_approver_name(first_step)}."
   end
 
   def approve
@@ -154,7 +167,7 @@ class VrpsController < ApplicationController
       next_step = current_approval_step(vrp)
       "Approved and moved to #{approval_approver_name(next_step)}."
     else
-      "Farmer final approved."
+      "VRP final approved."
     end
 
     redirect_to vrp_path(vrp), notice: message
@@ -164,14 +177,14 @@ class VrpsController < ApplicationController
     vrp = approvable_vrps.find { |record| record.id == params[:id].to_i }
 
     unless vrp
-      redirect_to approvals_vrps_path, alert: "This farmer is not pending for your approval."
+      redirect_to approvals_vrps_path, alert: "This VRP is not pending for your approval."
       return
     end
 
     step = current_approval_step(vrp)
     update_vrp_status!(vrp, 99)
     log_approval_history(vrp, step, "Rejected", params[:remarks])
-    redirect_to vrp_path(vrp), notice: "Farmer rejected."
+    redirect_to vrp_path(vrp), notice: "VRP rejected."
   end
 
   private
@@ -201,7 +214,14 @@ class VrpsController < ApplicationController
       :vrp_bank_master_id,
       :address,
       :mobile_no,
+      :emergency_no,
       :email,
+      :stakeholder,
+      :stakeholder_role,
+      :role,
+      :user_management_role,
+      :user_name,
+      :password,
       :experience_in_years,
       :user_id,
       :is_deleted,
@@ -225,6 +245,13 @@ class VrpsController < ApplicationController
         :_destroy
       ]
     )
+  end
+
+  def vrp_password_confirmed?(vrp)
+    confirmed_password = params.dig(:vrp, :confirmed_password).to_s
+    return true if vrp.password.to_s.blank? && confirmed_password.blank?
+
+    vrp.password.to_s == confirmed_password
   end
 
   def controller_current_user
@@ -684,13 +711,18 @@ class VrpsController < ApplicationController
   def set_master_options
     sync_existing_vrp_master_records
 
+    @stakeholder_options = text_module_record_options("stakeholder-master", "stakeholder_name_in_english")
+    @stakeholder_role_options = text_module_record_options("stakeholder-role", "stakeholder_role")
+    @role_options = text_module_record_options("role-management", "role_name")
+    @user_management_role_options = text_module_record_options("user-management-role", "user_management_role")
+    @role_management_mappings = role_management_mappings
     @vrp_type_options = vrp_type_options
     @state_options = module_record_options("state-master", "state_name")
     @district_options = module_record_options("district-master", "district_name")
     @block_options = module_record_options("block-master", "block_name")
     @gram_panchayat_options = module_record_options("gram-panchayat-master", "gram_panchayat_name")
     @village_options = module_record_options("village-master", "village_name")
-    @ics_options = ics_options
+    @location_hierarchy_mappings = location_hierarchy_mappings
   end
 
   def vrp_type_options
@@ -719,6 +751,121 @@ class VrpsController < ApplicationController
         [label, record.id] if label
       end
       .uniq { |label, _value| label }
+  end
+
+  def text_module_record_options(module_slug, field_key)
+    return [] unless model_ready?(:ModuleRecord)
+
+    ModuleRecord
+      .where(module_slug: module_slug)
+      .order(created_at: :desc)
+      .select { |record| active_module_record?(record) }
+      .filter_map { |record| record.data[field_key].presence }
+      .uniq
+  end
+
+  def role_management_mappings
+    return [] unless model_ready?(:ModuleRecord)
+
+    stakeholder_role_mappings = ModuleRecord
+      .where(module_slug: "stakeholder-role")
+      .order(created_at: :desc)
+      .select { |record| active_module_record?(record) }
+      .map do |record|
+        {
+          stakeholder: first_present_data(record, "stakeholder_category", "stakeholder_name", "stakeholder").to_s.strip,
+          stakeholder_role: first_present_data(record, "stakeholder_role").to_s.strip,
+          role: "",
+          user_management_role: ""
+        }
+      end
+
+    role_mappings = ModuleRecord
+      .where(module_slug: "role-management")
+      .order(created_at: :desc)
+      .select { |record| active_module_record?(record) }
+      .map do |record|
+        {
+          stakeholder: first_present_data(record, "stakeholder_category", "stakeholder_name", "stakeholder").to_s.strip,
+          stakeholder_role: first_present_data(record, "stakeholder_role").to_s.strip,
+          role: first_present_data(record, "role_name", "role").to_s.strip,
+          user_management_role: ""
+        }
+      end
+
+    user_management_role_mappings = ModuleRecord
+      .where(module_slug: "user-management-role")
+      .order(created_at: :desc)
+      .select { |record| active_module_record?(record) }
+      .map do |record|
+        {
+          stakeholder: first_present_data(record, "stakeholder_category", "stakeholder_name", "stakeholder").to_s.strip,
+          stakeholder_role: first_present_data(record, "stakeholder_role").to_s.strip,
+          role: first_present_data(record, "role_name", "role").to_s.strip,
+          user_management_role: first_present_data(record, "user_management_role").to_s.strip
+        }
+      end
+
+    (stakeholder_role_mappings + role_mappings + user_management_role_mappings)
+      .reject { |mapping| mapping[:stakeholder_role].blank? && mapping[:role].blank? && mapping[:user_management_role].blank? }
+      .uniq
+  end
+
+  def location_hierarchy_mappings
+    return [] unless model_ready?(:ModuleRecord)
+
+    states = active_records_for_location("state-master").map do |record|
+      location_row(record, state: first_present_data(record, "state_name"))
+    end
+
+    districts = active_records_for_location("district-master").map do |record|
+      location_row(record,
+        state: first_present_data(record, "state"),
+        district: first_present_data(record, "district_name"))
+    end
+
+    blocks = active_records_for_location("block-master").map do |record|
+      location_row(record,
+        state: first_present_data(record, "state"),
+        district: first_present_data(record, "district"),
+        block: first_present_data(record, "block_name"))
+    end
+
+    gram_panchayats = active_records_for_location("gram-panchayat-master").map do |record|
+      location_row(record,
+        state: first_present_data(record, "state"),
+        district: first_present_data(record, "district"),
+        block: first_present_data(record, "block"),
+        gram_panchayat: first_present_data(record, "gram_panchayat_name"))
+    end
+
+    villages = active_records_for_location("village-master").map do |record|
+      location_row(record,
+        state: first_present_data(record, "state"),
+        district: first_present_data(record, "district"),
+        block: first_present_data(record, "block"),
+        gram_panchayat: first_present_data(record, "gram_panchayat"),
+        village: first_present_data(record, "village_name"))
+    end
+
+    states + districts + blocks + gram_panchayats + villages
+  end
+
+  def active_records_for_location(module_slug)
+    ModuleRecord
+      .where(module_slug: module_slug)
+      .order(created_at: :desc)
+      .select { |record| active_module_record?(record) }
+  end
+
+  def location_row(record, values)
+    row = { id: record.id.to_s }
+    values.each { |key, value| row[key] = value.to_s.strip if value.present? }
+    row
+  end
+
+  def first_present_data(record, *keys)
+    keys.filter_map { |key| record.data[key].presence }.first
   end
 
   def active_module_record?(record)

@@ -1,9 +1,9 @@
-<% content_for :title, "Farmer Details" %>
+<% content_for :title, "VRP Details" %>
 
 <main class="vrp-detail-page compact-detail">
   <section class="module-card">
     <div class="module-card-header">
-      <h2>Farmer Details</h2>
+      <h2>VRP Details</h2>
       <%= link_to "Back to List", vrps_path, class: "table-action" %>
     </div>
 
@@ -101,7 +101,7 @@
           </tr>
         </thead>
         <tbody>
-          <% [["Farmer Photo", @vrp&.photo], ["Farmer Aadhaar Card", @vrp&.aadhar_upload], ["Farmer Bank Passbook", @vrp&.bank_passbook_upload]].each do |label, attachment| %>
+          <% [["VRP Photo", @vrp&.photo], ["VRP Aadhaar Card", @vrp&.aadhar_upload], ["VRP Bank Passbook", @vrp&.bank_passbook_upload]].each do |label, attachment| %>
             <tr>
               <td><%= label %></td>
               <td>
@@ -127,7 +127,7 @@
 
   <% if @approval_steps.present? %>
     <section class="approval-progress-section">
-      <h2>Farmer Approval Progress</h2>
+      <h2>VRP Approval Progress</h2>
 
       <div class="approval-progress-grid">
         <% @approval_steps.each do |step| %>

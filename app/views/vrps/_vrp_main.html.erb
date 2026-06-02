@@ -1,4 +1,4 @@
-<div class="row gx-3 vrp-form-grid">
+<div class="row gx-3 vrp-form-grid" data-user-role-form data-role-map="<%= json_escape(@role_management_mappings.to_json) %>" data-location-form data-location-map="<%= json_escape(@location_hierarchy_mappings.to_json) %>">
   <div class="vrp-section-title">
     <span>Personal Details</span>
   </div>
@@ -9,6 +9,26 @@
   </div>
 
   <%= f.hidden_field :user_id %>
+
+  <div class="col-md-3 mb-3">
+    <label class="form-label required">Stakeholder Category</label>
+    <%= f.select :stakeholder, options_for_select(@stakeholder_options || [], f.object.stakeholder), { prompt: "Select Stakeholder Category" }, class: "form-select", required: true, data: { role_stakeholder_select: true } %>
+  </div>
+
+  <div class="col-md-3 mb-3">
+    <label class="form-label required">Stakeholder Person Type</label>
+    <%= f.select :stakeholder_role, options_for_select(@stakeholder_role_options || [], f.object.stakeholder_role), { prompt: "Select Stakeholder Person Type" }, class: "form-select", required: true, data: { stakeholder_role_select: true, selected_value: f.object.stakeholder_role } %>
+  </div>
+
+  <div class="col-md-3 mb-3">
+    <label class="form-label required">Resource Person Type</label>
+    <%= f.select :role, options_for_select(@role_options || [], f.object.role), { prompt: "Select Resource Person Type" }, class: "form-select", required: true, data: { role_select: true, selected_value: f.object.role } %>
+  </div>
+
+  <div class="col-md-3 mb-3">
+    <label class="form-label required">User Management Person Type</label>
+    <%= f.select :user_management_role, options_for_select(@user_management_role_options || [], f.object.user_management_role), { prompt: "Select User Management Person Type" }, class: "form-select", required: true, data: { user_management_role_select: true, selected_value: f.object.user_management_role } %>
+  </div>
 
   <div class="col-md-3 mb-3">
   <label class="form-label required">VRP Type</label>
@@ -73,6 +93,11 @@
       <div id="mobile_no_error" style="color: red;"></div>
   </div>
 
+  <div class="col-md-3 mb-3">
+    <label class="form-label">Emergency No</label>
+    <%= f.text_field :emergency_no, class: "form-control", placeholder: "Enter Emergency No", minlength: 10, maxlength: 10 %>
+  </div>
+
    <div class="col-md-3 mb-3">
     <label for="" class="form-label">Email</label>
     <%= f.email_field :email, autofocus: true, autocomplete: "email", class: 'form-control', placeholder: "Enter your Email", onkeyup: "validateRegistration(this,'email')" %>
@@ -84,6 +109,27 @@
     <%= f.number_field :experience_in_years, class: "form-control", placeholder: "Enter Experience in Years", required: true %>
   </div>
 
+  <div class="col-md-3 mb-3">
+    <label class="form-label required">User Name</label>
+    <%= f.text_field :user_name, class: "form-control", placeholder: "Enter User Name", required: true %>
+  </div>
+
+  <div class="col-md-3 mb-3">
+    <label class="form-label required">Password</label>
+    <div class="password-field">
+      <%= f.password_field :password, class: "form-control", value: f.object.password, placeholder: "Enter Password", required: true, data: { password_toggle_input: true } %>
+      <button type="button" class="password-eye-btn" data-password-toggle aria-label="Show password" title="Show password">&#128065;</button>
+    </div>
+  </div>
+
+  <div class="col-md-3 mb-3">
+    <label class="form-label required">Confirm Password</label>
+    <div class="password-field">
+      <input type="password" name="vrp[confirmed_password]" value="<%= f.object.password %>" class="form-control" required placeholder="Enter Confirm Password" data-password-toggle-input>
+      <button type="button" class="password-eye-btn" data-password-toggle aria-label="Show password" title="Show password">&#128065;</button>
+    </div>
+  </div>
+
   <div class="vrp-section-title">
     <span>Location & Assignment</span>
   </div>
@@ -92,34 +138,29 @@
     <% profile = t.object %>
     <div class="col-md-3 mb-3">
     <label class="form-label required">State</label>
-    <%= t.select :state_id, options_for_select(@state_options || [], profile&.state_id), { prompt: 'Select State',required:true }, class: 'form-select fstates ofs', label: false, onchange: 'handleDropdownChange("vrp_profile_attributes", this.value)' %>
+    <%= t.select :state_id, options_for_select(@state_options || [], profile&.state_id), { prompt: 'Select State', required: true }, class: 'form-select fstates ofs', label: false, data: { location_level: "state", selected_value: profile&.state_id }, onchange: 'handleDropdownChange("vrp_profile_attributes", this.value)' %>
     </div>
 
     <div class="col-md-3 mb-3">
     <label class="form-label required">District</label>
-    <%= t.select :district_id, options_for_select(@district_options || [], profile&.district_id), { prompt: 'Select District'}, { class: 'form-select fdistricts ofs', label: false, onchange: 'handleDropdownChange("vrp_profile_attributes", this.value)' } %>
+    <%= t.select :district_id, options_for_select(@district_options || [], profile&.district_id), { prompt: 'Select District' }, { class: 'form-select fdistricts ofs', label: false, data: { location_level: "district", selected_value: profile&.district_id }, onchange: 'handleDropdownChange("vrp_profile_attributes", this.value)' } %>
     </div>
 
     <div class="col-md-3 mb-3">
     <label class="form-label required">Block</label>
-    <%= t.select :block_id, options_for_select(@block_options || [], profile&.block_id), { prompt: 'Select Block '},class: 'form-select fblocks ofs', label: false, onchange: 'handleDropdownChange("vrp_profile_attributes", this.value)' %>
+    <%= t.select :block_id, options_for_select(@block_options || [], profile&.block_id), { prompt: 'Select Block ' }, class: 'form-select fblocks ofs', label: false, data: { location_level: "block", selected_value: profile&.block_id }, onchange: 'handleDropdownChange("vrp_profile_attributes", this.value)' %>
     </div>
 
     <div class="col-md-3 mb-3">
     <label class="form-label required">Gram Panchyat</label>
-    <%= t.select :gram_panchayat_id, options_for_select(@gram_panchayat_options || [], profile&.gram_panchayat_id), { prompt: 'Select GP'},class: 'form-select fgram_panchayats ofs', label: false,onchange: 'handleDropdownChange("vrp_profile_attributes", this.value)' %>
+    <%= t.select :gram_panchayat_id, options_for_select(@gram_panchayat_options || [], profile&.gram_panchayat_id), { prompt: 'Select GP' }, class: 'form-select fgram_panchayats ofs', label: false, data: { location_level: "gram-panchayat", selected_value: profile&.gram_panchayat_id }, onchange: 'handleDropdownChange("vrp_profile_attributes", this.value)' %>
     </div>
 
     <div class="col-md-3 mb-3">
     <label class="form-label required">Village</label>
-    <%= t.select :village_id, options_for_select(@village_options || [], profile&.village_id), { prompt: 'Select Village'},class: 'form-select fvillage ofs', label: false, onchange: 'handleDropdownChange("vrp_profile_attributes", this.value)' %>
+    <%= t.select :village_id, options_for_select(@village_options || [], profile&.village_id), { prompt: 'Select Village' }, class: 'form-select fvillage ofs', label: false, data: { location_level: "village", selected_value: profile&.village_id }, onchange: 'handleDropdownChange("vrp_profile_attributes", this.value)' %>
     </div>
   <% end %>
-
-  <div class="col-md-3 mb-3">
-    <label class="form-label required">ICS</label>
-    <%= select_tag "vrp[ics_master_ids][]", options_for_select(@ics_options || [], Array(f&.object&.ics_master_ids).first), prompt: 'Select ICS', class: 'form-select select2', required: true %>
-  </div>
 
   <div class="vrp-section-title">
     <span>Documents</span>

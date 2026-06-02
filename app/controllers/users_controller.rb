@@ -70,10 +70,10 @@ class UsersController < ApplicationController
 
   def user_params
     params.require(:user).permit(
-      :stakeholder, :role, :state, :district, :block, :gram_panchayat, :village,
+      :stakeholder, :stakeholder_role, :role, :state, :district, :block, :gram_panchayat, :village,
       :office, :full_address, :pincode, :first_name, :last_name,
-      :gender, :age, :email, :password, :user_name, :mobile_no, :emergency_no,
-      :user_type, :status, :ics, :aadhar_upload
+      :gender, :age, :email, :password, :user_name, :mobile_no,
+      :user_type, :user_management_role, :status
     )
   end
 
@@ -82,12 +82,16 @@ class UsersController < ApplicationController
     @user_type_options = ["Admin", "User"]
     @status_options = ["Active", "Inactive"]
     @stakeholder_options = module_record_options("stakeholder-master", "stakeholder_name_in_english")
+    @stakeholder_role_options = module_record_options("stakeholder-role", "stakeholder_role")
     @role_options = module_record_options("role-management", "role_name")
+    @user_management_role_options = module_record_options("user-management-role", "user_management_role")
+    @role_management_mappings = role_management_mappings
     @state_options = module_record_options("state-master", "state_name")
     @district_options = module_record_options("district-master", "district_name")
     @block_options = module_record_options("block-master", "block_name")
     @gram_panchayat_options = module_record_options("gram-panchayat-master", "gram_panchayat_name")
     @village_options = module_record_options("village-master", "village_name")
+    @location_hierarchy_mappings = location_hierarchy_mappings
     @office_options = module_record_options("office-category-add", "category_name")
     @ics_options = module_record_options("ics-master", "ics_name")
   end
@@ -101,6 +105,110 @@ class UsersController < ApplicationController
       .select { |record| record.data["status"].blank? || record.data["status"] == "Active" }
       .filter_map { |record| record.data[field_key].presence }
       .uniq
+  end
+
+  def role_management_mappings
+    return [] unless defined?(ModuleRecord) && ModuleRecord.table_exists?
+
+    stakeholder_role_mappings = ModuleRecord
+      .where(module_slug: "stakeholder-role")
+      .order(created_at: :desc)
+      .select { |record| record.data["status"].blank? || record.data["status"].to_s.casecmp("Active").zero? }
+      .map do |record|
+        {
+          stakeholder: first_present_data(record, "stakeholder_category", "stakeholder_name", "stakeholder").to_s.strip,
+          stakeholder_role: first_present_data(record, "stakeholder_role").to_s.strip,
+          role: "",
+          user_management_role: ""
+        }
+      end
+
+    role_mappings = ModuleRecord
+      .where(module_slug: "role-management")
+      .order(created_at: :desc)
+      .select { |record| record.data["status"].blank? || record.data["status"].to_s.casecmp("Active").zero? }
+      .map do |record|
+        {
+          stakeholder: first_present_data(record, "stakeholder_category", "stakeholder_name", "stakeholder").to_s.strip,
+          stakeholder_role: first_present_data(record, "stakeholder_role").to_s.strip,
+          role: first_present_data(record, "role_name", "role").to_s.strip,
+          user_management_role: ""
+        }
+      end
+
+    user_management_role_mappings = ModuleRecord
+      .where(module_slug: "user-management-role")
+      .order(created_at: :desc)
+      .select { |record| record.data["status"].blank? || record.data["status"].to_s.casecmp("Active").zero? }
+      .map do |record|
+        {
+          stakeholder: first_present_data(record, "stakeholder_category", "stakeholder_name", "stakeholder").to_s.strip,
+          stakeholder_role: first_present_data(record, "stakeholder_role").to_s.strip,
+          role: first_present_data(record, "role_name", "role").to_s.strip,
+          user_management_role: first_present_data(record, "user_management_role").to_s.strip
+        }
+      end
+
+    (stakeholder_role_mappings + role_mappings + user_management_role_mappings)
+      .reject { |mapping| mapping[:stakeholder_role].blank? && mapping[:role].blank? && mapping[:user_management_role].blank? }
+      .uniq
+  end
+
+  def first_present_data(record, *keys)
+    keys.filter_map { |key| record.data[key].presence }.first
+  end
+
+  def location_hierarchy_mappings
+    return [] unless defined?(ModuleRecord) && ModuleRecord.table_exists?
+
+    states = active_records_for_location("state-master").map do |record|
+      location_row(record, state: first_present_data(record, "state_name"))
+    end
+
+    districts = active_records_for_location("district-master").map do |record|
+      location_row(record,
+        state: first_present_data(record, "state"),
+        district: first_present_data(record, "district_name"))
+    end
+
+    blocks = active_records_for_location("block-master").map do |record|
+      location_row(record,
+        state: first_present_data(record, "state"),
+        district: first_present_data(record, "district"),
+        block: first_present_data(record, "block_name"))
+    end
+
+    gram_panchayats = active_records_for_location("gram-panchayat-master").map do |record|
+      location_row(record,
+        state: first_present_data(record, "state"),
+        district: first_present_data(record, "district"),
+        block: first_present_data(record, "block"),
+        gram_panchayat: first_present_data(record, "gram_panchayat_name"))
+    end
+
+    villages = active_records_for_location("village-master").map do |record|
+      location_row(record,
+        state: first_present_data(record, "state"),
+        district: first_present_data(record, "district"),
+        block: first_present_data(record, "block"),
+        gram_panchayat: first_present_data(record, "gram_panchayat"),
+        village: first_present_data(record, "village_name"))
+    end
+
+    states + districts + blocks + gram_panchayats + villages
+  end
+
+  def active_records_for_location(module_slug)
+    ModuleRecord
+      .where(module_slug: module_slug)
+      .order(created_at: :desc)
+      .select { |record| record.data["status"].blank? || record.data["status"].to_s.casecmp("Active").zero? }
+  end
+
+  def location_row(record, values)
+    row = { id: record.id.to_s }
+    values.each { |key, value| row[key] = value.to_s.strip if value.present? }
+    row
   end
 
   def refresh_current_user_session_if_needed

@@ -1,11 +1,11 @@
-<% content_for :title, "Edit Farmer" %>
+<% content_for :title, "Edit VRP" %>
 
 <main class="vrp-page">
   <section class="vrp-shell">
     <div class="vrp-header">
       <div>
-        <p class="vrp-eyebrow">Farmer Registration</p>
-        <h1>Edit Farmer</h1>
+        <p class="vrp-eyebrow">VRP Registration</p>
+        <h1>Edit VRP</h1>
       </div>
 
       <%= link_to "Back to List", vrps_path, class: "btn btn-secondary" %>
@@ -26,7 +26,7 @@
       <%= form_with model: @vrp, url: vrp_path(@vrp), method: :patch, html: { class: "vrp-form" } do |f| %>
         <%= render partial: "vrp_main", locals: { f: f, type: "edit" } %>
         <div class="vrp-actions">
-          <%= f.submit "Update Farmer", class: "btn btn-primary" %>
+          <%= f.submit "Update VRP", class: "btn btn-primary" %>
         </div>
       <% end %>
     </div>
