@@ -34,19 +34,15 @@
             <th>User Name</th>
             <th>Email</th>
             <th>Mobile No</th>
-            <th>Office</th>
             <th>Stakeholder Category</th>
+            <th>Office</th>
             <th>Stakeholder Person Type</th>
             <th>Resource Person Type</th>
             <th>User Management Person Type</th>
             <th>Person Type</th>
             <th>State</th>
             <th>District</th>
-            <th>Block</th>
-            <th>Gram Panchayat</th>
-            <th>Village</th>
             <th>User Type</th>
-            <th>Enrollment Date</th>
             <th>Status</th>
           </tr>
         </thead>
@@ -59,25 +55,21 @@
                 <td><%= user.user_name.presence || "-" %></td>
                 <td><%= user.email.presence || "-" %></td>
                 <td><%= user.mobile_no.presence || "-" %></td>
-                <td><%= user.office.presence || "-" %></td>
                 <td><%= user.stakeholder.presence || "-" %></td>
+                <td><%= user.office.presence || "-" %></td>
                 <td><%= user.stakeholder_role.presence || "-" %></td>
                 <td><%= user.role.presence || "-" %></td>
                 <td><%= user.user_management_role.presence || "-" %></td>
                 <td><%= user.person_type.presence || "-" %></td>
                 <td><%= user.state.presence || "-" %></td>
                 <td><%= user.district.presence || "-" %></td>
-                <td><%= user.block.presence || "-" %></td>
-                <td><%= user.gram_panchayat.presence || "-" %></td>
-                <td><%= user.village.presence || "-" %></td>
                 <td><%= user.user_type.presence || "-" %></td>
-                <td><%= user.created_at&.strftime("%d-%m-%Y %I:%M %p") %></td>
                 <td><span class="status-pill <%= user.status == "Inactive" ? "inactive" : "active" %>"><%= user.status.presence || "Active" %></span></td>
               </tr>
             <% end %>
           <% else %>
             <tr>
-              <td colspan="19">No users registered yet.</td>
+              <td colspan="15">No users registered yet.</td>
             </tr>
           <% end %>
         </tbody>

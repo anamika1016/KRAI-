@@ -152,7 +152,7 @@
     <% selected_modules = Array(@record&.data&.[]("module_names")) %>
     <% selected_submodules = Array(@record&.data&.[]("sub_module_names").presence || @record&.data&.[]("sub_module_name")) %>
     <section class="module-card access-control-card">
-      <%= form_with url: form_url, method: form_method, html: { class: "module-entry-form" } do %>
+      <%= form_with url: form_url, method: form_method, html: { class: "module-entry-form", data: { user_role_form: true, role_map: json_escape(role_management_mappings.to_json) } } do %>
         <div class="access-top-grid">
           <% ["Stakeholder", "Stakeholder Role", "Role Name", "User Management Role", "Person Type", "VRP Type"].each do |field| %>
             <% field_key = field.parameterize(separator: "_") %>
@@ -160,10 +160,23 @@
             <% field_value = @record&.data&.[]("stakeholder_name").to_s if field == "Stakeholder" && field_value.blank? %>
             <% field_value = @record&.data&.[]("role").to_s if field == "Role Name" && field_value.blank? %>
             <% options = (module_field_options(field) + static_field_options(field)).compact_blank.uniq %>
+            <% role_dependency_attr =
+              case field
+              when "Stakeholder"
+                "data-role-stakeholder-select"
+              when "Stakeholder Role"
+                "data-stakeholder-role-select data-selected-value=\"#{ERB::Util.html_escape(field_value)}\""
+              when "Role Name"
+                "data-role-select data-selected-value=\"#{ERB::Util.html_escape(field_value)}\""
+              when "User Management Role"
+                "data-user-management-role-select data-selected-value=\"#{ERB::Util.html_escape(field_value)}\""
+              when "Person Type"
+                "data-person-type-select data-selected-value=\"#{ERB::Util.html_escape(field_value)}\""
+              end %>
             <label>
               <span><%= resource_person_label(field) %><% if field == "Stakeholder" %> <em>*</em><% end %></span>
               <% if options.any? %>
-                <select name="module_record[<%= field_key %>]" <%= "required" if field == "Stakeholder" %>>
+                <select name="module_record[<%= field_key %>]" <%= "required" if field == "Stakeholder" %> <%= role_dependency_attr&.html_safe %>>
                   <option value="">Select <%= resource_person_label(field) %></option>
                   <% options.each do |option| %>
                     <option value="<%= option %>" <%= "selected" if option == field_value %>><%= option %></option>
