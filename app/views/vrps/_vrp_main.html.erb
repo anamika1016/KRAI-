@@ -3,11 +3,6 @@
     <span>Personal Details</span>
   </div>
 
-  <div class="col-md-3 mb-3">
-  <label class="form-label required">Name</label>
-  <%= f.text_field :name, class: "form-control", placeholder: "Enter Name", required: true %>
-  </div>
-
   <%= f.hidden_field :user_id %>
 
   <div class="col-md-3 mb-3">
@@ -31,8 +26,18 @@
   </div>
 
   <div class="col-md-3 mb-3">
+    <label class="form-label required">Person Type</label>
+    <%= f.select :person_type, options_for_select(@person_type_options || [], f.object.person_type), { prompt: "Select Person Type" }, class: "form-select", required: true, data: { person_type_select: true, selected_value: f.object.person_type } %>
+  </div>
+
+  <div class="col-md-3 mb-3">
   <label class="form-label required">VRP Type</label>
   <%= select_tag "vrp[vrp_type_ids][]", options_for_select(@vrp_type_options || [], Array(f&.object&.vrp_type_ids).first), prompt: 'Select Vrp Type', class: 'form-select select2', required: true %>
+  </div>
+
+  <div class="col-md-3 mb-3">
+    <label class="form-label required">Name</label>
+    <%= f.text_field :name, class: "form-control", placeholder: "Enter Name", required: true %>
   </div>
 
   <div class="col-md-3 mb-3">

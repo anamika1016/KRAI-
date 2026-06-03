@@ -14,10 +14,12 @@
 
   <% if @slug == "approval-master" && @record.blank? %>
     <% module_options = static_field_options("Module Name") %>
+    <% vrp_name_options = static_field_options("VRP Name") %>
     <% stakeholder_options = module_field_options("Stakeholder Name") %>
     <% stakeholder_role_options = module_field_options("Stakeholder Role") %>
     <% role_options = module_field_options("Role Name") %>
     <% user_management_role_options = module_field_options("User Management Role") %>
+    <% person_type_options = module_field_options("Person Type") %>
     <% office_options = module_field_options("Office") %>
     <% approver_options = module_field_options("Approver (Approved By)") %>
     <% approval_levels = (1..3).map { |number| "Approval #{number}" } %>
@@ -83,6 +85,26 @@
               <% end %>
             </select>
           </label>
+
+          <label>
+            <span>Person Type</span>
+            <select name="module_record[person_type]">
+              <option value="">Select Person Type</option>
+              <% person_type_options.each do |option| %>
+                <option value="<%= option %>"><%= option %></option>
+              <% end %>
+            </select>
+          </label>
+
+          <label>
+            <span>VRP Name</span>
+            <select name="module_record[vrp_name]">
+              <option value="">Select VRP Name</option>
+              <% vrp_name_options.each do |option| %>
+                <option value="<%= option %>"><%= option %></option>
+              <% end %>
+            </select>
+          </label>
         </div>
 
         <div class="approval-levels" data-approval-levels data-next-approval-level="<%= approval_levels.size + 1 %>">
@@ -132,7 +154,7 @@
     <section class="module-card access-control-card">
       <%= form_with url: form_url, method: form_method, html: { class: "module-entry-form" } do %>
         <div class="access-top-grid">
-          <% ["Stakeholder", "Stakeholder Role", "Role Name", "User Management Role", "VRP Type"].each do |field| %>
+          <% ["Stakeholder", "Stakeholder Role", "Role Name", "User Management Role", "Person Type", "VRP Type"].each do |field| %>
             <% field_key = field.parameterize(separator: "_") %>
             <% field_value = @record&.data&.[](field_key).to_s %>
             <% field_value = @record&.data&.[]("stakeholder_name").to_s if field == "Stakeholder" && field_value.blank? %>
@@ -383,6 +405,7 @@
               <th>Mobile No</th>
               <th>Stakeholder</th>
               <th>Resource Person Type</th>
+              <th>Person Type</th>
               <th>State</th>
               <th>District</th>
               <th>Block</th>
@@ -404,6 +427,7 @@
                   <td><%= record.data["mobile_no"].presence || "-" %></td>
                   <td><%= record.data["stakeholder"].presence || "-" %></td>
                   <td><%= record.data["role"].presence || "-" %></td>
+                  <td><%= record.data["person_type"].presence || "-" %></td>
                   <td><%= record.data["state"].presence || "-" %></td>
                   <td><%= record.data["district"].presence || "-" %></td>
                   <td><%= record.data["block"].presence || "-" %></td>
@@ -416,7 +440,7 @@
               <% end %>
             <% else %>
               <tr>
-                <td colspan="15">No users registered yet.</td>
+                <td colspan="16">No users registered yet.</td>
               </tr>
             <% end %>
           </tbody>
@@ -501,7 +525,7 @@
   <div class="module-grid">
     <% location_fields = ["State", "District", "Block", "Gram Panchayat", "Village"] %>
     <% has_location_fields = (@module[:fields] & location_fields).any? %>
-    <section class="module-card" id="module-form" <% if ["role-management", "user-management-role"].include?(@slug) %>data-user-role-form data-role-map="<%= json_escape(role_management_mappings.to_json) %>"<% end %> <% if has_location_fields %>data-location-form data-location-map="<%= json_escape(location_hierarchy_mappings.to_json) %>"<% end %>>
+    <section class="module-card" id="module-form" <% if ["role-management", "user-management-role", "person-type"].include?(@slug) %>data-user-role-form data-role-map="<%= json_escape(role_management_mappings.to_json) %>"<% end %> <% if has_location_fields %>data-location-form data-location-map="<%= json_escape(location_hierarchy_mappings.to_json) %>"<% end %>>
       <div class="module-card-header">
         <h2><%= @slug == "new-user" ? "Registration" : (@record.present? ? "Edit Record" : "Fields") %></h2>
       </div>
@@ -536,7 +560,7 @@
                     "data-role-select data-selected-value=\"#{ERB::Util.html_escape(field_value)}\""
                   when "User Management Role"
                     "data-user-management-role-select data-selected-value=\"#{ERB::Util.html_escape(field_value)}\""
-                  end if ["role-management", "user-management-role"].include?(@slug) %>
+                  end if ["role-management", "user-management-role", "person-type"].include?(@slug) %>
                 <% location_dependency_attr = "data-location-level=\"#{field.parameterize}\" data-selected-value=\"#{ERB::Util.html_escape(field_value)}\"" if location_fields.include?(field) %>
                 <select name="module_record[<%= field_key %>]" <%= role_dependency_attr&.html_safe %> <%= location_dependency_attr&.html_safe %>>
                   <option value=""><%= options.any? ? "Select #{resource_person_label(field)}" : "No #{resource_person_label(field)} saved yet" %></option>
@@ -565,7 +589,8 @@
     </section>
 
     <% unless @slug == "new-user" || entry_only_slugs.include?(@slug) %>
-      <% saved_record_fields = @module[:fields].reject { |field| field == "Status" }.first(4) %>
+      <% saved_record_fields = @module[:fields].reject { |field| field == "Status" } %>
+      <% saved_record_fields = saved_record_fields.first(4) unless @slug == "person-type" %>
       <section class="module-card">
         <div class="module-card-header">
           <h2>Saved Records</h2>

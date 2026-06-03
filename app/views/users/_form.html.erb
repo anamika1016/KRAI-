@@ -2,6 +2,7 @@
 <% form_method = user.persisted? ? :patch : :post %>
 <% stakeholder_role_value = user.respond_to?(:stakeholder_role) ? user.stakeholder_role : nil %>
 <% user_management_role_value = user.respond_to?(:user_management_role) ? user.user_management_role : nil %>
+<% person_type_value = user.respond_to?(:person_type) ? user.person_type : nil %>
 
 <section class="module-card" data-user-role-form data-role-map="<%= json_escape(@role_management_mappings.to_json) %>" data-location-form data-location-map="<%= json_escape(@location_hierarchy_mappings.to_json) %>">
   <%= form_with model: user, url: form_url, method: form_method, html: { class: "module-entry-form", multipart: true } do |f| %>
@@ -21,6 +22,10 @@
       <label>
         <span>User Management Person Type</span>
         <%= f.select :user_management_role, options_for_select(@user_management_role_options, user_management_role_value), { include_blank: "Select User Management Person Type" }, data: { user_management_role_select: true, selected_value: user_management_role_value } %>
+      </label>
+      <label>
+        <span>Person Type</span>
+        <%= f.select :person_type, options_for_select(@person_type_options, person_type_value), { include_blank: "Select Person Type" }, data: { person_type_select: true, selected_value: person_type_value } %>
       </label>
 
       <% [

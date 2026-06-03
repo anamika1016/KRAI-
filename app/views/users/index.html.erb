@@ -39,6 +39,7 @@
             <th>Stakeholder Person Type</th>
             <th>Resource Person Type</th>
             <th>User Management Person Type</th>
+            <th>Person Type</th>
             <th>State</th>
             <th>District</th>
             <th>Block</th>
@@ -63,6 +64,7 @@
                 <td><%= user.stakeholder_role.presence || "-" %></td>
                 <td><%= user.role.presence || "-" %></td>
                 <td><%= user.user_management_role.presence || "-" %></td>
+                <td><%= user.person_type.presence || "-" %></td>
                 <td><%= user.state.presence || "-" %></td>
                 <td><%= user.district.presence || "-" %></td>
                 <td><%= user.block.presence || "-" %></td>
@@ -75,7 +77,7 @@
             <% end %>
           <% else %>
             <tr>
-              <td colspan="18">No users registered yet.</td>
+              <td colspan="19">No users registered yet.</td>
             </tr>
           <% end %>
         </tbody>

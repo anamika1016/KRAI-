@@ -24,7 +24,6 @@ module ApplicationHelper
       title: "Activity Setup",
       icon: "▤",
       links: [
-        ["Add VRP Type", :module, "add-vrp-type"],
         ["Main Activity", :module, "add-activity-group"],
         ["Main Activity List", :module, "activity-group-list"],
         ["Sub Activity", :module, "add-vrp-activity"],
@@ -46,6 +45,7 @@ module ApplicationHelper
         ["Stakeholder Person Type", :module, "stakeholder-role"],
         ["Resource Person Type", :module, "role-management"],
         ["User Management Person Type", :module, "user-management-role"],
+        ["Person Type", :module, "person-type"],
         ["VRP Type", :module, "add-vrp-type"],
         ["Access Control", :module, "access-control"],
         ["Access Control List", :module, "access-control-list"]
@@ -62,23 +62,23 @@ module ApplicationHelper
         ["VRP Approval List", :module, "approval-list"]
       ]
     },
-    {
-      title: "Bill Management",
-      icon: "▧",
-      links: [
-        ["Bill Entry", :module, "vrp-bill-add"],
-        ["Bill List", :module, "vrp-bill-list"]
-      ]
-    },
-    {
-      title: "Weekly Target",
-      icon: "▨",
-      links: [
-        ["Target Entry", :module, "weekly-target-add"],
-        ["Target List", :module, "weekly-target-list"],
-        ["Progress Report", :module, "weekly-progress-report"]
-      ]
-    },
+    # {
+    #   title: "Bill Management",
+    #   icon: "▧",
+    #   links: [
+    #     ["Bill Entry", :module, "vrp-bill-add"],
+    #     ["Bill List", :module, "vrp-bill-list"]
+    #   ]
+    # },
+    # {
+    #   title: "Weekly Target",
+    #   icon: "▨",
+    #   links: [
+    #     ["Target Entry", :module, "weekly-target-add"],
+    #     ["Target List", :module, "weekly-target-list"],
+    #     ["Progress Report", :module, "weekly-progress-report"]
+    #   ]
+    # },
     {
       title: "AFL",
       icon: "▤",
@@ -131,6 +131,7 @@ module ApplicationHelper
       "Role Name" => "Resource Person Type",
       "Stakeholder Role" => "Stakeholder Person Type",
       "User Management Role" => "User Management Person Type",
+      "Person Type" => "Person Type",
       "Activity Group" => "Main Activity",
       "Activity Group Name" => "Main Activity Name",
       "Activity Name" => "Sub Activity Name",
@@ -156,10 +157,12 @@ module ApplicationHelper
         role_match = access_value_matches?(record_role, current_app_user["role"])
         record_user_management_role = record.data["user_management_role"].presence || record.data["user_management_person_type"]
         user_management_role_match = access_value_matches?(record_user_management_role, current_app_user["user_management_role"])
+        record_person_type = record.data["person_type"]
+        person_type_match = access_value_matches?(record_person_type, current_app_user["person_type"])
         record_vrp_type = record.data["vrp_type"].presence || record.data["select_vrp_type"]
         vrp_type_match = access_value_matches_any?(record_vrp_type, current_app_user["vrp_types"])
         can_view = record.data["can_view"].blank? || record.data["can_view"].to_s.casecmp("Yes").zero?
-        stakeholder_match && stakeholder_role_match && role_match && user_management_role_match && vrp_type_match && can_view
+        stakeholder_match && stakeholder_role_match && role_match && user_management_role_match && person_type_match && vrp_type_match && can_view
       end
 
     access_records.flat_map do |record|

@@ -73,7 +73,7 @@ class UsersController < ApplicationController
       :stakeholder, :stakeholder_role, :role, :state, :district, :block, :gram_panchayat, :village,
       :office, :full_address, :pincode, :first_name, :last_name,
       :gender, :age, :email, :password, :user_name, :mobile_no,
-      :user_type, :user_management_role, :status
+      :user_type, :user_management_role, :person_type, :status
     )
   end
 
@@ -85,6 +85,7 @@ class UsersController < ApplicationController
     @stakeholder_role_options = module_record_options("stakeholder-role", "stakeholder_role")
     @role_options = module_record_options("role-management", "role_name")
     @user_management_role_options = module_record_options("user-management-role", "user_management_role")
+    @person_type_options = module_record_options("person-type", "person_type")
     @role_management_mappings = role_management_mappings
     @state_options = module_record_options("state-master", "state_name")
     @district_options = module_record_options("district-master", "district_name")
@@ -119,7 +120,8 @@ class UsersController < ApplicationController
           stakeholder: first_present_data(record, "stakeholder_category", "stakeholder_name", "stakeholder").to_s.strip,
           stakeholder_role: first_present_data(record, "stakeholder_role").to_s.strip,
           role: "",
-          user_management_role: ""
+          user_management_role: "",
+          person_type: ""
         }
       end
 
@@ -132,7 +134,8 @@ class UsersController < ApplicationController
           stakeholder: first_present_data(record, "stakeholder_category", "stakeholder_name", "stakeholder").to_s.strip,
           stakeholder_role: first_present_data(record, "stakeholder_role").to_s.strip,
           role: first_present_data(record, "role_name", "role").to_s.strip,
-          user_management_role: ""
+          user_management_role: "",
+          person_type: ""
         }
       end
 
@@ -145,12 +148,27 @@ class UsersController < ApplicationController
           stakeholder: first_present_data(record, "stakeholder_category", "stakeholder_name", "stakeholder").to_s.strip,
           stakeholder_role: first_present_data(record, "stakeholder_role").to_s.strip,
           role: first_present_data(record, "role_name", "role").to_s.strip,
-          user_management_role: first_present_data(record, "user_management_role").to_s.strip
+          user_management_role: first_present_data(record, "user_management_role").to_s.strip,
+          person_type: ""
         }
       end
 
-    (stakeholder_role_mappings + role_mappings + user_management_role_mappings)
-      .reject { |mapping| mapping[:stakeholder_role].blank? && mapping[:role].blank? && mapping[:user_management_role].blank? }
+    person_type_mappings = ModuleRecord
+      .where(module_slug: "person-type")
+      .order(created_at: :desc)
+      .select { |record| record.data["status"].blank? || record.data["status"].to_s.casecmp("Active").zero? }
+      .map do |record|
+        {
+          stakeholder: first_present_data(record, "stakeholder_category", "stakeholder_name", "stakeholder").to_s.strip,
+          stakeholder_role: first_present_data(record, "stakeholder_role").to_s.strip,
+          role: first_present_data(record, "role_name", "role").to_s.strip,
+          user_management_role: first_present_data(record, "user_management_role").to_s.strip,
+          person_type: first_present_data(record, "person_type").to_s.strip
+        }
+      end
+
+    (stakeholder_role_mappings + role_mappings + user_management_role_mappings + person_type_mappings)
+      .reject { |mapping| mapping[:stakeholder_role].blank? && mapping[:role].blank? && mapping[:user_management_role].blank? && mapping[:person_type].blank? }
       .uniq
   end
 

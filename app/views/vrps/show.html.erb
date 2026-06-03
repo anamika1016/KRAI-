@@ -15,14 +15,16 @@
             <td><%= blank_display(@vrp&.name) %></td>
             <th>Father / Husband Name</th>
             <td><%= blank_display(@vrp&.father_husband_name) %></td>
+            <th>Person Type</th>
+            <td><%= blank_display(@vrp&.person_type) %></td>
             <th>Gender</th>
             <td><%= blank_display(@vrp&.gender&.humanize) %></td>
             <th>Date of Birth</th>
             <td><%= blank_display(@vrp&.date_of_birth&.strftime("%d-%m-%Y")) %></td>
-            <th>Date of Joining</th>
-            <td><%= blank_display(@vrp&.date_of_joining&.strftime("%d-%m-%Y")) %></td>
           </tr>
           <tr>
+            <th>Date of Joining</th>
+            <td><%= blank_display(@vrp&.date_of_joining&.strftime("%d-%m-%Y")) %></td>
             <th>Aadhaar No</th>
             <td><%= @vrp&.aadhar_no.present? ? "#{'X' * 8}#{@vrp.aadhar_no.last(4)}" : "" %></td>
             <th>Account No</th>

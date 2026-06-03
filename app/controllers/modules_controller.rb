@@ -154,13 +154,13 @@ class ModulesController < ApplicationController
       title: "VRP Approval Form",
       group: "VRP Registration",
       purpose: "VRP registration aur bill approval ke approver maintain karne ke liye.",
-      fields: ["Module Name", "Stakeholder Name", "Stakeholder Role", "Role Name", "User Management Role", "Office", "Approval Level", "Approver (Approved By)", "Status"]
+      fields: ["Module Name", "Stakeholder Name", "Stakeholder Role", "Role Name", "User Management Role", "Person Type", "Office", "Approval Level", "Approver (Approved By)", "Status", "VRP Name"]
     },
     "approval-list" => {
       title: "VRP Approval List",
       group: "VRP Registration",
       purpose: "Saved approval mappings dekhne ke liye.",
-      fields: ["Module Name", "Stakeholder Name", "Stakeholder Role", "Role Name", "User Management Role", "Office", "Approval Level", "Approver (Approved By)", "Status"]
+      fields: ["Module Name", "Stakeholder Name", "Stakeholder Role", "Role Name", "User Management Role", "Person Type", "Office", "Approval Level", "Approver (Approved By)", "Status", "VRP Name"]
     },
     "ics-master" => {
       title: "ICS Master",
@@ -233,13 +233,13 @@ class ModulesController < ApplicationController
       title: "New User",
       group: "User Register",
       purpose: "System login user create karne ke liye.",
-      fields: ["Stakeholder Category", "Stakeholder Role", "Role", "User Management Role", "State", "District", "Block", "Gram Panchayat", "Village", "Office", "Full Address", "Pincode", "First Name", "Last Name", "Gender", "Age", "Email", "Password", "Confirmed Password", "User Name", "Mobile No", "User Type", "Status"]
+      fields: ["Stakeholder Category", "Stakeholder Role", "Role", "User Management Role", "Person Type", "State", "District", "Block", "Gram Panchayat", "Village", "Office", "Full Address", "Pincode", "First Name", "Last Name", "Gender", "Age", "Email", "Password", "Confirmed Password", "User Name", "Mobile No", "User Type", "Status"]
     },
     "all-user" => {
       title: "All User",
       group: "User Register",
       purpose: "Registered users dekhne ke liye.",
-      fields: ["Stakeholder Category", "Stakeholder Role", "Role", "User Management Role", "State", "District", "Block", "Gram Panchayat", "Village", "Office", "Full Address", "Pincode", "First Name", "Last Name", "Gender", "Age", "Email", "Password", "Confirmed Password", "User Name", "Mobile No", "User Type", "Status"]
+      fields: ["Stakeholder Category", "Stakeholder Role", "Role", "User Management Role", "Person Type", "State", "District", "Block", "Gram Panchayat", "Village", "Office", "Full Address", "Pincode", "First Name", "Last Name", "Gender", "Age", "Email", "Password", "Confirmed Password", "User Name", "Mobile No", "User Type", "Status"]
     },
     "stakeholder-role" => {
       title: "Stakeholder Person Type",
@@ -259,17 +259,23 @@ class ModulesController < ApplicationController
       purpose: "Resource person type wise user management person type maintain karne ke liye.",
       fields: ["Stakeholder Category", "Stakeholder Role", "Role Name", "User Management Role", "Status"]
     },
+    "person-type" => {
+      title: "Person Type",
+      group: "Resource Person Type",
+      purpose: "User management person type wise person type maintain karne ke liye.",
+      fields: ["Stakeholder Category", "Stakeholder Role", "Role Name", "User Management Role", "Person Type", "Status"]
+    },
     "access-control" => {
       title: "Access Control",
       group: "Resource Person Type",
       purpose: "Resource person type wise module access dene ke liye.",
-      fields: ["Stakeholder", "Stakeholder Role", "Role Name", "User Management Role", "VRP Type", "Module Name", "Sub Module Name", "Can View", "Can Create", "Can Edit", "Can Delete", "Status"]
+      fields: ["Stakeholder", "Stakeholder Role", "Role Name", "User Management Role", "Person Type", "VRP Type", "Module Name", "Sub Module Name", "Can View", "Can Create", "Can Edit", "Can Delete", "Status"]
     },
     "access-control-list" => {
       title: "Access Control List",
       group: "Resource Person Type",
       purpose: "Saved access control records dekhne ke liye.",
-      fields: ["Stakeholder", "Stakeholder Role", "Role Name", "User Management Role", "VRP Type", "Module Name", "Sub Module Name", "Status"]
+      fields: ["Stakeholder", "Stakeholder Role", "Role Name", "User Management Role", "Person Type", "VRP Type", "Module Name", "Sub Module Name", "Status"]
     }
   }.freeze
 
@@ -612,12 +618,14 @@ class ModulesController < ApplicationController
               dashboard_value_matches?(record.data["stakeholder_name"], identity[:stakeholder]) &&
               dashboard_value_matches?(record.data["stakeholder_role"], identity[:stakeholder_role]) &&
               dashboard_value_matches?(record.data["user_management_role"], identity[:user_management_role]) &&
+              dashboard_value_matches?(record.data["person_type"], identity[:person_type]) &&
+              dashboard_vrp_name_matches?(record.data["vrp_name"], vrp) &&
               (record.data["office"].blank? || dashboard_value_matches?(record.data["office"], identity[:office]))
           end
       end
       .group_by { |record| vrp_approval_sequence(record) }
       .values
-      .map { |records| records.max_by(&:id) }
+      .map { |records| records.max_by { |record| approval_record_priority(record) } }
       .sort_by { |record| vrp_approval_sequence(record) }
   end
 
@@ -658,6 +666,7 @@ class ModulesController < ApplicationController
       stakeholder: current_app_user&.dig("stakeholder"),
       stakeholder_role: current_app_user&.dig("stakeholder_role"),
       user_management_role: current_app_user&.dig("user_management_role"),
+      person_type: current_app_user&.dig("person_type"),
       office: current_app_user&.dig("office")
     } if vrp.created_by_id.blank?
 
@@ -672,6 +681,7 @@ class ModulesController < ApplicationController
       stakeholder: user.stakeholder,
       stakeholder_role: user.stakeholder_role,
       user_management_role: user.user_management_role,
+      person_type: user.respond_to?(:person_type) ? user.person_type : nil,
       office: user.office
     }
   end
@@ -682,6 +692,7 @@ class ModulesController < ApplicationController
       stakeholder: record.data["stakeholder"],
       stakeholder_role: record.data["stakeholder_role"],
       user_management_role: record.data["user_management_role"],
+      person_type: record.data["person_type"],
       office: record.data["office"]
     }
   end
@@ -869,6 +880,7 @@ class ModulesController < ApplicationController
     stakeholder_role = normalized_access_value(data["stakeholder_role"].presence || data["stakeholder_person_type"])
     role = normalized_access_value(data["role_name"].presence || data["role"])
     user_management_role = normalized_access_value(data["user_management_role"].presence || data["user_management_person_type"])
+    person_type = normalized_access_value(data["person_type"])
     return false if stakeholder.blank?
 
     ModuleRecord
@@ -879,6 +891,7 @@ class ModulesController < ApplicationController
           normalized_access_value(record.data["stakeholder_role"].presence || record.data["stakeholder_person_type"]) == stakeholder_role &&
           normalized_access_value(record.data["role_name"].presence || record.data["role"]) == role &&
           normalized_access_value(record.data["user_management_role"].presence || record.data["user_management_person_type"]) == user_management_role &&
+          normalized_access_value(record.data["person_type"]) == person_type &&
           normalized_access_value(record.data["status"].presence || "Active") == "active"
       end
   end
@@ -1001,7 +1014,8 @@ class ModulesController < ApplicationController
           stakeholder: first_present_data(record, "stakeholder_category", "stakeholder_name", "stakeholder").to_s.strip,
           stakeholder_role: first_present_data(record, "stakeholder_role").to_s.strip,
           role: "",
-          user_management_role: ""
+          user_management_role: "",
+          person_type: ""
         }
       end
 
@@ -1014,7 +1028,8 @@ class ModulesController < ApplicationController
           stakeholder: first_present_data(record, "stakeholder_category", "stakeholder_name", "stakeholder").to_s.strip,
           stakeholder_role: first_present_data(record, "stakeholder_role").to_s.strip,
           role: first_present_data(record, "role_name", "role").to_s.strip,
-          user_management_role: ""
+          user_management_role: "",
+          person_type: ""
         }
       end
 
@@ -1027,12 +1042,27 @@ class ModulesController < ApplicationController
           stakeholder: first_present_data(record, "stakeholder_category", "stakeholder_name", "stakeholder").to_s.strip,
           stakeholder_role: first_present_data(record, "stakeholder_role").to_s.strip,
           role: first_present_data(record, "role_name", "role").to_s.strip,
-          user_management_role: first_present_data(record, "user_management_role").to_s.strip
+          user_management_role: first_present_data(record, "user_management_role").to_s.strip,
+          person_type: ""
         }
       end
 
-    (stakeholder_role_mappings + role_mappings + user_management_role_mappings)
-      .reject { |mapping| mapping[:stakeholder_role].blank? && mapping[:role].blank? && mapping[:user_management_role].blank? }
+    person_type_mappings = ModuleRecord
+      .where(module_slug: "person-type")
+      .order(created_at: :desc)
+      .select { |record| active_module_record?(record) }
+      .map do |record|
+        {
+          stakeholder: first_present_data(record, "stakeholder_category", "stakeholder_name", "stakeholder").to_s.strip,
+          stakeholder_role: first_present_data(record, "stakeholder_role").to_s.strip,
+          role: first_present_data(record, "role_name", "role").to_s.strip,
+          user_management_role: first_present_data(record, "user_management_role").to_s.strip,
+          person_type: first_present_data(record, "person_type").to_s.strip
+        }
+      end
+
+    (stakeholder_role_mappings + role_mappings + user_management_role_mappings + person_type_mappings)
+      .reject { |mapping| mapping[:stakeholder_role].blank? && mapping[:role].blank? && mapping[:user_management_role].blank? && mapping[:person_type].blank? }
       .uniq
   end
 
@@ -1106,6 +1136,7 @@ class ModulesController < ApplicationController
       "Select Mandatory" => ["Yes", "No"],
       "Office Level" => ["State", "District", "Block", "Gram Panchayat", "Village"],
       "Module Name" => ["VRP Registration", "VRP Bill"],
+      "VRP Name" => vrp_name_options,
       "Sub Module Name" => sidebar_submodule_names
     }[field] || []
   end
@@ -1151,8 +1182,29 @@ class ModulesController < ApplicationController
       "Bank Name" => { module: "bank-master", field: "bank_name" },
       "Role" => { module: "role-management", field: "role_name" },
       "Role Name" => { module: "role-management", field: "role_name" },
-      "User Management Role" => { module: "user-management-role", field: "user_management_role" }
+      "User Management Role" => { module: "user-management-role", field: "user_management_role" },
+      "Person Type" => { module: "person-type", field: "person_type" }
     }
+  end
+
+  def vrp_name_options
+    return [] unless model_ready?(:Vrp)
+
+    Vrp.order(:name, :id).filter_map { |vrp| vrp_approval_label(vrp) }.uniq
+  end
+
+  def vrp_approval_label(vrp)
+    [vrp.name.presence, vrp.mobile_no.presence].compact.join(" - ").presence
+  end
+
+  def dashboard_vrp_name_matches?(expected, vrp)
+    return true if expected.blank?
+
+    [vrp_approval_label(vrp), vrp.name].compact.any? { |label| dashboard_value_matches?(expected, label) }
+  end
+
+  def approval_record_priority(record)
+    [record.data["vrp_name"].present? ? 1 : 0, record.id]
   end
 
   def sidebar_module_names

@@ -13,6 +13,7 @@ class VrpsController < ApplicationController
         status: vrp.status,
         name: vrp.name,
         father_husband_name: vrp.father_husband_name,
+        person_type: vrp.person_type,
         gender: vrp.gender,
         date_of_birth: vrp.date_of_birth&.strftime("%d-%m-%Y"),
         date_of_joining: vrp.date_of_joining&.strftime("%d-%m-%Y"),
@@ -221,6 +222,7 @@ class VrpsController < ApplicationController
       :stakeholder_role,
       :role,
       :user_management_role,
+      :person_type,
       :user_name,
       :password,
       :experience_in_years,
@@ -442,15 +444,19 @@ class VrpsController < ApplicationController
         record_stakeholder = record.data["stakeholder_name"].to_s
         record_stakeholder_role = record.data["stakeholder_role"].to_s
         record_user_management_role = record.data["user_management_role"].to_s
+        record_person_type = record.data["person_type"].to_s
+        record_vrp_name = record.data["vrp_name"].to_s
         record_office = record.data["office"].to_s
 
         active_module_record?(record) &&
           ["Farmer Registration", "VRP Registration"].include?(record.data["module_name"].to_s) &&
+          vrp_name_matches?(record_vrp_name, vrp) &&
           creator_identities.any? do |identity|
             module_value_matches?(record_role, identity[:role]) &&
               module_value_matches?(record_stakeholder, identity[:stakeholder]) &&
               module_value_matches?(record_stakeholder_role, identity[:stakeholder_role]) &&
               module_value_matches?(record_user_management_role, identity[:user_management_role]) &&
+              module_value_matches?(record_person_type, identity[:person_type]) &&
               (record_office.blank? || module_value_matches?(record_office, identity[:office]))
           end
       end
@@ -458,7 +464,7 @@ class VrpsController < ApplicationController
     matching_records
       .group_by { |record| approval_sequence(record) }
       .values
-      .map { |records| records.max_by(&:id) }
+      .map { |records| records.max_by { |record| approval_record_priority(record) } }
       .sort_by { |record| approval_sequence(record) }
   end
 
@@ -558,6 +564,20 @@ class VrpsController < ApplicationController
     expected.to_s.strip.casecmp(actual.to_s.strip).zero?
   end
 
+  def vrp_name_matches?(expected, vrp)
+    return true if expected.blank?
+
+    [vrp_approval_label(vrp), vrp.name].compact.any? { |label| module_value_matches?(expected, label) }
+  end
+
+  def vrp_approval_label(vrp)
+    [vrp.name.presence, vrp.mobile_no.presence].compact.join(" - ").presence
+  end
+
+  def approval_record_priority(record)
+    [record.data["vrp_name"].present? ? 1 : 0, record.id]
+  end
+
   def vrp_status_label(vrp)
     return "Rejected" if vrp.status.to_i == 99 || approval_rejected?(vrp)
     return "Final Approved" if vrp.status.to_i == 55 || approval_complete?(vrp)
@@ -637,6 +657,7 @@ class VrpsController < ApplicationController
       stakeholder: current_app_user&.dig("stakeholder"),
       stakeholder_role: current_app_user&.dig("stakeholder_role"),
       user_management_role: current_app_user&.dig("user_management_role"),
+      person_type: current_app_user&.dig("person_type"),
       office: current_app_user&.dig("office")
     } if vrp.created_by_id.blank?
 
@@ -651,6 +672,7 @@ class VrpsController < ApplicationController
       stakeholder: user.stakeholder,
       stakeholder_role: user.stakeholder_role,
       user_management_role: user.user_management_role,
+      person_type: user.respond_to?(:person_type) ? user.person_type : nil,
       office: user.office
     }
   end
@@ -661,6 +683,7 @@ class VrpsController < ApplicationController
       stakeholder: record.data["stakeholder"],
       stakeholder_role: record.data["stakeholder_role"],
       user_management_role: record.data["user_management_role"],
+      person_type: record.data["person_type"],
       office: record.data["office"]
     }
   end
@@ -744,6 +767,7 @@ class VrpsController < ApplicationController
     @stakeholder_role_options = text_module_record_options("stakeholder-role", "stakeholder_role")
     @role_options = text_module_record_options("role-management", "role_name")
     @user_management_role_options = text_module_record_options("user-management-role", "user_management_role")
+    @person_type_options = text_module_record_options("person-type", "person_type")
     @role_management_mappings = role_management_mappings
     @vrp_type_options = vrp_type_options
     @state_options = module_record_options("state-master", "state_name")
@@ -805,7 +829,8 @@ class VrpsController < ApplicationController
           stakeholder: first_present_data(record, "stakeholder_category", "stakeholder_name", "stakeholder").to_s.strip,
           stakeholder_role: first_present_data(record, "stakeholder_role").to_s.strip,
           role: "",
-          user_management_role: ""
+          user_management_role: "",
+          person_type: ""
         }
       end
 
@@ -818,7 +843,8 @@ class VrpsController < ApplicationController
           stakeholder: first_present_data(record, "stakeholder_category", "stakeholder_name", "stakeholder").to_s.strip,
           stakeholder_role: first_present_data(record, "stakeholder_role").to_s.strip,
           role: first_present_data(record, "role_name", "role").to_s.strip,
-          user_management_role: ""
+          user_management_role: "",
+          person_type: ""
         }
       end
 
@@ -831,12 +857,27 @@ class VrpsController < ApplicationController
           stakeholder: first_present_data(record, "stakeholder_category", "stakeholder_name", "stakeholder").to_s.strip,
           stakeholder_role: first_present_data(record, "stakeholder_role").to_s.strip,
           role: first_present_data(record, "role_name", "role").to_s.strip,
-          user_management_role: first_present_data(record, "user_management_role").to_s.strip
+          user_management_role: first_present_data(record, "user_management_role").to_s.strip,
+          person_type: ""
         }
       end
 
-    (stakeholder_role_mappings + role_mappings + user_management_role_mappings)
-      .reject { |mapping| mapping[:stakeholder_role].blank? && mapping[:role].blank? && mapping[:user_management_role].blank? }
+    person_type_mappings = ModuleRecord
+      .where(module_slug: "person-type")
+      .order(created_at: :desc)
+      .select { |record| active_module_record?(record) }
+      .map do |record|
+        {
+          stakeholder: first_present_data(record, "stakeholder_category", "stakeholder_name", "stakeholder").to_s.strip,
+          stakeholder_role: first_present_data(record, "stakeholder_role").to_s.strip,
+          role: first_present_data(record, "role_name", "role").to_s.strip,
+          user_management_role: first_present_data(record, "user_management_role").to_s.strip,
+          person_type: first_present_data(record, "person_type").to_s.strip
+        }
+      end
+
+    (stakeholder_role_mappings + role_mappings + user_management_role_mappings + person_type_mappings)
+      .reject { |mapping| mapping[:stakeholder_role].blank? && mapping[:role].blank? && mapping[:user_management_role].blank? && mapping[:person_type].blank? }
       .uniq
   end
 

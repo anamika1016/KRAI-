@@ -273,7 +273,8 @@ document.addEventListener("turbo:load", () => {
     const stakeholderRoleSelect = formShell.querySelector("[data-stakeholder-role-select]");
     const roleSelect = formShell.querySelector("[data-role-select]");
     const userManagementRoleSelect = formShell.querySelector("[data-user-management-role-select]");
-    if (!stakeholderSelect && !stakeholderRoleSelect && !roleSelect && !userManagementRoleSelect) return;
+    const personTypeSelect = formShell.querySelector("[data-person-type-select]");
+    if (!stakeholderSelect && !stakeholderRoleSelect && !roleSelect && !userManagementRoleSelect && !personTypeSelect) return;
 
     let mappings = [];
     try {
@@ -322,6 +323,24 @@ document.addEventListener("turbo:load", () => {
       return userManagementRoles;
     };
 
+    const mappedPersonTypes = (stakeholder, stakeholderRole, role, userManagementRole) => {
+      const normalizedStakeholder = normalizeOption(stakeholder);
+      const normalizedStakeholderRole = normalizeOption(stakeholderRole);
+      const normalizedRole = normalizeOption(role);
+      const normalizedUserManagementRole = normalizeOption(userManagementRole);
+      if (!normalizedStakeholder || !normalizedStakeholderRole || !normalizedRole || !normalizedUserManagementRole) return [];
+
+      const filtered = mappings.filter((mapping) => {
+        const stakeholderMatches = normalizeOption(mapping.stakeholder) === normalizedStakeholder;
+        const stakeholderRoleMatches = normalizeOption(mapping.stakeholder_role) === normalizedStakeholderRole;
+        const roleMatches = normalizeOption(mapping.role) === normalizedRole;
+        const userManagementRoleMatches = normalizeOption(mapping.user_management_role) === normalizedUserManagementRole;
+        return stakeholderMatches && stakeholderRoleMatches && roleMatches && userManagementRoleMatches;
+      });
+      const personTypes = uniquePresent(filtered.map((mapping) => mapping.person_type));
+      return personTypes;
+    };
+
     const refreshStakeholderRoles = () => {
       if (!stakeholderRoleSelect) return;
       const stakeholderRoles = mappedStakeholderRoles(stakeholderSelect?.value);
@@ -339,25 +358,42 @@ document.addEventListener("turbo:load", () => {
       if (!userManagementRoleSelect) return;
       const userManagementRoles = mappedUserManagementRoles(stakeholderSelect?.value, stakeholderRoleSelect?.value, roleSelect?.value);
       replaceSelectOptions(userManagementRoleSelect, userManagementRoles, "Select User Management Person Type");
+      refreshPersonTypes();
+    };
+
+    const refreshPersonTypes = () => {
+      if (!personTypeSelect) return;
+      const personTypes = mappedPersonTypes(stakeholderSelect?.value, stakeholderRoleSelect?.value, roleSelect?.value, userManagementRoleSelect?.value);
+      replaceSelectOptions(personTypeSelect, personTypes, "Select Person Type");
     };
 
     stakeholderSelect?.addEventListener("change", () => {
       if (stakeholderRoleSelect) stakeholderRoleSelect.dataset.selectedValue = "";
       if (roleSelect) roleSelect.dataset.selectedValue = "";
       if (userManagementRoleSelect) userManagementRoleSelect.dataset.selectedValue = "";
+      if (personTypeSelect) personTypeSelect.dataset.selectedValue = "";
       refreshStakeholderRoles();
       refreshRoles();
       refreshUserManagementRoles();
+      refreshPersonTypes();
     });
     stakeholderRoleSelect?.addEventListener("change", () => {
       if (roleSelect) roleSelect.dataset.selectedValue = "";
       if (userManagementRoleSelect) userManagementRoleSelect.dataset.selectedValue = "";
+      if (personTypeSelect) personTypeSelect.dataset.selectedValue = "";
       refreshRoles();
       refreshUserManagementRoles();
+      refreshPersonTypes();
     });
     roleSelect?.addEventListener("change", () => {
       if (userManagementRoleSelect) userManagementRoleSelect.dataset.selectedValue = "";
+      if (personTypeSelect) personTypeSelect.dataset.selectedValue = "";
       refreshUserManagementRoles();
+      refreshPersonTypes();
+    });
+    userManagementRoleSelect?.addEventListener("change", () => {
+      if (personTypeSelect) personTypeSelect.dataset.selectedValue = "";
+      refreshPersonTypes();
     });
 
     refreshStakeholderRoles();
