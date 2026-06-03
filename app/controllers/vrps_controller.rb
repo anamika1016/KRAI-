@@ -825,12 +825,17 @@ class VrpsController < ApplicationController
       .order(created_at: :desc)
       .select { |record| active_module_record?(record) }
       .map do |record|
+        stakeholder_role = first_present_data(record, "stakeholder_role").to_s.strip
         {
           stakeholder: first_present_data(record, "stakeholder_category", "stakeholder_name", "stakeholder").to_s.strip,
-          stakeholder_role: first_present_data(record, "stakeholder_role").to_s.strip,
+          stakeholder_role: stakeholder_role,
+          stakeholder_role_label: label_with_registered_name(stakeholder_role, :stakeholder_role),
           role: "",
+          role_label: "",
           user_management_role: "",
-          person_type: ""
+          user_management_role_label: "",
+          person_type: "",
+          person_type_label: ""
         }
       end
 
@@ -839,11 +844,14 @@ class VrpsController < ApplicationController
       .order(created_at: :desc)
       .select { |record| active_module_record?(record) }
       .map do |record|
+        role = first_present_data(record, "role_name", "role").to_s.strip
         {
           stakeholder: first_present_data(record, "stakeholder_category", "stakeholder_name", "stakeholder").to_s.strip,
           stakeholder_role: first_present_data(record, "stakeholder_role").to_s.strip,
-          role: first_present_data(record, "role_name", "role").to_s.strip,
+          role: role,
+          role_label: label_with_registered_name(role, :role),
           user_management_role: "",
+          user_management_role_label: "",
           person_type: ""
         }
       end
@@ -853,11 +861,13 @@ class VrpsController < ApplicationController
       .order(created_at: :desc)
       .select { |record| active_module_record?(record) }
       .map do |record|
+        user_management_role = first_present_data(record, "user_management_role").to_s.strip
         {
           stakeholder: first_present_data(record, "stakeholder_category", "stakeholder_name", "stakeholder").to_s.strip,
           stakeholder_role: first_present_data(record, "stakeholder_role").to_s.strip,
           role: first_present_data(record, "role_name", "role").to_s.strip,
-          user_management_role: first_present_data(record, "user_management_role").to_s.strip,
+          user_management_role: user_management_role,
+          user_management_role_label: label_with_registered_name(user_management_role, :user_management_role),
           person_type: ""
         }
       end
@@ -867,18 +877,33 @@ class VrpsController < ApplicationController
       .order(created_at: :desc)
       .select { |record| active_module_record?(record) }
       .map do |record|
+        person_type = first_present_data(record, "person_type").to_s.strip
         {
           stakeholder: first_present_data(record, "stakeholder_category", "stakeholder_name", "stakeholder").to_s.strip,
           stakeholder_role: first_present_data(record, "stakeholder_role").to_s.strip,
           role: first_present_data(record, "role_name", "role").to_s.strip,
           user_management_role: first_present_data(record, "user_management_role").to_s.strip,
-          person_type: first_present_data(record, "person_type").to_s.strip
+          person_type: person_type,
+          person_type_label: label_with_registered_name(person_type, :person_type)
         }
       end
 
     (stakeholder_role_mappings + role_mappings + user_management_role_mappings + person_type_mappings)
       .reject { |mapping| mapping[:stakeholder_role].blank? && mapping[:role].blank? && mapping[:user_management_role].blank? && mapping[:person_type].blank? }
       .uniq
+  end
+
+  def label_with_registered_name(value, attribute)
+    return "" if value.blank?
+
+    registered_name = registered_name_for_option(attribute, value)
+    registered_name.present? ? "#{value} (#{registered_name})" : value
+  end
+
+  def registered_name_for_option(attribute, value)
+    return unless model_ready?(:Vrp)
+
+    Vrp.where(attribute => value).order(updated_at: :desc).filter_map { |vrp| vrp.name.presence }.first
   end
 
   def location_hierarchy_mappings

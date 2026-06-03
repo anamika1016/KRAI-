@@ -239,11 +239,31 @@ document.addEventListener("turbo:load", () => {
 
   const uniquePresent = (values) => Array.from(new Set(values.map((value) => `${value || ""}`.trim()).filter(Boolean)));
   const normalizeOption = (value) => `${value || ""}`.trim().toLowerCase();
+  const optionValue = (option) => (typeof option === "object" && option !== null ? option.value : option);
+  const optionLabel = (option) => (typeof option === "object" && option !== null ? (option.label || option.value) : option);
+  const makeOption = (value, label) => {
+    const normalizedValue = `${value || ""}`.trim();
+    if (!normalizedValue) return null;
+    return { value: normalizedValue, label: `${label || normalizedValue}`.trim() || normalizedValue };
+  };
+  const uniqueOptions = (options) => {
+    const seen = new Set();
+    return options.filter((option) => {
+      if (!option) return false;
+
+      const value = `${optionValue(option) || ""}`.trim();
+      if (!value || seen.has(value)) return false;
+
+      seen.add(value);
+      return true;
+    });
+  };
 
   const replaceSelectOptions = (select, values, blankLabel, selectedValue) => {
     if (!select) return;
 
     const selected = selectedValue || select.dataset.selectedValue || select.value;
+    const valueList = values.map((value) => optionValue(value));
     select.innerHTML = "";
 
     const blankOption = document.createElement("option");
@@ -253,13 +273,13 @@ document.addEventListener("turbo:load", () => {
 
     values.forEach((value) => {
       const option = document.createElement("option");
-      option.value = value;
-      option.textContent = value;
-      option.selected = value === selected;
+      option.value = optionValue(value);
+      option.textContent = optionLabel(value);
+      option.selected = option.value === selected;
       select.appendChild(option);
     });
 
-    if (selected && !values.includes(selected)) {
+    if (selected && !valueList.includes(selected)) {
       const option = document.createElement("option");
       option.value = selected;
       option.textContent = selected;
@@ -296,7 +316,7 @@ document.addEventListener("turbo:load", () => {
       const filtered = mappings.filter((mapping) => {
         return normalizeOption(mapping.stakeholder) === normalizedStakeholder;
       });
-      const stakeholderRoles = uniquePresent(filtered.map((mapping) => mapping.stakeholder_role));
+      const stakeholderRoles = uniqueOptions(filtered.map((mapping) => makeOption(mapping.stakeholder_role, mapping.stakeholder_role_label)));
       return stakeholderRoles;
     };
 
@@ -310,7 +330,7 @@ document.addEventListener("turbo:load", () => {
         const stakeholderRoleMatches = normalizeOption(mapping.stakeholder_role) === normalizedStakeholderRole;
         return stakeholderMatches && stakeholderRoleMatches;
       });
-      const roles = uniquePresent(filtered.map((mapping) => mapping.role));
+      const roles = uniqueOptions(filtered.map((mapping) => makeOption(mapping.role, mapping.role_label)));
       return roles;
     };
 
@@ -326,7 +346,7 @@ document.addEventListener("turbo:load", () => {
         const roleMatches = normalizeOption(mapping.role) === normalizedRole;
         return stakeholderMatches && stakeholderRoleMatches && roleMatches;
       });
-      const userManagementRoles = uniquePresent(filtered.map((mapping) => mapping.user_management_role));
+      const userManagementRoles = uniqueOptions(filtered.map((mapping) => makeOption(mapping.user_management_role, mapping.user_management_role_label)));
       return userManagementRoles;
     };
 
@@ -344,7 +364,7 @@ document.addEventListener("turbo:load", () => {
         const userManagementRoleMatches = normalizeOption(mapping.user_management_role) === normalizedUserManagementRole;
         return stakeholderMatches && stakeholderRoleMatches && roleMatches && userManagementRoleMatches;
       });
-      const personTypes = uniquePresent(filtered.map((mapping) => mapping.person_type));
+      const personTypes = uniqueOptions(filtered.map((mapping) => makeOption(mapping.person_type, mapping.person_type_label)));
       return personTypes;
     };
 
