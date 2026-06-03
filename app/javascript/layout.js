@@ -238,7 +238,12 @@ document.addEventListener("turbo:load", () => {
   });
 
   const uniquePresent = (values) => Array.from(new Set(values.map((value) => `${value || ""}`.trim()).filter(Boolean)));
-  const normalizeOption = (value) => `${value || ""}`.trim().toLowerCase();
+  const stripDisplayName = (value) => `${value || ""}`.replace(/\s*\([^)]*\)\s*$/, "").trim();
+  const displayNameFromLabel = (value) => {
+    const match = `${value || ""}`.match(/\(([^)]*)\)\s*$/);
+    return match ? match[1].trim() : "";
+  };
+  const normalizeOption = (value) => stripDisplayName(value).toLowerCase();
   const optionValue = (option) => (typeof option === "object" && option !== null ? option.value : option);
   const optionLabel = (option) => (typeof option === "object" && option !== null ? (option.label || option.value) : option);
   const makeOption = (value, label) => {
@@ -246,12 +251,20 @@ document.addEventListener("turbo:load", () => {
     if (!normalizedValue) return null;
     return { value: normalizedValue, label: `${label || normalizedValue}`.trim() || normalizedValue };
   };
+  const optionWithFallbackName = (value, label, fallbackName) => {
+    const normalizedValue = `${value || ""}`.trim();
+    const normalizedLabel = `${label || ""}`.trim();
+    if (!normalizedValue) return null;
+    if (displayNameFromLabel(normalizedLabel) || !fallbackName) return makeOption(normalizedValue, normalizedLabel || normalizedValue);
+
+    return makeOption(normalizedValue, `${normalizedValue} (${fallbackName})`);
+  };
   const uniqueOptions = (options) => {
     const seen = new Set();
     return options.filter((option) => {
       if (!option) return false;
 
-      const value = `${optionValue(option) || ""}`.trim();
+      const value = normalizeOption(optionValue(option));
       if (!value || seen.has(value)) return false;
 
       seen.add(value);
@@ -263,6 +276,7 @@ document.addEventListener("turbo:load", () => {
     if (!select) return;
 
     const selected = selectedValue || select.dataset.selectedValue || select.value;
+    const normalizedSelected = normalizeOption(selected);
     const valueList = values.map((value) => optionValue(value));
     select.innerHTML = "";
 
@@ -273,15 +287,15 @@ document.addEventListener("turbo:load", () => {
 
     values.forEach((value) => {
       const option = document.createElement("option");
-      option.value = optionValue(value);
+      option.value = stripDisplayName(optionValue(value));
       option.textContent = optionLabel(value);
-      option.selected = option.value === selected;
+      option.selected = normalizeOption(option.value) === normalizedSelected;
       select.appendChild(option);
     });
 
-    if (selected && !valueList.includes(selected)) {
+    if (selected && !valueList.some((value) => normalizeOption(value) === normalizedSelected)) {
       const option = document.createElement("option");
-      option.value = selected;
+      option.value = stripDisplayName(selected);
       option.textContent = selected;
       option.selected = true;
       select.appendChild(option);
@@ -309,6 +323,13 @@ document.addEventListener("turbo:load", () => {
     } catch (_error) {
       officeMappings = [];
     }
+    const selectedDisplayName = (select) => {
+      if (!select) return "";
+
+      const selectedOption = select.options[select.selectedIndex];
+      return displayNameFromLabel(selectedOption?.textContent || select.value);
+    };
+
     const mappedStakeholderRoles = (stakeholder) => {
       const normalizedStakeholder = normalizeOption(stakeholder);
       if (!normalizedStakeholder) return [];
@@ -330,7 +351,8 @@ document.addEventListener("turbo:load", () => {
         const stakeholderRoleMatches = normalizeOption(mapping.stakeholder_role) === normalizedStakeholderRole;
         return stakeholderMatches && stakeholderRoleMatches;
       });
-      const roles = uniqueOptions(filtered.map((mapping) => makeOption(mapping.role, mapping.role_label)));
+      const fallbackName = selectedDisplayName(stakeholderRoleSelect);
+      const roles = uniqueOptions(filtered.map((mapping) => optionWithFallbackName(mapping.role, mapping.role_label, fallbackName)));
       return roles;
     };
 
@@ -346,7 +368,8 @@ document.addEventListener("turbo:load", () => {
         const roleMatches = normalizeOption(mapping.role) === normalizedRole;
         return stakeholderMatches && stakeholderRoleMatches && roleMatches;
       });
-      const userManagementRoles = uniqueOptions(filtered.map((mapping) => makeOption(mapping.user_management_role, mapping.user_management_role_label)));
+      const fallbackName = selectedDisplayName(roleSelect) || selectedDisplayName(stakeholderRoleSelect);
+      const userManagementRoles = uniqueOptions(filtered.map((mapping) => optionWithFallbackName(mapping.user_management_role, mapping.user_management_role_label, fallbackName)));
       return userManagementRoles;
     };
 
@@ -364,7 +387,8 @@ document.addEventListener("turbo:load", () => {
         const userManagementRoleMatches = normalizeOption(mapping.user_management_role) === normalizedUserManagementRole;
         return stakeholderMatches && stakeholderRoleMatches && roleMatches && userManagementRoleMatches;
       });
-      const personTypes = uniqueOptions(filtered.map((mapping) => makeOption(mapping.person_type, mapping.person_type_label)));
+      const fallbackName = selectedDisplayName(userManagementRoleSelect) || selectedDisplayName(roleSelect) || selectedDisplayName(stakeholderRoleSelect);
+      const personTypes = uniqueOptions(filtered.map((mapping) => optionWithFallbackName(mapping.person_type, mapping.person_type_label, fallbackName)));
       return personTypes;
     };
 
