@@ -24,7 +24,7 @@
     <% approver_options = module_field_options("Approver (Approved By)") %>
     <% approval_levels = (1..3).map { |number| "Approval #{number}" } %>
     <section class="module-card approval-channel-card">
-      <%= form_with url: records_module_path(@slug), method: :post, html: { class: "module-entry-form" } do %>
+      <%= form_with url: records_module_path(@slug), method: :post, html: { class: "module-entry-form", data: { user_role_form: true, role_map: json_escape(role_management_mappings.to_json), office_map: json_escape(office_category_mappings.to_json) } } do %>
         <div class="module-form-grid user-registration-grid">
           <label>
             <span>Module Name <em>*</em></span>
@@ -38,7 +38,7 @@
 
           <label>
             <span>Stakeholder Category <em>*</em></span>
-            <select name="module_record[stakeholder_name]" required>
+            <select name="module_record[stakeholder_name]" required data-role-stakeholder-select>
               <option value="">Select Stakeholder Category</option>
               <% stakeholder_options.each do |option| %>
                 <option value="<%= option %>"><%= option %></option>
@@ -48,7 +48,7 @@
 
           <label>
             <span>Office Name <em>*</em></span>
-            <select name="module_record[office]" required>
+            <select name="module_record[office]" required data-office-select data-selected-value="">
               <option value="">Select Office Name</option>
               <% office_options.each do |option| %>
                 <option value="<%= option %>"><%= option %></option>
@@ -58,7 +58,7 @@
 
           <label>
             <span>Stakeholder Person Type</span>
-            <select name="module_record[stakeholder_role]">
+            <select name="module_record[stakeholder_role]" data-stakeholder-role-select data-selected-value="">
               <option value="">Select Stakeholder Person Type</option>
               <% stakeholder_role_options.each do |option| %>
                 <option value="<%= option %>"><%= option %></option>
@@ -68,7 +68,7 @@
 
           <label>
             <span>Resource Person Type</span>
-            <select name="module_record[role_name]">
+            <select name="module_record[role_name]" data-role-select data-selected-value="">
               <option value="">Select Resource Person Type</option>
               <% role_options.each do |option| %>
                 <option value="<%= option %>"><%= option %></option>
@@ -78,7 +78,7 @@
 
           <label>
             <span>User Management Person Type</span>
-            <select name="module_record[user_management_role]">
+            <select name="module_record[user_management_role]" data-user-management-role-select data-selected-value="">
               <option value="">Select User Management Person Type</option>
               <% user_management_role_options.each do |option| %>
                 <option value="<%= option %>"><%= option %></option>
@@ -88,7 +88,7 @@
 
           <label>
             <span>Person Type</span>
-            <select name="module_record[person_type]">
+            <select name="module_record[person_type]" data-person-type-select data-selected-value="">
               <option value="">Select Person Type</option>
               <% person_type_options.each do |option| %>
                 <option value="<%= option %>"><%= option %></option>

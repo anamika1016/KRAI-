@@ -94,6 +94,7 @@ class UsersController < ApplicationController
     @village_options = module_record_options("village-master", "village_name")
     @location_hierarchy_mappings = location_hierarchy_mappings
     @office_options = module_record_options("office-category-add", "category_name")
+    @office_category_mappings = office_category_mappings
     @ics_options = module_record_options("ics-master", "ics_name")
   end
 
@@ -174,6 +175,23 @@ class UsersController < ApplicationController
 
   def first_present_data(record, *keys)
     keys.filter_map { |key| record.data[key].presence }.first
+  end
+
+  def office_category_mappings
+    return [] unless defined?(ModuleRecord) && ModuleRecord.table_exists?
+
+    ModuleRecord
+      .where(module_slug: "office-category-add")
+      .order(created_at: :desc)
+      .select { |record| record.data["status"].blank? || record.data["status"].to_s.casecmp("Active").zero? }
+      .map do |record|
+        {
+          stakeholder: first_present_data(record, "stakeholder_category", "stakeholder_name", "stakeholder").to_s.strip,
+          office: first_present_data(record, "category_name", "office").to_s.strip
+        }
+      end
+      .reject { |mapping| mapping[:office].blank? }
+      .uniq
   end
 
   def location_hierarchy_mappings

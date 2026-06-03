@@ -4,7 +4,7 @@
 <% user_management_role_value = user.respond_to?(:user_management_role) ? user.user_management_role : nil %>
 <% person_type_value = user.respond_to?(:person_type) ? user.person_type : nil %>
 
-<section class="module-card" data-user-role-form data-role-map="<%= json_escape(@role_management_mappings.to_json) %>" data-location-form data-location-map="<%= json_escape(@location_hierarchy_mappings.to_json) %>">
+<section class="module-card" data-user-role-form data-role-map="<%= json_escape(@role_management_mappings.to_json) %>" data-office-map="<%= json_escape((@office_category_mappings || []).to_json) %>" data-location-form data-location-map="<%= json_escape(@location_hierarchy_mappings.to_json) %>">
   <%= form_with model: user, url: form_url, method: form_method, html: { class: "module-entry-form", multipart: true } do |f| %>
     <div class="module-form-grid user-registration-grid">
       <label>
@@ -47,7 +47,7 @@
 
       <label>
         <span>Office</span>
-        <%= f.select :office, options_for_select(@office_options, user.office), { include_blank: "Select Office" } %>
+        <%= f.select :office, options_for_select(@office_options, user.office), { include_blank: "Select Office" }, data: { office_select: true, selected_value: user.office } %>
       </label>
       <label>
         <span>Full Address</span>

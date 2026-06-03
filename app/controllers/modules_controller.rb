@@ -3,7 +3,7 @@ require "securerandom"
 
 class ModulesController < ApplicationController
   helper_method :module_field_options, :module_select_field?, :static_field_options, :role_management_mappings,
-                :location_hierarchy_mappings
+                :location_hierarchy_mappings, :office_category_mappings
 
   DASHBOARD_CARDS = [
     ["Total VRP", "0", "Registered field resources"],
@@ -100,7 +100,7 @@ class ModulesController < ApplicationController
       title: "Office Category Add",
       group: "Office Management",
       purpose: "Office category aur office level maintain karne ke liye.",
-      fields: ["Category Name", "Office Level", "Status"]
+      fields: ["Stakeholder Category", "Category Name", "Office Level", "Status"]
     },
     "add-vrp-type" => {
       title: "Add VRP Type",
@@ -1185,6 +1185,23 @@ class ModulesController < ApplicationController
       "User Management Role" => { module: "user-management-role", field: "user_management_role" },
       "Person Type" => { module: "person-type", field: "person_type" }
     }
+  end
+
+  def office_category_mappings
+    return [] unless model_ready?(:ModuleRecord)
+
+    ModuleRecord
+      .where(module_slug: "office-category-add")
+      .order(created_at: :desc)
+      .select { |record| active_module_record?(record) }
+      .map do |record|
+        {
+          stakeholder: first_present_data(record, "stakeholder_category", "stakeholder_name", "stakeholder").to_s.strip,
+          office: first_present_data(record, "category_name", "office").to_s.strip
+        }
+      end
+      .reject { |mapping| mapping[:office].blank? }
+      .uniq
   end
 
   def vrp_name_options

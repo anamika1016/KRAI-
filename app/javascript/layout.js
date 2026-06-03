@@ -274,13 +274,20 @@ document.addEventListener("turbo:load", () => {
     const roleSelect = formShell.querySelector("[data-role-select]");
     const userManagementRoleSelect = formShell.querySelector("[data-user-management-role-select]");
     const personTypeSelect = formShell.querySelector("[data-person-type-select]");
-    if (!stakeholderSelect && !stakeholderRoleSelect && !roleSelect && !userManagementRoleSelect && !personTypeSelect) return;
+    const officeSelect = formShell.querySelector("[data-office-select]");
+    if (!stakeholderSelect && !stakeholderRoleSelect && !roleSelect && !userManagementRoleSelect && !personTypeSelect && !officeSelect) return;
 
     let mappings = [];
     try {
       mappings = JSON.parse(formShell.dataset.roleMap || "[]");
     } catch (_error) {
       mappings = [];
+    }
+    let officeMappings = [];
+    try {
+      officeMappings = JSON.parse(formShell.dataset.officeMap || "[]");
+    } catch (_error) {
+      officeMappings = [];
     }
     const mappedStakeholderRoles = (stakeholder) => {
       const normalizedStakeholder = normalizeOption(stakeholder);
@@ -367,15 +374,31 @@ document.addEventListener("turbo:load", () => {
       replaceSelectOptions(personTypeSelect, personTypes, "Select Person Type");
     };
 
+    const refreshOffices = () => {
+      if (!officeSelect) return;
+      const normalizedStakeholder = normalizeOption(stakeholderSelect?.value);
+      const offices = uniquePresent(
+        officeMappings
+          .filter((mapping) => {
+            const mappedStakeholder = normalizeOption(mapping.stakeholder);
+            return !normalizedStakeholder || !mappedStakeholder || mappedStakeholder === normalizedStakeholder;
+          })
+          .map((mapping) => mapping.office)
+      );
+      replaceSelectOptions(officeSelect, offices, "Select Office");
+    };
+
     stakeholderSelect?.addEventListener("change", () => {
       if (stakeholderRoleSelect) stakeholderRoleSelect.dataset.selectedValue = "";
       if (roleSelect) roleSelect.dataset.selectedValue = "";
       if (userManagementRoleSelect) userManagementRoleSelect.dataset.selectedValue = "";
       if (personTypeSelect) personTypeSelect.dataset.selectedValue = "";
+      if (officeSelect) officeSelect.dataset.selectedValue = "";
       refreshStakeholderRoles();
       refreshRoles();
       refreshUserManagementRoles();
       refreshPersonTypes();
+      refreshOffices();
     });
     stakeholderRoleSelect?.addEventListener("change", () => {
       if (roleSelect) roleSelect.dataset.selectedValue = "";
@@ -398,6 +421,7 @@ document.addEventListener("turbo:load", () => {
 
     refreshStakeholderRoles();
     refreshRoles();
+    refreshOffices();
   });
 
   const locationLevels = ["state", "district", "block", "gram-panchayat", "village"];
