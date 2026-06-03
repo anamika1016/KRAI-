@@ -263,13 +263,13 @@ class ModulesController < ApplicationController
       title: "Access Control",
       group: "Resource Person Type",
       purpose: "Resource person type wise module access dene ke liye.",
-      fields: ["Stakeholder", "Stakeholder Role", "Role Name", "User Management Role", "Module Name", "Sub Module Name", "Can View", "Can Create", "Can Edit", "Can Delete", "Status"]
+      fields: ["Stakeholder", "Stakeholder Role", "Role Name", "User Management Role", "VRP Type", "Module Name", "Sub Module Name", "Can View", "Can Create", "Can Edit", "Can Delete", "Status"]
     },
     "access-control-list" => {
       title: "Access Control List",
       group: "Resource Person Type",
       purpose: "Saved access control records dekhne ke liye.",
-      fields: ["Stakeholder", "Stakeholder Role", "Role Name", "User Management Role", "Module Name", "Sub Module Name", "Status"]
+      fields: ["Stakeholder", "Stakeholder Role", "Role Name", "User Management Role", "VRP Type", "Module Name", "Sub Module Name", "Status"]
     }
   }.freeze
 

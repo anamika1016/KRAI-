@@ -9,6 +9,7 @@ class SessionsController < ApplicationController
     user = find_app_user
 
     if user
+      reset_session
       refresh_app_user_session!(user)
       redirect_to dashboard_path, notice: "Logged in successfully."
     else

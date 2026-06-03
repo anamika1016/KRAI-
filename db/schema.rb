@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2026_06_02_115000) do
+ActiveRecord::Schema[8.1].define(version: 2026_06_02_120000) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "pg_catalog.plpgsql"
 
@@ -102,6 +102,8 @@ ActiveRecord::Schema[8.1].define(version: 2026_06_02_115000) do
   create_table "target_mappings", force: :cascade do |t|
     t.string "activity_name", null: false
     t.datetime "created_at", null: false
+    t.bigint "created_by_id"
+    t.string "created_by_type"
     t.integer "farmer_count", default: 0, null: false
     t.string "fco_id", null: false
     t.string "fco_name"
@@ -115,6 +117,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_06_02_115000) do
     t.string "village_name"
     t.bigint "vrp_ics_mapping_id"
     t.bigint "vrp_id", null: false
+    t.index ["created_by_type", "created_by_id"], name: "index_target_mappings_on_creator"
     t.index ["vrp_ics_mapping_id"], name: "index_target_mappings_on_vrp_ics_mapping_id"
     t.index ["vrp_id", "vrp_ics_mapping_id", "month_name", "activity_name"], name: "index_target_mappings_on_scope"
     t.index ["vrp_id"], name: "index_target_mappings_on_vrp_id"
@@ -164,6 +167,8 @@ ActiveRecord::Schema[8.1].define(version: 2026_06_02_115000) do
   create_table "vrp_ics_mappings", force: :cascade do |t|
     t.text "afl_ids", null: false
     t.datetime "created_at", null: false
+    t.bigint "created_by_id"
+    t.string "created_by_type"
     t.string "fco_id", null: false
     t.string "fco_name"
     t.string "ics_id", null: false
@@ -172,6 +177,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_06_02_115000) do
     t.string "village_id", null: false
     t.string "village_name"
     t.bigint "vrp_id", null: false
+    t.index ["created_by_type", "created_by_id"], name: "index_vrp_ics_mappings_on_creator"
     t.index ["vrp_id", "fco_id", "ics_id", "village_id"], name: "index_vrp_ics_mappings_on_mapping_scope", unique: true
     t.index ["vrp_id"], name: "index_vrp_ics_mappings_on_vrp_id"
   end

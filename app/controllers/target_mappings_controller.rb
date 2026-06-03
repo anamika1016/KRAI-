@@ -4,16 +4,17 @@ class TargetMappingsController < ApplicationController
     @month_options = module_options("month-master", "month_name")
     @main_activity_options = module_options("add-activity-group", "main_activity_name", "activity_group_name")
     @sub_activity_options = module_options("add-vrp-activity", "sub_activity_name", "activity_name", "vrp_activity_name")
-    @target_mappings = TargetMapping.includes(:vrp, :vrp_ics_mapping).order(updated_at: :desc).limit(100)
-    @edit_target = TargetMapping.find_by(id: params[:edit_id]) if params[:edit_id].present?
+    @target_mappings = visible_target_mappings.includes(:vrp, :vrp_ics_mapping).order(updated_at: :desc).limit(100)
+    @edit_target = visible_target_mappings.find_by(id: params[:edit_id]) if params[:edit_id].present?
     @edit_payload = edit_payload(@edit_target)
   end
 
   def create
-    mapping = VrpIcsMapping.find(target_mapping_params[:vrp_ics_mapping_id])
+    mapping = visible_vrp_ics_mappings.find(target_mapping_params[:vrp_ics_mapping_id])
     target_mapping = editable_target || TargetMapping.new
     target_mapping.assign_attributes(target_mapping_params)
     target_mapping.assign_attributes(mapping_attributes(mapping))
+    assign_creator(target_mapping) if target_mapping.new_record?
 
     if target_mapping.save
       redirect_to target_mappings_path, notice: "Target mapping saved successfully."
@@ -23,7 +24,7 @@ class TargetMappingsController < ApplicationController
   end
 
   def destroy
-    TargetMapping.find(params[:id]).destroy
+    visible_target_mappings.find(params[:id]).destroy
     redirect_to target_mappings_path, notice: "Target mapping deleted successfully."
   end
 
@@ -40,17 +41,17 @@ class TargetMappingsController < ApplicationController
   def editable_target
     return if params.dig(:target_mapping, :id).blank?
 
-    TargetMapping.find(params.dig(:target_mapping, :id))
+    visible_target_mappings.find(params.dig(:target_mapping, :id))
   end
 
   def mapped_vrps
-    Vrp.where(id: VrpIcsMapping.select(:vrp_id).distinct).order(:name, :id)
+    Vrp.where(id: visible_vrp_ics_mappings.select(:vrp_id).distinct).order(:name, :id)
   end
 
   def mappings_for(vrp_id)
     return [] if vrp_id.blank?
 
-    VrpIcsMapping.where(vrp_id: vrp_id)
+    visible_vrp_ics_mappings.where(vrp_id: vrp_id)
       .order(:fco_name, :ics_name, :village_name, :id)
       .map do |mapping|
         {
@@ -84,6 +85,27 @@ class TargetMappingsController < ApplicationController
       .select { |record| record.data["status"].blank? || record.data["status"] == "Active" }
       .filter_map { |record| field_keys.filter_map { |field| record.data[field].presence }.first }
       .uniq
+  end
+
+  def visible_target_mappings
+    return TargetMapping.all if admin_login?
+
+    TargetMapping.where(created_by_type: current_app_user["record_type"], created_by_id: current_app_user["id"])
+  end
+
+  def visible_vrp_ics_mappings
+    return VrpIcsMapping.all if admin_login?
+
+    VrpIcsMapping.where(created_by_type: current_app_user["record_type"], created_by_id: current_app_user["id"])
+  end
+
+  def assign_creator(record)
+    record.created_by_type = current_app_user["record_type"]
+    record.created_by_id = current_app_user["id"]
+  end
+
+  def admin_login?
+    current_app_user["user_type"].to_s.strip.casecmp("admin").zero?
   end
 
   def edit_payload(target)

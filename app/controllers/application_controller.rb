@@ -42,12 +42,14 @@ class ApplicationController < ActionController::Base
 
     {
       "id" => user.id,
+      "record_type" => app_user_record_type(user),
       "username" => user.respond_to?(:user_name) ? user.user_name : data["user_name"],
       "name" => app_user_display_name(user, data),
       "stakeholder" => user.respond_to?(:stakeholder) ? user.stakeholder : data["stakeholder"],
       "stakeholder_role" => user.respond_to?(:stakeholder_role) ? user.stakeholder_role : data["stakeholder_role"],
       "role" => user.respond_to?(:role) ? user.role : data["role"],
       "user_management_role" => user.respond_to?(:user_management_role) ? user.user_management_role : data["user_management_role"],
+      "vrp_types" => app_user_vrp_types(user),
       "office" => user.respond_to?(:office) ? user.office : data["office"],
       "email" => user.respond_to?(:email) ? user.email : data["email"],
       "mobile_no" => user.respond_to?(:mobile_no) ? user.mobile_no : data["mobile_no"],
@@ -62,7 +64,36 @@ class ApplicationController < ActionController::Base
     [data["first_name"], data["last_name"]].compact_blank.join(" ")
   end
 
+  def app_user_record_type(user)
+    return user.class.name if user.is_a?(ApplicationRecord)
+
+    "ModuleRecord"
+  end
+
+  def app_user_vrp_types(user)
+    return [] unless user.respond_to?(:vrp_type_ids)
+
+    ids = Array(user.vrp_type_ids).reject(&:blank?)
+    return [] if ids.blank?
+
+    labels = []
+    labels += VrpType.where(id: ids).pluck(:type_name) if "VrpType".safe_constantize&.table_exists?
+    if defined?(ModuleRecord) && ModuleRecord.table_exists?
+      labels += ModuleRecord.where(module_slug: "add-vrp-type", id: ids).filter_map { |record| record.data["vrp_type_name"].presence }
+    end
+    labels.compact_blank.uniq
+  end
+
   def find_current_session_user(stored_user)
+    case stored_user["record_type"]
+    when "User"
+      return User.find_by(id: stored_user["id"]) if "User".safe_constantize&.table_exists?
+    when "Vrp"
+      return Vrp.find_by(id: stored_user["id"]) if "Vrp".safe_constantize&.table_exists?
+    when "ModuleRecord"
+      return ModuleRecord.where(module_slug: "new-user").find_by(id: stored_user["id"]) if defined?(ModuleRecord) && ModuleRecord.table_exists?
+    end
+
     if "User".safe_constantize&.table_exists?
       user = User.find_by(id: stored_user["id"])
       return user if user

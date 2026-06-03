@@ -140,7 +140,7 @@ module ApplicationHelper
 
   def allowed_sidebar_keys
     return nil unless current_app_user.present?
-    return nil if current_app_user["user_type"].to_s.casecmp("admin").zero?
+    return nil if admin_access_user?
     return [] unless defined?(ModuleRecord) && ModuleRecord.table_exists?
 
     access_records = ModuleRecord
@@ -156,12 +156,14 @@ module ApplicationHelper
         role_match = access_value_matches?(record_role, current_app_user["role"])
         record_user_management_role = record.data["user_management_role"].presence || record.data["user_management_person_type"]
         user_management_role_match = access_value_matches?(record_user_management_role, current_app_user["user_management_role"])
+        record_vrp_type = record.data["vrp_type"].presence || record.data["select_vrp_type"]
+        vrp_type_match = access_value_matches_any?(record_vrp_type, current_app_user["vrp_types"])
         can_view = record.data["can_view"].blank? || record.data["can_view"].to_s.casecmp("Yes").zero?
-        stakeholder_match && stakeholder_role_match && role_match && user_management_role_match && can_view
+        stakeholder_match && stakeholder_role_match && role_match && user_management_role_match && vrp_type_match && can_view
       end
 
     access_records.flat_map do |record|
-      submodule_keys = access_values(record.data["sub_module_names"].presence || record.data["sub_module_name"])
+      access_values(record.data["sub_module_names"].presence || record.data["sub_module_name"])
         .filter_map { |name| name.presence&.parameterize }
     end.uniq
   end
@@ -175,6 +177,16 @@ module ApplicationHelper
 
   def access_value_matches?(record_value, user_value)
     record_value.blank? || (user_value.present? && record_value.to_s.strip.casecmp(user_value.to_s.strip).zero?)
+  end
+
+  def access_value_matches_any?(record_value, user_values)
+    return true if record_value.blank?
+
+    Array(user_values).any? { |value| value.to_s.strip.casecmp(record_value.to_s.strip).zero? }
+  end
+
+  def admin_access_user?
+    current_app_user["user_type"].to_s.strip.casecmp("admin").zero?
   end
 
   def current_stakeholder

@@ -9,6 +9,7 @@ class VrpsController < ApplicationController
     @data = visible_vrps.map do |vrp|
       {
         id: vrp.id,
+        user_name: vrp.user_name,
         status: vrp.status,
         name: vrp.name,
         father_husband_name: vrp.father_husband_name,

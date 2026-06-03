@@ -2,16 +2,17 @@ class VrpIcsMappingsController < ApplicationController
   def index
     @approved_vrps = approved_vrps
     @fco_options = fco_options
-    @mappings = VrpIcsMapping.includes(:vrp).order(updated_at: :desc).limit(100)
-    @edit_mapping = VrpIcsMapping.find_by(id: params[:edit_id]) if params[:edit_id].present?
+    @mappings = visible_mappings.includes(:vrp).order(updated_at: :desc).limit(100)
+    @edit_mapping = visible_mappings.find_by(id: params[:edit_id]) if params[:edit_id].present?
     @edit_payload = edit_payload(@edit_mapping)
   end
 
   def create
-    mapping = editable_mapping || VrpIcsMapping.find_or_initialize_by(mapping_identity_params)
+    mapping = editable_mapping || visible_mappings.find_or_initialize_by(mapping_identity_params)
     update_attrs = mapping_update_params.to_h
     update_attrs[:afl_ids] = [] unless update_attrs.key?("afl_ids") || update_attrs.key?(:afl_ids)
     mapping.assign_attributes(mapping_identity_params.merge(update_attrs))
+    assign_creator(mapping) if mapping.new_record?
 
     blocked_ids = already_mapped_farmer_ids(mapping) & Array(mapping.afl_ids).map(&:to_s)
     if blocked_ids.any?
@@ -27,7 +28,7 @@ class VrpIcsMappingsController < ApplicationController
   end
 
   def destroy
-    VrpIcsMapping.find(params[:id]).destroy
+    visible_mappings.find(params[:id]).destroy
     redirect_to vrp_ics_mappings_path, notice: "VRP ICS mapping deleted successfully."
   end
 
@@ -48,7 +49,7 @@ class VrpIcsMappingsController < ApplicationController
   def editable_mapping
     return if params.dig(:vrp_ics_mapping, :id).blank?
 
-    VrpIcsMapping.find(params.dig(:vrp_ics_mapping, :id))
+    visible_mappings.find(params.dig(:vrp_ics_mapping, :id))
   end
 
   def mapping_identity_params
@@ -62,7 +63,27 @@ class VrpIcsMappingsController < ApplicationController
   def approved_vrps
     scope = Vrp.where(status: 55)
     scope = scope.where(is_active: true) if Vrp.column_names.include?("is_active")
+    scope = scope.where(id: current_app_user["id"]) if non_admin_vrp_login?
     scope.order(:name, :id)
+  end
+
+  def visible_mappings
+    return VrpIcsMapping.all if admin_login?
+
+    VrpIcsMapping.where(created_by_type: current_app_user["record_type"], created_by_id: current_app_user["id"])
+  end
+
+  def assign_creator(record)
+    record.created_by_type = current_app_user["record_type"]
+    record.created_by_id = current_app_user["id"]
+  end
+
+  def admin_login?
+    current_app_user["user_type"].to_s.strip.casecmp("admin").zero?
+  end
+
+  def non_admin_vrp_login?
+    !admin_login? && current_app_user["record_type"].to_s == "Vrp"
   end
 
   def fco_options
@@ -98,7 +119,7 @@ class VrpIcsMappingsController < ApplicationController
   def farmers_for(fco_id, ics_id, village_id, edit_id = nil)
     return [] if fco_id.blank? || ics_id.blank? || village_id.blank?
 
-    blocked_ids = already_mapped_farmer_ids(VrpIcsMapping.find_by(id: edit_id))
+    blocked_ids = already_mapped_farmer_ids(visible_mappings.find_by(id: edit_id))
 
     Afl.where(fco_id: fco_id, ics_id: ics_id, village_id: village_id)
       .select(:id, :farmer_name, :father_name, :tracenet_no, :mobile_no, :khasara_no)
