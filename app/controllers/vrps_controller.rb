@@ -901,9 +901,36 @@ class VrpsController < ApplicationController
   end
 
   def registered_name_for_option(attribute, value)
+    return if value.blank?
+
+    registered_vrp_name_for_option(attribute, value).presence ||
+      registered_user_name_for_option(attribute, value).presence ||
+      registered_module_user_name_for_option(attribute, value).presence
+  end
+
+  def registered_vrp_name_for_option(attribute, value)
     return unless model_ready?(:Vrp)
 
     Vrp.where(attribute => value).order(updated_at: :desc).filter_map { |vrp| vrp.name.presence }.first
+  end
+
+  def registered_user_name_for_option(attribute, value)
+    return unless model_ready?(:User)
+    return unless User.column_names.include?(attribute.to_s)
+
+    User.where(attribute => value).order(updated_at: :desc).filter_map { |user| user.full_name.presence || user.user_name.presence }.first
+  end
+
+  def registered_module_user_name_for_option(attribute, value)
+    return unless model_ready?(:ModuleRecord)
+
+    key = attribute.to_s
+    ModuleRecord
+      .where(module_slug: "new-user")
+      .order(updated_at: :desc)
+      .select { |record| active_module_record?(record) && record.data[key].to_s.strip.casecmp(value.to_s.strip).zero? }
+      .filter_map { |record| [record.data["first_name"], record.data["last_name"]].compact_blank.join(" ").presence || record.data["user_name"].presence }
+      .first
   end
 
   def location_hierarchy_mappings
