@@ -161,13 +161,13 @@ class ModulesController < ApplicationController
       title: "VRP Approval Form",
       group: "VRP Registration",
       purpose: "VRP registration aur bill approval ke approver maintain karne ke liye.",
-      fields: ["Module Name", "Stakeholder Name", "Office", "Approval Level", "Approver (Approved By)", "Status", "VRP Name"]
+      fields: ["Module Name", "Stakeholder Name", "Stakeholder Role", "Role", "Office", "Approval Level", "Approver (Approved By)", "Status", "VRP Name"]
     },
     "approval-list" => {
       title: "VRP Approval List",
       group: "VRP Registration",
       purpose: "Saved approval mappings dekhne ke liye.",
-      fields: ["Module Name", "Stakeholder Name", "Office", "Approval Level", "Approver (Approved By)", "Status", "VRP Name"]
+      fields: ["Module Name", "Stakeholder Name", "Stakeholder Role", "Role", "Office", "Approval Level", "Approver (Approved By)", "Status", "VRP Name"]
     },
     "ics-master" => {
       title: "ICS Master",

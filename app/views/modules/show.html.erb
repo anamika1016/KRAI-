@@ -16,11 +16,13 @@
     <% module_options = static_field_options("Module Name") %>
     <% vrp_name_options = static_field_options("VRP Name") %>
     <% stakeholder_options = module_field_options("Stakeholder Name") %>
+    <% stakeholder_role_options = module_field_options("Stakeholder Role") %>
+    <% role_options = module_field_options("Role") %>
     <% office_options = module_field_options("Office") %>
     <% approver_options = module_field_options("Approver (Approved By)") %>
     <% approval_levels = (1..3).map { |number| "Approval #{number}" } %>
     <section class="module-card approval-channel-card">
-      <%= form_with url: records_module_path(@slug), method: :post, html: { class: "module-entry-form", data: { user_role_form: true, office_map: json_escape(office_category_mappings.to_json) } } do %>
+      <%= form_with url: records_module_path(@slug), method: :post, html: { class: "module-entry-form", data: { user_role_form: true, role_map: json_escape(role_management_mappings.to_json), office_map: json_escape(office_category_mappings.to_json) } } do %>
         <div class="module-form-grid user-registration-grid">
           <label>
             <span>Module Name <em>*</em></span>
@@ -37,6 +39,26 @@
             <select name="module_record[stakeholder_name]" required data-role-stakeholder-select>
               <option value="">Select Stakeholder Category</option>
               <% stakeholder_options.each do |option| %>
+                <option value="<%= option %>"><%= option %></option>
+              <% end %>
+            </select>
+          </label>
+
+          <label>
+            <span>Stakeholder Person Type <em>*</em></span>
+            <select name="module_record[stakeholder_role]" required data-stakeholder-role-select data-selected-value="">
+              <option value="">Select Stakeholder Person Type</option>
+              <% stakeholder_role_options.each do |option| %>
+                <option value="<%= option %>"><%= option %></option>
+              <% end %>
+            </select>
+          </label>
+
+          <label>
+            <span>Role <em>*</em></span>
+            <select name="module_record[role]" required data-role-select data-selected-value="">
+              <option value="">Select Role</option>
+              <% role_options.each do |option| %>
                 <option value="<%= option %>"><%= option %></option>
               <% end %>
             </select>

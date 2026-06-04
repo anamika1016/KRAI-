@@ -39,6 +39,7 @@ class VrpsController < ApplicationController
     @vrp = Vrp.new(vrp_params)
     @vrp.created_by_id = current_app_user_id if @vrp.respond_to?(:created_by_id=)
     @vrp.status = 10 if @vrp.respond_to?(:status=)
+    apply_current_identity_to_vrp(@vrp)
 
     unless vrp_password_confirmed?(@vrp)
       @vrp.build_vrp_profile unless @vrp.vrp_profile
@@ -442,7 +443,7 @@ class VrpsController < ApplicationController
       .where(module_slug: "approval-master")
       .order(created_at: :asc)
       .select do |record|
-        record_role = record.data["role_name"].to_s
+        record_role = record.data["role"].presence || record.data["role_name"].to_s
         record_stakeholder = record.data["stakeholder_name"].to_s
         record_stakeholder_role = record.data["stakeholder_role"].to_s
         record_user_management_role = record.data["user_management_role"].to_s
@@ -459,7 +460,7 @@ class VrpsController < ApplicationController
               module_value_matches?(record_stakeholder_role, identity[:stakeholder_role]) &&
               module_value_matches?(record_user_management_role, identity[:user_management_role]) &&
               module_value_matches?(record_person_type, identity[:person_type]) &&
-              (record_office.blank? || module_value_matches?(record_office, identity[:office]))
+              approval_office_matches?(record_office, identity[:office])
           end
       end
 
@@ -563,7 +564,11 @@ class VrpsController < ApplicationController
   def module_value_matches?(expected, actual)
     return true if expected.blank?
 
-    expected.to_s.strip.casecmp(actual.to_s.strip).zero?
+    normalize_approver_label(expected).casecmp(normalize_approver_label(actual)).zero?
+  end
+
+  def approval_office_matches?(expected, actual)
+    expected.blank? || actual.blank? || module_value_matches?(expected, actual)
   end
 
   def vrp_name_matches?(expected, vrp)
@@ -654,23 +659,27 @@ class VrpsController < ApplicationController
       end
     end
 
-    identities << {
-      role: current_app_user&.dig("role"),
-      stakeholder: current_app_user&.dig("stakeholder"),
-      stakeholder_role: current_app_user&.dig("stakeholder_role"),
-      user_management_role: current_app_user&.dig("user_management_role"),
-      person_type: current_app_user&.dig("person_type"),
-      office: current_app_user&.dig("office")
-    } if vrp.created_by_id.blank?
+    identities << current_approval_identity if current_app_user.present?
 
     identities
       .select { |identity| identity[:role].present? && identity[:stakeholder].present? }
       .uniq
   end
 
+  def current_approval_identity
+    {
+      role: current_app_user&.dig("role").presence || current_app_user&.dig("role_name"),
+      stakeholder: current_app_user&.dig("stakeholder"),
+      stakeholder_role: current_app_user&.dig("stakeholder_role"),
+      user_management_role: current_app_user&.dig("user_management_role"),
+      person_type: current_app_user&.dig("person_type"),
+      office: current_app_user&.dig("office")
+    }
+  end
+
   def user_approval_identity(user)
     {
-      role: user.role,
+      role: user.role.presence || (user.role_name if user.respond_to?(:role_name)),
       stakeholder: user.stakeholder,
       stakeholder_role: user.stakeholder_role,
       user_management_role: user.user_management_role,
@@ -681,13 +690,30 @@ class VrpsController < ApplicationController
 
   def record_approval_identity(record)
     {
-      role: record.data["role"],
+      role: record.data["role"].presence || record.data["role_name"],
       stakeholder: record.data["stakeholder"],
       stakeholder_role: record.data["stakeholder_role"],
       user_management_role: record.data["user_management_role"],
       person_type: record.data["person_type"],
       office: record.data["office"]
     }
+  end
+
+  def apply_current_identity_to_vrp(vrp)
+    return unless current_app_user.present?
+
+    {
+      stakeholder: current_app_user["stakeholder"],
+      stakeholder_role: current_app_user["stakeholder_role"],
+      role: current_app_user["role"].presence || current_app_user["role_name"],
+      user_management_role: current_app_user["user_management_role"],
+      person_type: current_app_user["person_type"]
+    }.each do |attribute, value|
+      next if value.blank? || !vrp.respond_to?("#{attribute}=")
+      next if vrp.public_send(attribute).present?
+
+      vrp.public_send("#{attribute}=", value)
+    end
   end
 
   def approval_history_for(vrp)
@@ -767,7 +793,7 @@ class VrpsController < ApplicationController
 
     @stakeholder_options = text_module_record_options("stakeholder-master", "stakeholder_name_in_english")
     @stakeholder_role_options = text_module_record_options("stakeholder-role", "stakeholder_role")
-    @role_options = text_module_record_options("role-management", ["role", "role_name"])
+    @role_options = text_module_record_options("role-name", "role_name")
     @user_management_role_options = text_module_record_options("user-management-role", "user_management_role")
     @person_type_options = text_module_record_options("person-type", "person_type")
     @role_management_mappings = role_management_mappings
