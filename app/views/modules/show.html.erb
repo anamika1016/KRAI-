@@ -16,13 +16,11 @@
     <% module_options = static_field_options("Module Name") %>
     <% vrp_name_options = static_field_options("VRP Name") %>
     <% stakeholder_options = module_field_options("Stakeholder Name") %>
-    <% stakeholder_role_options = module_field_options("Stakeholder Role") %>
-    <% role_options = module_field_options("Role") %>
     <% office_options = module_field_options("Office") %>
     <% approver_options = module_field_options("Approver (Approved By)") %>
     <% approval_levels = (1..3).map { |number| "Approval #{number}" } %>
     <section class="module-card approval-channel-card">
-      <%= form_with url: records_module_path(@slug), method: :post, html: { class: "module-entry-form", data: { user_role_form: true, role_map: json_escape(role_management_mappings.to_json), office_map: json_escape(office_category_mappings.to_json) } } do %>
+      <%= form_with url: records_module_path(@slug), method: :post, html: { class: "module-entry-form", data: { user_role_form: true, office_map: json_escape(office_category_mappings.to_json) } } do %>
         <div class="module-form-grid user-registration-grid">
           <label>
             <span>Module Name <em>*</em></span>
@@ -39,26 +37,6 @@
             <select name="module_record[stakeholder_name]" required data-role-stakeholder-select>
               <option value="">Select Stakeholder Category</option>
               <% stakeholder_options.each do |option| %>
-                <option value="<%= option %>"><%= option %></option>
-              <% end %>
-            </select>
-          </label>
-
-          <label>
-            <span>Stakeholder Person Type <em>*</em></span>
-            <select name="module_record[stakeholder_role]" required data-stakeholder-role-select data-selected-value="">
-              <option value="">Select Stakeholder Person Type</option>
-              <% stakeholder_role_options.each do |option| %>
-                <option value="<%= option %>"><%= option %></option>
-              <% end %>
-            </select>
-          </label>
-
-          <label>
-            <span>Role <em>*</em></span>
-            <select name="module_record[role]" required data-role-select data-selected-value="">
-              <option value="">Select Role</option>
-              <% role_options.each do |option| %>
                 <option value="<%= option %>"><%= option %></option>
               <% end %>
             </select>
@@ -208,14 +186,14 @@
     <% selected_modules = Array(@record&.data&.[]("module_names")) %>
     <% selected_submodules = Array(@record&.data&.[]("sub_module_names").presence || @record&.data&.[]("sub_module_name")) %>
     <section class="module-card access-control-card">
-      <%= form_with url: form_url, method: form_method, html: { class: "module-entry-form", data: { user_role_form: true, role_map: json_escape(role_management_mappings.to_json) } } do %>
+      <%= form_with url: form_url, method: form_method, html: { class: "module-entry-form", data: { user_role_form: true, role_map: json_escape(access_control_role_mappings.to_json) } } do %>
         <div class="access-top-grid">
           <% ["Stakeholder", "Stakeholder Role", "Role Name"].each do |field| %>
             <% field_key = field.parameterize(separator: "_") %>
             <% field_value = @record&.data&.[](field_key).to_s %>
             <% field_value = @record&.data&.[]("stakeholder_name").to_s if field == "Stakeholder" && field_value.blank? %>
             <% field_value = @record&.data&.[]("role").to_s if field == "Role Name" && field_value.blank? %>
-            <% options = (module_field_options(field) + static_field_options(field)).compact_blank.uniq %>
+            <% options = access_control_field_options(field, field_value) %>
             <% role_dependency_attr =
               case field
               when "Stakeholder"

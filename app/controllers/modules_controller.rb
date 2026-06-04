@@ -4,6 +4,7 @@ require "csv"
 
 class ModulesController < ApplicationController
   helper_method :module_field_options, :module_select_field?, :static_field_options, :role_management_mappings,
+                :access_control_role_mappings, :access_control_field_options,
                 :location_hierarchy_mappings, :office_category_mappings
 
   DASHBOARD_CARDS = [
@@ -161,13 +162,13 @@ class ModulesController < ApplicationController
       title: "VRP Approval Form",
       group: "VRP Registration",
       purpose: "VRP registration aur bill approval ke approver maintain karne ke liye.",
-      fields: ["Module Name", "Stakeholder Name", "Stakeholder Role", "Role", "Office", "Approval Level", "Approver (Approved By)", "Status", "VRP Name"]
+      fields: ["Module Name", "Stakeholder Name", "Office", "Approval Level", "Approver (Approved By)", "Status", "VRP Name"]
     },
     "approval-list" => {
       title: "VRP Approval List",
       group: "VRP Registration",
       purpose: "Saved approval mappings dekhne ke liye.",
-      fields: ["Module Name", "Stakeholder Name", "Stakeholder Role", "Role", "Office", "Approval Level", "Approver (Approved By)", "Status", "VRP Name"]
+      fields: ["Module Name", "Stakeholder Name", "Office", "Approval Level", "Approver (Approved By)", "Status", "VRP Name"]
     },
     "ics-master" => {
       title: "ICS Master",
@@ -1309,6 +1310,79 @@ class ModulesController < ApplicationController
 
   def label_with_registered_name(value, attribute)
     mapping_labels_for_option(value, attribute).first.to_s
+  end
+
+  def access_control_field_options(field, selected_value = nil)
+    key = case field
+    when "Stakeholder"
+      :stakeholder
+    when "Stakeholder Role"
+      :stakeholder_role
+    when "Role Name", "Role"
+      :role
+    end
+    return [] unless key
+
+    options = access_control_role_mappings.filter_map { |mapping| mapping[key].presence }
+    options << selected_value if selected_value.present?
+    options.compact_blank.uniq
+  end
+
+  def access_control_role_mappings
+    registered_access_users
+      .filter_map do |data|
+        stakeholder = data["stakeholder"].to_s.strip
+        stakeholder_role = data["stakeholder_role"].to_s.strip
+        role = (data["role"].presence || data["role_name"]).to_s.strip
+        next if stakeholder.blank? || stakeholder_role.blank? || role.blank?
+
+        {
+          stakeholder: stakeholder,
+          stakeholder_role: stakeholder_role,
+          stakeholder_role_label: stakeholder_role,
+          role: role,
+          role_label: role,
+          role_name: "",
+          role_name_label: "",
+          user_management_role: data["user_management_role"].to_s.strip,
+          user_management_role_label: data["user_management_role"].to_s.strip,
+          person_type: data["person_type"].to_s.strip,
+          person_type_label: data["person_type"].to_s.strip
+        }
+      end
+      .uniq
+  end
+
+  def registered_access_users
+    registered_access_user_model_rows + registered_access_module_rows
+  end
+
+  def registered_access_user_model_rows
+    return [] unless model_ready?(:User)
+
+    User.order(updated_at: :desc).filter_map do |user|
+      status = user.respond_to?(:status) ? user.status.to_s : "Active"
+      next if status.casecmp("Inactive").zero?
+
+      {
+        "stakeholder" => user.stakeholder,
+        "stakeholder_role" => user.stakeholder_role,
+        "role" => user.role,
+        "role_name" => user.respond_to?(:role_name) ? user.role_name : nil,
+        "user_management_role" => user.respond_to?(:user_management_role) ? user.user_management_role : nil,
+        "person_type" => user.respond_to?(:person_type) ? user.person_type : nil
+      }
+    end
+  end
+
+  def registered_access_module_rows
+    return [] unless model_ready?(:ModuleRecord)
+
+    ModuleRecord
+      .where(module_slug: "new-user")
+      .order(updated_at: :desc)
+      .select { |record| active_module_record?(record) }
+      .map(&:data)
   end
 
   def mapping_labels_for_option(value, attribute)

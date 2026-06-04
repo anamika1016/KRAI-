@@ -443,11 +443,7 @@ class VrpsController < ApplicationController
       .where(module_slug: "approval-master")
       .order(created_at: :asc)
       .select do |record|
-        record_role = record.data["role"].presence || record.data["role_name"].to_s
         record_stakeholder = record.data["stakeholder_name"].to_s
-        record_stakeholder_role = record.data["stakeholder_role"].to_s
-        record_user_management_role = record.data["user_management_role"].to_s
-        record_person_type = record.data["person_type"].to_s
         record_vrp_name = record.data["vrp_name"].to_s
         record_office = record.data["office"].to_s
 
@@ -455,11 +451,7 @@ class VrpsController < ApplicationController
           ["Farmer Registration", "VRP Registration"].include?(record.data["module_name"].to_s) &&
           vrp_name_matches?(record_vrp_name, vrp) &&
           creator_identities.any? do |identity|
-            module_value_matches?(record_role, identity[:role]) &&
-              module_value_matches?(record_stakeholder, identity[:stakeholder]) &&
-              module_value_matches?(record_stakeholder_role, identity[:stakeholder_role]) &&
-              module_value_matches?(record_user_management_role, identity[:user_management_role]) &&
-              module_value_matches?(record_person_type, identity[:person_type]) &&
+            module_value_matches?(record_stakeholder, identity[:stakeholder]) &&
               approval_office_matches?(record_office, identity[:office])
           end
       end
