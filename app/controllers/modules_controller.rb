@@ -47,19 +47,19 @@ class ModulesController < ApplicationController
       title: "Gram Panchayat Master",
       group: "LG Master",
       purpose: "Gram Panchayat master maintain karne ke liye.",
-      fields: ["State", "District", "Block", "Gram Panchayat Name", "Status"]
+      fields: ["State", "District", "Block", "Gram Panchayat Name", "GP Code", "Status"]
     },
     "village-master" => {
       title: "Village Master",
       group: "LG Master",
       purpose: "Village master maintain karne ke liye.",
-      fields: ["State", "District", "Block", "Gram Panchayat", "Village Name", "Status"]
+      fields: ["State", "District", "Block", "Gram Panchayat", "Village Name", "Village Code", "Status"]
     },
     "lg-directory-list" => {
       title: "All List",
       group: "LG Directory",
       purpose: "State, District, Block, GP, Village ek sath maintain karne ke liye.",
-      fields: ["State", "District", "Block", "Gram Panchayat", "Village", "Status"]
+      fields: ["State", "State Code", "District", "Block", "Gram Panchayat", "GP Code", "Village", "Village Code", "Status"]
     },
     "stakeholder-master" => {
       title: "Stakeholder Master",
@@ -830,8 +830,16 @@ class ModulesController < ApplicationController
     rows.concat(lg_rows_from_records("block-master", block: "block_name"))
     rows.concat(lg_rows_from_records("district-master", district: "district_name"))
     rows.concat(lg_rows_from_records("state-master", state: "state_name"))
+    state_codes = lg_directory_code_lookup(rows, :state, :state_code)
+    gp_codes = lg_directory_code_lookup(rows, :gram_panchayat, :gp_code)
 
     compact_lg_directory_rows(rows)
+      .map do |row|
+        row.merge(
+          state_code: row[:state_code].presence || state_codes[row[:state].to_s.strip.downcase],
+          gp_code: row[:gp_code].presence || gp_codes[row[:gram_panchayat].to_s.strip.downcase]
+        )
+      end
       .uniq { |row| lg_directory_row_key(row) }
       .sort_by { |row| [row[:state], row[:district], row[:block], row[:gram_panchayat], row[:village]].map(&:to_s) }
   end
@@ -845,13 +853,24 @@ class ModulesController < ApplicationController
           record_id: record.id,
           source_slug: record.module_slug,
           state: record.data["state"].presence || record.data[aliases[:state].to_s].presence,
+          state_code: record.data["state_code"].presence || record.data[aliases[:state_code].to_s].presence,
           district: record.data["district"].presence || record.data[aliases[:district].to_s].presence,
           block: record.data["block"].presence || record.data[aliases[:block].to_s].presence,
           gram_panchayat: record.data["gram_panchayat"].presence || record.data[aliases[:gram_panchayat].to_s].presence,
+          gp_code: record.data["gp_code"].presence || record.data[aliases[:gp_code].to_s].presence,
           village: record.data["village"].presence || record.data[aliases[:village].to_s].presence,
+          village_code: record.data["village_code"].presence || record.data[aliases[:village_code].to_s].presence,
           status: record.data["status"].presence || "Active"
         }
       end
+  end
+
+  def lg_directory_code_lookup(rows, name_key, code_key)
+    rows.each_with_object({}) do |row, codes|
+      next if row[name_key].blank? || row[code_key].blank?
+
+      codes[row[name_key].to_s.strip.downcase] ||= row[code_key]
+    end
   end
 
   def compact_lg_directory_rows(rows)
@@ -880,7 +899,7 @@ class ModulesController < ApplicationController
   end
 
   def lg_directory_filter_fields
-    ["State", "District", "Block", "Gram Panchayat", "Village"]
+    ["State", "State Code", "District", "Block", "Gram Panchayat", "GP Code", "Village", "Village Code"]
   end
 
   def lg_directory_import_notice_counts(counts)
@@ -915,14 +934,17 @@ class ModulesController < ApplicationController
 
   def lg_directory_csv(rows)
     CSV.generate(headers: true) do |csv|
-      csv << ["State", "District", "Block", "Gram Panchayat", "Village", "Status"]
+      csv << ["State", "State Code", "District", "Block", "Gram Panchayat", "GP Code", "Village", "Village Code", "Status"]
       rows.each do |row|
         csv << [
           row[:state],
+          row[:state_code],
           row[:district],
           row[:block],
           row[:gram_panchayat],
+          row[:gp_code],
           row[:village],
+          row[:village_code],
           row[:status]
         ]
       end

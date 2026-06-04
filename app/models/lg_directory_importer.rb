@@ -7,6 +7,7 @@ class LgDirectoryImporter
     "state" => :state,
     "stateentry" => :state,
     "statename" => :state,
+    "statecode" => :state_code,
     "district" => :district,
     "districtentry" => :district,
     "districtname" => :district,
@@ -15,12 +16,15 @@ class LgDirectoryImporter
     "blockname" => :block,
     "gp" => :gram_panchayat,
     "gpentry" => :gram_panchayat,
+    "gpcode" => :gp_code,
     "gram panchayat" => :gram_panchayat,
     "grampanchayat" => :gram_panchayat,
+    "grampanchayatcode" => :gp_code,
     "grampanchayatname" => :gram_panchayat,
     "village" => :village,
     "villageentry" => :village,
     "villagename" => :village,
+    "villagecode" => :village_code,
     "status" => :status
   }.freeze
 
@@ -28,16 +32,20 @@ class LgDirectoryImporter
     {
       slug: "state-master",
       key: :state,
+      identity_fields: ["state_name"],
       fields: {
         "state_name" => :state,
+        "state_code" => :state_code,
         "status" => :status
       }
     },
     {
       slug: "district-master",
       key: :district,
+      identity_fields: ["state", "district_name"],
       fields: {
         "state" => :state,
+        "state_code" => :state_code,
         "district_name" => :district,
         "status" => :status
       }
@@ -45,8 +53,10 @@ class LgDirectoryImporter
     {
       slug: "block-master",
       key: :block,
+      identity_fields: ["state", "district", "block_name"],
       fields: {
         "state" => :state,
+        "state_code" => :state_code,
         "district" => :district,
         "block_name" => :block,
         "status" => :status
@@ -55,23 +65,30 @@ class LgDirectoryImporter
     {
       slug: "gram-panchayat-master",
       key: :gram_panchayat,
+      identity_fields: ["state", "district", "block", "gram_panchayat_name"],
       fields: {
         "state" => :state,
+        "state_code" => :state_code,
         "district" => :district,
         "block" => :block,
         "gram_panchayat_name" => :gram_panchayat,
+        "gp_code" => :gp_code,
         "status" => :status
       }
     },
     {
       slug: "village-master",
       key: :village,
+      identity_fields: ["state", "district", "block", "gram_panchayat", "village_name"],
       fields: {
         "state" => :state,
+        "state_code" => :state_code,
         "district" => :district,
         "block" => :block,
         "gram_panchayat" => :gram_panchayat,
+        "gp_code" => :gp_code,
         "village_name" => :village,
+        "village_code" => :village_code,
         "status" => :status
       }
     }
@@ -89,7 +106,7 @@ class LgDirectoryImporter
 
   def self.import_rows(rows, headers)
     attributes_by_index = headers.map { |header| column_for_header(header) }
-    raise ArgumentError, "Excel headers should include State, District, Block, GP, Village, and Status." if attributes_by_index.compact.blank?
+    raise ArgumentError, "Excel headers should include State, State Code, District, Block, GP, GP Code, Village, Village Code, and Status." if attributes_by_index.compact.blank?
 
     created_counts = Hash.new(0)
     skipped = []
@@ -122,7 +139,7 @@ class LgDirectoryImporter
       data = definition[:fields].transform_values { |source_key| attrs[source_key].to_s.strip }
       fingerprint = record_fingerprint(definition[:slug], data)
       if (record = existing_records[fingerprint])
-        record.update!(data: record.data.merge("status" => data["status"]))
+        record.update!(data: record.data.merge(data.compact_blank))
         next
       end
 
@@ -217,9 +234,7 @@ class LgDirectoryImporter
   def self.record_fingerprint(slug, data)
     values = MODULE_DEFINITIONS
       .find { |definition| definition[:slug] == slug }
-      .fetch(:fields)
-      .keys
-      .reject { |key| key == "status" }
+      .fetch(:identity_fields)
       .map { |key| data[key].to_s.strip.downcase }
 
     ([slug] + values).join("|")
