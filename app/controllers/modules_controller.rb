@@ -249,6 +249,12 @@ class ModulesController < ApplicationController
       purpose: "Registered users dekhne ke liye.",
       fields: ["Stakeholder Category", "Stakeholder Role", "Role", "User Management Role", "Person Type", "State", "District", "Block", "Gram Panchayat", "Village", "Office", "Full Address", "Pincode", "First Name", "Last Name", "Gender", "Email", "Password", "Confirmed Password", "User Name", "Mobile No", "User Type", "Status"]
     },
+    "user-hierarchy-mapping" => {
+      title: "User Hierarchy Mapping",
+      group: "User Mapping",
+      purpose: "Kis user ke under kaun user kaam karega map karne ke liye.",
+      fields: ["Stakeholder Category", "Level 1 User", "Level 2 User", "Level 3 User", "Status"]
+    },
     "stakeholder-role" => {
       title: "Stakeholder Person Type",
       group: "Stakeholder",
@@ -1545,6 +1551,9 @@ class ModulesController < ApplicationController
       "Stakeholder Role" => { module: "stakeholder-role", field: "stakeholder_role" },
       "Office" => { module: "office-category-add", field: "category_name" },
       "Approver (Approved By)" => { module: "new-user", field: "approver_name_with_role" },
+      "Level 1 User" => { module: "new-user", field: "approver_name_with_role" },
+      "Level 2 User" => { module: "new-user", field: "approver_name_with_role" },
+      "Level 3 User" => { module: "new-user", field: "approver_name_with_role" },
       "Select Financial Year" => { module: "month-master", field: "financial_year" },
       "Select Bill Month" => { module: "month-master", field: "month_name" },
       "Month" => { module: "month-master", field: "month_name" },

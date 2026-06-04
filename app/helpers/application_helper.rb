@@ -42,6 +42,13 @@ module ApplicationHelper
       ]
     },
     {
+      title: "User Mapping",
+      icon: "▧",
+      links: [
+        ["User Hierarchy Mapping", :module, "user-hierarchy-mapping"]
+      ]
+    },
+    {
       title: "Resource Person Type",
       icon: "▧",
       links: [
