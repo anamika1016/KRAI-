@@ -247,30 +247,30 @@ class ModulesController < ApplicationController
       purpose: "Stakeholder category wise stakeholder person type maintain karne ke liye.",
       fields: ["Stakeholder Category", "Stakeholder Role", "Status"]
     },
-    "role-management" => {
-      title: "Resource Person Type",
-      group: "Resource Person Type",
-      purpose: "Resource person type maintain karne ke liye.",
-      fields: ["Stakeholder Category", "Stakeholder Role", "Role", "Status"]
-    },
+    # "role-management" => {
+    #   title: "Resource Person Type",
+    #   group: "Resource Person Type",
+    #   purpose: "Resource person type maintain karne ke liye.",
+    #   fields: ["Stakeholder Category", "Stakeholder Role", "Role", "Status"]
+    # },
     "role-name" => {
       title: "Role",
       group: "Stakeholder",
       purpose: "Stakeholder category wise role maintain karne ke liye.",
       fields: ["Stakeholder Category", "Stakeholder Role", "Role Name", "Status"]
     },
-    "user-management-role" => {
-      title: "User Management Person Type",
-      group: "Resource Person Type",
-      purpose: "Resource person type wise user management person type maintain karne ke liye.",
-      fields: ["Stakeholder Category", "Stakeholder Role", "Role", "User Management Role", "Status"]
-    },
-    "person-type" => {
-      title: "Person Type",
-      group: "Resource Person Type",
-      purpose: "User management person type wise person type maintain karne ke liye.",
-      fields: ["Stakeholder Category", "Stakeholder Role", "Role", "User Management Role", "Person Type", "Status"]
-    },
+    # "user-management-role" => {
+    #   title: "User Management Person Type",
+    #   group: "Resource Person Type",
+    #   purpose: "Resource person type wise user management person type maintain karne ke liye.",
+    #   fields: ["Stakeholder Category", "Stakeholder Role", "Role", "User Management Role", "Status"]
+    # },
+    # "person-type" => {
+    #   title: "Person Type",
+    #   group: "Resource Person Type",
+    #   purpose: "User management person type wise person type maintain karne ke liye.",
+    #   fields: ["Stakeholder Category", "Stakeholder Role", "Role", "User Management Role", "Person Type", "Status"]
+    # },
     "access-control" => {
       title: "Access Control",
       group: "Resource Person Type",

@@ -44,10 +44,9 @@ module ApplicationHelper
       title: "Resource Person Type",
       icon: "▧",
       links: [
-        ["Resource Person Type", :module, "role-management"],
-        ["User Management Person Type", :module, "user-management-role"],
-        ["Person Type", :module, "person-type"],
-        ["VRP Type", :module, "add-vrp-type"],
+        # ["Resource Person Type", :module, "role-management"],
+        # ["User Management Person Type", :module, "user-management-role"],
+        # ["Person Type", :module, "person-type"],
         ["Access Control", :module, "access-control"],
         ["Access Control List", :module, "access-control-list"]
       ]
@@ -56,6 +55,7 @@ module ApplicationHelper
       title: "VRP Registration",
       icon: "▥",
       links: [
+        ["VRP Type", :module, "add-vrp-type"],
         ["VRP Registration", :route, :new_vrp_path],
         ["VRP List", :route, :vrps_path],
         ["VRP Approval", :route, :approvals_vrps_path],
