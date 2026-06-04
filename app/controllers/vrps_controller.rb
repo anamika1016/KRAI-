@@ -218,6 +218,8 @@ class VrpsController < ApplicationController
       :mobile_no,
       :emergency_no,
       :email,
+      :fcoc,
+      :cluster_incharge,
       :stakeholder,
       :stakeholder_role,
       :role,
@@ -765,11 +767,13 @@ class VrpsController < ApplicationController
 
     @stakeholder_options = text_module_record_options("stakeholder-master", "stakeholder_name_in_english")
     @stakeholder_role_options = text_module_record_options("stakeholder-role", "stakeholder_role")
-    @role_options = text_module_record_options("role-management", "role_name")
+    @role_options = text_module_record_options("role-management", ["role", "role_name"])
     @user_management_role_options = text_module_record_options("user-management-role", "user_management_role")
     @person_type_options = text_module_record_options("person-type", "person_type")
     @role_management_mappings = role_management_mappings
     @vrp_type_options = vrp_type_options
+    @fcoc_options = fcoc_options
+    @cluster_incharge_options = cluster_incharge_options
     @state_options = module_record_options("state-master", "state_name")
     @district_options = module_record_options("district-master", "district_name")
     @block_options = module_record_options("block-master", "block_name")
@@ -786,6 +790,35 @@ class VrpsController < ApplicationController
 
     module_record_options("add-vrp-type", "vrp_type_name").presence ||
       module_record_options("position-type", "position_type_name")
+  end
+
+  def fcoc_options
+    return [] unless model_ready?(:Afl)
+
+    Afl.where.not(fco_id: [nil, ""])
+      .select(:fco_id, :fco)
+      .distinct
+      .order(:fco, :fco_id)
+      .map do |afl|
+        label = afl.fco.presence || afl.fco_id
+        [label, afl.fco_id]
+      end
+  end
+
+  def cluster_incharge_options
+    return [] unless model_ready?(:User)
+
+    User.order(:first_name, :last_name, :user_name)
+      .select { |user| user.status.blank? || user.status.to_s.casecmp("Active").zero? }
+      .filter_map do |user|
+        name = user.full_name.presence || user.user_name
+        next if name.blank?
+
+        role = user.role_name.presence || user.role
+        label = role.present? ? "#{name}(#{role})" : name
+        [label, name]
+      end
+      .uniq { |_label, value| value }
   end
 
   def ics_options
@@ -809,11 +842,12 @@ class VrpsController < ApplicationController
   def text_module_record_options(module_slug, field_key)
     return [] unless model_ready?(:ModuleRecord)
 
+    field_keys = Array(field_key)
     ModuleRecord
       .where(module_slug: module_slug)
       .order(created_at: :desc)
       .select { |record| active_module_record?(record) }
-      .filter_map { |record| record.data[field_key].presence }
+      .flat_map { |record| field_keys.filter_map { |key| record.data[key].presence } }
       .uniq
   end
 
@@ -832,6 +866,8 @@ class VrpsController < ApplicationController
           stakeholder_role_label: label_with_registered_name(stakeholder_role, :stakeholder_role),
           role: "",
           role_label: "",
+          role_name: "",
+          role_name_label: "",
           user_management_role: "",
           user_management_role_label: "",
           person_type: "",
@@ -844,12 +880,14 @@ class VrpsController < ApplicationController
       .order(created_at: :desc)
       .select { |record| active_module_record?(record) }
       .map do |record|
-        role = first_present_data(record, "role_name", "role").to_s.strip
+        role = first_present_data(record, "role", "role_name").to_s.strip
         {
           stakeholder: first_present_data(record, "stakeholder_category", "stakeholder_name", "stakeholder").to_s.strip,
           stakeholder_role: first_present_data(record, "stakeholder_role").to_s.strip,
           role: role,
           role_label: label_with_registered_name(role, :role),
+          role_name: "",
+          role_name_label: "",
           user_management_role: "",
           user_management_role_label: "",
           person_type: ""
@@ -865,7 +903,9 @@ class VrpsController < ApplicationController
         {
           stakeholder: first_present_data(record, "stakeholder_category", "stakeholder_name", "stakeholder").to_s.strip,
           stakeholder_role: first_present_data(record, "stakeholder_role").to_s.strip,
-          role: first_present_data(record, "role_name", "role").to_s.strip,
+          role: first_present_data(record, "role", "role_name").to_s.strip,
+          role_name: "",
+          role_name_label: "",
           user_management_role: user_management_role,
           user_management_role_label: label_with_registered_name(user_management_role, :user_management_role),
           person_type: ""
@@ -881,7 +921,9 @@ class VrpsController < ApplicationController
         {
           stakeholder: first_present_data(record, "stakeholder_category", "stakeholder_name", "stakeholder").to_s.strip,
           stakeholder_role: first_present_data(record, "stakeholder_role").to_s.strip,
-          role: first_present_data(record, "role_name", "role").to_s.strip,
+          role: first_present_data(record, "role", "role_name").to_s.strip,
+          role_name: "",
+          role_name_label: "",
           user_management_role: first_present_data(record, "user_management_role").to_s.strip,
           person_type: person_type,
           person_type_label: label_with_registered_name(person_type, :person_type)
@@ -889,7 +931,7 @@ class VrpsController < ApplicationController
       end
 
     (stakeholder_role_mappings + role_mappings + user_management_role_mappings + person_type_mappings)
-      .reject { |mapping| mapping[:stakeholder_role].blank? && mapping[:role].blank? && mapping[:user_management_role].blank? && mapping[:person_type].blank? }
+      .reject { |mapping| mapping[:stakeholder_role].blank? && mapping[:role].blank? && mapping[:role_name].blank? && mapping[:user_management_role].blank? && mapping[:person_type].blank? }
       .uniq
   end
 

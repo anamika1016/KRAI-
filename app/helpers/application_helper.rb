@@ -17,7 +17,9 @@ module ApplicationHelper
       icon: "▩",
       links: [
         ["Stakeholder Name", :module, "stakeholder-master"],
-        ["Office Category Add", :module, "office-category-add"]
+        ["Office Category Add", :module, "office-category-add"],
+        ["Stakeholder Person Type", :module, "stakeholder-role"],
+        ["Role", :module, "role-name"]
       ]
     },
     {
@@ -42,7 +44,6 @@ module ApplicationHelper
       title: "Resource Person Type",
       icon: "▧",
       links: [
-        ["Stakeholder Person Type", :module, "stakeholder-role"],
         ["Resource Person Type", :module, "role-management"],
         ["User Management Person Type", :module, "user-management-role"],
         ["Person Type", :module, "person-type"],
@@ -127,8 +128,8 @@ module ApplicationHelper
   def resource_person_label(label)
     {
       "Stakeholder" => "Stakeholder Category",
-      "Role" => "Resource Person Type",
-      "Role Name" => "Resource Person Type",
+      "Role" => "Role",
+      "Role Name" => "Role Name",
       "Stakeholder Role" => "Stakeholder Person Type",
       "User Management Role" => "User Management Person Type",
       "Person Type" => "Person Type",
@@ -153,8 +154,10 @@ module ApplicationHelper
         stakeholder_match = access_value_matches?(record_stakeholder, current_app_user["stakeholder"])
         record_stakeholder_role = record.data["stakeholder_role"].presence || record.data["stakeholder_person_type"]
         stakeholder_role_match = access_value_matches?(record_stakeholder_role, current_app_user["stakeholder_role"])
-        record_role = record.data["role_name"].presence || record.data["role"]
+        record_role = record.data["role"].presence || record.data["role_name"]
         role_match = access_value_matches?(record_role, current_app_user["role"])
+        record_role_name = record.data["role"].present? ? record.data["role_name"] : nil
+        role_name_match = access_value_matches?(record_role_name, current_app_user["role_name"])
         record_user_management_role = record.data["user_management_role"].presence || record.data["user_management_person_type"]
         user_management_role_match = access_value_matches?(record_user_management_role, current_app_user["user_management_role"])
         record_person_type = record.data["person_type"]
@@ -162,7 +165,7 @@ module ApplicationHelper
         record_vrp_type = record.data["vrp_type"].presence || record.data["select_vrp_type"]
         vrp_type_match = access_value_matches_any?(record_vrp_type, current_app_user["vrp_types"])
         can_view = record.data["can_view"].blank? || record.data["can_view"].to_s.casecmp("Yes").zero?
-        stakeholder_match && stakeholder_role_match && role_match && user_management_role_match && person_type_match && vrp_type_match && can_view
+        stakeholder_match && stakeholder_role_match && role_match && role_name_match && user_management_role_match && person_type_match && vrp_type_match && can_view
       end
 
     access_records.flat_map do |record|

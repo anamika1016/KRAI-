@@ -1,34 +1,9 @@
-<div class="row gx-3 vrp-form-grid" data-user-role-form data-role-map="<%= json_escape(@role_management_mappings.to_json) %>" data-location-form data-location-map="<%= json_escape(@location_hierarchy_mappings.to_json) %>">
+<div class="row gx-3 vrp-form-grid" data-location-form data-location-map="<%= json_escape(@location_hierarchy_mappings.to_json) %>">
   <div class="vrp-section-title">
     <span>Personal Details</span>
   </div>
 
   <%= f.hidden_field :user_id %>
-
-  <div class="col-md-3 mb-3">
-    <label class="form-label required">Stakeholder Category</label>
-    <%= f.select :stakeholder, options_for_select(@stakeholder_options || [], f.object.stakeholder), { prompt: "Select Stakeholder Category" }, class: "form-select", required: true, data: { role_stakeholder_select: true } %>
-  </div>
-
-  <div class="col-md-3 mb-3">
-    <label class="form-label required">Stakeholder Person Type</label>
-    <%= f.select :stakeholder_role, options_for_select(@stakeholder_role_options || [], f.object.stakeholder_role), { prompt: "Select Stakeholder Person Type" }, class: "form-select", required: true, data: { stakeholder_role_select: true, selected_value: f.object.stakeholder_role } %>
-  </div>
-
-  <div class="col-md-3 mb-3">
-    <label class="form-label required">Resource Person Type</label>
-    <%= f.select :role, options_for_select(@role_options || [], f.object.role), { prompt: "Select Resource Person Type" }, class: "form-select", required: true, data: { role_select: true, selected_value: f.object.role } %>
-  </div>
-
-  <div class="col-md-3 mb-3">
-    <label class="form-label required">User Management Person Type</label>
-    <%= f.select :user_management_role, options_for_select(@user_management_role_options || [], f.object.user_management_role), { prompt: "Select User Management Person Type" }, class: "form-select", required: true, data: { user_management_role_select: true, selected_value: f.object.user_management_role } %>
-  </div>
-
-  <div class="col-md-3 mb-3">
-    <label class="form-label required">Person Type</label>
-    <%= f.select :person_type, options_for_select(@person_type_options || [], f.object.person_type), { prompt: "Select Person Type" }, class: "form-select", required: true, data: { person_type_select: true, selected_value: f.object.person_type } %>
-  </div>
 
   <div class="col-md-3 mb-3">
   <label class="form-label required">VRP Type</label>
@@ -133,6 +108,11 @@
       <input type="password" name="vrp[confirmed_password]" value="<%= f.object.password %>" class="form-control" required placeholder="Enter Confirm Password" data-password-toggle-input>
       <button type="button" class="password-eye-btn" data-password-toggle aria-label="Show password" title="Show password">&#128065;</button>
     </div>
+  </div>
+
+  <div class="col-md-3 mb-3">
+    <label class="form-label">Cluster Incharge</label>
+    <%= f.select :cluster_incharge, options_for_select(@cluster_incharge_options || [], f.object.cluster_incharge), { prompt: "Select Cluster Incharge" }, class: "form-select" %>
   </div>
 
   <div class="vrp-section-title">

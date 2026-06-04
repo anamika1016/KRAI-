@@ -48,6 +48,7 @@ class ApplicationController < ActionController::Base
       "stakeholder" => user.respond_to?(:stakeholder) ? user.stakeholder : data["stakeholder"],
       "stakeholder_role" => user.respond_to?(:stakeholder_role) ? user.stakeholder_role : data["stakeholder_role"],
       "role" => user.respond_to?(:role) ? user.role : data["role"],
+      "role_name" => user.respond_to?(:role_name) ? user.role_name : data["role_name"],
       "user_management_role" => user.respond_to?(:user_management_role) ? user.user_management_role : data["user_management_role"],
       "person_type" => user.respond_to?(:person_type) ? user.person_type : data["person_type"],
       "vrp_types" => app_user_vrp_types(user),

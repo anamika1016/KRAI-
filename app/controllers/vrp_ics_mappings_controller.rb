@@ -63,8 +63,41 @@ class VrpIcsMappingsController < ApplicationController
   def approved_vrps
     scope = Vrp.where(status: 55)
     scope = scope.where(is_active: true) if Vrp.column_names.include?("is_active")
-    scope = scope.where(id: current_app_user["id"]) if non_admin_vrp_login?
+    return scope.order(:name, :id) if admin_login?
+    return scope.where(id: current_app_user["id"]).order(:name, :id) if non_admin_vrp_login?
+
+    scope = scope.merge(own_registered_vrps)
     scope.order(:name, :id)
+  end
+
+  def own_registered_vrps
+    ids = current_app_user_ids
+    return Vrp.none if ids.blank?
+
+    scope = Vrp.none
+    scope = scope.or(Vrp.where(created_by_id: ids))
+    scope = scope.or(Vrp.where(user_id: ids)) if Vrp.column_names.include?("user_id")
+
+    scope
+  end
+
+  def current_app_user_id
+    current_app_user&.dig("id")
+  end
+
+  def current_app_user_ids
+    ([current_app_user_id] + legacy_current_app_user_ids).compact.uniq
+  end
+
+  def legacy_current_app_user_ids
+    return [] unless defined?(ModuleRecord) && ModuleRecord.table_exists?
+
+    username = current_app_user&.dig("username").to_s
+    return [] if username.blank?
+
+    ModuleRecord.where(module_slug: "new-user").select do |record|
+      record.data["user_name"].to_s == username
+    end.map(&:id)
   end
 
   def visible_mappings

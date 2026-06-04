@@ -1,8 +1,6 @@
 <% form_url = user.persisted? ? user_path(user) : users_path %>
 <% form_method = user.persisted? ? :patch : :post %>
 <% stakeholder_role_value = user.respond_to?(:stakeholder_role) ? user.stakeholder_role : nil %>
-<% user_management_role_value = user.respond_to?(:user_management_role) ? user.user_management_role : nil %>
-<% person_type_value = user.respond_to?(:person_type) ? user.person_type : nil %>
 
 <section class="module-card" data-user-role-form data-role-map="<%= json_escape(@role_management_mappings.to_json) %>" data-office-map="<%= json_escape((@office_category_mappings || []).to_json) %>" data-location-form data-location-map="<%= json_escape(@location_hierarchy_mappings.to_json) %>">
   <%= form_with model: user, url: form_url, method: form_method, html: { class: "module-entry-form", multipart: true } do |f| %>
@@ -16,16 +14,8 @@
         <%= f.select :stakeholder_role, options_for_select(@stakeholder_role_options, stakeholder_role_value), { include_blank: "Select Stakeholder Person Type" }, data: { stakeholder_role_select: true, selected_value: stakeholder_role_value } %>
       </label>
       <label>
-        <span>Resource Person Type</span>
-        <%= f.select :role, options_for_select(@role_options, user.role), { include_blank: "Select Resource Person Type" }, data: { role_select: true, selected_value: user.role } %>
-      </label>
-      <label>
-        <span>User Management Person Type</span>
-        <%= f.select :user_management_role, options_for_select(@user_management_role_options, user_management_role_value), { include_blank: "Select User Management Person Type" }, data: { user_management_role_select: true, selected_value: user_management_role_value } %>
-      </label>
-      <label>
-        <span>Person Type</span>
-        <%= f.select :person_type, options_for_select(@person_type_options, person_type_value), { include_blank: "Select Person Type" }, data: { person_type_select: true, selected_value: person_type_value } %>
+        <span>Role</span>
+        <%= f.select :role, options_for_select(@role_options, user.role), { include_blank: "Select Role" }, data: { role_select: true, selected_value: user.role } %>
       </label>
 
       <% [
@@ -68,10 +58,6 @@
       <label>
         <span>Gender</span>
         <%= f.select :gender, options_for_select(@gender_options, user.gender), { include_blank: "Select Gender" } %>
-      </label>
-      <label>
-        <span>Age</span>
-        <%= f.number_field :age, min: 0, placeholder: "Enter Age" %>
       </label>
       <label>
         <span>Email</span>

@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2026_06_03_111500) do
+ActiveRecord::Schema[8.1].define(version: 2026_06_03_114000) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "pg_catalog.plpgsql"
 
@@ -143,6 +143,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_06_03_111500) do
     t.string "person_type"
     t.string "pincode"
     t.string "role"
+    t.string "role_name"
     t.string "stakeholder"
     t.string "stakeholder_role"
     t.string "state"
@@ -209,6 +210,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_06_03_111500) do
     t.text "address", null: false
     t.string "bank_name"
     t.string "branch", null: false
+    t.string "cluster_incharge"
     t.datetime "created_at", null: false
     t.integer "created_by_id"
     t.date "date_of_birth", null: false
@@ -217,6 +219,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_06_03_111500) do
     t.string "emergency_no"
     t.integer "experience_in_years", null: false
     t.string "father_husband_name", null: false
+    t.string "fcoc"
     t.integer "gender", null: false
     t.text "gram_panchayat_ids"
     t.text "ics_master_ids"

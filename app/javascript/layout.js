@@ -306,10 +306,11 @@ document.addEventListener("turbo:load", () => {
     const stakeholderSelect = formShell.querySelector("[data-role-stakeholder-select]");
     const stakeholderRoleSelect = formShell.querySelector("[data-stakeholder-role-select]");
     const roleSelect = formShell.querySelector("[data-role-select]");
+    const roleNameSelect = formShell.querySelector("[data-role-name-select]");
     const userManagementRoleSelect = formShell.querySelector("[data-user-management-role-select]");
     const personTypeSelect = formShell.querySelector("[data-person-type-select]");
     const officeSelect = formShell.querySelector("[data-office-select]");
-    if (!stakeholderSelect && !stakeholderRoleSelect && !roleSelect && !userManagementRoleSelect && !personTypeSelect && !officeSelect) return;
+    if (!stakeholderSelect && !stakeholderRoleSelect && !roleSelect && !roleNameSelect && !userManagementRoleSelect && !personTypeSelect && !officeSelect) return;
 
     let mappings = [];
     try {
@@ -344,6 +345,22 @@ document.addEventListener("turbo:load", () => {
     const mappedRoles = (stakeholder, stakeholderRole) => {
       const normalizedStakeholder = normalizeOption(stakeholder);
       const normalizedStakeholderRole = normalizeOption(stakeholderRole);
+      if (!normalizedStakeholder) return [];
+
+      const filtered = mappings.filter((mapping) => {
+        const stakeholderMatches = normalizeOption(mapping.stakeholder) === normalizedStakeholder;
+        const mappedStakeholderRole = normalizeOption(mapping.stakeholder_role);
+        const stakeholderRoleMatches = !mappedStakeholderRole || mappedStakeholderRole === normalizedStakeholderRole;
+        return stakeholderMatches && stakeholderRoleMatches;
+      });
+      const fallbackName = selectedDisplayName(stakeholderRoleSelect);
+      const roles = uniqueOptions(filtered.map((mapping) => optionWithFallbackName(mapping.role, mapping.role_label, fallbackName)));
+      return roles;
+    };
+
+    const mappedRoleNames = (stakeholder, stakeholderRole) => {
+      const normalizedStakeholder = normalizeOption(stakeholder);
+      const normalizedStakeholderRole = normalizeOption(stakeholderRole);
       if (!normalizedStakeholder || !normalizedStakeholderRole) return [];
 
       const filtered = mappings.filter((mapping) => {
@@ -352,8 +369,8 @@ document.addEventListener("turbo:load", () => {
         return stakeholderMatches && stakeholderRoleMatches;
       });
       const fallbackName = selectedDisplayName(stakeholderRoleSelect);
-      const roles = uniqueOptions(filtered.map((mapping) => optionWithFallbackName(mapping.role, mapping.role_label, fallbackName)));
-      return roles;
+      const roleNames = uniqueOptions(filtered.map((mapping) => optionWithFallbackName(mapping.role_name, mapping.role_name_label, fallbackName)));
+      return roleNames;
     };
 
     const mappedUserManagementRoles = (stakeholder, stakeholderRole, role) => {
@@ -401,8 +418,14 @@ document.addEventListener("turbo:load", () => {
     const refreshRoles = () => {
       if (!roleSelect) return;
       const roles = mappedRoles(stakeholderSelect?.value, stakeholderRoleSelect?.value);
-      replaceSelectOptions(roleSelect, roles, "Select Resource Person Type");
+      replaceSelectOptions(roleSelect, roles, roleSelect.dataset.rolePrompt || "Select Role");
       refreshUserManagementRoles();
+    };
+
+    const refreshRoleNames = () => {
+      if (!roleNameSelect) return;
+      const roleNames = mappedRoleNames(stakeholderSelect?.value, stakeholderRoleSelect?.value);
+      replaceSelectOptions(roleNameSelect, roleNames, "Select Role Name");
     };
 
     const refreshUserManagementRoles = () => {
@@ -435,20 +458,24 @@ document.addEventListener("turbo:load", () => {
     stakeholderSelect?.addEventListener("change", () => {
       if (stakeholderRoleSelect) stakeholderRoleSelect.dataset.selectedValue = "";
       if (roleSelect) roleSelect.dataset.selectedValue = "";
+      if (roleNameSelect) roleNameSelect.dataset.selectedValue = "";
       if (userManagementRoleSelect) userManagementRoleSelect.dataset.selectedValue = "";
       if (personTypeSelect) personTypeSelect.dataset.selectedValue = "";
       if (officeSelect) officeSelect.dataset.selectedValue = "";
       refreshStakeholderRoles();
       refreshRoles();
+      refreshRoleNames();
       refreshUserManagementRoles();
       refreshPersonTypes();
       refreshOffices();
     });
     stakeholderRoleSelect?.addEventListener("change", () => {
       if (roleSelect) roleSelect.dataset.selectedValue = "";
+      if (roleNameSelect) roleNameSelect.dataset.selectedValue = "";
       if (userManagementRoleSelect) userManagementRoleSelect.dataset.selectedValue = "";
       if (personTypeSelect) personTypeSelect.dataset.selectedValue = "";
       refreshRoles();
+      refreshRoleNames();
       refreshUserManagementRoles();
       refreshPersonTypes();
     });
@@ -465,6 +492,7 @@ document.addEventListener("turbo:load", () => {
 
     refreshStakeholderRoles();
     refreshRoles();
+    refreshRoleNames();
     refreshOffices();
   });
 

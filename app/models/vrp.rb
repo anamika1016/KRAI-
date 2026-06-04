@@ -45,7 +45,6 @@ class Vrp < ApplicationRecord
   before_validation :sync_bank_name_from_master
   before_validation :sync_location_lists_from_profile
   before_save :remove_blank_array_values
-  validate :mobile_or_email_should_not_exist_in_users, if: -> { "User".safe_constantize.present? }
 
   private
 
@@ -100,18 +99,4 @@ class Vrp < ApplicationRecord
     self.bank_name = vrp_bank_master&.name if bank_name.blank? && vrp_bank_master
   end
 
-  def mobile_or_email_should_not_exist_in_users
-    return if mobile_no.blank? && email.blank?
-
-    user_scope = User.all
-    user_scope = user_scope.where.not(id: user_id) if user_id.present?
-
-    if mobile_no.present? && user_scope.exists?(mobile_no: mobile_no)
-      errors.add(:mobile_no, 'already exists in user records')
-    end
-
-    if email.present? && user_scope.exists?(email: email)
-      errors.add(:email, 'already exists in user records')
-    end
-  end
 end
