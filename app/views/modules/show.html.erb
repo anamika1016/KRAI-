@@ -102,6 +102,170 @@
         </div>
       <% end %>
     </section>
+  <% elsif @slug == "user-hierarchy-mapping" %>
+    <% form_url = @record.present? ? module_record_path(@slug, @record) : records_module_path(@slug) %>
+    <% form_method = @record.present? ? :patch : :post %>
+    <% stakeholder_options = module_field_options("Stakeholder Category") %>
+    <% user_options = module_field_options("Level 1 User") %>
+    <% selected_stakeholder = @record&.data&.[]("stakeholder_category").to_s %>
+    <% selected_level_1 = @record&.data&.[]("level_1_user").to_s %>
+    <% raw_level_2_mappings = @record&.data&.[]("level_2_mappings") %>
+    <% raw_level_2_mappings = raw_level_2_mappings.values if raw_level_2_mappings.is_a?(Hash) %>
+    <% selected_level_2_mappings = Array(raw_level_2_mappings).filter_map do |mapping| %>
+      <% next unless mapping.respond_to?(:[]) %>
+      <% level_2_user = mapping["level_2_user"].to_s %>
+      <% level_3_users = Array(mapping["level_3_users"]).flat_map { |value| value.to_s.split(",") }.map(&:strip).compact_blank %>
+      <% { "level_2_user" => level_2_user, "level_3_users" => level_3_users.presence || [""] } %>
+    <% end %>
+    <% if selected_level_2_mappings.blank? %>
+      <% legacy_level_2_users = Array(@record&.data&.[]("level_2_users").presence || @record&.data&.[]("level_2_user")).flat_map { |value| value.to_s.split(",") }.map(&:strip).compact_blank %>
+      <% selected_level_2_mappings = legacy_level_2_users.map { |user| { "level_2_user" => user, "level_3_users" => [""] } } %>
+    <% end %>
+    <% selected_level_2_mappings = [{ "level_2_user" => "", "level_3_users" => [""] }] if selected_level_2_mappings.blank? %>
+    <div class="module-grid">
+      <section class="module-card approval-channel-card">
+        <div class="module-card-header">
+          <h2><%= @record.present? ? "Edit Mapping" : "Fields" %></h2>
+        </div>
+        <%= form_with url: form_url, method: form_method, html: { class: "module-entry-form" } do %>
+          <div class="module-form-grid user-registration-grid">
+            <label>
+              <span>Stakeholder Category</span>
+              <select name="module_record[stakeholder_category]">
+                <option value=""><%= stakeholder_options.any? ? "Select Stakeholder Category" : "No Stakeholder Category saved yet" %></option>
+                <% stakeholder_options.each do |option| %>
+                  <option value="<%= option %>" <%= "selected" if option == selected_stakeholder %>><%= option %></option>
+                <% end %>
+              </select>
+            </label>
+
+            <label>
+              <span>Level 1 User</span>
+              <select name="module_record[level_1_user]">
+                <option value=""><%= user_options.any? ? "Select Level 1 User" : "No user saved yet" %></option>
+                <% user_options.each do |option| %>
+                  <option value="<%= option %>" <%= "selected" if option == selected_level_1 %>><%= option %></option>
+                <% end %>
+              </select>
+            </label>
+
+            <label>
+              <span>Status</span>
+              <% status_value = @record&.data&.[]("status").presence || "Active" %>
+              <select name="module_record[status]">
+                <option <%= "selected" if status_value == "Active" %>>Active</option>
+                <option <%= "selected" if status_value == "Inactive" %>>Inactive</option>
+              </select>
+            </label>
+          </div>
+
+          <div class="approval-levels user-hierarchy-levels" data-user-hierarchy-levels data-next-user-row="<%= selected_level_2_mappings.size + 1 %>">
+            <div class="approval-level-toolbar">
+              <h2>Level 2 and Level 3 Users</h2>
+              <button type="button" class="add-level-btn" data-add-user-row>Add More</button>
+            </div>
+            <div class="approval-level-table user-hierarchy-table" data-user-hierarchy-table>
+              <div class="approval-level-head">Level</div>
+              <div class="approval-level-head">Level 2 User</div>
+              <div class="approval-level-head">Level 3 Users</div>
+              <div class="approval-level-head">Action</div>
+
+              <% selected_level_2_mappings.each_with_index do |mapping, index| %>
+                <% row_number = index + 1 %>
+                <div class="approval-level-cell" data-user-row="<%= row_number %>">
+                  <strong>Level 2</strong>
+                  <small>User <%= row_number %></small>
+                </div>
+                <div class="approval-level-cell" data-user-row="<%= row_number %>">
+                  <select name="module_record[level_2_mappings][<%= row_number %>][level_2_user]">
+                    <option value=""><%= user_options.any? ? "Select Level 2 User" : "No user saved yet" %></option>
+                    <% user_options.each do |option| %>
+                      <option value="<%= option %>" <%= "selected" if option == mapping["level_2_user"] %>><%= option %></option>
+                    <% end %>
+                  </select>
+                </div>
+                <div class="approval-level-cell" data-user-row="<%= row_number %>">
+                  <div class="level-3-user-list" data-level3-list>
+                    <% Array(mapping["level_3_users"]).each do |selected_level_3_user| %>
+                      <div class="level-3-user-row" data-level3-row>
+                        <select name="module_record[level_2_mappings][<%= row_number %>][level_3_users][]">
+                          <option value=""><%= user_options.any? ? "Select Level 3 User" : "No user saved yet" %></option>
+                          <% user_options.each do |option| %>
+                            <option value="<%= option %>" <%= "selected" if option == selected_level_3_user %>><%= option %></option>
+                          <% end %>
+                        </select>
+                        <button type="button" class="remove-level-btn compact" data-remove-level3-user>Remove</button>
+                      </div>
+                    <% end %>
+                  </div>
+                  <button type="button" class="add-level-btn compact" data-add-level3-user>Add Level 3</button>
+                </div>
+                <div class="approval-level-cell" data-user-row="<%= row_number %>">
+                  <button type="button" class="remove-level-btn" data-remove-user-row>Remove</button>
+                </div>
+              <% end %>
+            </div>
+          </div>
+
+          <div class="module-form-actions">
+            <%= link_to "Clear", module_path(@slug), class: "btn btn-secondary" %>
+            <button type="submit" class="btn btn-primary"><%= @record.present? ? "Update" : "Save" %></button>
+          </div>
+        <% end %>
+      </section>
+
+      <section class="module-card">
+        <div class="module-card-header">
+          <h2>Saved Records</h2>
+          <span class="record-count"><%= @records.size %> records</span>
+        </div>
+        <div class="table-shell">
+          <table class="module-table" id="module_saved_records" data-paginated-table data-page-size="15">
+            <thead>
+              <tr>
+                <th>Stakeholder Category</th>
+                <th>Level 1 User</th>
+                <th>Level 2 User</th>
+                <th>Level 3 User</th>
+                <th>Saved At</th>
+                <th>Status</th>
+                <th>Action</th>
+              </tr>
+            </thead>
+            <tbody>
+              <% if @records.any? %>
+                <% @records.each do |record| %>
+                  <% record_level_2_mappings = record.data["level_2_mappings"] %>
+                  <% record_level_2_mappings = record_level_2_mappings.values if record_level_2_mappings.is_a?(Hash) %>
+                  <% record_level_2_mappings = Array(record_level_2_mappings) %>
+                  <% level_3_display = record.data["level_3_user"].presence || record_level_2_mappings.filter_map { |mapping| mapping.respond_to?(:[]) && mapping["level_2_user"].present? && Array(mapping["level_3_users"]).compact_blank.any? ? "#{mapping["level_2_user"]} -> #{Array(mapping["level_3_users"]).compact_blank.join(", ")}" : nil }.join("; ") %>
+                  <tr>
+                    <td><%= record.data["stakeholder_category"].presence || "-" %></td>
+                    <td><%= record.data["level_1_user"].presence || "-" %></td>
+                    <td><%= record.data["level_2_user"].presence || Array(record.data["level_2_users"]).compact_blank.join(", ").presence || "-" %></td>
+                    <td><%= level_3_display.presence || "-" %></td>
+                    <td><%= record.created_at&.strftime("%d-%m-%Y %I:%M %p") %></td>
+                    <td><span class="status-pill <%= record.data["status"] == "Inactive" ? "inactive" : "active" %>"><%= record.data["status"].presence || "Active" %></span></td>
+                    <td>
+                      <div class="table-actions">
+                        <%= link_to "Edit", edit_module_record_path(@slug, record), class: "table-action" %>
+                        <%= button_to(record.data["status"] == "Inactive" ? "Activate" : "Deactivate", toggle_module_record_path(@slug, record), method: :patch, class: "table-action") %>
+                        <%= button_to "Delete", module_record_path(@slug, record), method: :delete, class: "table-action danger", form: { data: { turbo_confirm: "Delete this record?" } } %>
+                      </div>
+                    </td>
+                  </tr>
+                <% end %>
+              <% else %>
+                <tr>
+                  <td colspan="7">No records saved yet.</td>
+                </tr>
+              <% end %>
+            </tbody>
+          </table>
+        </div>
+        <div class="table-pagination" data-pagination-for="module_saved_records"></div>
+      </section>
+    </div>
   <% elsif @slug == "lg-directory-list" %>
     <section class="module-card lg-directory-card">
       <div class="module-card-header">
@@ -542,12 +706,31 @@
                     <% value ||= record.data["activity_group_name"].presence if field == "Main Activity Name" %>
                     <% value ||= record.data["activity_group"].presence if field == "Main Activity" %>
                     <% value ||= record.data["activity_name"].presence || record.data["vrp_activity_name"].presence if field == "Sub Activity Name" %>
-                    <% value ||= Array(record.data["module_names"]).join(", ").presence if field == "Module Name" %>
-                    <% value ||= Array(record.data["sub_module_names"].presence || record.data["sub_module_name"]).join(", ").presence if field == "Sub Module Name" %>
+                    <% if @slug == "access-control-list" && field == "Module Name" %>
+                      <% value = Array(record.data["module_names"].presence || value).compact_blank %>
+                    <% elsif @slug == "access-control-list" && field == "Sub Module Name" %>
+                      <% value = Array(record.data["sub_module_names"].presence || record.data["sub_module_name"].presence || value).compact_blank %>
+                    <% else %>
+                      <% value ||= Array(record.data["module_names"]).join(", ").presence if field == "Module Name" %>
+                      <% value ||= Array(record.data["sub_module_names"].presence || record.data["sub_module_name"]).join(", ").presence if field == "Sub Module Name" %>
+                    <% end %>
                     <% value = value.join(", ") if value.is_a?(Array) %>
                     <% value ||= "-" %>
                     <% if field == "Status" %>
                       <td><span class="status-pill <%= value == "Inactive" ? "inactive" : "active" %>"><%= value == "-" ? "Active" : value %></span></td>
+                    <% elsif @slug == "access-control-list" && ["Module Name", "Sub Module Name"].include?(field) %>
+                      <% list_values = Array(value).flat_map { |item| item.to_s.split(",") }.map(&:strip).compact_blank %>
+                      <td>
+                        <div class="stacked-list-cell">
+                          <% if list_values.any? %>
+                            <% list_values.each do |item| %>
+                              <span><%= item %></span>
+                            <% end %>
+                          <% else %>
+                            <span>-</span>
+                          <% end %>
+                        </div>
+                      </td>
                     <% else %>
                       <td><%= value %></td>
                     <% end %>

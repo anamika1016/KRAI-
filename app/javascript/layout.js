@@ -1349,6 +1349,132 @@ document.addEventListener("turbo:load", () => {
     });
   });
 
+  document.querySelectorAll("[data-user-hierarchy-levels]").forEach((shell) => {
+    const table = shell.querySelector("[data-user-hierarchy-table]");
+    const addButton = shell.querySelector("[data-add-user-row]");
+    const firstSelect = table?.querySelector("[data-user-row] select");
+    const userOptions = firstSelect
+      ? Array.from(firstSelect.options).map((option) => ({ value: option.value, label: option.textContent }))
+      : [{ value: "", label: "Select Level 2 User" }];
+
+    const rowCount = () => new Set(Array.from(table?.querySelectorAll("[data-user-row]") || []).map((cell) => cell.dataset.userRow)).size;
+
+    const removeUserRow = (rowIndex) => {
+      if (!table || rowCount() <= 1) return;
+
+      table.querySelectorAll(`[data-user-row="${rowIndex}"]`).forEach((cell) => cell.remove());
+    };
+
+    const buildUserSelect = (name, prompt) => {
+      const select = document.createElement("select");
+      select.name = name;
+      userOptions.forEach((optionData, index) => {
+        const option = document.createElement("option");
+        option.value = optionData.value;
+        option.textContent = index === 0 && !optionData.value ? prompt : optionData.label;
+        select.appendChild(option);
+      });
+      return select;
+    };
+
+    const addLevel3Row = (rowCell, rowIndex) => {
+      const list = rowCell?.querySelector("[data-level3-list]");
+      if (!list) return;
+
+      const level3Row = document.createElement("div");
+      level3Row.className = "level-3-user-row";
+      level3Row.dataset.level3Row = "true";
+      level3Row.appendChild(buildUserSelect(`module_record[level_2_mappings][${rowIndex}][level_3_users][]`, "Select Level 3 User"));
+
+      const removeButton = document.createElement("button");
+      removeButton.type = "button";
+      removeButton.className = "remove-level-btn compact";
+      removeButton.dataset.removeLevel3User = "true";
+      removeButton.textContent = "Remove";
+      level3Row.appendChild(removeButton);
+
+      list.appendChild(level3Row);
+    };
+
+    const addUserRow = () => {
+      if (!table) return;
+
+      const rowIndex = Number(shell.dataset.nextUserRow || rowCount() + 1);
+      shell.dataset.nextUserRow = String(rowIndex + 1);
+
+      const levelCell = document.createElement("div");
+      levelCell.className = "approval-level-cell";
+      levelCell.dataset.userRow = String(rowIndex);
+      levelCell.innerHTML = `<strong>Level 2</strong><small>User ${rowIndex}</small>`;
+
+      const userCell = document.createElement("div");
+      userCell.className = "approval-level-cell";
+      userCell.dataset.userRow = String(rowIndex);
+      userCell.appendChild(buildUserSelect(`module_record[level_2_mappings][${rowIndex}][level_2_user]`, "Select Level 2 User"));
+
+      const level3Cell = document.createElement("div");
+      level3Cell.className = "approval-level-cell";
+      level3Cell.dataset.userRow = String(rowIndex);
+      const level3List = document.createElement("div");
+      level3List.className = "level-3-user-list";
+      level3List.dataset.level3List = "true";
+      level3Cell.appendChild(level3List);
+      addLevel3Row(level3Cell, rowIndex);
+      const addLevel3Button = document.createElement("button");
+      addLevel3Button.type = "button";
+      addLevel3Button.className = "add-level-btn compact";
+      addLevel3Button.dataset.addLevel3User = "true";
+      addLevel3Button.textContent = "Add Level 3";
+      level3Cell.appendChild(addLevel3Button);
+
+      const actionCell = document.createElement("div");
+      actionCell.className = "approval-level-cell";
+      actionCell.dataset.userRow = String(rowIndex);
+      const removeButton = document.createElement("button");
+      removeButton.type = "button";
+      removeButton.className = "remove-level-btn";
+      removeButton.dataset.removeUserRow = "true";
+      removeButton.textContent = "Remove";
+      actionCell.appendChild(removeButton);
+
+      table.appendChild(levelCell);
+      table.appendChild(userCell);
+      table.appendChild(level3Cell);
+      table.appendChild(actionCell);
+    };
+
+    addButton?.addEventListener("click", addUserRow);
+
+    table?.addEventListener("click", (event) => {
+      const button = event.target.closest("[data-remove-user-row]");
+      if (!button) return;
+
+      removeUserRow(button.closest("[data-user-row]")?.dataset.userRow);
+    });
+
+    table?.addEventListener("click", (event) => {
+      const addLevel3Button = event.target.closest("[data-add-level3-user]");
+      if (addLevel3Button) {
+        const rowCell = addLevel3Button.closest("[data-user-row]");
+        addLevel3Row(rowCell, rowCell?.dataset.userRow);
+        return;
+      }
+
+      const removeLevel3Button = event.target.closest("[data-remove-level3-user]");
+      if (!removeLevel3Button) return;
+
+      const row = removeLevel3Button.closest("[data-level3-row]");
+      const list = removeLevel3Button.closest("[data-level3-list]");
+      if (!row || !list) return;
+
+      if (list.querySelectorAll("[data-level3-row]").length <= 1) {
+        row.querySelector("select").value = "";
+      } else {
+        row.remove();
+      }
+    });
+  });
+
   const approvalModal = document.querySelector("[data-approval-modal]");
   const approvalModalForm = document.querySelector("[data-approval-modal-form]");
   const approvalModalTitle = document.querySelector("[data-approval-modal-title]");

@@ -1085,7 +1085,53 @@ class ModulesController < ApplicationController
       data["stakeholder"] = data["stakeholder_name"] if data["stakeholder_name"].present?
     end
 
+    if record_source_slug == "user-hierarchy-mapping"
+      level_2_mappings = normalize_user_hierarchy_mappings(data)
+      level_2_users = level_2_mappings.filter_map { |mapping| mapping["level_2_user"].presence }.uniq
+      level_3_users = level_2_mappings.flat_map { |mapping| mapping["level_3_users"] }.uniq
+
+      data["level_2_mappings"] = level_2_mappings
+      data["level_2_users"] = level_2_users
+      data["level_2_user"] = level_2_users.join(", ")
+      data["level_3_users"] = level_3_users
+      data["level_3_user"] = level_2_mappings.filter_map do |mapping|
+        next if mapping["level_2_user"].blank? || mapping["level_3_users"].blank?
+
+        "#{mapping["level_2_user"]} -> #{mapping["level_3_users"].join(", ")}"
+      end.join("; ")
+      data["status"] = data["status"].presence || "Active"
+    end
+
     data
+  end
+
+  def normalize_user_hierarchy_mappings(data)
+    raw_mappings = data["level_2_mappings"]
+    raw_mappings = raw_mappings.values if raw_mappings.is_a?(Hash)
+    raw_mappings = Array(raw_mappings)
+
+    mappings = raw_mappings.filter_map do |mapping|
+      mapping = mapping.to_h if mapping.respond_to?(:to_h)
+      next unless mapping.is_a?(Hash)
+
+      level_2_user = mapping["level_2_user"].to_s.strip
+      level_3_users = Array(mapping["level_3_users"]).flat_map { |value| value.to_s.split(",") }.map(&:strip).reject(&:blank?).uniq
+      next if level_2_user.blank? && level_3_users.blank?
+
+      {
+        "level_2_user" => level_2_user,
+        "level_3_users" => level_3_users
+      }
+    end
+
+    return mappings if mappings.any?
+
+    Array(data["level_2_users"]).map { |value| value.to_s.strip }.reject(&:blank?).uniq.map do |level_2_user|
+      {
+        "level_2_user" => level_2_user,
+        "level_3_users" => []
+      }
+    end
   end
 
   def duplicate_access_control_record?(data, except_id: nil)
