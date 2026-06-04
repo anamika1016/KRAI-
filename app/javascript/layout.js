@@ -265,9 +265,11 @@ document.addEventListener("turbo:load", () => {
       if (!option) return false;
 
       const value = normalizeOption(optionValue(option));
-      if (!value || seen.has(value)) return false;
+      const label = `${optionLabel(option) || ""}`.trim().toLowerCase();
+      const key = [value, label].join("|");
+      if (!value || seen.has(key)) return false;
 
-      seen.add(value);
+      seen.add(key);
       return true;
     });
   };

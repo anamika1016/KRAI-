@@ -102,6 +102,78 @@
         </div>
       <% end %>
     </section>
+  <% elsif @slug == "lg-directory-list" %>
+    <section class="module-card lg-directory-card">
+      <div class="module-card-header">
+        <h2>All List</h2>
+        <%= form_with url: import_module_path(@slug), method: :post, multipart: true, local: true, class: "lg-directory-upload" do |form| %>
+          <%= form.file_field :file, accept: ".xlsx,.csv", required: true %>
+          <%= form.submit "Upload", class: "list-btn upload" %>
+        <% end %>
+      </div>
+
+      <%= form_with url: module_path(@slug), method: :get, local: true, class: "lg-directory-filter" do %>
+        <label>
+          <span>Select Table:</span>
+          <select name="table">
+            <% ["State", "District", "Block", "Gram Panchayat", "Village"].each do |field| %>
+              <option value="<%= field %>" <%= "selected" if @lg_directory_filter == field %>><%= field == "Gram Panchayat" ? "GP" : field %></option>
+            <% end %>
+          </select>
+        </label>
+        <label>
+          <span>Enter Name:</span>
+          <input type="search" name="q" value="<%= @lg_directory_query %>">
+        </label>
+        <button type="submit" class="list-btn upload">Search</button>
+      <% end %>
+
+      <%= form_with url: bulk_update_module_path(@slug), method: :patch, local: true do %>
+        <div class="vrp-list-toolbar compact lg-directory-actions">
+          <button type="submit" name="bulk_action" value="active" class="list-btn active">Active</button>
+          <button type="submit" name="bulk_action" value="inactive" class="list-btn deactive">Inactive</button>
+          <button type="submit" name="bulk_action" value="edit" class="list-btn edit">Edit</button>
+          <button type="submit" name="bulk_action" value="delete" class="list-btn delete" data-turbo-confirm="Delete selected LG Directory row(s)?">Delete</button>
+          <%= link_to "Export Excel", export_module_path(@slug, table: @lg_directory_filter, q: @lg_directory_query, format: :csv), class: "list-btn export" %>
+        </div>
+
+        <div class="table-shell lg-directory-table-shell">
+          <table class="module-table user-list-table" id="lg_directory_all_list" data-paginated-table data-page-size="25">
+            <thead>
+              <tr>
+                <th><input type="checkbox" data-module-select-all></th>
+                <th>State</th>
+                <th>District</th>
+                <th>Block</th>
+                <th>Gram Panchayat</th>
+                <th>Village</th>
+                <th>Status</th>
+              </tr>
+            </thead>
+            <tbody>
+              <% if @lg_directory_rows.any? %>
+                <% @lg_directory_rows.each do |row| %>
+                  <tr>
+                    <td><input type="checkbox" name="row_tokens[]" value="<%= "#{row[:source_slug]}:#{row[:record_id]}" %>" data-module-row-select></td>
+                    <td><%= row[:state].presence || "-" %></td>
+                    <td><%= row[:district].presence || "-" %></td>
+                    <td><%= row[:block].presence || "-" %></td>
+                    <td><%= row[:gram_panchayat].presence || "-" %></td>
+                    <td><%= row[:village].presence || "-" %></td>
+                    <td><span class="status-pill <%= row[:status].to_s == "Inactive" ? "inactive" : "active" %>"><%= row[:status].presence || "Active" %></span></td>
+                  </tr>
+                <% end %>
+              <% else %>
+                <tr>
+                  <td colspan="7">No LG Directory records saved yet.</td>
+                </tr>
+              <% end %>
+            </tbody>
+          </table>
+        </div>
+        <div class="table-pagination" data-pagination-for="lg_directory_all_list"></div>
+      <% end %>
+    </section>
   <% elsif @slug == "access-control" %>
     <% form_url = @record.present? ? module_record_path(@slug, @record) : records_module_path(@slug) %>
     <% form_method = @record.present? ? :patch : :post %>

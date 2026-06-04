@@ -858,76 +858,84 @@ class VrpsController < ApplicationController
       .where(module_slug: "stakeholder-role")
       .order(created_at: :desc)
       .select { |record| active_module_record?(record) }
-      .map do |record|
+      .flat_map do |record|
         stakeholder_role = first_present_data(record, "stakeholder_role").to_s.strip
-        {
-          stakeholder: first_present_data(record, "stakeholder_category", "stakeholder_name", "stakeholder").to_s.strip,
-          stakeholder_role: stakeholder_role,
-          stakeholder_role_label: label_with_registered_name(stakeholder_role, :stakeholder_role),
-          role: "",
-          role_label: "",
-          role_name: "",
-          role_name_label: "",
-          user_management_role: "",
-          user_management_role_label: "",
-          person_type: "",
-          person_type_label: ""
-        }
+        mapping_labels_for_option(stakeholder_role, :stakeholder_role).map do |stakeholder_role_label|
+          {
+            stakeholder: first_present_data(record, "stakeholder_category", "stakeholder_name", "stakeholder").to_s.strip,
+            stakeholder_role: stakeholder_role,
+            stakeholder_role_label: stakeholder_role_label,
+            role: "",
+            role_label: "",
+            role_name: "",
+            role_name_label: "",
+            user_management_role: "",
+            user_management_role_label: "",
+            person_type: "",
+            person_type_label: ""
+          }
+        end
       end
 
     role_mappings = ModuleRecord
       .where(module_slug: "role-management")
       .order(created_at: :desc)
       .select { |record| active_module_record?(record) }
-      .map do |record|
+      .flat_map do |record|
         role = first_present_data(record, "role", "role_name").to_s.strip
-        {
-          stakeholder: first_present_data(record, "stakeholder_category", "stakeholder_name", "stakeholder").to_s.strip,
-          stakeholder_role: first_present_data(record, "stakeholder_role").to_s.strip,
-          role: role,
-          role_label: label_with_registered_name(role, :role),
-          role_name: "",
-          role_name_label: "",
-          user_management_role: "",
-          user_management_role_label: "",
-          person_type: ""
-        }
+        mapping_labels_for_option(role, :role).map do |role_label|
+          {
+            stakeholder: first_present_data(record, "stakeholder_category", "stakeholder_name", "stakeholder").to_s.strip,
+            stakeholder_role: first_present_data(record, "stakeholder_role").to_s.strip,
+            role: role,
+            role_label: role_label,
+            role_name: "",
+            role_name_label: "",
+            user_management_role: "",
+            user_management_role_label: "",
+            person_type: ""
+          }
+        end
       end
 
     user_management_role_mappings = ModuleRecord
       .where(module_slug: "user-management-role")
       .order(created_at: :desc)
       .select { |record| active_module_record?(record) }
-      .map do |record|
+      .flat_map do |record|
         user_management_role = first_present_data(record, "user_management_role").to_s.strip
-        {
-          stakeholder: first_present_data(record, "stakeholder_category", "stakeholder_name", "stakeholder").to_s.strip,
-          stakeholder_role: first_present_data(record, "stakeholder_role").to_s.strip,
-          role: first_present_data(record, "role", "role_name").to_s.strip,
-          role_name: "",
-          role_name_label: "",
-          user_management_role: user_management_role,
-          user_management_role_label: label_with_registered_name(user_management_role, :user_management_role),
-          person_type: ""
-        }
+        mapping_labels_for_option(user_management_role, :user_management_role).map do |user_management_role_label|
+          {
+            stakeholder: first_present_data(record, "stakeholder_category", "stakeholder_name", "stakeholder").to_s.strip,
+            stakeholder_role: first_present_data(record, "stakeholder_role").to_s.strip,
+            role: first_present_data(record, "role", "role_name").to_s.strip,
+            role_name: "",
+            role_name_label: "",
+            user_management_role: user_management_role,
+            user_management_role_label: user_management_role_label,
+            person_type: ""
+          }
+        end
       end
 
     person_type_mappings = ModuleRecord
       .where(module_slug: "person-type")
       .order(created_at: :desc)
       .select { |record| active_module_record?(record) }
-      .map do |record|
+      .flat_map do |record|
         person_type = first_present_data(record, "person_type").to_s.strip
-        {
-          stakeholder: first_present_data(record, "stakeholder_category", "stakeholder_name", "stakeholder").to_s.strip,
-          stakeholder_role: first_present_data(record, "stakeholder_role").to_s.strip,
-          role: first_present_data(record, "role", "role_name").to_s.strip,
-          role_name: "",
-          role_name_label: "",
-          user_management_role: first_present_data(record, "user_management_role").to_s.strip,
-          person_type: person_type,
-          person_type_label: label_with_registered_name(person_type, :person_type)
-        }
+        mapping_labels_for_option(person_type, :person_type).map do |person_type_label|
+          {
+            stakeholder: first_present_data(record, "stakeholder_category", "stakeholder_name", "stakeholder").to_s.strip,
+            stakeholder_role: first_present_data(record, "stakeholder_role").to_s.strip,
+            role: first_present_data(record, "role", "role_name").to_s.strip,
+            role_name: "",
+            role_name_label: "",
+            user_management_role: first_present_data(record, "user_management_role").to_s.strip,
+            person_type: person_type,
+            person_type_label: person_type_label
+          }
+        end
       end
 
     (stakeholder_role_mappings + role_mappings + user_management_role_mappings + person_type_mappings)
@@ -936,35 +944,44 @@ class VrpsController < ApplicationController
   end
 
   def label_with_registered_name(value, attribute)
-    return "" if value.blank?
-
-    registered_name = registered_name_for_option(attribute, value)
-    registered_name.present? ? "#{value} (#{registered_name})" : value
+    mapping_labels_for_option(value, attribute).first.to_s
   end
 
-  def registered_name_for_option(attribute, value)
-    return if value.blank?
+  def mapping_labels_for_option(value, attribute)
+    return [] if value.blank?
 
-    registered_vrp_name_for_option(attribute, value).presence ||
-      registered_user_name_for_option(attribute, value).presence ||
-      registered_module_user_name_for_option(attribute, value).presence
+    registered_names = registered_names_for_option(attribute, value)
+    return [value] if registered_names.blank?
+
+    registered_names.map { |registered_name| "#{value} (#{registered_name})" }
   end
 
-  def registered_vrp_name_for_option(attribute, value)
-    return unless model_ready?(:Vrp)
+  def registered_names_for_option(attribute, value)
+    return [] if value.blank?
 
-    Vrp.where(attribute => value).order(updated_at: :desc).filter_map { |vrp| vrp.name.presence }.first
+    (
+      registered_vrp_names_for_option(attribute, value) +
+      registered_user_names_for_option(attribute, value) +
+      registered_module_user_names_for_option(attribute, value)
+    ).compact_blank.uniq
   end
 
-  def registered_user_name_for_option(attribute, value)
-    return unless model_ready?(:User)
-    return unless User.column_names.include?(attribute.to_s)
+  def registered_vrp_names_for_option(attribute, value)
+    return [] unless model_ready?(:Vrp)
+    return [] unless Vrp.column_names.include?(attribute.to_s)
 
-    User.where(attribute => value).order(updated_at: :desc).filter_map { |user| user.full_name.presence || user.user_name.presence }.first
+    Vrp.where(attribute => value).order(updated_at: :desc).filter_map { |vrp| vrp.name.presence }
   end
 
-  def registered_module_user_name_for_option(attribute, value)
-    return unless model_ready?(:ModuleRecord)
+  def registered_user_names_for_option(attribute, value)
+    return [] unless model_ready?(:User)
+    return [] unless User.column_names.include?(attribute.to_s)
+
+    User.where(attribute => value).order(updated_at: :desc).filter_map { |user| user.full_name.presence || user.user_name.presence }
+  end
+
+  def registered_module_user_names_for_option(attribute, value)
+    return [] unless model_ready?(:ModuleRecord)
 
     key = attribute.to_s
     ModuleRecord
@@ -972,7 +989,6 @@ class VrpsController < ApplicationController
       .order(updated_at: :desc)
       .select { |record| active_module_record?(record) && record.data[key].to_s.strip.casecmp(value.to_s.strip).zero? }
       .filter_map { |record| [record.data["first_name"], record.data["last_name"]].compact_blank.join(" ").presence || record.data["user_name"].presence }
-      .first
   end
 
   def location_hierarchy_mappings

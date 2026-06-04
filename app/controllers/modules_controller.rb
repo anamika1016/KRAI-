@@ -1,5 +1,6 @@
 require "fileutils"
 require "securerandom"
+require "csv"
 
 class ModulesController < ApplicationController
   helper_method :module_field_options, :module_select_field?, :static_field_options, :role_management_mappings,
@@ -53,6 +54,12 @@ class ModulesController < ApplicationController
       group: "LG Master",
       purpose: "Village master maintain karne ke liye.",
       fields: ["State", "District", "Block", "Gram Panchayat", "Village Name", "Status"]
+    },
+    "lg-directory-list" => {
+      title: "All List",
+      group: "LG Directory",
+      purpose: "State, District, Block, GP, Village ek sath maintain karne ke liye.",
+      fields: ["State", "District", "Block", "Gram Panchayat", "Village", "Status"]
     },
     "stakeholder-master" => {
       title: "Stakeholder Master",
@@ -307,6 +314,7 @@ class ModulesController < ApplicationController
     redirect_to new_user_path and return if @slug == "new-user"
 
     @records = module_records
+    prepare_lg_directory_data if @slug == "lg-directory-list"
     prepare_vrp_bill_data if @slug == "vrp-bill-add"
   end
 
@@ -410,6 +418,54 @@ class ModulesController < ApplicationController
       sync_vrp_master_record(record)
     end
     redirect_to module_path(@slug), notice: "Status changed to #{next_status}."
+  end
+
+  def import
+    load_module!
+    redirect_to module_path(@slug), alert: "Import is available only for LG Directory All List." and return unless @slug == "lg-directory-list"
+
+    result = LgDirectoryImporter.import(params[:file])
+    counts = lg_directory_import_notice_counts(result[:counts])
+    notice = "LG Directory uploaded successfully. #{result[:imported]} records created"
+    notice = "#{notice} (#{counts})" if counts.present?
+
+    redirect_to module_path(@slug), notice: "#{notice}."
+  rescue ArgumentError, ActiveRecord::RecordInvalid => e
+    redirect_to module_path(@slug), alert: e.message
+  end
+
+  def export
+    load_module!
+    redirect_to module_path(@slug), alert: "Export is available only for LG Directory All List." and return unless @slug == "lg-directory-list"
+
+    prepare_lg_directory_data
+    send_data lg_directory_csv(@lg_directory_rows),
+      filename: "lg_directory_all_list_#{Date.current}.csv",
+      type: "text/csv"
+  end
+
+  def bulk_update
+    load_module!
+    redirect_to module_path(@slug), alert: "Bulk action is available only for LG Directory All List." and return unless @slug == "lg-directory-list"
+
+    selected_records = lg_directory_selected_records
+    redirect_to module_path(@slug), alert: "Please select at least one LG Directory row." and return if selected_records.blank?
+
+    case params[:bulk_action]
+    when "edit"
+      redirect_to module_path(@slug), alert: "Please select one row only for edit." and return unless selected_records.one?
+
+      redirect_to edit_module_record_path(selected_records.first.module_slug, selected_records.first)
+    when "active", "inactive"
+      next_status = params[:bulk_action] == "active" ? "Active" : "Inactive"
+      selected_records.each { |record| record.update!(data: record.data.merge("status" => next_status)) }
+      redirect_to module_path(@slug), notice: "#{selected_records.size} LG Directory row(s) marked #{next_status}."
+    when "delete"
+      selected_records.each(&:destroy!)
+      redirect_to module_path(@slug), notice: "#{selected_records.size} LG Directory row(s) deleted."
+    else
+      redirect_to module_path(@slug), alert: "Please choose a valid action."
+    end
   end
 
   def set_status
@@ -752,6 +808,127 @@ class ModulesController < ApplicationController
     ModuleRecord.where(module_slug: record_source_slug).to_a.sort_by { |record| module_record_sort_value(record) }
   end
 
+  def prepare_lg_directory_data
+    @lg_directory_filter = params[:table].presence_in(lg_directory_filter_fields) || "State"
+    @lg_directory_query = params[:q].to_s.strip
+    @lg_directory_rows = filtered_lg_directory_rows(lg_directory_rows)
+  end
+
+  def filtered_lg_directory_rows(rows)
+    return rows if @lg_directory_query.blank?
+
+    key = @lg_directory_filter.parameterize(separator: "_").to_sym
+    rows.select { |row| row[key].to_s.downcase.include?(@lg_directory_query.downcase) }
+  end
+
+  def lg_directory_rows
+    return [] unless model_ready?(:ModuleRecord)
+
+    rows = []
+    rows.concat(lg_rows_from_records("village-master", village: "village_name"))
+    rows.concat(lg_rows_from_records("gram-panchayat-master", gram_panchayat: "gram_panchayat_name"))
+    rows.concat(lg_rows_from_records("block-master", block: "block_name"))
+    rows.concat(lg_rows_from_records("district-master", district: "district_name"))
+    rows.concat(lg_rows_from_records("state-master", state: "state_name"))
+
+    compact_lg_directory_rows(rows)
+      .uniq { |row| lg_directory_row_key(row) }
+      .sort_by { |row| [row[:state], row[:district], row[:block], row[:gram_panchayat], row[:village]].map(&:to_s) }
+  end
+
+  def lg_rows_from_records(module_slug, aliases)
+    ModuleRecord
+      .where(module_slug: module_slug)
+      .order(created_at: :desc)
+      .map do |record|
+        {
+          record_id: record.id,
+          source_slug: record.module_slug,
+          state: record.data["state"].presence || record.data[aliases[:state].to_s].presence,
+          district: record.data["district"].presence || record.data[aliases[:district].to_s].presence,
+          block: record.data["block"].presence || record.data[aliases[:block].to_s].presence,
+          gram_panchayat: record.data["gram_panchayat"].presence || record.data[aliases[:gram_panchayat].to_s].presence,
+          village: record.data["village"].presence || record.data[aliases[:village].to_s].presence,
+          status: record.data["status"].presence || "Active"
+        }
+      end
+  end
+
+  def compact_lg_directory_rows(rows)
+    rows.reject { |row| lg_directory_prefix_covered?(row, rows) }
+  end
+
+  def lg_directory_prefix_covered?(row, rows)
+    levels = [:state, :district, :block, :gram_panchayat, :village]
+    last_present_index = levels.rindex { |key| row[key].present? }
+    return false unless last_present_index
+    return false if last_present_index == levels.size - 1
+
+    prefix = levels.first(last_present_index + 1)
+    rows.any? do |candidate|
+      next false if candidate.equal?(row)
+
+      prefix.all? { |key| candidate[key].to_s.strip.casecmp(row[key].to_s.strip).zero? } &&
+        levels[(last_present_index + 1)..].any? { |key| candidate[key].present? }
+    end
+  end
+
+  def lg_directory_row_key(row)
+    [:state, :district, :block, :gram_panchayat, :village]
+      .map { |key| row[key].to_s.strip.downcase }
+      .join("|")
+  end
+
+  def lg_directory_filter_fields
+    ["State", "District", "Block", "Gram Panchayat", "Village"]
+  end
+
+  def lg_directory_import_notice_counts(counts)
+    {
+      "state-master" => "State",
+      "district-master" => "District",
+      "block-master" => "Block",
+      "gram-panchayat-master" => "GP",
+      "village-master" => "Village"
+    }.filter_map do |slug, label|
+      count = counts[slug].to_i
+      "#{label}: #{count}" if count.positive?
+    end.join(", ")
+  end
+
+  def lg_directory_selected_records
+    allowed_slugs = [
+      "state-master",
+      "district-master",
+      "block-master",
+      "gram-panchayat-master",
+      "village-master"
+    ]
+
+    Array(params[:row_tokens]).filter_map do |token|
+      slug, id = token.to_s.split(":", 2)
+      next unless allowed_slugs.include?(slug) && id.present?
+
+      ModuleRecord.where(module_slug: slug).find_by(id: id)
+    end.uniq
+  end
+
+  def lg_directory_csv(rows)
+    CSV.generate(headers: true) do |csv|
+      csv << ["State", "District", "Block", "Gram Panchayat", "Village", "Status"]
+      rows.each do |row|
+        csv << [
+          row[:state],
+          row[:district],
+          row[:block],
+          row[:gram_panchayat],
+          row[:village],
+          row[:status]
+        ]
+      end
+    end
+  end
+
   def prepare_vrp_bill_data
     @approved_vrp_options = approved_vrp_options
     month_master_rows = active_month_master_rows
@@ -1021,78 +1198,86 @@ class ModulesController < ApplicationController
       .where(module_slug: "stakeholder-role")
       .order(created_at: :desc)
       .select { |record| active_module_record?(record) }
-      .map do |record|
+      .flat_map do |record|
         stakeholder_role = first_present_data(record, "stakeholder_role").to_s.strip
-        {
-          stakeholder: first_present_data(record, "stakeholder_category", "stakeholder_name", "stakeholder").to_s.strip,
-          stakeholder_role: stakeholder_role,
-          stakeholder_role_label: label_with_registered_name(stakeholder_role, :stakeholder_role),
-          role: "",
-          role_label: "",
-          role_name: "",
-          role_name_label: "",
-          user_management_role: "",
-          user_management_role_label: "",
-          person_type: "",
-          person_type_label: ""
-        }
+        mapping_labels_for_option(stakeholder_role, :stakeholder_role).map do |stakeholder_role_label|
+          {
+            stakeholder: first_present_data(record, "stakeholder_category", "stakeholder_name", "stakeholder").to_s.strip,
+            stakeholder_role: stakeholder_role,
+            stakeholder_role_label: stakeholder_role_label,
+            role: "",
+            role_label: "",
+            role_name: "",
+            role_name_label: "",
+            user_management_role: "",
+            user_management_role_label: "",
+            person_type: "",
+            person_type_label: ""
+          }
+        end
       end
 
     role_mappings = ModuleRecord
       .where(module_slug: "role-name")
       .order(created_at: :desc)
       .select { |record| active_module_record?(record) }
-      .map do |record|
+      .flat_map do |record|
         role = first_present_data(record, "role_name").to_s.strip
-        {
-          stakeholder: first_present_data(record, "stakeholder_category", "stakeholder_name", "stakeholder").to_s.strip,
-          stakeholder_role: first_present_data(record, "stakeholder_role").to_s.strip,
-          role: role,
-          role_label: label_with_registered_name(role, :role),
-          role_name: "",
-          role_name_label: "",
-          user_management_role: "",
-          user_management_role_label: "",
-          person_type: ""
-        }
+        mapping_labels_for_option(role, :role).map do |role_label|
+          {
+            stakeholder: first_present_data(record, "stakeholder_category", "stakeholder_name", "stakeholder").to_s.strip,
+            stakeholder_role: first_present_data(record, "stakeholder_role").to_s.strip,
+            role: role,
+            role_label: role_label,
+            role_name: "",
+            role_name_label: "",
+            user_management_role: "",
+            user_management_role_label: "",
+            person_type: ""
+          }
+        end
       end
 
     user_management_role_mappings = ModuleRecord
       .where(module_slug: "user-management-role")
       .order(created_at: :desc)
       .select { |record| active_module_record?(record) }
-      .map do |record|
+      .flat_map do |record|
         user_management_role = first_present_data(record, "user_management_role").to_s.strip
-        {
-          stakeholder: first_present_data(record, "stakeholder_category", "stakeholder_name", "stakeholder").to_s.strip,
-          stakeholder_role: first_present_data(record, "stakeholder_role").to_s.strip,
-          role: first_present_data(record, "role", "role_name").to_s.strip,
-          role_name: "",
-          role_name_label: "",
-          user_management_role: user_management_role,
-          user_management_role_label: label_with_registered_name(user_management_role, :user_management_role),
-          person_type: ""
-        }
+        mapping_labels_for_option(user_management_role, :user_management_role).map do |user_management_role_label|
+          {
+            stakeholder: first_present_data(record, "stakeholder_category", "stakeholder_name", "stakeholder").to_s.strip,
+            stakeholder_role: first_present_data(record, "stakeholder_role").to_s.strip,
+            role: first_present_data(record, "role", "role_name").to_s.strip,
+            role_name: "",
+            role_name_label: "",
+            user_management_role: user_management_role,
+            user_management_role_label: user_management_role_label,
+            person_type: ""
+          }
+        end
       end
 
     person_type_mappings = ModuleRecord
       .where(module_slug: "person-type")
       .order(created_at: :desc)
       .select { |record| active_module_record?(record) }
-      .map do |record|
+      .flat_map do |record|
         role = first_present_data(record, "role", "role_name").to_s.strip
         user_management_role = first_present_data(record, "user_management_role").to_s.strip
         person_type = first_present_data(record, "person_type").to_s.strip
-        {
-          stakeholder: first_present_data(record, "stakeholder_category", "stakeholder_name", "stakeholder").to_s.strip,
-          stakeholder_role: first_present_data(record, "stakeholder_role").to_s.strip,
-          role: role,
-          role_name: "",
-          role_name_label: "",
-          user_management_role: user_management_role,
-          person_type: person_type,
-          person_type_label: joined_type_label(role, user_management_role, person_type)
-        }
+        joined_type_labels(role, user_management_role, person_type).map do |person_type_label|
+          {
+            stakeholder: first_present_data(record, "stakeholder_category", "stakeholder_name", "stakeholder").to_s.strip,
+            stakeholder_role: first_present_data(record, "stakeholder_role").to_s.strip,
+            role: role,
+            role_name: "",
+            role_name_label: "",
+            user_management_role: user_management_role,
+            person_type: person_type,
+            person_type_label: person_type_label
+          }
+        end
       end
 
     (stakeholder_role_mappings + role_mappings + user_management_role_mappings + person_type_mappings)
@@ -1101,21 +1286,29 @@ class ModulesController < ApplicationController
   end
 
   def label_with_registered_name(value, attribute)
-    return "" if value.blank?
-
-    registered_names = registered_names_for_option(attribute, value)
-    registered_names.any? ? "#{value} (#{registered_names.join(", ")})" : value
+    mapping_labels_for_option(value, attribute).first.to_s
   end
 
-  def joined_type_label(role, user_management_role, person_type)
+  def mapping_labels_for_option(value, attribute)
+    return [] if value.blank?
+
+    registered_names = registered_names_for_option(attribute, value)
+    return [value] if registered_names.blank?
+
+    registered_names.map { |registered_name| "#{value} (#{registered_name})" }
+  end
+
+  def joined_type_labels(role, user_management_role, person_type)
     base = [role, user_management_role, person_type].compact_blank.join("-")
-    return "" if base.blank?
+    return [] if base.blank?
 
     registered_names =
       registered_names_for_option(:person_type, person_type).presence ||
       registered_names_for_option(:user_management_role, user_management_role).presence ||
       registered_names_for_option(:role, role)
-    registered_names.any? ? "#{base} (#{registered_names.join(", ")})" : base
+    return [base] if registered_names.blank?
+
+    registered_names.map { |registered_name| "#{base} (#{registered_name})" }
   end
 
   def registered_names_for_option(attribute, value)

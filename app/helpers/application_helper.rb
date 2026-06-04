@@ -4,6 +4,7 @@ module ApplicationHelper
       title: "LG Directory",
       icon: "▦",
       links: [
+        ["All List", :module, "lg-directory-list"],
         ["State Entry", :module, "state-master"],
         ["District Entry", :module, "district-master"],
         ["Block Entry", :module, "block-master"],

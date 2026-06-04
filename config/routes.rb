@@ -33,6 +33,9 @@ Rails.application.routes.draw do
 
   resources :modules, param: :slug, only: [:show], controller: :modules do
     post :records, action: :create, on: :member
+    post :import, action: :import, on: :member
+    get :export, action: :export, on: :member
+    patch :bulk_update, action: :bulk_update, on: :member
 
     resources :records, controller: :modules, only: [:edit, :update, :destroy] do
       patch :toggle, action: :toggle_status, on: :member

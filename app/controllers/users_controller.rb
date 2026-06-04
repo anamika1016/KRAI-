@@ -117,65 +117,135 @@ class UsersController < ApplicationController
       .where(module_slug: "stakeholder-role")
       .order(created_at: :desc)
       .select { |record| record.data["status"].blank? || record.data["status"].to_s.casecmp("Active").zero? }
-      .map do |record|
-        {
-          stakeholder: first_present_data(record, "stakeholder_category", "stakeholder_name", "stakeholder").to_s.strip,
-          stakeholder_role: first_present_data(record, "stakeholder_role").to_s.strip,
-          role: "",
-          role_name: "",
-          user_management_role: "",
-          person_type: ""
-        }
+      .flat_map do |record|
+        stakeholder_role = first_present_data(record, "stakeholder_role").to_s.strip
+        mapping_labels_for_option(stakeholder_role, :stakeholder_role).map do |stakeholder_role_label|
+          {
+            stakeholder: first_present_data(record, "stakeholder_category", "stakeholder_name", "stakeholder").to_s.strip,
+            stakeholder_role: stakeholder_role,
+            stakeholder_role_label: stakeholder_role_label,
+            role: "",
+            role_label: "",
+            role_name: "",
+            role_name_label: "",
+            user_management_role: "",
+            user_management_role_label: "",
+            person_type: "",
+            person_type_label: ""
+          }
+        end
       end
 
     role_mappings = ModuleRecord
       .where(module_slug: "role-name")
       .order(created_at: :desc)
       .select { |record| record.data["status"].blank? || record.data["status"].to_s.casecmp("Active").zero? }
-      .map do |record|
-        {
-          stakeholder: first_present_data(record, "stakeholder_category", "stakeholder_name", "stakeholder").to_s.strip,
-          stakeholder_role: first_present_data(record, "stakeholder_role").to_s.strip,
-          role: first_present_data(record, "role_name").to_s.strip,
-          role_name: "",
-          user_management_role: "",
-          person_type: ""
-        }
+      .flat_map do |record|
+        role = first_present_data(record, "role_name").to_s.strip
+        mapping_labels_for_option(role, :role).map do |role_label|
+          {
+            stakeholder: first_present_data(record, "stakeholder_category", "stakeholder_name", "stakeholder").to_s.strip,
+            stakeholder_role: first_present_data(record, "stakeholder_role").to_s.strip,
+            role: role,
+            role_label: role_label,
+            role_name: "",
+            role_name_label: "",
+            user_management_role: "",
+            user_management_role_label: "",
+            person_type: "",
+            person_type_label: ""
+          }
+        end
       end
 
     user_management_role_mappings = ModuleRecord
       .where(module_slug: "user-management-role")
       .order(created_at: :desc)
       .select { |record| record.data["status"].blank? || record.data["status"].to_s.casecmp("Active").zero? }
-      .map do |record|
-        {
-          stakeholder: first_present_data(record, "stakeholder_category", "stakeholder_name", "stakeholder").to_s.strip,
-          stakeholder_role: first_present_data(record, "stakeholder_role").to_s.strip,
-          role: first_present_data(record, "role", "role_name").to_s.strip,
-          role_name: "",
-          user_management_role: first_present_data(record, "user_management_role").to_s.strip,
-          person_type: ""
-        }
+      .flat_map do |record|
+        user_management_role = first_present_data(record, "user_management_role").to_s.strip
+        mapping_labels_for_option(user_management_role, :user_management_role).map do |user_management_role_label|
+          {
+            stakeholder: first_present_data(record, "stakeholder_category", "stakeholder_name", "stakeholder").to_s.strip,
+            stakeholder_role: first_present_data(record, "stakeholder_role").to_s.strip,
+            role: first_present_data(record, "role", "role_name").to_s.strip,
+            role_name: "",
+            role_name_label: "",
+            user_management_role: user_management_role,
+            user_management_role_label: user_management_role_label,
+            person_type: "",
+            person_type_label: ""
+          }
+        end
       end
 
     person_type_mappings = ModuleRecord
       .where(module_slug: "person-type")
       .order(created_at: :desc)
       .select { |record| record.data["status"].blank? || record.data["status"].to_s.casecmp("Active").zero? }
-      .map do |record|
-        {
-          stakeholder: first_present_data(record, "stakeholder_category", "stakeholder_name", "stakeholder").to_s.strip,
-          stakeholder_role: first_present_data(record, "stakeholder_role").to_s.strip,
-          role: first_present_data(record, "role", "role_name").to_s.strip,
-          role_name: "",
-          user_management_role: first_present_data(record, "user_management_role").to_s.strip,
-          person_type: first_present_data(record, "person_type").to_s.strip
-        }
+      .flat_map do |record|
+        person_type = first_present_data(record, "person_type").to_s.strip
+        mapping_labels_for_option(person_type, :person_type).map do |person_type_label|
+          {
+            stakeholder: first_present_data(record, "stakeholder_category", "stakeholder_name", "stakeholder").to_s.strip,
+            stakeholder_role: first_present_data(record, "stakeholder_role").to_s.strip,
+            role: first_present_data(record, "role", "role_name").to_s.strip,
+            role_name: "",
+            role_name_label: "",
+            user_management_role: first_present_data(record, "user_management_role").to_s.strip,
+            person_type: person_type,
+            person_type_label: person_type_label
+          }
+        end
       end
 
     (stakeholder_role_mappings + role_mappings + user_management_role_mappings + person_type_mappings)
       .reject { |mapping| mapping[:stakeholder_role].blank? && mapping[:role].blank? && mapping[:role_name].blank? && mapping[:user_management_role].blank? && mapping[:person_type].blank? }
       .uniq
+  end
+
+  def mapping_labels_for_option(value, attribute)
+    return [] if value.blank?
+
+    registered_names = registered_names_for_option(attribute, value)
+    return [value] if registered_names.blank?
+
+    registered_names.map { |registered_name| "#{value} (#{registered_name})" }
+  end
+
+  def registered_names_for_option(attribute, value)
+    return [] if value.blank?
+
+    (
+      registered_vrp_names_for_option(attribute, value) +
+      registered_user_names_for_option(attribute, value) +
+      registered_module_user_names_for_option(attribute, value)
+    ).compact_blank.uniq
+  end
+
+  def registered_vrp_names_for_option(attribute, value)
+    return [] unless defined?(Vrp) && Vrp.table_exists?
+    return [] unless Vrp.column_names.include?(attribute.to_s)
+
+    Vrp.where(attribute => value).order(updated_at: :desc).filter_map { |vrp| vrp.name.presence }
+  end
+
+  def registered_user_names_for_option(attribute, value)
+    return [] unless defined?(User) && User.table_exists?
+    return [] unless User.column_names.include?(attribute.to_s)
+
+    User.where(attribute => value).order(updated_at: :desc).filter_map { |user| user.full_name.presence || user.user_name.presence }
+  end
+
+  def registered_module_user_names_for_option(attribute, value)
+    return [] unless defined?(ModuleRecord) && ModuleRecord.table_exists?
+
+    key = attribute.to_s
+    ModuleRecord
+      .where(module_slug: "new-user")
+      .order(updated_at: :desc)
+      .select { |record| (record.data["status"].blank? || record.data["status"].to_s.casecmp("Active").zero?) && record.data[key].to_s.strip.casecmp(value.to_s.strip).zero? }
+      .filter_map { |record| [record.data["first_name"], record.data["last_name"]].compact_blank.join(" ").presence || record.data["user_name"].presence }
   end
 
   def first_present_data(record, *keys)
