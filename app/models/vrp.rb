@@ -46,6 +46,12 @@ class Vrp < ApplicationRecord
   before_validation :sync_location_lists_from_profile
   before_save :remove_blank_array_values
 
+  def agreement_accepted?
+    return false unless has_attribute?(:agreement_accepted_at)
+
+    agreement_accepted_at.present?
+  end
+
   private
 
   def set_default_office_values

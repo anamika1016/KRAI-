@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2026_06_03_114000) do
+ActiveRecord::Schema[8.1].define(version: 2026_06_04_143000) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "pg_catalog.plpgsql"
 
@@ -208,6 +208,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_06_03_114000) do
     t.string "aadhar_no", null: false
     t.string "account_no", null: false
     t.text "address", null: false
+    t.datetime "agreement_accepted_at"
     t.string "bank_name"
     t.string "branch", null: false
     t.string "cluster_incharge"

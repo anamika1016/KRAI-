@@ -3,6 +3,8 @@ Rails.application.routes.draw do
 
   get    "login",  to: "sessions#new",     as: :login
   post   "login",  to: "sessions#create"
+  get    "vrp-agreement", to: "sessions#agreement", as: :vrp_agreement
+  post   "vrp-agreement", to: "sessions#complete_agreement"
   get    "logout", to: "sessions#destroy", as: nil
   delete "logout", to: "sessions#destroy", as: :logout
 

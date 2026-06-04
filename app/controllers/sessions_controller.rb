@@ -9,11 +9,45 @@ class SessionsController < ApplicationController
     user = find_app_user
 
     if user
+      if vrp_agreement_required?(user)
+        reset_session
+        session[:pending_vrp_agreement_id] = user.id
+        redirect_to vrp_agreement_path
+        return
+      end
+
       reset_session
       refresh_app_user_session!(user)
       redirect_to dashboard_path, notice: "Logged in successfully."
     else
       redirect_to login_path, alert: "Invalid username or password."
+    end
+  end
+
+  def agreement
+    @vrp = pending_vrp_agreement
+
+    unless @vrp
+      redirect_to login_path, alert: "Please login again to continue."
+    end
+  end
+
+  def complete_agreement
+    @vrp = pending_vrp_agreement
+
+    unless @vrp
+      redirect_to login_path, alert: "Please login again to continue."
+      return
+    end
+
+    if params[:decision] == "agree"
+      @vrp.update!(agreement_accepted_at: Time.current)
+      reset_session
+      refresh_app_user_session!(@vrp)
+      redirect_to dashboard_path, notice: "Logged in successfully."
+    else
+      reset_session
+      redirect_to login_path, alert: "Declaration declined. Login is allowed only after accepting the declaration."
     end
   end
 
@@ -23,6 +57,19 @@ class SessionsController < ApplicationController
   end
 
   private
+
+  def pending_vrp_agreement
+    return unless "Vrp".safe_constantize&.table_exists?
+    return unless Vrp.column_names.include?("agreement_accepted_at")
+
+    Vrp.where(is_active: true, is_deleted: false).find_by(id: session[:pending_vrp_agreement_id])
+  end
+
+  def vrp_agreement_required?(user)
+    user.is_a?(Vrp) &&
+      Vrp.column_names.include?("agreement_accepted_at") &&
+      !user.agreement_accepted?
+  end
 
   def find_app_user
     login = params[:login].presence || params[:email].presence

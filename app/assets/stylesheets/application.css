@@ -1429,13 +1429,16 @@ a {
 
 .stacked-list-cell {
   display: grid;
-  gap: 6px;
-  min-width: 180px;
+  grid-template-columns: repeat(5, minmax(110px, max-content));
+  gap: 6px 10px;
+  min-width: 560px;
   white-space: normal;
 }
 
 .stacked-list-cell span {
   display: block;
+  max-width: 160px;
+  overflow-wrap: anywhere;
   line-height: 1.35;
 }
 
@@ -2728,6 +2731,97 @@ a {
   color: #9a2f1c;
 }
 
+.agreement-login-page {
+  overflow-y: auto;
+  padding: 34px 20px;
+}
+
+.agreement-panel {
+  width: min(960px, 100%);
+}
+
+.agreement-surface {
+  display: grid;
+  gap: 18px;
+  width: 100%;
+  max-height: calc(100vh - 68px);
+  padding: 26px;
+  border: 1px solid rgba(24, 32, 38, 0.12);
+  border-radius: 8px;
+  background: #fff;
+  box-shadow: 0 14px 36px rgba(23, 33, 38, 0.13);
+}
+
+.agreement-surface .login-notice {
+  width: 100%;
+  margin: 0;
+  border-radius: 8px;
+}
+
+.agreement-header {
+  display: grid;
+  gap: 6px;
+  border-bottom: 1px solid var(--vrp-line);
+  padding-bottom: 14px;
+}
+
+.agreement-header h1 {
+  margin: 0;
+  color: var(--vrp-text);
+  font-size: clamp(1.25rem, 2vw, 1.8rem);
+  line-height: 1.35;
+}
+
+.agreement-document {
+  min-height: 260px;
+  max-height: min(58vh, 620px);
+  overflow-y: auto;
+  border: 1px solid var(--vrp-line);
+  border-radius: 8px;
+  background: #fbfdfc;
+  color: #26343b;
+  padding: 22px;
+  line-height: 1.75;
+}
+
+.agreement-document h2 {
+  margin: 24px 0 8px;
+  color: var(--vrp-primary-dark);
+  font-size: 1.02rem;
+}
+
+.agreement-document h2:first-of-type {
+  margin-top: 0;
+}
+
+.agreement-document p {
+  margin: 0 0 12px;
+}
+
+.agreement-document ul {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 7px 22px;
+  margin: 8px 0 14px;
+  padding-left: 22px;
+}
+
+.agreement-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 12px;
+  border-top: 1px solid var(--vrp-line);
+  padding-top: 16px;
+}
+
+.agreement-actions .btn {
+  min-width: 132px;
+}
+
+.agreement-decline {
+  color: #8a291d;
+}
+
 .modal-dialog {
   width: min(920px, 100%);
 }
@@ -2938,5 +3032,31 @@ a {
     width: 88px;
     height: 88px;
     min-height: 88px;
+  }
+
+  .agreement-login-page {
+    padding: 16px;
+  }
+
+  .agreement-surface {
+    max-height: none;
+    padding: 18px;
+  }
+
+  .agreement-document {
+    max-height: 58vh;
+    padding: 16px;
+  }
+
+  .agreement-document ul {
+    grid-template-columns: 1fr;
+  }
+
+  .agreement-actions {
+    flex-direction: column-reverse;
+  }
+
+  .agreement-actions .btn {
+    width: 100%;
   }
 }
