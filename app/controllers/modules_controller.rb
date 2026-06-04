@@ -1103,43 +1103,47 @@ class ModulesController < ApplicationController
   def label_with_registered_name(value, attribute)
     return "" if value.blank?
 
-    registered_name = registered_name_for_option(attribute, value)
-    registered_name.present? ? "#{value} (#{registered_name})" : value
+    registered_names = registered_names_for_option(attribute, value)
+    registered_names.any? ? "#{value} (#{registered_names.join(", ")})" : value
   end
 
   def joined_type_label(role, user_management_role, person_type)
     base = [role, user_management_role, person_type].compact_blank.join("-")
     return "" if base.blank?
 
-    registered_name = registered_name_for_option(:person_type, person_type) ||
-      registered_name_for_option(:user_management_role, user_management_role) ||
-      registered_name_for_option(:role, role)
-    registered_name.present? ? "#{base} (#{registered_name})" : base
+    registered_names =
+      registered_names_for_option(:person_type, person_type).presence ||
+      registered_names_for_option(:user_management_role, user_management_role).presence ||
+      registered_names_for_option(:role, role)
+    registered_names.any? ? "#{base} (#{registered_names.join(", ")})" : base
   end
 
-  def registered_name_for_option(attribute, value)
-    return if value.blank?
+  def registered_names_for_option(attribute, value)
+    return [] if value.blank?
 
-    registered_vrp_name_for_option(attribute, value).presence ||
-      registered_user_name_for_option(attribute, value).presence ||
-      registered_module_user_name_for_option(attribute, value).presence
+    (
+      registered_vrp_names_for_option(attribute, value) +
+      registered_user_names_for_option(attribute, value) +
+      registered_module_user_names_for_option(attribute, value)
+    ).compact_blank.uniq
   end
 
-  def registered_vrp_name_for_option(attribute, value)
-    return unless model_ready?(:Vrp)
+  def registered_vrp_names_for_option(attribute, value)
+    return [] unless model_ready?(:Vrp)
+    return [] unless Vrp.column_names.include?(attribute.to_s)
 
-    Vrp.where(attribute => value).order(updated_at: :desc).filter_map { |vrp| vrp.name.presence }.first
+    Vrp.where(attribute => value).order(updated_at: :desc).filter_map { |vrp| vrp.name.presence }
   end
 
-  def registered_user_name_for_option(attribute, value)
-    return unless model_ready?(:User)
-    return unless User.column_names.include?(attribute.to_s)
+  def registered_user_names_for_option(attribute, value)
+    return [] unless model_ready?(:User)
+    return [] unless User.column_names.include?(attribute.to_s)
 
-    User.where(attribute => value).order(updated_at: :desc).filter_map { |user| user.full_name.presence || user.user_name.presence }.first
+    User.where(attribute => value).order(updated_at: :desc).filter_map { |user| user.full_name.presence || user.user_name.presence }
   end
 
-  def registered_module_user_name_for_option(attribute, value)
-    return unless model_ready?(:ModuleRecord)
+  def registered_module_user_names_for_option(attribute, value)
+    return [] unless model_ready?(:ModuleRecord)
 
     key = attribute.to_s
     ModuleRecord
@@ -1147,7 +1151,6 @@ class ModulesController < ApplicationController
       .order(updated_at: :desc)
       .select { |record| active_module_record?(record) && record.data[key].to_s.strip.casecmp(value.to_s.strip).zero? }
       .filter_map { |record| [record.data["first_name"], record.data["last_name"]].compact_blank.join(" ").presence || record.data["user_name"].presence }
-      .first
   end
 
   def location_hierarchy_mappings
