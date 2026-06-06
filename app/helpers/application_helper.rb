@@ -246,18 +246,18 @@ module ApplicationHelper
   def vrp_sidebar_sections
     [
       {
+        title: "VRP Targets",
+        icon: "▨",
+        links: [
+          ["VRP Targets", :route, :target_mappings_path]
+        ]
+      },
+      {
         title: "Training",
         icon: "▥",
         links: [
           ["Training Form", :module, "training-form"],
           ["Training List", :module, "training-form-list"]
-        ]
-      },
-      {
-        title: "VRP Targets",
-        icon: "▨",
-        links: [
-          ["VRP Targets", :route, :target_mappings_path]
         ]
       }
     ]
