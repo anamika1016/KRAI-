@@ -162,7 +162,7 @@
           <div class="approval-levels user-hierarchy-levels" data-user-hierarchy-levels data-next-user-row="<%= selected_level_2_mappings.size + 1 %>">
             <div class="approval-level-toolbar">
               <h2>Level 2 and Level 3 Users</h2>
-              <button type="button" class="add-level-btn" data-add-user-row>Add More</button>
+              <button type="button" class="add-level-btn" data-add-user-row>Add Level 2</button>
             </div>
             <div class="approval-level-table user-hierarchy-table" data-user-hierarchy-table>
               <div class="approval-level-head">Level</div>
@@ -751,7 +751,7 @@
   <div class="module-grid">
     <% location_fields = ["State", "District", "Block", "Gram Panchayat", "Village"] %>
     <% has_location_fields = (@module[:fields] & location_fields).any? %>
-    <section class="module-card" id="module-form" <% if ["role-management", "role-name", "user-management-role", "person-type"].include?(@slug) %>data-user-role-form data-role-map="<%= json_escape(role_management_mappings.to_json) %>"<% end %> <% if has_location_fields %>data-location-form data-location-map="<%= json_escape(location_hierarchy_mappings.to_json) %>"<% end %>>
+    <section class="module-card" id="module-form" <% if ["role-management", "role-name", "user-management-role", "person-type"].include?(@slug) %>data-user-role-form data-role-map="<%= json_escape(role_management_mappings.to_json) %>"<% end %> <% if has_location_fields %>data-location-form data-location-map="<%= json_escape(location_hierarchy_mappings.to_json) %>"<% end %> <% if @slug == "training-form" %>data-training-target-form data-training-target-map="<%= json_escape(training_target_mappings.to_json) %>"<% end %>>
       <div class="module-card-header">
         <h2><%= @slug == "new-user" ? "Registration" : (@record.present? ? "Edit Record" : "Fields") %></h2>
       </div>
@@ -789,7 +789,14 @@
                     "data-user-management-role-select data-selected-value=\"#{ERB::Util.html_escape(field_value)}\""
                   end if ["role-management", "role-name", "user-management-role", "person-type"].include?(@slug) %>
                 <% location_dependency_attr = "data-location-level=\"#{field.parameterize}\" data-selected-value=\"#{ERB::Util.html_escape(field_value)}\"" if location_fields.include?(field) %>
-                <select name="module_record[<%= field_key %>]" <%= role_dependency_attr&.html_safe %> <%= location_dependency_attr&.html_safe %>>
+                <% training_target_attr =
+                  case field
+                  when "ICS / Block"
+                    "data-training-target-ics data-selected-value=\"#{ERB::Util.html_escape(field_value)}\""
+                  when "Gram Name"
+                    "data-training-target-village data-selected-value=\"#{ERB::Util.html_escape(field_value)}\""
+                  end if @slug == "training-form" %>
+                <select name="module_record[<%= field_key %>]" <%= role_dependency_attr&.html_safe %> <%= location_dependency_attr&.html_safe %> <%= training_target_attr&.html_safe %>>
                   <option value=""><%= options.any? ? "Select #{resource_person_label(field)}" : "No #{resource_person_label(field)} saved yet" %></option>
                   <% options.each do |option| %>
                     <option value="<%= option %>" <%= "selected" if option == field_value %>><%= option %></option>

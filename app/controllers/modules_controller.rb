@@ -5,7 +5,7 @@ require "csv"
 class ModulesController < ApplicationController
   helper_method :module_field_options, :module_select_field?, :static_field_options, :role_management_mappings,
                 :access_control_role_mappings, :access_control_field_options,
-                :location_hierarchy_mappings, :office_category_mappings
+                :location_hierarchy_mappings, :office_category_mappings, :training_target_mappings
 
   DASHBOARD_CARDS = [
     ["Total VRP", "0", "Registered field resources"],
@@ -19,7 +19,6 @@ class ModulesController < ApplicationController
   ].freeze
 
   DASHBOARD_REPORTS = [
-    "Monthly Bill Summary",
     "Weekly Activity Progress",
     "Approval Status Summary",
     "Payment Status Report"
@@ -73,12 +72,6 @@ class ModulesController < ApplicationController
       group: "Masters",
       purpose: "Stakeholder profile aur logo details maintain karna.",
       fields: ["Stakeholder Name", "Profile Name", "CIN", "Phone Number", "Email", "Website", "Full Address", "Logo Upload", "Status"]
-    },
-    "training-material" => {
-      title: "Training Material Master",
-      group: "Masters",
-      purpose: "Training documents/videos upload karna.",
-      fields: ["Material Title", "VRP Type", "File Upload", "Upload Date", "Status"]
     },
     "training-form" => {
       title: "ट्रेनिंग प्रपत्र",
@@ -764,45 +757,35 @@ class ModulesController < ApplicationController
 
   def dashboard_cards
     vrps = dashboard_vrps
-    bills = module_records_for_dashboard("vrp-bill-add")
     targets = module_records_for_dashboard("weekly-target-add")
     activities = module_records_for_dashboard("add-vrp-activity")
-    training = module_records_for_dashboard("training-material")
+    hierarchy_summary = user_hierarchy_dashboard_summary
     approved_vrps = vrps.count { |vrp| vrp.status.to_i == 55 || vrp_approval_complete?(vrp) }
     pending_approvals = vrps.count { |vrp| vrp_approval_pending?(vrp) }
-    pending_payments = bills.count { |record| bill_payment_status(record).casecmp("Pending").zero? }
 
-    [
+    cards = [
       ["Total Registered VRP", vrps.size, "All VRP records saved in registration"],
       ["Final Approved VRP", approved_vrps, "VRP records with final approval"],
       ["VRP Waiting for Approval", pending_approvals, "VRP records currently pending"],
-      ["Bills Created", bills.size, "All VRP bill records entered"],
-      ["Bills Pending Payment", pending_payments, "Bills where payment status is Pending"],
       ["Weekly Targets Assigned", targets.size, "All weekly target records entered"],
-      ["Activities Configured", activities.size, "Activities available for target and bill work"],
-      ["Training Materials Uploaded", training.size, "Training files or material records"]
+      ["Activities Configured", activities.size, "Activities available for target and bill work"]
     ]
+
+    cards.insert(0, ["Level 3 Users Under Level 1", hierarchy_summary[:level_3_total], "Level 3 users mapped below your Level 1 hierarchy"]) if hierarchy_summary[:level_3_total].positive?
+    cards.insert(0, ["Direct Level 2 Users", hierarchy_summary[:level_2_total], "Users directly mapped under you"]) if hierarchy_summary[:level_2_total].positive?
+
+    cards
   end
 
   def dashboard_reports
-    bills = module_records_for_dashboard("vrp-bill-add")
     targets = module_records_for_dashboard("weekly-target-add")
+    hierarchy_summary = user_hierarchy_dashboard_summary
 
     reports = [
-      {
-        title: "Monthly Bill Summary",
-        headers: ["Month", "Bills", "Amount"],
-        rows: grouped_rows(bills, "select_bill_month", "grand_total")
-      },
       {
         title: "Weekly Target Status",
         headers: ["Week", "Assigned", "Completed"],
         rows: grouped_count_rows(targets, "week", "completion_status", "Completed")
-      },
-      {
-        title: "Bill Payment Status",
-        headers: ["Payment Status", "Bills", "Amount"],
-        rows: grouped_rows(bills, "payment_status", "grand_total", default_key: "Pending")
       },
       {
         title: "Live Clock",
@@ -810,11 +793,123 @@ class ModulesController < ApplicationController
       }
     ]
 
+    reports.insert(0, user_hierarchy_dashboard_report(hierarchy_summary)) if hierarchy_summary[:total].positive?
     if admin_dashboard_user?
       reports.insert(0, vrp_assigned_target_report)
       reports.insert(0, vrp_declaration_acceptance_report)
     end
     reports
+  end
+
+  def user_hierarchy_dashboard_report(summary)
+    {
+      title: "User Hierarchy",
+      dom_id: "user_hierarchy_report",
+      headers: ["Group", "Level", "User", "Reports To"],
+      rows: summary[:rows].presence || [["No mapped user", "-", "-", "-"]]
+    }
+  end
+
+  def user_hierarchy_dashboard_summary
+    @user_hierarchy_dashboard_summary ||= begin
+      direct_rows, level_3_rows = user_hierarchy_dashboard_rows
+      rows = direct_rows + level_3_rows
+      {
+        level_2_total: direct_rows.size,
+        level_3_total: level_3_rows.size,
+        total: rows.size,
+        rows: rows
+      }
+    end
+  end
+
+  def user_hierarchy_dashboard_rows
+    return [[], []] unless model_ready?(:ModuleRecord)
+
+    current_labels = current_dashboard_user_labels
+    return [[], []] if current_labels.blank?
+
+    direct_rows = []
+    level_3_rows = []
+    ModuleRecord
+      .where(module_slug: "user-hierarchy-mapping")
+      .order(updated_at: :desc)
+      .select { |record| active_module_record?(record) }
+      .each do |record|
+        level_1_user = record.data["level_1_user"].to_s.strip
+        hierarchy_mappings_for_dashboard(record).each do |mapping|
+          level_2_user = mapping["level_2_user"].to_s.strip
+          level_3_users = Array(mapping["level_3_users"]).map(&:to_s).map(&:strip).reject(&:blank?)
+
+          if dashboard_user_label_matches?(level_1_user, current_labels)
+            direct_rows << ["Direct Level 2 Users", "Level 2", level_2_user, level_1_user] if level_2_user.present?
+            level_3_users.each { |user| level_3_rows << ["Level 3 Users Under Level 1", "Level 3", user, level_2_user.presence || level_1_user] }
+          elsif dashboard_user_label_matches?(level_2_user, current_labels)
+            level_3_users.each { |user| level_3_rows << ["Level 3 Users Under Me", "Level 3", user, level_2_user] }
+          end
+        end
+      end
+
+    [
+      direct_rows.reject { |row| row[2].blank? },
+      level_3_rows.reject { |row| row[2].blank? }
+    ]
+  end
+
+  def hierarchy_mappings_for_dashboard(record)
+    raw_mappings = record.data["level_2_mappings"]
+    raw_mappings = raw_mappings.values if raw_mappings.is_a?(Hash)
+    mappings = Array(raw_mappings).filter_map do |mapping|
+      mapping = mapping.to_h if mapping.respond_to?(:to_h)
+      next unless mapping.is_a?(Hash)
+
+      {
+        "level_2_user" => mapping["level_2_user"],
+        "level_3_users" => Array(mapping["level_3_users"]).flat_map { |value| value.to_s.split(",") }.map(&:strip).reject(&:blank?)
+      }
+    end
+
+    return mappings if mappings.any?
+
+    Array(record.data["level_2_users"].presence || record.data["level_2_user"]).flat_map { |value| value.to_s.split(",") }.map(&:strip).reject(&:blank?).map do |level_2_user|
+      {
+        "level_2_user" => level_2_user,
+        "level_3_users" => Array(record.data["level_3_users"].presence || record.data["level_3_user"]).flat_map { |value| value.to_s.split(/[;,]/) }.map(&:strip).reject(&:blank?)
+      }
+    end
+  end
+
+  def current_dashboard_user_labels
+    name = current_app_user&.dig("name").to_s.strip
+    username = current_app_user&.dig("username").to_s.strip
+    role = current_app_user&.dig("role").presence || current_app_user&.dig("role_name")
+
+    [
+      name,
+      username,
+      role.present? && name.present? ? "#{name} (#{role})" : nil,
+      role.present? && username.present? ? "#{username} (#{role})" : nil
+    ].compact_blank.uniq
+  end
+
+  def dashboard_user_label_matches?(stored_label, current_labels)
+    stored_values = dashboard_user_label_match_values(stored_label)
+    return false if stored_values.blank?
+
+    current_labels.any? do |label|
+      (stored_values & dashboard_user_label_match_values(label)).any?
+    end
+  end
+
+  def dashboard_user_label_match_values(label)
+    normalized = normalize_dashboard_user_label(label)
+    base = normalize_dashboard_user_label(label.to_s.sub(/\s*\([^)]*\)\s*\z/, ""))
+
+    [normalized, base].compact_blank.reject { |value| value.length < 3 }.uniq
+  end
+
+  def normalize_dashboard_user_label(label)
+    label.to_s.downcase.gsub(/[^a-z0-9]+/, " ").squish
   end
 
   def vrp_declaration_acceptance_report
@@ -877,9 +972,13 @@ class ModulesController < ApplicationController
     return [] unless model_ready?(:Vrp)
     return Vrp.all.to_a if current_app_user.blank? || current_app_user["user_type"].to_s.casecmp("admin").zero?
 
+    (dashboard_own_vrps.to_a + dashboard_approval_related_vrps).uniq
+  end
+
+  def dashboard_own_vrps
     ids = dashboard_current_app_user_ids
     emails = dashboard_current_app_user_emails
-    return [] if ids.blank? && emails.blank?
+    return Vrp.none if ids.blank? && emails.blank?
 
     scope = Vrp.none
     if ids.any?
@@ -893,7 +992,47 @@ class ModulesController < ApplicationController
       scope = scope.or(unassigned_scope)
     end
 
-    scope.to_a
+    scope
+  end
+
+  def dashboard_approval_related_vrps
+    return [] unless model_ready?(:Vrp)
+
+    Vrp.all.select do |vrp|
+      vrp_approval_sent?(vrp) && dashboard_current_user_in_approval_channel?(vrp)
+    end
+  end
+
+  def dashboard_current_user_in_approval_channel?(vrp)
+    current_labels = current_dashboard_user_labels
+    return false if current_labels.blank?
+
+    dashboard_approval_steps_for_visibility(vrp).any? do |step|
+      dashboard_user_label_matches?(step.data["approver_approved_by"], current_labels)
+    end
+  end
+
+  def dashboard_approval_steps_for_visibility(vrp)
+    return [] unless model_ready?(:ModuleRecord)
+
+    identities = vrp_creator_identities_for_dashboard(vrp)
+    return [] if identities.blank?
+
+    @dashboard_approval_visibility_steps ||= ModuleRecord.where(module_slug: "approval-master").order(created_at: :asc).to_a
+    @dashboard_approval_visibility_steps
+      .select do |record|
+        record.data["status"].to_s != "Inactive" &&
+          ["Farmer Registration", "VRP Registration"].include?(record.data["module_name"].to_s) &&
+          dashboard_vrp_name_matches?(record.data["vrp_name"], vrp) &&
+          identities.any? do |identity|
+            dashboard_value_matches?(record.data["stakeholder_name"], identity[:stakeholder]) &&
+              (record.data["office"].blank? || dashboard_value_matches?(record.data["office"], identity[:office]))
+          end
+      end
+      .group_by { |record| vrp_approval_sequence(record) }
+      .values
+      .map { |records| records.max_by { |record| approval_record_priority(record) } }
+      .sort_by { |record| vrp_approval_sequence(record) }
   end
 
   def dashboard_current_app_user_ids
@@ -1590,11 +1729,15 @@ class ModulesController < ApplicationController
   end
 
   def module_select_field?(field)
+    return true if training_target_field?(field)
+
     source = field_sources[field]
     (source.present? && source[:module] != (@slug || current_slug)) || static_field_options(field).any?
   end
 
   def module_field_options(field)
+    return training_target_field_options(field) if training_target_field?(field)
+
     source = field_sources[field]
     return [] unless ModuleRecord.table_exists?
 
@@ -1605,6 +1748,39 @@ class ModulesController < ApplicationController
     end
 
     generic_field_options(field)
+  end
+
+  def training_target_field?(field)
+    record_source_slug == "training-form" && ["ICS / Block", "Gram Name"].include?(field)
+  end
+
+  def training_target_field_options(field)
+    case field
+    when "ICS / Block"
+      training_target_mappings.filter_map { |mapping| mapping[:ics].presence }.uniq
+    when "Gram Name"
+      training_target_mappings.filter_map { |mapping| mapping[:village].presence }.uniq
+    else
+      []
+    end
+  end
+
+  def training_target_mappings
+    return [] unless model_ready?(:TargetMapping)
+
+    scope = TargetMapping.all
+    scope = scope.where(vrp_id: current_vrp_record.id) if vrp_login_user? && current_vrp_record.present?
+
+    scope
+      .order(:ics_name, :ics_id, :village_name, :village_id, :id)
+      .map do |target|
+        {
+          ics: target.ics_name.presence || target.ics_id,
+          village: target.village_name.presence || target.village_id
+        }
+      end
+      .reject { |mapping| mapping[:ics].blank? && mapping[:village].blank? }
+      .uniq
   end
 
   def role_management_mappings

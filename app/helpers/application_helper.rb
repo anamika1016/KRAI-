@@ -66,7 +66,7 @@ module ApplicationHelper
         ["VRP Type", :module, "add-vrp-type"],
         ["VRP Registration", :route, :new_vrp_path],
         ["VRP List", :route, :vrps_path],
-        ["VRP Approval", :route, :approvals_vrps_path],
+        ["VRP Approval Queue", :route, :approvals_vrps_path],
         ["VRP Approval Form", :module, "approval-master"],
         ["VRP Approval List", :module, "approval-list"]
       ]
@@ -124,7 +124,7 @@ module ApplicationHelper
       section.merge(links: allowed_links) if allowed_links.any?
     end
 
-    sidebar_with_required_sections(visible_sections)
+    visible_sections
   end
 
   def sidebar_link_path(link)
@@ -159,6 +159,8 @@ module ApplicationHelper
       "Stakeholder Role" => "Stakeholder Person Type",
       "User Management Role" => "User Management Person Type",
       "Person Type" => "Person Type",
+      "ICS / Block" => "ICS Name",
+      "Gram Name" => "Village Name",
       "Activity Group" => "Main Activity",
       "Activity Group Name" => "Main Activity Name",
       "Activity Name" => "Sub Activity Name",
@@ -196,8 +198,15 @@ module ApplicationHelper
 
     access_records.flat_map do |record|
       access_values(record.data["sub_module_names"].presence || record.data["sub_module_name"])
-        .filter_map { |name| name.presence&.parameterize }
+        .flat_map { |name| sidebar_access_name_keys(name) }
     end.uniq
+  end
+
+  def sidebar_access_name_keys(name)
+    keys = [name.presence&.parameterize].compact
+    keys << "vrp-approval-queue" if name.to_s.strip == "VRP Approval"
+    keys << "vrp-approval" if name.to_s.strip == "VRP Approval Queue"
+    keys.uniq
   end
 
   def access_values(value)
@@ -252,14 +261,6 @@ module ApplicationHelper
         ]
       }
     ]
-  end
-
-  def sidebar_with_required_sections(sections)
-    required_titles = ["Training"]
-    required_sections = SIDEBAR_SECTIONS.select { |section| required_titles.include?(section[:title]) }
-    existing_titles = sections.map { |section| section[:title] }
-
-    sections + required_sections.reject { |section| existing_titles.include?(section[:title]) }
   end
 
   def current_stakeholder

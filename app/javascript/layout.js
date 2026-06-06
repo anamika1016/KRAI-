@@ -640,6 +640,62 @@ document.addEventListener("turbo:load", () => {
     locationLevels.slice(1).forEach(refreshLocationLevel);
   });
 
+  document.querySelectorAll("[data-training-target-form]").forEach((formShell) => {
+    let mappings = [];
+    try {
+      mappings = JSON.parse(formShell.dataset.trainingTargetMap || "[]");
+    } catch (_error) {
+      mappings = [];
+    }
+
+    const icsSelect = formShell.querySelector("[data-training-target-ics]");
+    const villageSelect = formShell.querySelector("[data-training-target-village]");
+    if (!icsSelect || !villageSelect) return;
+
+    const selectOption = (select, option, selected) => {
+      const value = optionValue(option);
+      const label = optionLabel(option);
+      select.selected = normalizeOption(value) === normalizeOption(selected) ||
+        normalizeOption(label) === normalizeOption(selected);
+    };
+
+    const fillTrainingSelect = (select, options, placeholder) => {
+      const selected = select.dataset.selectedValue || select.value;
+      select.innerHTML = "";
+
+      const blank = document.createElement("option");
+      blank.value = "";
+      blank.textContent = options.length ? placeholder : `No ${placeholder.replace(/^Select\s+/i, "")} saved yet`;
+      select.appendChild(blank);
+
+      options.forEach((optionData) => {
+        const option = document.createElement("option");
+        option.value = optionValue(optionData);
+        option.textContent = optionLabel(optionData);
+        selectOption(option, optionData, selected);
+        select.appendChild(option);
+      });
+    };
+
+    const mappedIcsOptions = () => uniqueOptions(mappings.map((mapping) => makeOption(mapping.ics, mapping.ics))).map(optionValue);
+    const mappedVillageOptions = () => {
+      const selectedIcs = icsSelect.value;
+      const rows = selectedIcs
+        ? mappings.filter((mapping) => normalizeOption(mapping.ics) === normalizeOption(selectedIcs))
+        : mappings;
+
+      return uniqueOptions(rows.map((mapping) => makeOption(mapping.village, mapping.village))).map(optionValue);
+    };
+
+    fillTrainingSelect(icsSelect, mappedIcsOptions(), "Select ICS Name");
+    fillTrainingSelect(villageSelect, mappedVillageOptions(), "Select Village Name");
+
+    icsSelect.addEventListener("change", () => {
+      villageSelect.dataset.selectedValue = "";
+      fillTrainingSelect(villageSelect, mappedVillageOptions(), "Select Village Name");
+    });
+  });
+
   document.querySelectorAll("[data-vrp-ics-mapping]").forEach((shell) => {
     const vrpSelect = shell.querySelector("[data-vrp-ics-vrp]");
     const fcoSelect = shell.querySelector("[data-vrp-ics-fco]");
@@ -1812,6 +1868,7 @@ document.addEventListener("turbo:load", () => {
       "VRP Type": "वीआरपी प्रकार",
       "VRP List": "वीआरपी सूची",
       "VRP Approval": "वीआरपी अनुमोदन",
+      "VRP Approval Queue": "वीआरपी अनुमोदन क्यू",
       "VRP Approval Form": "वीआरपी अनुमोदन फॉर्म",
       "VRP Approval List": "वीआरपी अनुमोदन सूची",
       "Saved Records": "सेव रिकॉर्ड",
@@ -1856,6 +1913,7 @@ document.addEventListener("turbo:load", () => {
       "Cancel": "रद्द करें",
       "Cancel Edit": "एडिट रद्द करें",
       "Add More": "और जोड़ें",
+      "Add Level 2": "लेवल 2 जोड़ें",
       "Apply": "लागू करें",
       "Remove": "हटाएं",
       "Close": "बंद करें",

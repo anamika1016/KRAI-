@@ -201,14 +201,13 @@
 
   <div class="dashboard-grid premium">
     <% card_paths = {
+      "Direct Level 2 Users" => "#user_hierarchy_report",
+      "Level 3 Users Under Level 1" => "#user_hierarchy_report",
       "Total Registered VRP" => vrps_path,
       "Final Approved VRP" => vrps_path,
       "VRP Waiting for Approval" => approvals_vrps_path,
-      "Bills Created" => module_path("vrp-bill-list"),
-      "Bills Pending Payment" => module_path("vrp-bill-list"),
       "Weekly Targets Assigned" => module_path("weekly-target-list"),
-      "Activities Configured" => module_path("vrp-activity-list"),
-      "Training Materials Uploaded" => module_path("training-material")
+      "Activities Configured" => module_path("vrp-activity-list")
     } %>
     <% @dashboard_cards.each_with_index do |(title, value, caption), index| %>
       <%= link_to card_paths.fetch(title, dashboard_path), class: "metric-card-link", data: { dashboard_card: true } do %>
@@ -232,7 +231,7 @@
 
     <div class="dashboard-report-grid" id="dashboard_reports">
       <% @dashboard_reports.each do |report| %>
-        <article class="report-card <%= "clock-report-card" if report[:clock] %>" data-dashboard-card>
+        <article class="report-card <%= "clock-report-card" if report[:clock] %>" <%= "id=\"#{report[:dom_id]}\"".html_safe if report[:dom_id].present? %> data-dashboard-card>
           <h3><%= report[:title] %></h3>
           <% if report[:clock] %>
             <div class="dashboard-clock-face">
