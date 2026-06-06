@@ -6,7 +6,7 @@ class ModulesController < ApplicationController
   helper_method :module_field_options, :module_select_field?, :static_field_options, :role_management_mappings,
                 :access_control_role_mappings, :access_control_field_options,
                 :location_hierarchy_mappings, :office_category_mappings, :training_target_mappings,
-                :training_activity_mappings
+                :training_activity_mappings, :approval_user_mappings, :approval_user_options
 
   DASHBOARD_CARDS = [
     ["Total VRP", "0", "Registered field resources"],
@@ -216,13 +216,13 @@ class ModulesController < ApplicationController
       title: "VRP Approval Form",
       group: "VRP Registration",
       purpose: "VRP registration aur bill approval ke approver maintain karne ke liye.",
-      fields: ["Module Name", "Stakeholder Name", "Office", "Approval Level", "Approver (Approved By)", "Status", "VRP Name"]
+      fields: ["Module Name", "Stakeholder Name", "Office Category", "Office Name", "Approval Level", "Approver (Approved By)", "Status", "User Name"]
     },
     "approval-list" => {
       title: "VRP Approval List",
       group: "VRP Registration",
       purpose: "Saved approval mappings dekhne ke liye.",
-      fields: ["Module Name", "Stakeholder Name", "Office", "Approval Level", "Approver (Approved By)", "Status", "VRP Name"]
+      fields: ["Module Name", "Stakeholder Name", "Office Category", "Office Name", "Approval Level", "Approver (Approved By)", "Status", "User Name"]
     },
     "ics-master" => {
       title: "ICS Master",
@@ -1089,7 +1089,7 @@ class ModulesController < ApplicationController
           dashboard_vrp_name_matches?(record.data["vrp_name"], vrp) &&
           identities.any? do |identity|
             dashboard_value_matches?(record.data["stakeholder_name"], identity[:stakeholder]) &&
-              (record.data["office"].blank? || dashboard_value_matches?(record.data["office"], identity[:office]))
+              approval_identity_filters_match?(record, identity)
           end
       end
       .group_by { |record| vrp_approval_sequence(record) }
@@ -1228,7 +1228,7 @@ class ModulesController < ApplicationController
               dashboard_value_matches?(record.data["user_management_role"], identity[:user_management_role]) &&
               dashboard_value_matches?(record.data["person_type"], identity[:person_type]) &&
               dashboard_vrp_name_matches?(record.data["vrp_name"], vrp) &&
-              (record.data["office"].blank? || dashboard_value_matches?(record.data["office"], identity[:office]))
+              approval_identity_filters_match?(record, identity)
           end
       end
       .group_by { |record| vrp_approval_sequence(record) }
@@ -1276,7 +1276,9 @@ class ModulesController < ApplicationController
       stakeholder_role: current_app_user&.dig("stakeholder_role"),
       user_management_role: current_app_user&.dig("user_management_role"),
       person_type: current_app_user&.dig("person_type"),
-      office: current_app_user&.dig("office")
+      office: current_app_user&.dig("office_name").presence || current_app_user&.dig("office"),
+      office_category: current_app_user&.dig("office_category"),
+      user_name: current_app_user&.dig("username").presence || current_app_user&.dig("user_name")
     } if vrp.created_by_id.blank?
 
     identities
@@ -1291,7 +1293,9 @@ class ModulesController < ApplicationController
       stakeholder_role: user.stakeholder_role,
       user_management_role: user.user_management_role,
       person_type: user.respond_to?(:person_type) ? user.person_type : nil,
-      office: user.office
+      office: user.respond_to?(:office_name) ? user.office_name.presence || user.office : user.office,
+      office_category: user.respond_to?(:office_category) ? user.office_category : nil,
+      user_name: user.user_name
     }
   end
 
@@ -1302,7 +1306,9 @@ class ModulesController < ApplicationController
       stakeholder_role: record.data["stakeholder_role"],
       user_management_role: record.data["user_management_role"],
       person_type: record.data["person_type"],
-      office: record.data["office"]
+      office: record.data["office_name"].presence || record.data["office"],
+      office_category: record.data["office_category"],
+      user_name: record.data["user_name"]
     }
   end
 
@@ -1327,6 +1333,24 @@ class ModulesController < ApplicationController
     return true if expected.blank?
 
     expected.to_s.strip.casecmp(actual.to_s.strip).zero?
+  end
+
+  def approval_identity_filters_match?(record, identity)
+    approval_value_matches?(approval_record_office(record), identity[:office]) &&
+      approval_value_matches?(record.data["office_category"], identity[:office_category]) &&
+      approval_user_name_matches?(record.data["user_name"], identity[:user_name])
+  end
+
+  def approval_value_matches?(expected, actual)
+    expected.blank? || actual.blank? || dashboard_value_matches?(expected, actual)
+  end
+
+  def approval_user_name_matches?(expected, actual)
+    expected.blank? || (actual.present? && dashboard_value_matches?(expected, actual))
+  end
+
+  def approval_record_office(record)
+    record.data["office_name"].presence || record.data["office"]
   end
 
   def percentage(value, total)
@@ -2402,7 +2426,72 @@ class ModulesController < ApplicationController
   end
 
   def approval_record_priority(record)
-    [record.data["vrp_name"].present? ? 1 : 0, record.id]
+    [(record.data["user_name"].present? || record.data["vrp_name"].present?) ? 1 : 0, record.id]
+  end
+
+  def approval_user_options
+    approval_user_mappings.map { |mapping| mapping.slice(:value, :label) }.uniq
+  end
+
+  def approval_user_mappings
+    @approval_user_mappings ||= begin
+      mappings = []
+
+      if model_ready?(:ModuleRecord)
+        mappings.concat(
+          ModuleRecord
+            .where(module_slug: "new-user")
+            .order(created_at: :desc)
+            .select { |record| active_module_record?(record) }
+            .filter_map { |record| approval_user_mapping_from_data(record.data) }
+        )
+      end
+
+      if model_ready?(:User)
+        mappings.concat(
+          User.order(:user_name, :id).filter_map { |user| approval_user_mapping_from_user(user) }
+        )
+      end
+
+      mappings.uniq { |mapping| [mapping[:value], mapping[:label], mapping[:office_category], mapping[:office_name]] }
+    end
+  end
+
+  def approval_user_mapping_from_data(data)
+    username = data["user_name"].to_s.strip
+    return if username.blank?
+
+    role = data["role"].presence || data["role_name"].presence
+    {
+      value: username,
+      label: approval_user_label(username, role),
+      stakeholder: data["stakeholder"].presence || data["stakeholder_name"].presence || data["stakeholder_category"].to_s.strip,
+      office_category: data["office_category"].to_s.strip,
+      office_name: data["office_name"].presence || data["office"].to_s.strip,
+      office: data["office_name"].presence || data["office"].to_s.strip
+    }
+  end
+
+  def approval_user_mapping_from_user(user)
+    username = user.user_name.to_s.strip
+    return if username.blank?
+
+    role = (user.respond_to?(:role) ? user.role : nil).presence ||
+      (user.respond_to?(:role_name) ? user.role_name : nil).presence
+    office_name = user.respond_to?(:office_name) ? user.office_name.presence : nil
+    office_name ||= user.respond_to?(:office) ? user.office.to_s.strip : ""
+    {
+      value: username,
+      label: approval_user_label(username, role),
+      stakeholder: user.respond_to?(:stakeholder) ? user.stakeholder.to_s.strip : "",
+      office_category: user.respond_to?(:office_category) ? user.office_category.to_s.strip : "",
+      office_name: office_name,
+      office: office_name
+    }
+  end
+
+  def approval_user_label(username, role)
+    role.present? ? "#{username}(#{role})" : username
   end
 
   def sidebar_module_names

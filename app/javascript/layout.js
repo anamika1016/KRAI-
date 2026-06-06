@@ -357,7 +357,9 @@ document.addEventListener("turbo:load", () => {
     const officeCategorySelect = formShell.querySelector("[data-office-category-select]");
     const officeNameSelect = formShell.querySelector("[data-office-name-select]");
     const officeSelect = officeNameSelect || formShell.querySelector("[data-office-select]");
-    if (!stakeholderSelect && !stakeholderRoleSelect && !roleSelect && !roleNameSelect && !userManagementRoleSelect && !personTypeSelect && !parentOfficeSelect && !officeCategorySelect && !officeSelect) return;
+    const officeUserSelect = formShell.querySelector("[data-office-user-select]");
+    const approvalOfficeCascade = formShell.dataset.approvalOfficeCascade === "true";
+    if (!stakeholderSelect && !stakeholderRoleSelect && !roleSelect && !roleNameSelect && !userManagementRoleSelect && !personTypeSelect && !parentOfficeSelect && !officeCategorySelect && !officeSelect && !officeUserSelect) return;
 
     let mappings = [];
     try {
@@ -371,6 +373,12 @@ document.addEventListener("turbo:load", () => {
     } catch (_error) {
       officeMappings = [];
     }
+    let officeUserMappings = [];
+    try {
+      officeUserMappings = JSON.parse(formShell.dataset.officeUserMap || "[]");
+    } catch (_error) {
+      officeUserMappings = [];
+    }
     const selectedDisplayName = (select) => {
       if (!select) return "";
 
@@ -379,6 +387,11 @@ document.addEventListener("turbo:load", () => {
     };
     const initialParentOfficeOptions = parentOfficeSelect
       ? Array.from(parentOfficeSelect.options).map((option) => option.value).filter(Boolean)
+      : [];
+    const initialOfficeUserOptions = officeUserSelect
+      ? Array.from(officeUserSelect.options)
+          .filter((option) => option.value)
+          .map((option) => makeOption(option.value, option.textContent))
       : [];
 
     const mappedStakeholderRoles = (stakeholder) => {
@@ -514,9 +527,13 @@ document.addEventListener("turbo:load", () => {
       const mappedStakeholder = normalizeOption(mapping.stakeholder);
       const mappedParentOffice = normalizeOption(mapping.parent_office);
       const mappedOfficeCategory = normalizeOption(mapping.office_category || mapping.category_name || (!mapping.office_name ? mapping.office : ""));
-      const stakeholderMatches = !normalizedStakeholder || !mappedStakeholder || mappedStakeholder === normalizedStakeholder;
+      const stakeholderMatches = approvalOfficeCascade
+        ? mappedStakeholder === normalizedStakeholder
+        : (!normalizedStakeholder || !mappedStakeholder || mappedStakeholder === normalizedStakeholder);
       const parentOfficeMatches = !normalizedParentOffice || !mappedParentOffice || mappedParentOffice === normalizedParentOffice;
-      const officeCategoryMatches = !normalizedOfficeCategory || !mappedOfficeCategory || mappedOfficeCategory === normalizedOfficeCategory;
+      const officeCategoryMatches = approvalOfficeCascade
+        ? mappedOfficeCategory === normalizedOfficeCategory
+        : (!normalizedOfficeCategory || !mappedOfficeCategory || mappedOfficeCategory === normalizedOfficeCategory);
       return stakeholderMatches && parentOfficeMatches && officeCategoryMatches;
     };
 
@@ -524,12 +541,20 @@ document.addEventListener("turbo:load", () => {
       if (!officeCategorySelect) return;
       const normalizedStakeholder = normalizeOption(stakeholderSelect?.value);
       const normalizedParentOffice = normalizeOption(parentOfficeSelect?.value);
+      if (approvalOfficeCascade && !normalizedStakeholder) {
+        replaceSelectOptions(officeCategorySelect, [], "Select Office Category");
+        refreshOffices();
+        return;
+      }
+
       const officeCategories = uniquePresent(
         officeMappings
           .filter((mapping) => {
             const mappedStakeholder = normalizeOption(mapping.stakeholder);
             const mappedParentOffice = normalizeOption(mapping.parent_office);
-            const stakeholderMatches = !normalizedStakeholder || !mappedStakeholder || mappedStakeholder === normalizedStakeholder;
+            const stakeholderMatches = approvalOfficeCascade
+              ? mappedStakeholder === normalizedStakeholder
+              : (!normalizedStakeholder || !mappedStakeholder || mappedStakeholder === normalizedStakeholder);
             const parentOfficeMatches = !normalizedParentOffice || !mappedParentOffice || mappedParentOffice === normalizedParentOffice;
             return stakeholderMatches && parentOfficeMatches;
           })
@@ -541,10 +566,17 @@ document.addEventListener("turbo:load", () => {
 
     const refreshOffices = () => {
       if (!officeSelect) return;
+      const selectedStakeholder = stakeholderSelect?.value || "";
       const selectedOfficeCategory = officeCategorySelect?.value || "";
+      if (approvalOfficeCascade && (!normalizeOption(selectedStakeholder) || !normalizeOption(selectedOfficeCategory))) {
+        replaceSelectOptions(officeSelect, [], officeNameSelect ? "Select Office Name" : "Select Office");
+        refreshOfficeUsers();
+        return;
+      }
+
       const offices = uniquePresent(
         officeMappings
-          .filter((mapping) => officeMappingMatches(mapping, stakeholderSelect?.value, parentOfficeSelect?.value, selectedOfficeCategory))
+          .filter((mapping) => officeMappingMatches(mapping, selectedStakeholder, parentOfficeSelect?.value, selectedOfficeCategory))
           .map((mapping) => {
             if (officeNameSelect) return mapping.office_name || "";
 
@@ -552,6 +584,39 @@ document.addEventListener("turbo:load", () => {
           })
       );
       replaceSelectOptions(officeSelect, offices, officeNameSelect ? "Select Office Name" : "Select Office");
+      refreshOfficeUsers();
+    };
+
+    const refreshOfficeUsers = () => {
+      if (!officeUserSelect) return;
+
+      const selectedOfficeCategory = normalizeOption(officeCategorySelect?.value);
+      const selectedOfficeName = normalizeOption(officeSelect?.value);
+      const selectedStakeholder = normalizeOption(stakeholderSelect?.value);
+      if (approvalOfficeCascade && (!selectedStakeholder || !selectedOfficeCategory || !selectedOfficeName)) {
+        replaceSelectOptions(officeUserSelect, [], "Select User Name");
+        return;
+      }
+
+      const filteredUsers = officeUserMappings.filter((user) => {
+        const mappedStakeholder = normalizeOption(user.stakeholder || user.stakeholder_name || user.stakeholder_category);
+        const mappedOfficeCategory = normalizeOption(user.office_category || user.category_name);
+        const mappedOfficeName = normalizeOption(user.office_name || user.office);
+        const stakeholderMatches = approvalOfficeCascade
+          ? mappedStakeholder === selectedStakeholder
+          : (!selectedStakeholder || !mappedStakeholder || mappedStakeholder === selectedStakeholder);
+        const categoryMatches = approvalOfficeCascade
+          ? mappedOfficeCategory === selectedOfficeCategory
+          : (!selectedOfficeCategory || !mappedOfficeCategory || mappedOfficeCategory === selectedOfficeCategory);
+        const officeMatches = !selectedOfficeName || mappedOfficeName === selectedOfficeName;
+        return stakeholderMatches && categoryMatches && officeMatches;
+      });
+      const users = uniqueOptions(
+        (filteredUsers.length ? filteredUsers : (!selectedOfficeCategory && !selectedOfficeName ? officeUserMappings : []))
+          .map((user) => makeOption(user.value, user.label || user.value))
+      );
+      const options = users.length ? users : (officeUserMappings.length ? [] : initialOfficeUserOptions);
+      replaceSelectOptions(officeUserSelect, options, options.length ? "Select User Name" : "No User saved yet");
     };
 
     stakeholderSelect?.addEventListener("change", () => {
@@ -580,7 +645,12 @@ document.addEventListener("turbo:load", () => {
     });
     officeCategorySelect?.addEventListener("change", () => {
       if (officeSelect) officeSelect.dataset.selectedValue = "";
+      if (officeUserSelect) officeUserSelect.dataset.selectedValue = "";
       refreshOffices();
+    });
+    officeSelect?.addEventListener("change", () => {
+      if (officeUserSelect) officeUserSelect.dataset.selectedValue = "";
+      refreshOfficeUsers();
     });
     stakeholderRoleSelect?.addEventListener("change", () => {
       if (roleSelect) roleSelect.dataset.selectedValue = "";
@@ -609,6 +679,7 @@ document.addEventListener("turbo:load", () => {
     refreshParentOffices();
     refreshOfficeCategories();
     refreshOffices();
+    refreshOfficeUsers();
   });
 
   document.querySelectorAll("[data-vrp-office-form]").forEach((formShell) => {

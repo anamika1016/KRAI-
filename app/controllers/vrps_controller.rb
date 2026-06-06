@@ -446,14 +446,13 @@ class VrpsController < ApplicationController
       .select do |record|
         record_stakeholder = record.data["stakeholder_name"].to_s
         record_vrp_name = record.data["vrp_name"].to_s
-        record_office = record.data["office"].to_s
 
         active_module_record?(record) &&
           ["Farmer Registration", "VRP Registration"].include?(record.data["module_name"].to_s) &&
           vrp_name_matches?(record_vrp_name, vrp) &&
           creator_identities.any? do |identity|
             module_value_matches?(record_stakeholder, identity[:stakeholder]) &&
-              approval_office_matches?(record_office, identity[:office])
+              approval_identity_filters_match?(record, identity)
           end
       end
 
@@ -564,6 +563,20 @@ class VrpsController < ApplicationController
     expected.blank? || actual.blank? || module_value_matches?(expected, actual)
   end
 
+  def approval_identity_filters_match?(record, identity)
+    approval_office_matches?(approval_record_office(record), identity[:office]) &&
+      approval_office_matches?(record.data["office_category"], identity[:office_category]) &&
+      approval_user_name_matches?(record.data["user_name"], identity[:user_name])
+  end
+
+  def approval_record_office(record)
+    record.data["office_name"].presence || record.data["office"]
+  end
+
+  def approval_user_name_matches?(expected, actual)
+    expected.blank? || (actual.present? && module_value_matches?(expected, actual))
+  end
+
   def vrp_name_matches?(expected, vrp)
     return true if expected.blank?
 
@@ -575,7 +588,7 @@ class VrpsController < ApplicationController
   end
 
   def approval_record_priority(record)
-    [record.data["vrp_name"].present? ? 1 : 0, record.id]
+    [(record.data["user_name"].present? || record.data["vrp_name"].present?) ? 1 : 0, record.id]
   end
 
   def vrp_status_label(vrp)
@@ -666,7 +679,9 @@ class VrpsController < ApplicationController
       stakeholder_role: current_app_user&.dig("stakeholder_role"),
       user_management_role: current_app_user&.dig("user_management_role"),
       person_type: current_app_user&.dig("person_type"),
-      office: current_app_user&.dig("office")
+      office: current_app_user&.dig("office_name").presence || current_app_user&.dig("office"),
+      office_category: current_app_user&.dig("office_category"),
+      user_name: current_app_user&.dig("username").presence || current_app_user&.dig("user_name")
     }
   end
 
@@ -677,7 +692,9 @@ class VrpsController < ApplicationController
       stakeholder_role: user.stakeholder_role,
       user_management_role: user.user_management_role,
       person_type: user.respond_to?(:person_type) ? user.person_type : nil,
-      office: user.office
+      office: user.respond_to?(:office_name) ? user.office_name.presence || user.office : user.office,
+      office_category: user.respond_to?(:office_category) ? user.office_category : nil,
+      user_name: user.user_name
     }
   end
 
@@ -688,7 +705,9 @@ class VrpsController < ApplicationController
       stakeholder_role: record.data["stakeholder_role"],
       user_management_role: record.data["user_management_role"],
       person_type: record.data["person_type"],
-      office: record.data["office"]
+      office: record.data["office_name"].presence || record.data["office"],
+      office_category: record.data["office_category"],
+      user_name: record.data["user_name"]
     }
   end
 
