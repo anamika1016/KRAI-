@@ -1,11 +1,11 @@
-<% content_for :title, "AFL Upload" %>
+<% content_for :title, "Target Mapping Upload" %>
 
 <main class="vrp-list-page">
   <section class="vrp-list-shell">
     <div class="vrp-list-header">
       <div>
-        <p class="vrp-eyebrow">AFL</p>
-        <h1>AFL Data Upload</h1>
+        <p class="vrp-eyebrow">Target Mapping</p>
+        <h1>Target Mapping Data Upload</h1>
       </div>
     </div>
 
@@ -20,7 +20,7 @@
         <div class="list-control-actions">
           <%= form_with url: afls_path, method: :get, local: true, class: "list-search compact" do |form| %>
             <span>⌕</span>
-            <%= form.search_field :q, value: @query, placeholder: "Search AFL", data: { table_search: "afl_list" } %>
+            <%= form.search_field :q, value: @query, placeholder: "Search Target Mapping", data: { table_search: "afl_list" } %>
           <% end %>
           <button type="button" class="list-btn export" data-export-table="afl_list">Export</button>
         </div>
@@ -87,7 +87,7 @@
               <% end %>
             <% else %>
               <tr>
-                <td colspan="20">No AFL records uploaded yet.</td>
+                <td colspan="20">No target mapping records uploaded yet.</td>
               </tr>
             <% end %>
           </tbody>

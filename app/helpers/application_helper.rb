@@ -18,15 +18,24 @@ module ApplicationHelper
       icon: "▩",
       links: [
         ["Stakeholder Name", :module, "stakeholder-master"],
-        ["Office Category Add", :module, "office-category-add"],
         ["Stakeholder Person Type", :module, "stakeholder-role"],
         ["Role", :module, "role-name"]
+      ]
+    },
+    {
+      title: "Office Management",
+      icon: "▧",
+      links: [
+        ["Parent Office Add", :module, "parent-office-add"],
+        ["Office Category Add", :module, "office-category-add"],
+        ["Office Management", :module, "office-management"]
       ]
     },
     {
       title: "Activity Setup",
       icon: "▤",
       links: [
+        ["Project Add", :module, "project-master"],
         ["Main Activity", :module, "add-activity-group"],
         ["Main Activity List", :module, "activity-group-list"],
         ["Sub Activity", :module, "add-vrp-activity"],
@@ -89,28 +98,23 @@ module ApplicationHelper
     #   ]
     # },
     {
-      title: "AFL",
+      title: "Target Mapping",
       icon: "▤",
       links: [
-        ["AFL Upload", :route, :afls_path],
-        ["VRP ICS Mapping", :route, :vrp_ics_mappings_path]
+        ["Target Mapping Upload", :route, :afls_path],
+        ["VRP ICS Mapping", :route, :vrp_ics_mappings_path],
+        ["Target Mapping Master", :route, :target_mappings_path]
       ]
     },
     {
       title: "Training",
       icon: "▥",
       links: [
+        ["Training Topic Mapping", :module, "training-topic-mapping"],
         ["Training Form", :module, "training-form"],
         ["Training List", :module, "training-form-list"]
       ]
     },
-    {
-      title: "VRP Targets",
-      icon: "▨",
-      links: [
-        ["VRP Targets", :route, :target_mappings_path]
-      ]
-    }
   ].freeze
 
   def sidebar_sections
@@ -206,6 +210,9 @@ module ApplicationHelper
     keys = [name.presence&.parameterize].compact
     keys << "vrp-approval-queue" if name.to_s.strip == "VRP Approval"
     keys << "vrp-approval" if name.to_s.strip == "VRP Approval Queue"
+    if ["Target Mapping Master", "Target Mapping", "VRP Targets"].include?(name.to_s.strip)
+      keys.concat(["target-mapping-master", "target-mapping", "vrp-targets"])
+    end
     keys.uniq
   end
 
@@ -246,7 +253,7 @@ module ApplicationHelper
   def vrp_sidebar_sections
     [
       {
-        title: "VRP Targets",
+        title: "Target Mapping",
         icon: "▨",
         links: [
           ["VRP Targets", :route, :target_mappings_path]

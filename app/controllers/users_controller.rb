@@ -69,12 +69,14 @@ class UsersController < ApplicationController
   end
 
   def user_params
-    params.require(:user).permit(
+    permitted = params.require(:user).permit(
       :stakeholder, :stakeholder_role, :role, :state, :district, :block, :gram_panchayat, :village,
-      :office, :full_address, :pincode, :first_name, :last_name,
+      :parent_office, :office_category, :office_name, :office, :full_address, :pincode, :first_name, :last_name,
       :gender, :email, :password, :user_name, :mobile_no,
       :user_type, :user_management_role, :person_type, :role_name, :status
     )
+    permitted[:office] = permitted[:office_name].presence || permitted[:office]
+    permitted
   end
 
   def load_form_options
@@ -93,7 +95,16 @@ class UsersController < ApplicationController
     @gram_panchayat_options = module_record_options("gram-panchayat-master", "gram_panchayat_name")
     @village_options = module_record_options("village-master", "village_name")
     @location_hierarchy_mappings = location_hierarchy_mappings
-    @office_options = module_record_options("office-category-add", "category_name")
+    @parent_office_options = module_record_options("parent-office-add", "parent_office_name")
+    @office_category_options = (
+      module_record_options("office-category-add", ["office_name", "category_name"]) +
+      module_record_options("office-management", ["office_category", "category_name"])
+    ).compact_blank.uniq
+    @office_name_options = module_record_options("office-management", ["office_name", "office"]).compact_blank.uniq
+    @office_options = (
+      module_record_options("office-category-add", ["office_name", "category_name"]) +
+      module_record_options("office-management", ["office_name", "office"])
+    ).compact_blank.uniq
     @office_category_mappings = office_category_mappings
     @ics_options = module_record_options("ics-master", "ics_name")
   end
@@ -204,13 +215,10 @@ class UsersController < ApplicationController
       .uniq
   end
 
-  def mapping_labels_for_option(value, attribute)
+  def mapping_labels_for_option(value, _attribute)
     return [] if value.blank?
 
-    registered_names = registered_names_for_option(attribute, value)
-    return [value] if registered_names.blank?
-
-    registered_names.map { |registered_name| "#{value} (#{registered_name})" }
+    [value]
   end
 
   def registered_names_for_option(attribute, value)
@@ -256,16 +264,27 @@ class UsersController < ApplicationController
     return [] unless defined?(ModuleRecord) && ModuleRecord.table_exists?
 
     ModuleRecord
-      .where(module_slug: "office-category-add")
+      .where(module_slug: ["office-category-add", "office-management"])
       .order(created_at: :desc)
       .select { |record| record.data["status"].blank? || record.data["status"].to_s.casecmp("Active").zero? }
       .map do |record|
+        office_category = first_present_data(record, "office_category", "category_name")
+        office_name = first_present_data(record, "office_name", "office")
+        if record.module_slug == "office-category-add"
+          office_category = office_name if office_category.blank?
+          office_name = ""
+        end
+
         {
           stakeholder: first_present_data(record, "stakeholder_category", "stakeholder_name", "stakeholder").to_s.strip,
-          office: first_present_data(record, "category_name", "office").to_s.strip
+          parent_office: first_present_data(record, "parent_category", "parent_office", "parent_office_name").to_s.strip,
+          office_category: office_category.to_s.strip,
+          office_name: office_name.to_s.strip,
+          office: office_name.presence || office_category.to_s.strip,
+          office_level: first_present_data(record, "office_level").to_s.strip
         }
       end
-      .reject { |mapping| mapping[:office].blank? }
+      .reject { |mapping| mapping[:office_category].blank? && mapping[:office_name].blank? }
       .uniq
   end
 

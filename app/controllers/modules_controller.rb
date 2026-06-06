@@ -5,7 +5,8 @@ require "csv"
 class ModulesController < ApplicationController
   helper_method :module_field_options, :module_select_field?, :static_field_options, :role_management_mappings,
                 :access_control_role_mappings, :access_control_field_options,
-                :location_hierarchy_mappings, :office_category_mappings, :training_target_mappings
+                :location_hierarchy_mappings, :office_category_mappings, :training_target_mappings,
+                :training_activity_mappings
 
   DASHBOARD_CARDS = [
     ["Total VRP", "0", "Registered field resources"],
@@ -89,13 +90,12 @@ class ModulesController < ApplicationController
         "Training Topic",
         "Training Subject",
         "Training Description",
-        "Organic Farmer Count",
+        "Farmer Count",
         "Male Count",
         "Female Count",
         "Next Farmer Training Date",
         "Training Register Upload",
-        "Training Photo Upload",
-        "Status"
+        "Training Photo Upload with Geo Tag"
       ]
     },
     "training-form-list" => {
@@ -109,12 +109,18 @@ class ModulesController < ApplicationController
         "Training Date",
         "Training Location",
         "Training Topic",
-        "Organic Farmer Count",
+        "Farmer Count",
+        "Selected Farmers",
         "Male Count",
         "Female Count",
-        "Next Farmer Training Date",
-        "Status"
+        "Next Farmer Training Date"
       ]
+    },
+    "training-topic-mapping" => {
+      title: "Training Topic Mapping",
+      group: "Training",
+      purpose: "Department, training topic aur training subject mapping maintain karne ke liye.",
+      fields: ["Department", "Training Topic", "Training Subject", "Status"]
     },
     "bank-master" => {
       title: "Bank Master",
@@ -129,8 +135,8 @@ class ModulesController < ApplicationController
       fields: ["Month Name", "Financial Year"]
     },
     "project-master" => {
-      title: "Project Master",
-      group: "Masters",
+      title: "Project Add",
+      group: "Activity Setup",
       purpose: "Project details maintain karna.",
       fields: ["Project Name", "Status"]
     },
@@ -140,11 +146,23 @@ class ModulesController < ApplicationController
       purpose: "All activities maintain karna.",
       fields: ["Activity Name", "Status"]
     },
+    "parent-office-add" => {
+      title: "Parent Office Add",
+      group: "Office Management",
+      purpose: "Parent office category maintain karne ke liye.",
+      fields: ["Stakeholder Category", "Parent Office Name", "Office Level", "Status"]
+    },
     "office-category-add" => {
       title: "Office Category Add",
       group: "Office Management",
       purpose: "Office category aur office level maintain karne ke liye.",
-      fields: ["Stakeholder Category", "Category Name", "Office Level", "Status"]
+      fields: ["Stakeholder Category", "Parent Category", "Office Name", "Office Level", "Status"]
+    },
+    "office-management" => {
+      title: "Office Management",
+      group: "Office Management",
+      purpose: "Parent office aur office mapping maintain karne ke liye.",
+      fields: ["Stakeholder Category", "Parent Office", "Office Category", "Office Name", "Office Level", "Status"]
     },
     "add-vrp-type" => {
       title: "Add VRP Type",
@@ -277,13 +295,13 @@ class ModulesController < ApplicationController
       title: "New User",
       group: "User Register",
       purpose: "System login user create karne ke liye.",
-      fields: ["Stakeholder Category", "Stakeholder Role", "Role", "User Management Role", "Person Type", "State", "District", "Block", "Gram Panchayat", "Village", "Office", "Full Address", "Pincode", "First Name", "Last Name", "Gender", "Email", "Password", "Confirmed Password", "User Name", "Mobile No", "User Type", "Status"]
+      fields: ["Stakeholder Category", "Stakeholder Role", "Role", "User Management Role", "Person Type", "State", "District", "Block", "Gram Panchayat", "Village", "Parent Office", "Office Category", "Office Name", "Full Address", "Pincode", "First Name", "Last Name", "Gender", "Email", "Password", "Confirmed Password", "User Name", "Mobile No", "User Type", "Status"]
     },
     "all-user" => {
       title: "All User",
       group: "User Register",
       purpose: "Registered users dekhne ke liye.",
-      fields: ["Stakeholder Category", "Stakeholder Role", "Role", "User Management Role", "Person Type", "State", "District", "Block", "Gram Panchayat", "Village", "Office", "Full Address", "Pincode", "First Name", "Last Name", "Gender", "Email", "Password", "Confirmed Password", "User Name", "Mobile No", "User Type", "Status"]
+      fields: ["Stakeholder Category", "Stakeholder Role", "Role", "User Management Role", "Person Type", "State", "District", "Block", "Gram Panchayat", "Village", "Parent Office", "Office Category", "Office Name", "Full Address", "Pincode", "First Name", "Last Name", "Gender", "Email", "Password", "Confirmed Password", "User Name", "Mobile No", "User Type", "Status"]
     },
     "user-hierarchy-mapping" => {
       title: "User Hierarchy Mapping",
@@ -473,25 +491,35 @@ class ModulesController < ApplicationController
 
   def import
     load_module!
-    redirect_to module_path(@slug), alert: "Import is available only for LG Directory All List." and return unless @slug == "lg-directory-list"
+    if @slug == "lg-directory-list"
+      result = LgDirectoryImporter.import(params[:file])
+      counts = lg_directory_import_notice_counts(result[:counts])
+      notice = "LG Directory uploaded successfully. #{result[:imported]} records created"
+      notice = "#{notice} (#{counts})" if counts.present?
+      redirect_to module_path(@slug), notice: "#{notice}."
+      return
+    end
 
-    result = LgDirectoryImporter.import(params[:file])
-    counts = lg_directory_import_notice_counts(result[:counts])
-    notice = "LG Directory uploaded successfully. #{result[:imported]} records created"
-    notice = "#{notice} (#{counts})" if counts.present?
-
-    redirect_to module_path(@slug), notice: "#{notice}."
+    result = import_module_records(params[:file])
+    redirect_to module_path(@slug), notice: "#{@module[:title]} uploaded successfully. #{result[:imported]} records created."
   rescue ArgumentError, ActiveRecord::RecordInvalid => e
     redirect_to module_path(@slug), alert: e.message
   end
 
   def export
     load_module!
-    redirect_to module_path(@slug), alert: "Export is available only for LG Directory All List." and return unless @slug == "lg-directory-list"
 
-    prepare_lg_directory_data
-    send_data lg_directory_csv(@lg_directory_rows),
-      filename: "lg_directory_all_list_#{Date.current}.csv",
+    if @slug == "lg-directory-list"
+      prepare_lg_directory_data
+      csv_data = lg_directory_csv(@lg_directory_rows)
+      filename = "lg_directory_all_list_#{Date.current}.csv"
+    else
+      csv_data = module_records_csv(module_records)
+      filename = "#{record_source_slug.tr("-", "_")}_records_#{Date.current}.csv"
+    end
+
+    send_data csv_data,
+      filename: filename,
       type: "text/csv"
   end
 
@@ -1466,6 +1494,64 @@ class ModulesController < ApplicationController
     end
   end
 
+  def module_records_csv(records)
+    fields = @module[:fields]
+    field_keys = fields.map { |field| field.parameterize(separator: "_") }
+
+    CSV.generate(headers: true) do |csv|
+      csv << fields
+      records.each do |record|
+        csv << field_keys.map { |key| record.data[key].to_s }
+      end
+    end
+  end
+
+  def import_module_records(file)
+    raise ArgumentError, "Please choose an Excel or CSV file." unless file.present?
+    raise ArgumentError, "Import is not available for this module." unless @module.present?
+
+    rows = LgDirectoryImporter.rows_from_upload(file).map { |row| Array(row).map { |cell| cell.to_s.strip } }
+    rows.reject! { |row| row.all?(&:blank?) }
+    raise ArgumentError, "No rows found in uploaded file." if rows.blank?
+
+    headers = rows.shift
+    header_keys = headers.map { |header| module_import_header_key(header) }
+    raise ArgumentError, "No matching headers found. Use: #{@module[:fields].join(", ")}." if header_keys.compact.blank?
+
+    imported = 0
+    rows.each do |row|
+      data = {}
+      header_keys.each_with_index do |key, index|
+        next if key.blank?
+
+        data[key] = row[index].to_s.strip
+      end
+      data.compact_blank!
+      next if data.blank?
+
+      data["status"] = "Active" if @module[:fields].include?("Status") && data["status"].blank?
+      ModuleRecord.create!(module_slug: @slug, data: data)
+      imported += 1
+    end
+
+    raise ArgumentError, "No valid records found in uploaded file." if imported.zero?
+
+    { imported: imported }
+  end
+
+  def module_import_header_key(header)
+    normalized_header = normalized_import_header(header)
+    field = @module[:fields].find do |candidate|
+      normalized_import_header(candidate) == normalized_header ||
+        normalized_import_header(helpers.resource_person_label(candidate)) == normalized_header
+    end
+    field&.parameterize(separator: "_")
+  end
+
+  def normalized_import_header(value)
+    value.to_s.downcase.gsub(/[^a-z0-9]+/, "")
+  end
+
   def prepare_vrp_bill_data
     @approved_vrp_options = approved_vrp_options
     month_master_rows = active_month_master_rows
@@ -1617,7 +1703,38 @@ class ModulesController < ApplicationController
       data["status"] = data["status"].presence || "Active"
     end
 
+    data = normalize_training_form_data(data) if record_source_slug == "training-form"
+
     data
+  end
+
+  def normalize_training_form_data(data)
+    trainer_name, trainer_contact = training_trainer_defaults
+    data["trainer_name"] = trainer_name if trainer_name.present?
+    data["trainer_contact"] = trainer_contact if trainer_contact.present?
+
+    selected_farmer_ids = Array(data["selected_farmer_ids"]).map(&:to_s).reject(&:blank?).uniq
+    data["selected_farmer_ids"] = selected_farmer_ids
+    data["selected_farmer_names"] = training_farmer_names(selected_farmer_ids)
+    data["farmer_count"] = selected_farmer_ids.size.to_s if selected_farmer_ids.any?
+    data.delete("status")
+    data
+  end
+
+  def training_trainer_defaults
+    if vrp_login_user? && current_vrp_record.present?
+      return [current_vrp_record.name, current_vrp_record.mobile_no]
+    end
+
+    [current_app_user&.dig("name"), current_app_user&.dig("mobile_no")]
+  end
+
+  def training_farmer_names(farmer_ids)
+    return [] if farmer_ids.blank? || !model_ready?(:Afl)
+
+    Afl.where(id: farmer_ids)
+      .order(:farmer_name, :id)
+      .map { |farmer| farmer.farmer_name.presence || "Farmer ##{farmer.id}" }
   end
 
   def normalize_user_hierarchy_mappings(data)
@@ -1764,7 +1881,9 @@ class ModulesController < ApplicationController
   end
 
   def module_select_field?(field)
+    return false if current_slug == "training-topic-mapping" && ["Department", "Training Topic", "Training Subject"].include?(field)
     return true if training_target_field?(field)
+    return true if training_activity_field?(field)
 
     source = field_sources[field]
     (source.present? && source[:module] != (@slug || current_slug)) || static_field_options(field).any?
@@ -1772,6 +1891,7 @@ class ModulesController < ApplicationController
 
   def module_field_options(field)
     return training_target_field_options(field) if training_target_field?(field)
+    return training_activity_field_options(field) if training_activity_field?(field)
 
     source = field_sources[field]
     return [] unless ModuleRecord.table_exists?
@@ -1789,6 +1909,10 @@ class ModulesController < ApplicationController
     record_source_slug == "training-form" && ["ICS / Block", "Gram Name"].include?(field)
   end
 
+  def training_activity_field?(field)
+    record_source_slug == "training-form" && ["Department", "Training Topic", "Training Subject"].include?(field)
+  end
+
   def training_target_field_options(field)
     case field
     when "ICS / Block"
@@ -1800,6 +1924,37 @@ class ModulesController < ApplicationController
     end
   end
 
+  def training_activity_field_options(field)
+    case field
+    when "Department"
+      training_activity_mappings.filter_map { |mapping| mapping[:department].presence }.uniq
+    when "Training Topic"
+      training_activity_mappings.filter_map { |mapping| mapping[:training_topic].presence }.uniq
+    when "Training Subject"
+      training_activity_mappings.filter_map { |mapping| mapping[:training_subject].presence }.uniq
+    else
+      []
+    end
+  end
+
+  def training_activity_mappings
+    return [] unless model_ready?(:ModuleRecord)
+
+    ModuleRecord
+      .where(module_slug: "training-topic-mapping")
+      .order(created_at: :desc)
+      .select { |record| active_module_record?(record) }
+      .map do |record|
+        {
+          department: first_present_data(record, "department", "trainee_department").to_s.strip,
+          training_topic: first_present_data(record, "training_topic", "topic").to_s.strip,
+          training_subject: first_present_data(record, "training_subject", "subject").to_s.strip
+        }
+      end
+      .reject { |mapping| mapping.values.all?(&:blank?) }
+      .uniq
+  end
+
   def training_target_mappings
     return [] unless model_ready?(:TargetMapping)
 
@@ -1809,13 +1964,35 @@ class ModulesController < ApplicationController
     scope
       .order(:ics_name, :ics_id, :village_name, :village_id, :id)
       .map do |target|
+        mapping = target.vrp_ics_mapping
         {
           ics: target.ics_name.presence || target.ics_id,
-          village: target.village_name.presence || target.village_id
+          village: target.village_name.presence || target.village_id,
+          farmers: training_farmers_for_mapping(mapping)
         }
       end
       .reject { |mapping| mapping[:ics].blank? && mapping[:village].blank? }
       .uniq
+  end
+
+  def training_farmers_for_mapping(mapping)
+    return [] unless mapping && model_ready?(:Afl)
+
+    farmer_ids = Array(mapping.afl_ids).map(&:to_s).reject(&:blank?).uniq
+    return [] if farmer_ids.blank?
+
+    Afl.where(id: farmer_ids)
+      .order(:farmer_name, :id)
+      .map do |farmer|
+        {
+          id: farmer.id.to_s,
+          farmer_name: farmer.farmer_name.presence || "Farmer ##{farmer.id}",
+          father_name: farmer.father_name,
+          tracenet_no: farmer.tracenet_no,
+          mobile_no: farmer.mobile_no,
+          khasara_no: farmer.khasara_no
+        }
+      end
   end
 
   def role_management_mappings
@@ -2149,7 +2326,10 @@ class ModulesController < ApplicationController
       "Stakeholder Name" => { module: "stakeholder-master", field: "stakeholder_name_in_english" },
       "Stakeholder Category" => { module: "stakeholder-master", field: "stakeholder_name_in_english" },
       "Stakeholder Role" => { module: "stakeholder-role", field: "stakeholder_role" },
-      "Office" => { module: "office-category-add", field: "category_name" },
+      "Parent Office" => { module: "parent-office-add", field: "parent_office_name" },
+      "Parent Category" => { module: "parent-office-add", field: "parent_office_name" },
+      "Office Category" => { module: "office-category-add", field: "office_name" },
+      "Office" => { module: "office-category-add", field: "office_name" },
       "Approver (Approved By)" => { module: "new-user", field: "approver_name_with_role" },
       "Level 1 User" => { module: "new-user", field: "approver_name_with_role" },
       "Level 2 User" => { module: "new-user", field: "approver_name_with_role" },
@@ -2162,8 +2342,8 @@ class ModulesController < ApplicationController
       "Activity" => { module: "add-vrp-activity", field: "activity_name" },
       "Select Activity" => { module: "add-vrp-activity", field: "activity_name" },
       "Sub Activity Name" => { module: "add-vrp-activity", field: "sub_activity_name" },
-      "Trainee Department" => { module: "office-category-add", field: "category_name" },
-      "Department" => { module: "office-category-add", field: "category_name" },
+      "Trainee Department" => { module: "office-category-add", field: "office_name" },
+      "Department" => { module: "office-category-add", field: "office_name" },
       "Training Topic" => { module: "add-activity-group", field: "main_activity_name" },
       "Training Subject" => { module: "add-vrp-activity", field: "sub_activity_name" },
       "Task Indicator" => { module: "task-indicator-master", field: "task_indicator_name" },
@@ -2172,7 +2352,8 @@ class ModulesController < ApplicationController
       "Role" => { module: "role-name", field: "role_name" },
       "Role Name" => { module: "role-name", field: "role_name" },
       "User Management Role" => { module: "user-management-role", field: "user_management_role" },
-      "Person Type" => { module: "person-type", field: "person_type" }
+      "Person Type" => { module: "person-type", field: "person_type" },
+      "Project Name" => { module: "project-master", field: "project_name" }
     }
   end
 
@@ -2180,16 +2361,27 @@ class ModulesController < ApplicationController
     return [] unless model_ready?(:ModuleRecord)
 
     ModuleRecord
-      .where(module_slug: "office-category-add")
+      .where(module_slug: ["office-category-add", "office-management"])
       .order(created_at: :desc)
       .select { |record| active_module_record?(record) }
       .map do |record|
+        office_category = first_present_data(record, "office_category", "category_name")
+        office_name = first_present_data(record, "office_name", "office")
+        if record.module_slug == "office-category-add"
+          office_category = office_name if office_category.blank?
+          office_name = ""
+        end
+
         {
           stakeholder: first_present_data(record, "stakeholder_category", "stakeholder_name", "stakeholder").to_s.strip,
-          office: first_present_data(record, "category_name", "office").to_s.strip
+          parent_office: first_present_data(record, "parent_category", "parent_office", "parent_office_name").to_s.strip,
+          office_category: office_category.to_s.strip,
+          office_name: office_name.to_s.strip,
+          office: office_name.presence || office_category.to_s.strip,
+          office_level: first_present_data(record, "office_level").to_s.strip
         }
       end
-      .reject { |mapping| mapping[:office].blank? }
+      .reject { |mapping| mapping[:office_category].blank? && mapping[:office_name].blank? }
       .uniq
   end
 
@@ -2248,6 +2440,7 @@ class ModulesController < ApplicationController
     field_keys << "activity_group_name" if module_slug == "add-activity-group" && field_key == "main_activity_name"
     field_keys << "vrp_activity_name" if module_slug == "add-vrp-activity" && field_key == "activity_name"
     field_keys.concat(["activity_name", "vrp_activity_name"]) if module_slug == "add-vrp-activity" && field_key == "sub_activity_name"
+    field_keys << "category_name" if module_slug == "office-category-add" && field_key == "office_name"
 
     ModuleRecord
       .where(module_slug: module_slug)

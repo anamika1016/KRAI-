@@ -706,6 +706,8 @@
                     <% value ||= record.data["activity_group_name"].presence if field == "Main Activity Name" %>
                     <% value ||= record.data["activity_group"].presence if field == "Main Activity" %>
                     <% value ||= record.data["activity_name"].presence || record.data["vrp_activity_name"].presence if field == "Sub Activity Name" %>
+                    <% value ||= record.data["category_name"].presence || record.data["office"].presence if field == "Office Name" %>
+                    <% value ||= Array(record.data["selected_farmer_names"]).join(", ").presence if field == "Selected Farmers" %>
                     <% if @slug == "access-control-list" && field == "Module Name" %>
                       <% value = Array(record.data["module_names"].presence || value).compact_blank %>
                     <% elsif @slug == "access-control-list" && field == "Sub Module Name" %>
@@ -751,30 +753,48 @@
   <div class="module-grid">
     <% location_fields = ["State", "District", "Block", "Gram Panchayat", "Village"] %>
     <% has_location_fields = (@module[:fields] & location_fields).any? %>
-    <section class="module-card" id="module-form" <% if ["role-management", "role-name", "user-management-role", "person-type"].include?(@slug) %>data-user-role-form data-role-map="<%= json_escape(role_management_mappings.to_json) %>"<% end %> <% if has_location_fields %>data-location-form data-location-map="<%= json_escape(location_hierarchy_mappings.to_json) %>"<% end %> <% if @slug == "training-form" %>data-training-target-form data-training-target-map="<%= json_escape(training_target_mappings.to_json) %>"<% end %>>
+    <section class="module-card" id="module-form" <% if ["role-management", "role-name", "user-management-role", "person-type"].include?(@slug) %>data-user-role-form data-role-map="<%= json_escape(role_management_mappings.to_json) %>"<% end %> <% if has_location_fields %>data-location-form data-location-map="<%= json_escape(location_hierarchy_mappings.to_json) %>"<% end %> <% if @slug == "training-form" %>data-training-target-form data-training-target-map="<%= json_escape(training_target_mappings.to_json) %>" data-training-activity-map="<%= json_escape(training_activity_mappings.to_json) %>"<% end %>>
       <div class="module-card-header">
         <h2><%= @slug == "new-user" ? "Registration" : (@record.present? ? "Edit Record" : "Fields") %></h2>
       </div>
       <% form_url = @record.present? ? module_record_path(@slug, @record) : records_module_path(@slug) %>
       <% form_method = @record.present? ? :patch : :post %>
       <%= form_with url: form_url, method: form_method, html: { class: "module-entry-form", multipart: true } do %>
+        <% selected_training_farmer_ids = Array(@record&.data&.[]("selected_farmer_ids")).map(&:to_s) if @slug == "training-form" %>
         <div class="module-form-grid <%= "user-registration-grid" if @slug == "new-user" || (@slug == "all-user" && @record.present?) %>">
           <% @module[:fields].each do |field| %>
             <% field_key = field.parameterize(separator: "_") %>
             <% field_value = @record&.data&.[](field_key).to_s %>
             <% field_value = @record&.data&.[]("role_name").to_s if field == "Role" && field_value.blank? %>
+            <% field_value = (@record&.data&.[]("category_name").presence || @record&.data&.[]("office")).to_s if field == "Office Name" && field_value.blank? %>
+            <% if @slug == "training-form" && field_value.blank? %>
+              <% field_value = current_app_user&.dig("name").to_s if field == "Trainer Name" %>
+              <% field_value = current_app_user&.dig("mobile_no").to_s if field == "Trainer Contact" %>
+              <% field_value = selected_training_farmer_ids.size.to_s if field == "Farmer Count" && selected_training_farmer_ids.present? %>
+            <% end %>
             <label>
-              <span><%= resource_person_label(field) %></span>
+              <span>
+                <%= resource_person_label(field) %>
+                <% if @slug == "training-form" && field == "Training Photo Upload with Geo Tag" %>
+                  <small class="field-hint inline-upload-hint">Max 5 MB</small>
+                <% end %>
+              </span>
               <% if field.downcase.include?("status") %>
                 <select name="module_record[<%= field_key %>]">
                   <option <%= "selected" if field_value == "Active" %>>Active</option>
                   <option <%= "selected" if field_value == "Inactive" %>>Inactive</option>
                 </select>
               <% elsif field.downcase.include?("upload") || field.downcase.include?("file") %>
-                <input name="module_record[<%= field_key %>]" type="file">
+                <input name="module_record[<%= field_key %>]" type="file" <%= "accept=\"image/*\" data-max-size-mb=\"5\"".html_safe if @slug == "training-form" && field == "Training Photo Upload with Geo Tag" %>>
+                <% if @slug == "training-form" && field == "Training Photo Upload with Geo Tag" %>
+                  <input type="hidden" name="module_record[geo_latitude]" data-training-geo-latitude value="<%= @record&.data&.[]("geo_latitude") %>">
+                  <input type="hidden" name="module_record[geo_longitude]" data-training-geo-longitude value="<%= @record&.data&.[]("geo_longitude") %>">
+                <% end %>
                 <% if field_value.present? %>
                   <small class="field-hint">Current: <%= field_value %></small>
                 <% end %>
+              <% elsif @slug == "training-topic-mapping" && field == "Department" %>
+                <input name="module_record[<%= field_key %>]" type="text" placeholder="Enter <%= resource_person_label(field) %>" value="<%= field_value %>">
               <% elsif module_select_field?(field) %>
                 <% options = (module_field_options(field) + static_field_options(field)).compact_blank.uniq %>
                 <% role_dependency_attr =
@@ -795,6 +815,12 @@
                     "data-training-target-ics data-selected-value=\"#{ERB::Util.html_escape(field_value)}\""
                   when "Gram Name"
                     "data-training-target-village data-selected-value=\"#{ERB::Util.html_escape(field_value)}\""
+                  when "Department"
+                    "data-training-department data-selected-value=\"#{ERB::Util.html_escape(field_value)}\""
+                  when "Training Topic"
+                    "data-training-topic data-selected-value=\"#{ERB::Util.html_escape(field_value)}\""
+                  when "Training Subject"
+                    "data-training-subject data-selected-value=\"#{ERB::Util.html_escape(field_value)}\""
                   end if @slug == "training-form" %>
                 <select name="module_record[<%= field_key %>]" <%= role_dependency_attr&.html_safe %> <%= location_dependency_attr&.html_safe %> <%= training_target_attr&.html_safe %>>
                   <option value=""><%= options.any? ? "Select #{resource_person_label(field)}" : "No #{resource_person_label(field)} saved yet" %></option>
@@ -809,9 +835,25 @@
               <% elsif field.downcase.include?("date") %>
                 <input name="module_record[<%= field_key %>]" type="date" value="<%= field_value %>">
               <% else %>
-                <input name="module_record[<%= field_key %>]" type="text" placeholder="Enter <%= resource_person_label(field) %>" value="<%= field_value %>" <%= "data-user-management-role-input" if @slug == "role-management" && field == "User Management Role" %>>
+                <input name="module_record[<%= field_key %>]" type="text" placeholder="Enter <%= resource_person_label(field) %>" value="<%= field_value %>" <%= "readonly" if @slug == "training-form" && ["Trainer Name", "Trainer Contact"].include?(field) && current_app_user&.dig("record_type").to_s == "Vrp" %> <%= "data-training-farmer-count-input" if @slug == "training-form" && field == "Farmer Count" %> <%= "data-user-management-role-input" if @slug == "role-management" && field == "User Management Role" %>>
               <% end %>
             </label>
+            <% if @slug == "training-form" && field == "Training Photo Upload with Geo Tag" %>
+              <div class="training-farmer-panel" data-training-farmer-panel data-selected-farmer-ids="<%= json_escape((selected_training_farmer_ids || []).to_json) %>">
+                <div class="target-mapping-toolbar">
+                  <strong>Mapped Farmers</strong>
+                  <label class="training-select-all">
+                    <input type="checkbox" data-training-farmer-select-all>
+                    <span>Select all</span>
+                  </label>
+                  <button type="button" class="list-btn active training-select-all-button" data-training-farmer-select-all-button>Select all</button>
+                  <span data-training-farmer-count>0 farmer selected</span>
+                </div>
+                <div class="vrp-ics-farmer-list" data-training-farmer-list>
+                  Select Village Name to load mapped farmers.
+                </div>
+              </div>
+            <% end %>
           <% end %>
         </div>
 
@@ -835,14 +877,14 @@
             <span>⌕</span>
             <input type="search" placeholder="Search records" data-table-search="module_saved_records">
           </div>
-          <div class="list-control-actions">
+          <%= form_with url: import_module_path(@slug), method: :post, multipart: true, local: true, class: "list-control-actions" do |form| %>
             <label class="import-btn">
               Choose Excel
-              <input type="file" accept=".csv,.xlsx,.xls" data-import-file hidden>
+              <%= form.file_field :file, accept: ".csv,.xlsx", data: { import_file: true }, hidden: true %>
             </label>
-            <button type="button" class="list-btn upload" data-upload-selected>Upload</button>
-            <button type="button" class="list-btn export" data-export-table="module_saved_records">Export</button>
-          </div>
+            <%= form.submit "Upload", class: "list-btn upload" %>
+            <%= link_to "Export", export_module_path(@slug, format: :csv), class: "list-btn export" %>
+          <% end %>
         </div>
         <div class="table-shell">
           <table class="module-table" id="module_saved_records" data-paginated-table data-page-size="15">

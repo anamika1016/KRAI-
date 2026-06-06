@@ -35,6 +35,25 @@ document.addEventListener("turbo:load", () => {
     });
   });
 
+  const capitalizeFirstLetter = (input) => {
+    const value = input.value;
+    if (!value) return;
+
+    const capitalized = value.charAt(0).toUpperCase() + value.slice(1);
+    if (capitalized === value) return;
+
+    const cursorStart = input.selectionStart;
+    const cursorEnd = input.selectionEnd;
+    input.value = capitalized;
+    input.setSelectionRange(cursorStart, cursorEnd);
+  };
+
+  document.querySelectorAll("[data-capitalize-first]").forEach((input) => {
+    capitalizeFirstLetter(input);
+    input.addEventListener("input", () => capitalizeFirstLetter(input));
+    input.form?.addEventListener("submit", () => capitalizeFirstLetter(input));
+  });
+
   document.querySelectorAll(".side-module").forEach((module) => {
     module.addEventListener("toggle", () => {
       if (!module.open) return;
@@ -334,8 +353,11 @@ document.addEventListener("turbo:load", () => {
     const roleNameSelect = formShell.querySelector("[data-role-name-select]");
     const userManagementRoleSelect = formShell.querySelector("[data-user-management-role-select]");
     const personTypeSelect = formShell.querySelector("[data-person-type-select]");
-    const officeSelect = formShell.querySelector("[data-office-select]");
-    if (!stakeholderSelect && !stakeholderRoleSelect && !roleSelect && !roleNameSelect && !userManagementRoleSelect && !personTypeSelect && !officeSelect) return;
+    const parentOfficeSelect = formShell.querySelector("[data-parent-office-select]");
+    const officeCategorySelect = formShell.querySelector("[data-office-category-select]");
+    const officeNameSelect = formShell.querySelector("[data-office-name-select]");
+    const officeSelect = officeNameSelect || formShell.querySelector("[data-office-select]");
+    if (!stakeholderSelect && !stakeholderRoleSelect && !roleSelect && !roleNameSelect && !userManagementRoleSelect && !personTypeSelect && !parentOfficeSelect && !officeCategorySelect && !officeSelect) return;
 
     let mappings = [];
     try {
@@ -355,6 +377,9 @@ document.addEventListener("turbo:load", () => {
       const selectedOption = select.options[select.selectedIndex];
       return displayNameFromLabel(selectedOption?.textContent || select.value);
     };
+    const initialParentOfficeOptions = parentOfficeSelect
+      ? Array.from(parentOfficeSelect.options).map((option) => option.value).filter(Boolean)
+      : [];
 
     const mappedStakeholderRoles = (stakeholder) => {
       const normalizedStakeholder = normalizeOption(stakeholder);
@@ -466,18 +491,67 @@ document.addEventListener("turbo:load", () => {
       replaceSelectOptions(personTypeSelect, personTypes, "Select Person Type");
     };
 
-    const refreshOffices = () => {
-      if (!officeSelect) return;
+    const refreshParentOffices = () => {
+      if (!parentOfficeSelect) return;
       const normalizedStakeholder = normalizeOption(stakeholderSelect?.value);
-      const offices = uniquePresent(
+      const mappedParentOffices = uniquePresent(
         officeMappings
           .filter((mapping) => {
             const mappedStakeholder = normalizeOption(mapping.stakeholder);
             return !normalizedStakeholder || !mappedStakeholder || mappedStakeholder === normalizedStakeholder;
           })
-          .map((mapping) => mapping.office)
+          .map((mapping) => mapping.parent_office)
       );
-      replaceSelectOptions(officeSelect, offices, "Select Office");
+      const parentOffices = mappedParentOffices.length ? mappedParentOffices : initialParentOfficeOptions;
+      replaceSelectOptions(parentOfficeSelect, parentOffices, "Select Parent Office");
+    };
+
+    const officeMappingMatches = (mapping, stakeholder, parentOffice, officeCategory = "") => {
+      const normalizedStakeholder = normalizeOption(stakeholder);
+      const normalizedParentOffice = normalizeOption(parentOffice);
+      const normalizedOfficeCategory = normalizeOption(officeCategory);
+
+      const mappedStakeholder = normalizeOption(mapping.stakeholder);
+      const mappedParentOffice = normalizeOption(mapping.parent_office);
+      const mappedOfficeCategory = normalizeOption(mapping.office_category || mapping.category_name || (!mapping.office_name ? mapping.office : ""));
+      const stakeholderMatches = !normalizedStakeholder || !mappedStakeholder || mappedStakeholder === normalizedStakeholder;
+      const parentOfficeMatches = !normalizedParentOffice || !mappedParentOffice || mappedParentOffice === normalizedParentOffice;
+      const officeCategoryMatches = !normalizedOfficeCategory || !mappedOfficeCategory || mappedOfficeCategory === normalizedOfficeCategory;
+      return stakeholderMatches && parentOfficeMatches && officeCategoryMatches;
+    };
+
+    const refreshOfficeCategories = () => {
+      if (!officeCategorySelect) return;
+      const normalizedStakeholder = normalizeOption(stakeholderSelect?.value);
+      const normalizedParentOffice = normalizeOption(parentOfficeSelect?.value);
+      const officeCategories = uniquePresent(
+        officeMappings
+          .filter((mapping) => {
+            const mappedStakeholder = normalizeOption(mapping.stakeholder);
+            const mappedParentOffice = normalizeOption(mapping.parent_office);
+            const stakeholderMatches = !normalizedStakeholder || !mappedStakeholder || mappedStakeholder === normalizedStakeholder;
+            const parentOfficeMatches = !normalizedParentOffice || !mappedParentOffice || mappedParentOffice === normalizedParentOffice;
+            return stakeholderMatches && parentOfficeMatches;
+          })
+          .map((mapping) => mapping.office_category || mapping.category_name || (!mapping.office_name ? mapping.office : ""))
+      );
+      replaceSelectOptions(officeCategorySelect, officeCategories, "Select Office Category");
+      refreshOffices();
+    };
+
+    const refreshOffices = () => {
+      if (!officeSelect) return;
+      const selectedOfficeCategory = officeCategorySelect?.value || "";
+      const offices = uniquePresent(
+        officeMappings
+          .filter((mapping) => officeMappingMatches(mapping, stakeholderSelect?.value, parentOfficeSelect?.value, selectedOfficeCategory))
+          .map((mapping) => {
+            if (officeNameSelect) return mapping.office_name || "";
+
+            return mapping.office || mapping.office_name || mapping.office_category;
+          })
+      );
+      replaceSelectOptions(officeSelect, offices, officeNameSelect ? "Select Office Name" : "Select Office");
     };
 
     stakeholderSelect?.addEventListener("change", () => {
@@ -486,12 +560,26 @@ document.addEventListener("turbo:load", () => {
       if (roleNameSelect) roleNameSelect.dataset.selectedValue = "";
       if (userManagementRoleSelect) userManagementRoleSelect.dataset.selectedValue = "";
       if (personTypeSelect) personTypeSelect.dataset.selectedValue = "";
+      if (parentOfficeSelect) parentOfficeSelect.dataset.selectedValue = "";
+      if (officeCategorySelect) officeCategorySelect.dataset.selectedValue = "";
       if (officeSelect) officeSelect.dataset.selectedValue = "";
       refreshStakeholderRoles();
       refreshRoles();
       refreshRoleNames();
       refreshUserManagementRoles();
       refreshPersonTypes();
+      refreshParentOffices();
+      refreshOfficeCategories();
+      refreshOffices();
+    });
+    parentOfficeSelect?.addEventListener("change", () => {
+      if (officeCategorySelect) officeCategorySelect.dataset.selectedValue = "";
+      if (officeSelect) officeSelect.dataset.selectedValue = "";
+      refreshOfficeCategories();
+      refreshOffices();
+    });
+    officeCategorySelect?.addEventListener("change", () => {
+      if (officeSelect) officeSelect.dataset.selectedValue = "";
       refreshOffices();
     });
     stakeholderRoleSelect?.addEventListener("change", () => {
@@ -518,7 +606,97 @@ document.addEventListener("turbo:load", () => {
     refreshStakeholderRoles();
     refreshRoles();
     refreshRoleNames();
+    refreshParentOffices();
+    refreshOfficeCategories();
     refreshOffices();
+  });
+
+  document.querySelectorAll("[data-vrp-office-form]").forEach((formShell) => {
+    const officeCategorySelect = formShell.querySelector("[data-vrp-office-category]");
+    const officeNameSelect = formShell.querySelector("[data-vrp-office-name]");
+    const clusterInchargeSelect = formShell.querySelector("[data-vrp-cluster-incharge]");
+    if (!officeCategorySelect && !officeNameSelect && !clusterInchargeSelect) return;
+
+    let officeMappings = [];
+    let clusterUsers = [];
+    try {
+      officeMappings = JSON.parse(formShell.dataset.officeMap || "[]");
+    } catch (_error) {
+      officeMappings = [];
+    }
+    try {
+      clusterUsers = JSON.parse(formShell.dataset.clusterUsers || "[]");
+    } catch (_error) {
+      clusterUsers = [];
+    }
+
+    const mappedOfficeNames = (officeCategory) => {
+      const normalizedOfficeCategory = normalizeOption(officeCategory);
+      return uniquePresent(
+        officeMappings
+          .filter((mapping) => {
+            const mappedOfficeCategory = normalizeOption(mapping.office_category || mapping.category_name);
+            return !normalizedOfficeCategory || mappedOfficeCategory === normalizedOfficeCategory;
+          })
+          .map((mapping) => mapping.office_name || mapping.office)
+      );
+    };
+
+    const mappedClusterUsers = (officeCategory, officeName) => {
+      const normalizedOfficeCategory = normalizeOption(officeCategory);
+      const normalizedOfficeName = normalizeOption(officeName);
+      return uniqueOptions(
+        clusterUsers
+          .filter((user) => {
+            const categoryMatches = !normalizedOfficeCategory || normalizeOption(user.office_category) === normalizedOfficeCategory;
+            const officeMatches = !normalizedOfficeName || normalizeOption(user.office_name || user.office) === normalizedOfficeName;
+            return categoryMatches && officeMatches;
+          })
+          .map((user) => makeOption(user.value, user.label || user.value))
+      );
+    };
+
+    const refreshOfficeNames = () => {
+      if (!officeNameSelect) return;
+
+      const offices = mappedOfficeNames(officeCategorySelect?.value);
+      replaceSelectOptions(officeNameSelect, offices, "Select TO");
+      refreshClusterIncharges();
+    };
+
+    const refreshClusterIncharges = () => {
+      if (!clusterInchargeSelect) return;
+
+      const users = mappedClusterUsers(officeCategorySelect?.value, officeNameSelect?.value);
+      replaceSelectOptions(clusterInchargeSelect, users, "Select Cluster Incharge");
+    };
+
+    officeCategorySelect?.addEventListener("change", () => {
+      if (officeNameSelect) officeNameSelect.dataset.selectedValue = "";
+      if (clusterInchargeSelect) clusterInchargeSelect.dataset.selectedValue = "";
+      refreshOfficeNames();
+      refreshClusterIncharges();
+    });
+    officeNameSelect?.addEventListener("change", () => {
+      if (clusterInchargeSelect) clusterInchargeSelect.dataset.selectedValue = "";
+      refreshClusterIncharges();
+    });
+
+    refreshOfficeNames();
+    refreshClusterIncharges();
+  });
+
+  document.querySelectorAll("[data-max-size-mb]").forEach((input) => {
+    input.addEventListener("change", () => {
+      const maxSizeMb = Number(input.dataset.maxSizeMb || 0);
+      const file = input.files?.[0];
+      if (!maxSizeMb || !file) return;
+
+      if (file.size > maxSizeMb * 1024 * 1024) {
+        window.alert(`Photo upload max ${maxSizeMb} MB allowed.`);
+        input.value = "";
+      }
+    });
   });
 
   const locationLevels = ["state", "district", "block", "gram-panchayat", "village"];
@@ -642,15 +820,40 @@ document.addEventListener("turbo:load", () => {
 
   document.querySelectorAll("[data-training-target-form]").forEach((formShell) => {
     let mappings = [];
+    let activityMappings = [];
     try {
       mappings = JSON.parse(formShell.dataset.trainingTargetMap || "[]");
     } catch (_error) {
       mappings = [];
     }
+    try {
+      activityMappings = JSON.parse(formShell.dataset.trainingActivityMap || "[]");
+    } catch (_error) {
+      activityMappings = [];
+    }
 
-    const icsSelect = formShell.querySelector("[data-training-target-ics]");
-    const villageSelect = formShell.querySelector("[data-training-target-village]");
-    if (!icsSelect || !villageSelect) return;
+	    const icsSelect = formShell.querySelector("[data-training-target-ics]");
+	    const villageSelect = formShell.querySelector("[data-training-target-village]");
+	    const departmentSelect = formShell.querySelector("[data-training-department]");
+	    const trainingTopicSelect = formShell.querySelector("[data-training-topic]");
+	    const trainingSubjectSelect = formShell.querySelector("[data-training-subject]");
+	    const farmerPanel = formShell.querySelector("[data-training-farmer-panel]");
+	    const farmerList = formShell.querySelector("[data-training-farmer-list]");
+	    const farmerSelectAll = formShell.querySelector("[data-training-farmer-select-all]");
+	    const farmerSelectAllButton = formShell.querySelector("[data-training-farmer-select-all-button]");
+	    const farmerCount = formShell.querySelector("[data-training-farmer-count]");
+	    const farmerCountInput = formShell.querySelector("[data-training-farmer-count-input]");
+	    const geoLatitudeInput = formShell.querySelector("[data-training-geo-latitude]");
+	    const geoLongitudeInput = formShell.querySelector("[data-training-geo-longitude]");
+	    if (!icsSelect || !villageSelect) return;
+	    const selectedFarmerIds = new Set(JSON.parse(farmerPanel?.dataset.selectedFarmerIds || "[]").map(String));
+
+	    const escapeHtml = (value) => String(value || "")
+	      .replaceAll("&", "&amp;")
+	      .replaceAll("<", "&lt;")
+	      .replaceAll(">", "&gt;")
+	      .replaceAll('"', "&quot;")
+	      .replaceAll("'", "&#039;");
 
     const selectOption = (select, option, selected) => {
       const value = optionValue(option);
@@ -678,23 +881,184 @@ document.addEventListener("turbo:load", () => {
     };
 
     const mappedIcsOptions = () => uniqueOptions(mappings.map((mapping) => makeOption(mapping.ics, mapping.ics))).map(optionValue);
-    const mappedVillageOptions = () => {
-      const selectedIcs = icsSelect.value;
-      const rows = selectedIcs
-        ? mappings.filter((mapping) => normalizeOption(mapping.ics) === normalizeOption(selectedIcs))
-        : mappings;
+    const mappedDepartmentOptions = () => uniqueOptions(activityMappings.map((mapping) => makeOption(mapping.department, mapping.department))).map(optionValue);
+    const mappedTrainingTopicOptions = () => {
+      const selectedDepartment = normalizeOption(departmentSelect?.value);
+      const rows = selectedDepartment
+        ? activityMappings.filter((mapping) => normalizeOption(mapping.department) === selectedDepartment)
+        : activityMappings;
 
-      return uniqueOptions(rows.map((mapping) => makeOption(mapping.village, mapping.village))).map(optionValue);
+      return uniqueOptions(rows.map((mapping) => makeOption(mapping.training_topic, mapping.training_topic))).map(optionValue);
     };
+    const mappedTrainingSubjectOptions = () => {
+      const selectedDepartment = normalizeOption(departmentSelect?.value);
+      const selectedTopic = normalizeOption(trainingTopicSelect?.value);
+      const rows = activityMappings.filter((mapping) => {
+        const departmentMatches = !selectedDepartment || normalizeOption(mapping.department) === selectedDepartment;
+        const topicMatches = !selectedTopic || normalizeOption(mapping.training_topic) === selectedTopic;
+        return departmentMatches && topicMatches;
+      });
 
-    fillTrainingSelect(icsSelect, mappedIcsOptions(), "Select ICS Name");
-    fillTrainingSelect(villageSelect, mappedVillageOptions(), "Select Village Name");
+      return uniqueOptions(rows.map((mapping) => makeOption(mapping.training_subject, mapping.training_subject))).map(optionValue);
+    };
+	    const mappedVillageOptions = () => {
+	      const selectedIcs = icsSelect.value;
+	      const rows = selectedIcs
+	        ? mappings.filter((mapping) => normalizeOption(mapping.ics) === normalizeOption(selectedIcs))
+	        : mappings;
 
-    icsSelect.addEventListener("change", () => {
-      villageSelect.dataset.selectedValue = "";
-      fillTrainingSelect(villageSelect, mappedVillageOptions(), "Select Village Name");
-    });
-  });
+	      return uniqueOptions(rows.map((mapping) => makeOption(mapping.village, mapping.village))).map(optionValue);
+	    };
+
+	    const mappedFarmers = () => {
+	      const selectedIcs = normalizeOption(icsSelect.value);
+	      const selectedVillage = normalizeOption(villageSelect.value);
+	      if (!selectedVillage) return [];
+
+	      const farmersById = new Map();
+	      mappings
+	        .filter((mapping) => {
+	          const icsMatches = !selectedIcs || normalizeOption(mapping.ics) === selectedIcs;
+	          return icsMatches && normalizeOption(mapping.village) === selectedVillage;
+	        })
+	        .flatMap((mapping) => mapping.farmers || [])
+	        .forEach((farmer) => {
+	          if (!farmer.id) return;
+	          farmersById.set(String(farmer.id), farmer);
+	        });
+	      return Array.from(farmersById.values());
+	    };
+
+	    const selectedFarmerBoxes = () => Array.from(formShell.querySelectorAll("[data-training-farmer-checkbox]:checked"));
+	    const farmerBoxes = () => Array.from(formShell.querySelectorAll("[data-training-farmer-checkbox]"));
+
+	    const updateFarmerCount = () => {
+	      const count = selectedFarmerBoxes().length;
+	      const boxes = farmerBoxes();
+	      if (farmerCount) farmerCount.textContent = `${count} farmer selected`;
+	      if (farmerCountInput) farmerCountInput.value = count ? String(count) : "";
+	      if (farmerSelectAll) {
+	        farmerSelectAll.checked = boxes.length > 0 && count === boxes.length;
+	        farmerSelectAll.indeterminate = count > 0 && count < boxes.length;
+	        farmerSelectAll.disabled = boxes.length === 0;
+	      }
+	      if (farmerSelectAllButton) {
+	        farmerSelectAllButton.disabled = boxes.length === 0;
+	        farmerSelectAllButton.textContent = boxes.length > 0 && count === boxes.length ? "Clear all" : "Select all";
+	      }
+	    };
+
+	    const renderTrainingFarmers = () => {
+	      if (!farmerList) return;
+	      const farmers = mappedFarmers();
+
+	      if (!villageSelect.value) {
+	        farmerList.textContent = "Select Village Name to load mapped farmers.";
+	        if (farmerSelectAll) farmerSelectAll.checked = false;
+	        updateFarmerCount();
+	        return;
+	      }
+
+	      if (!farmers.length) {
+	        farmerList.textContent = "No mapped farmers found for selected village.";
+	        if (farmerSelectAll) farmerSelectAll.checked = false;
+	        updateFarmerCount();
+	        return;
+	      }
+
+	      farmerList.innerHTML = farmers.map((farmer) => {
+	        const meta = [
+	          farmer.father_name ? `Father: ${farmer.father_name}` : "",
+	          farmer.tracenet_no ? `Tracenet: ${farmer.tracenet_no}` : "",
+	          farmer.mobile_no ? `Mobile: ${farmer.mobile_no}` : "",
+	          farmer.khasara_no ? `Khasara: ${farmer.khasara_no}` : ""
+	        ].filter(Boolean).join(" | ");
+	        const checked = selectedFarmerIds.has(String(farmer.id)) ? " checked" : "";
+	        return `
+	          <label class="vrp-ics-farmer-item">
+	            <input type="checkbox" name="module_record[selected_farmer_ids][]" value="${escapeHtml(farmer.id)}" data-training-farmer-checkbox${checked}>
+	            <span>
+	              <strong>${escapeHtml(farmer.farmer_name || `Farmer #${farmer.id}`)}</strong>
+	              <small>${escapeHtml(meta)}</small>
+	            </span>
+	          </label>
+	        `;
+	      }).join("");
+
+	      farmerList.querySelectorAll("[data-training-farmer-checkbox]").forEach((checkbox) => {
+	        checkbox.addEventListener("change", () => {
+	          if (checkbox.checked) {
+	            selectedFarmerIds.add(String(checkbox.value));
+	          } else {
+	            selectedFarmerIds.delete(String(checkbox.value));
+	          }
+	          updateFarmerCount();
+	        });
+	      });
+	      updateFarmerCount();
+	    };
+
+	    farmerSelectAll?.addEventListener("change", () => {
+	      farmerBoxes().forEach((checkbox) => {
+	        checkbox.checked = farmerSelectAll.checked;
+	        if (checkbox.checked) {
+	          selectedFarmerIds.add(String(checkbox.value));
+	        } else {
+	          selectedFarmerIds.delete(String(checkbox.value));
+	        }
+	      });
+	      updateFarmerCount();
+	    });
+
+	    farmerSelectAllButton?.addEventListener("click", () => {
+	      const boxes = farmerBoxes();
+	      const shouldSelect = selectedFarmerBoxes().length !== boxes.length;
+	      boxes.forEach((checkbox) => {
+	        checkbox.checked = shouldSelect;
+	        if (shouldSelect) {
+	          selectedFarmerIds.add(String(checkbox.value));
+	        } else {
+	          selectedFarmerIds.delete(String(checkbox.value));
+	        }
+	      });
+	      updateFarmerCount();
+	    });
+
+	    fillTrainingSelect(icsSelect, mappedIcsOptions(), "Select ICS Name");
+	    fillTrainingSelect(villageSelect, mappedVillageOptions(), "Select Village Name");
+	    if (departmentSelect) fillTrainingSelect(departmentSelect, mappedDepartmentOptions(), "Select Department");
+	    if (trainingTopicSelect) fillTrainingSelect(trainingTopicSelect, mappedTrainingTopicOptions(), "Select Training Topic");
+	    if (trainingSubjectSelect) fillTrainingSelect(trainingSubjectSelect, mappedTrainingSubjectOptions(), "Select Training Subject");
+	    renderTrainingFarmers();
+
+	    if (geoLatitudeInput && geoLongitudeInput && navigator.geolocation) {
+	      navigator.geolocation.getCurrentPosition((position) => {
+	        geoLatitudeInput.value = position.coords.latitude || "";
+	        geoLongitudeInput.value = position.coords.longitude || "";
+	      });
+	    }
+
+	    icsSelect.addEventListener("change", () => {
+	      villageSelect.dataset.selectedValue = "";
+	      fillTrainingSelect(villageSelect, mappedVillageOptions(), "Select Village Name");
+	      selectedFarmerIds.clear();
+	      renderTrainingFarmers();
+	    });
+	    villageSelect.addEventListener("change", () => {
+	      selectedFarmerIds.clear();
+	      renderTrainingFarmers();
+	    });
+	    departmentSelect?.addEventListener("change", () => {
+	      if (trainingTopicSelect) trainingTopicSelect.dataset.selectedValue = "";
+	      if (trainingSubjectSelect) trainingSubjectSelect.dataset.selectedValue = "";
+	      if (trainingTopicSelect) fillTrainingSelect(trainingTopicSelect, mappedTrainingTopicOptions(), "Select Training Topic");
+	      if (trainingSubjectSelect) fillTrainingSelect(trainingSubjectSelect, mappedTrainingSubjectOptions(), "Select Training Subject");
+	    });
+	    trainingTopicSelect?.addEventListener("change", () => {
+	      if (trainingSubjectSelect) trainingSubjectSelect.dataset.selectedValue = "";
+	      if (trainingSubjectSelect) fillTrainingSelect(trainingSubjectSelect, mappedTrainingSubjectOptions(), "Select Training Subject");
+	    });
+	  });
 
   document.querySelectorAll("[data-vrp-ics-mapping]").forEach((shell) => {
     const vrpSelect = shell.querySelector("[data-vrp-ics-vrp]");
@@ -1833,16 +2197,26 @@ document.addEventListener("turbo:load", () => {
       "Training": "प्रशिक्षण",
       "Training Form": "प्रशिक्षण फॉर्म",
       "Training List": "प्रशिक्षण सूची",
+      "Training Topic Mapping": "प्रशिक्षण टॉपिक मैपिंग",
       "ट्रेनिंग प्रपत्र": "प्रशिक्षण फॉर्म",
       "VRP Targets": "वीआरपी लक्ष्य",
       "Recent Target Mappings": "हाल की लक्ष्य मैपिंग",
       "Target Mapping Master": "लक्ष्य मैपिंग मास्टर",
-      "AFL Upload": "एएफएल अपलोड",
-      "AFL Data Upload": "एएफएल डेटा अपलोड",
+      "Target Mapping": "लक्ष्य मैपिंग",
+      "Target Mapping Upload": "लक्ष्य मैपिंग अपलोड",
+      "Target Mapping Data Upload": "लक्ष्य मैपिंग डेटा अपलोड",
       "VRP ICS Mapping": "वीआरपी आईसीएस मैपिंग",
       "LG Directory": "एलजी डायरेक्टरी",
       "All List": "सभी सूची",
       "Stakeholder": "स्टेकहोल्डर",
+      "Office Management": "ऑफिस प्रबंधन",
+      "Parent Office Add": "पैरेंट ऑफिस जोड़ें",
+      "Parent Office": "पैरेंट ऑफिस",
+      "Parent Office Name": "पैरेंट ऑफिस नाम",
+      "Parent Category": "पैरेंट श्रेणी",
+      "Select Parent Office": "पैरेंट ऑफिस चुनें",
+      "Project Add": "प्रोजेक्ट जोड़ें",
+      "Project Name": "प्रोजेक्ट नाम",
       "Stakeholder Name": "स्टेकहोल्डर नाम",
       "Stakeholder Category": "स्टेकहोल्डर श्रेणी",
       "Stakeholder Role": "स्टेकहोल्डर व्यक्ति प्रकार",
@@ -1907,7 +2281,7 @@ document.addEventListener("turbo:load", () => {
       "Search records": "रिकॉर्ड खोजें",
       "Search users": "यूज़र खोजें",
       "Search VRP": "वीआरपी खोजें",
-      "Search AFL": "एएफएल खोजें",
+      "Search Target Mapping": "लक्ष्य मैपिंग खोजें",
       "Search dashboard": "डैशबोर्ड खोजें",
       "Select all": "सभी चुनें",
       "Cancel": "रद्द करें",
@@ -1915,8 +2289,12 @@ document.addEventListener("turbo:load", () => {
       "Add More": "और जोड़ें",
       "Add Level 2": "लेवल 2 जोड़ें",
       "Apply": "लागू करें",
-      "Remove": "हटाएं",
-      "Close": "बंद करें",
+	      "Remove": "हटाएं",
+	      "Remove this VRP ICS mapping?": "यह वीआरपी आईसीएस मैपिंग हटाएं?",
+	      "Remove this target mapping?": "यह लक्ष्य मैपिंग हटाएं?",
+	      "Delete this VRP ICS mapping?": "यह वीआरपी आईसीएस मैपिंग डिलीट करें?",
+	      "Delete this target mapping?": "यह लक्ष्य मैपिंग डिलीट करें?",
+	      "Close": "बंद करें",
       "View": "देखें",
       "View Targets": "लक्ष्य देखें",
       "Send for Approval": "अनुमोदन के लिए भेजें",
@@ -1933,12 +2311,13 @@ document.addEventListener("turbo:load", () => {
       "Training Topic": "प्रशिक्षण टॉपिक",
       "Training Subject": "प्रशिक्षण विषय",
       "Training Description": "प्रशिक्षण विवरण",
-      "Organic Farmer Count": "जैविक किसान संख्या",
+      "Farmer Count": "किसान संख्या",
+      "Selected Farmers": "चुने गए किसान",
       "Male Count": "पुरुष संख्या",
       "Female Count": "महिला संख्या",
       "Next Farmer Training Date": "अगली किसान प्रशिक्षण तारीख",
       "Training Register Upload": "प्रशिक्षण रजिस्टर अपलोड",
-      "Training Photo Upload": "प्रशिक्षण फोटो अपलोड",
+      "Training Photo Upload with Geo Tag": "जियो टैग के साथ प्रशिक्षण फोटो अपलोड",
       "State": "राज्य",
       "State Name": "राज्य नाम",
       "State Code": "राज्य कोड",
@@ -1960,6 +2339,8 @@ document.addEventListener("turbo:load", () => {
       "Farmers": "किसान",
       "Farmer": "किसान",
       "Mapped Farmers": "मैप किए किसान",
+      "Select Village Name to load mapped farmers.": "मैप किए किसान लोड करने के लिए गांव नाम चुनें।",
+      "No mapped farmers found for selected village.": "चुने गए गांव के लिए कोई मैप किसान नहीं मिला।",
       "Mapped Villages": "मैप किए गांव",
       "Mapped Village Work Area": "मैप गांव कार्य क्षेत्र",
       "Assigned Target Progress": "दिए गए लक्ष्य की प्रगति",
@@ -2006,9 +2387,19 @@ document.addEventListener("turbo:load", () => {
       "Email": "ईमेल",
       "Registered By": "पंजीकरणकर्ता",
       "Enrollment Date": "नामांकन तारीख",
-      "Office Category Add": "ऑफिस श्रेणी जोड़ें",
-      "Office Name": "ऑफिस नाम",
+	      "Office Category Add": "ऑफिस श्रेणी जोड़ें",
+	      "Office Category": "ऑफिस श्रेणी",
+	      "Office Name": "ऑफिस नाम",
+      "Office Level": "ऑफिस लेवल",
+      "Select Office Category": "ऑफिस श्रेणी चुनें",
+      "Select Office Name": "ऑफिस नाम चुनें",
       "Office": "ऑफिस",
+      "FCOC-C": "एफसीओसी-सी",
+      "Select FCOC-C": "एफसीओसी-सी चुनें",
+      "TO": "टीओ",
+      "Select TO": "टीओ चुनें",
+      "Cluster Incharge": "क्लस्टर इंचार्ज",
+      "Select Cluster Incharge": "क्लस्टर इंचार्ज चुनें",
       "Menu": "मेनू",
       "Sub Menu": "सब मेनू",
       "Module Name": "मॉड्यूल नाम",
@@ -2028,7 +2419,7 @@ document.addEventListener("turbo:load", () => {
       "No records saved yet.": "अभी कोई रिकॉर्ड सेव नहीं है।",
       "No target mapping saved yet.": "अभी कोई लक्ष्य मैपिंग सेव नहीं है।",
       "No users registered yet.": "अभी कोई यूज़र पंजीकृत नहीं है।",
-      "No AFL records uploaded yet.": "अभी कोई एएफएल रिकॉर्ड अपलोड नहीं है।",
+      "No target mapping records uploaded yet.": "अभी कोई लक्ष्य मैपिंग रिकॉर्ड अपलोड नहीं है।",
       "Select VRP to load mapped villages.": "मैप किए गांव लोड करने के लिए वीआरपी चुनें।",
       "Select FCO, ICS and Village to load farmers.": "किसान लोड करने के लिए एफसीओ, आईसीएस और गांव चुनें।",
       "Mapped FCO / ICS / Village List": "मैप एफसीओ / आईसीएस / गांव सूची",
@@ -2065,10 +2456,125 @@ document.addEventListener("turbo:load", () => {
       "VRP type add karne ke liye.": "Add VRP type.",
       "Saved access control records dekhne ke liye.": "View saved access control records."
     };
-    const englishTranslations = {
-      ...Object.fromEntries(Object.entries(translations).map(([english, hindi]) => [hindi, english])),
-      ...englishAliases
-    };
+	    const englishTranslations = {
+	      ...Object.fromEntries(Object.entries(translations).map(([english, hindi]) => [hindi, english])),
+	      ...englishAliases
+	    };
+	    const marathiTranslations = {
+	      "Language": "भाषा",
+	      "Dashboard": "डॅशबोर्ड",
+	      "Sign Out": "साइन आउट",
+	      "Target Mapping": "लक्ष्य मॅपिंग",
+	      "Target Mapping Upload": "लक्ष्य मॅपिंग अपलोड",
+	      "Target Mapping Master": "लक्ष्य मॅपिंग मास्टर",
+	      "VRP ICS Mapping": "व्हीआरपी आयसीएस मॅपिंग",
+	      "Recent Target Mappings": "अलीकडील लक्ष्य मॅपिंग",
+	      "Recent VRP ICS Mappings": "अलीकडील व्हीआरपी आयसीएस मॅपिंग",
+	      "Office Management": "ऑफिस व्यवस्थापन",
+	      "Office Category": "ऑफिस श्रेणी",
+	      "Office Name": "ऑफिस नाव",
+	      "Office Level": "ऑफिस लेवल",
+	      "Select Office Category": "ऑफिस श्रेणी निवडा",
+	      "Select Office Name": "ऑफिस नाव निवडा",
+	      "FCOC-C": "एफसीओसी-सी",
+	      "Select FCOC-C": "एफसीओसी-सी निवडा",
+	      "TO": "टीओ",
+	      "Select TO": "टीओ निवडा",
+	      "Cluster Incharge": "क्लस्टर इंचार्ज",
+	      "Select Cluster Incharge": "क्लस्टर इंचार्ज निवडा",
+	      "VRP Registration": "व्हीआरपी नोंदणी",
+	      "User Register": "यूज़र नोंदणी",
+	      "Edit": "एडिट",
+	      "Delete": "डिलीट",
+	      "Remove": "काढा",
+	      "Remove this VRP ICS mapping?": "हे व्हीआरपी आयसीएस मॅपिंग काढायचे?",
+	      "Remove this target mapping?": "हे लक्ष्य मॅपिंग काढायचे?",
+	      "Delete this VRP ICS mapping?": "हे व्हीआरपी आयसीएस मॅपिंग डिलीट करायचे?",
+	      "Delete this target mapping?": "हे लक्ष्य मॅपिंग डिलीट करायचे?",
+	      "Action": "कारवाई",
+	      "Save Mapping": "मॅपिंग सेव करा",
+	      "Update Mapping": "मॅपिंग अपडेट करा",
+	      "Save Target": "लक्ष्य सेव करा",
+	      "Update Target": "लक्ष्य अपडेट करा",
+	      "Cancel Edit": "एडिट रद्द करा",
+	      "Select VRP": "व्हीआरपी निवडा",
+	      "Select FCO": "एफसीओ निवडा",
+	      "Select ICS": "आयसीएस निवडा",
+	      "Select Village": "गाव निवडा",
+	      "Select all": "सर्व निवडा",
+	      "No VRP ICS mapping saved yet.": "अजून कोणतेही व्हीआरपी आयसीएस मॅपिंग सेव नाही.",
+	      "No target mapping saved yet.": "अजून कोणतेही लक्ष्य मॅपिंग सेव नाही."
+	      ,"Training Form": "प्रशिक्षण फॉर्म",
+	      "Training Topic Mapping": "प्रशिक्षण टॉपिक मॅपिंग",
+	      "Trainer Name": "प्रशिक्षक नाव",
+	      "Trainer Contact": "प्रशिक्षक संपर्क",
+	      "Farmer Count": "किसान संख्या",
+	      "Selected Farmers": "निवडलेले किसान",
+	      "Training Photo Upload with Geo Tag": "जिओ टॅगसह प्रशिक्षण फोटो अपलोड",
+	      "Mapped Farmers": "मॅप केलेले किसान",
+	      "Select Village Name to load mapped farmers.": "मॅप केलेले किसान लोड करण्यासाठी गाव नाव निवडा.",
+	      "No mapped farmers found for selected village.": "निवडलेल्या गावासाठी कोणतेही मॅप किसान सापडले नाहीत."
+	    };
+	    const odiaTranslations = {
+	      "Language": "ଭାଷା",
+	      "Dashboard": "ଡ୍ୟାସବୋର୍ଡ",
+	      "Sign Out": "ସାଇନ୍ ଆଉଟ୍",
+	      "Target Mapping": "ଟାର୍ଗେଟ୍ ମ୍ୟାପିଂ",
+	      "Target Mapping Upload": "ଟାର୍ଗେଟ୍ ମ୍ୟାପିଂ ଅପଲୋଡ୍",
+	      "Target Mapping Master": "ଟାର୍ଗେଟ୍ ମ୍ୟାପିଂ ମାଷ୍ଟର",
+	      "VRP ICS Mapping": "ଭିଆରପି ଆଇସିଏସ୍ ମ୍ୟାପିଂ",
+	      "Recent Target Mappings": "ସମ୍ପ୍ରତି ଟାର୍ଗେଟ୍ ମ୍ୟାପିଂ",
+	      "Recent VRP ICS Mappings": "ସମ୍ପ୍ରତି ଭିଆରପି ଆଇସିଏସ୍ ମ୍ୟାପିଂ",
+	      "Office Management": "ଅଫିସ୍ ପରିଚାଳନା",
+	      "Office Category": "ଅଫିସ୍ ବର୍ଗ",
+	      "Office Name": "ଅଫିସ୍ ନାମ",
+	      "Office Level": "ଅଫିସ୍ ସ୍ତର",
+	      "Select Office Category": "ଅଫିସ୍ ବର୍ଗ ବାଛନ୍ତୁ",
+	      "Select Office Name": "ଅଫିସ୍ ନାମ ବାଛନ୍ତୁ",
+	      "FCOC-C": "ଏଫସିଓସି-ସି",
+	      "Select FCOC-C": "ଏଫସିଓସି-ସି ବାଛନ୍ତୁ",
+	      "TO": "ଟିଓ",
+	      "Select TO": "ଟିଓ ବାଛନ୍ତୁ",
+	      "Cluster Incharge": "କ୍ଲଷ୍ଟର ଇନଚାର୍ଜ",
+	      "Select Cluster Incharge": "କ୍ଲଷ୍ଟର ଇନଚାର୍ଜ ବାଛନ୍ତୁ",
+	      "VRP Registration": "ଭିଆରପି ପଞ୍ଜୀକରଣ",
+	      "User Register": "ୟୁଜର ପଞ୍ଜୀକରଣ",
+	      "Edit": "ଏଡିଟ୍",
+	      "Delete": "ଡିଲିଟ୍",
+	      "Remove": "ହଟାନ୍ତୁ",
+	      "Remove this VRP ICS mapping?": "ଏହି ଭିଆରପି ଆଇସିଏସ୍ ମ୍ୟାପିଂ ହଟାଇବେ?",
+	      "Remove this target mapping?": "ଏହି ଟାର୍ଗେଟ୍ ମ୍ୟାପିଂ ହଟାଇବେ?",
+	      "Delete this VRP ICS mapping?": "ଏହି ଭିଆରପି ଆଇସିଏସ୍ ମ୍ୟାପିଂ ଡିଲିଟ୍ କରିବେ?",
+	      "Delete this target mapping?": "ଏହି ଟାର୍ଗେଟ୍ ମ୍ୟାପିଂ ଡିଲିଟ୍ କରିବେ?",
+	      "Action": "କାର୍ଯ୍ୟ",
+	      "Save Mapping": "ମ୍ୟାପିଂ ସେଭ୍ କରନ୍ତୁ",
+	      "Update Mapping": "ମ୍ୟାପିଂ ଅପଡେଟ୍ କରନ୍ତୁ",
+	      "Save Target": "ଟାର୍ଗେଟ୍ ସେଭ୍ କରନ୍ତୁ",
+	      "Update Target": "ଟାର୍ଗେଟ୍ ଅପଡେଟ୍ କରନ୍ତୁ",
+	      "Cancel Edit": "ଏଡିଟ୍ ବାତିଲ୍",
+	      "Select VRP": "ଭିଆରପି ବାଛନ୍ତୁ",
+	      "Select FCO": "ଏଫସିଓ ବାଛନ୍ତୁ",
+	      "Select ICS": "ଆଇସିଏସ୍ ବାଛନ୍ତୁ",
+	      "Select Village": "ଗ୍ରାମ ବାଛନ୍ତୁ",
+	      "Select all": "ସବୁ ବାଛନ୍ତୁ",
+	      "No VRP ICS mapping saved yet.": "ଏପର୍ଯ୍ୟନ୍ତ କୌଣସି ଭିଆରପି ଆଇସିଏସ୍ ମ୍ୟାପିଂ ସେଭ୍ ହୋଇନାହିଁ.",
+	      "No target mapping saved yet.": "ଏପର୍ଯ୍ୟନ୍ତ କୌଣସି ଟାର୍ଗେଟ୍ ମ୍ୟାପିଂ ସେଭ୍ ହୋଇନାହିଁ."
+	      ,"Training Form": "ପ୍ରଶିକ୍ଷଣ ଫର୍ମ",
+	      "Training Topic Mapping": "ପ୍ରଶିକ୍ଷଣ ଟପିକ୍ ମ୍ୟାପିଂ",
+	      "Trainer Name": "ପ୍ରଶିକ୍ଷକ ନାମ",
+	      "Trainer Contact": "ପ୍ରଶିକ୍ଷକ ଯୋଗାଯୋଗ",
+	      "Farmer Count": "କୃଷକ ସଂଖ୍ୟା",
+	      "Selected Farmers": "ବାଛିଥିବା କୃଷକ",
+	      "Training Photo Upload with Geo Tag": "ଜିଓ ଟ୍ୟାଗ୍ ସହିତ ପ୍ରଶିକ୍ଷଣ ଫଟୋ ଅପଲୋଡ୍",
+	      "Mapped Farmers": "ମ୍ୟାପ୍ ହୋଇଥିବା କୃଷକ",
+	      "Select Village Name to load mapped farmers.": "ମ୍ୟାପ୍ ହୋଇଥିବା କୃଷକ ଲୋଡ୍ କରିବାକୁ ଗ୍ରାମ ନାମ ବାଛନ୍ତୁ.",
+	      "No mapped farmers found for selected village.": "ବାଛିଥିବା ଗ୍ରାମ ପାଇଁ କୌଣସି ମ୍ୟାପ୍ କୃଷକ ମିଳିଲେ ନାହିଁ."
+	    };
+	    const languageTranslations = {
+	      hi: translations,
+	      mr: marathiTranslations,
+	      or: odiaTranslations
+	    };
 
     const preserveSpacing = (original, replacement) => {
       const leading = original.match(/^\s*/)?.[0] || "";
@@ -2081,9 +2587,11 @@ document.addEventListener("turbo:load", () => {
       if (!trimmed) return text;
       if (/^[\s\d.,:;/%#()\-–—|]+$/.test(trimmed)) return text;
 
-      const exact = language === "hi" ? translations[trimmed] : englishTranslations[trimmed];
-      if (exact) return preserveSpacing(text, exact);
-      if (language === "en") return text;
+	      const selectedTranslations = languageTranslations[language] || {};
+	      const exact = language === "en" ? englishTranslations[trimmed] : selectedTranslations[trimmed];
+	      if (exact) return preserveSpacing(text, exact);
+	      if (language === "en") return text;
+	      if (language !== "hi") return text;
 
       let match = trimmed.match(/^Select (.+)$/);
       if (match) return preserveSpacing(text, `${translatePhrase(match[1], "hi").trim()} चुनें`);
@@ -2136,8 +2644,8 @@ document.addEventListener("turbo:load", () => {
       }
     };
 
-    const applyLanguage = (language) => {
-      document.documentElement.lang = language === "hi" ? "hi" : "en";
+	    const applyLanguage = (language) => {
+	      document.documentElement.lang = language;
       languageButtons.forEach((button) => {
         button.classList.toggle("active", button.dataset.languageOption === language);
       });
@@ -2150,8 +2658,8 @@ document.addEventListener("turbo:load", () => {
       });
     };
 
-    const setLanguage = (language) => {
-      const nextLanguage = language === "hi" ? "hi" : "en";
+	    const setLanguage = (language) => {
+	      const nextLanguage = ["en", "hi", "mr", "or"].includes(language) ? language : "en";
       localStorage.setItem("vrp_language", nextLanguage);
       applyLanguage(nextLanguage);
     };

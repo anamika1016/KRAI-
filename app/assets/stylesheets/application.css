@@ -2240,6 +2240,27 @@ a {
   font-size: 0.9rem;
 }
 
+.training-farmer-panel {
+  grid-column: 1 / -1;
+  border: 1px solid #d9e4e8;
+  border-radius: 6px;
+  background: #f8fbfc;
+  padding: 12px;
+}
+
+.inline-upload-hint {
+  display: inline;
+  margin-left: 8px;
+  font-weight: 700;
+}
+
+.training-select-all {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0;
+}
+
 .vrp-ics-farmer-item {
   display: grid;
   grid-template-columns: 18px minmax(0, 1fr);

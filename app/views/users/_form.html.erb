@@ -1,6 +1,8 @@
 <% form_url = user.persisted? ? user_path(user) : users_path %>
 <% form_method = user.persisted? ? :patch : :post %>
 <% stakeholder_role_value = user.respond_to?(:stakeholder_role) ? user.stakeholder_role : nil %>
+<% office_category_value = user.respond_to?(:office_category) ? user.office_category : nil %>
+<% office_name_value = (user.respond_to?(:office_name) ? user.office_name : nil).presence || user.office %>
 
 <section class="module-card" data-user-role-form data-role-map="<%= json_escape(@role_management_mappings.to_json) %>" data-office-map="<%= json_escape((@office_category_mappings || []).to_json) %>" data-location-form data-location-map="<%= json_escape(@location_hierarchy_mappings.to_json) %>">
   <%= form_with model: user, url: form_url, method: form_method, html: { class: "module-entry-form", multipart: true } do |f| %>
@@ -36,8 +38,16 @@
       <% end %>
 
       <label>
-        <span>Office</span>
-        <%= f.select :office, options_for_select(@office_options, user.office), { include_blank: "Select Office" }, data: { office_select: true, selected_value: user.office } %>
+        <span>Parent Office</span>
+        <%= f.select :parent_office, options_for_select(@parent_office_options, user.parent_office), { include_blank: "Select Parent Office" }, data: { parent_office_select: true, selected_value: user.parent_office } %>
+      </label>
+      <label>
+        <span>Office Category</span>
+        <%= f.select :office_category, options_for_select(@office_category_options, office_category_value), { include_blank: "Select Office Category" }, data: { office_category_select: true, selected_value: office_category_value } %>
+      </label>
+      <label>
+        <span>Office Name</span>
+        <%= f.select :office_name, options_for_select(@office_name_options, office_name_value), { include_blank: "Select Office Name" }, data: { office_name_select: true, selected_value: office_name_value, office_select: true } %>
       </label>
       <label>
         <span>Full Address</span>
@@ -79,7 +89,7 @@
       </label>
       <label>
         <span>User Name <em>*</em></span>
-        <%= f.text_field :user_name, required: true, placeholder: "Enter User Name" %>
+        <%= f.text_field :user_name, required: true, placeholder: "Enter User Name", data: { capitalize_first: true } %>
       </label>
       <label>
         <span>Mobile No</span>

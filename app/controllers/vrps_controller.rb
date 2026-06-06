@@ -220,6 +220,7 @@ class VrpsController < ApplicationController
       :emergency_no,
       :email,
       :fcoc,
+      :to_name,
       :cluster_incharge,
       :stakeholder,
       :stakeholder_role,
@@ -790,7 +791,11 @@ class VrpsController < ApplicationController
     @person_type_options = text_module_record_options("person-type", "person_type")
     @role_management_mappings = role_management_mappings
     @vrp_type_options = vrp_type_options
+    @project_master_options = project_master_options
+    @office_management_mappings = office_management_mappings
     @fcoc_options = fcoc_options
+    @to_options = to_options
+    @cluster_incharge_user_mappings = cluster_incharge_user_mappings
     @cluster_incharge_options = cluster_incharge_options
     @state_options = module_record_options("state-master", "state_name")
     @district_options = module_record_options("district-master", "district_name")
@@ -810,20 +815,85 @@ class VrpsController < ApplicationController
       module_record_options("position-type", "position_type_name")
   end
 
-  def fcoc_options
-    return [] unless model_ready?(:Afl)
+  def project_master_options
+    module_record_options("project-master", "project_name")
+  end
 
-    Afl.where.not(fco_id: [nil, ""])
-      .select(:fco_id, :fco)
-      .distinct
-      .order(:fco, :fco_id)
-      .map do |afl|
-        label = afl.fco.presence || afl.fco_id
-        [label, afl.fco_id]
+  def office_management_mappings
+    return [] unless model_ready?(:ModuleRecord)
+
+    ModuleRecord
+      .where(module_slug: "office-management")
+      .order(created_at: :desc)
+      .select { |record| active_module_record?(record) }
+      .map do |record|
+        {
+          stakeholder: first_present_data(record, "stakeholder_category", "stakeholder_name", "stakeholder").to_s.strip,
+          parent_office: first_present_data(record, "parent_office", "parent_office_name", "parent_category").to_s.strip,
+          office_category: first_present_data(record, "office_category", "category_name").to_s.strip,
+          office_name: first_present_data(record, "office_name", "office").to_s.strip,
+          office_level: first_present_data(record, "office_level").to_s.strip
+        }
       end
+      .reject { |mapping| mapping[:office_category].blank? && mapping[:office_name].blank? }
+      .uniq
+  end
+
+  def current_user_office_category
+    return "" if admin_user?
+
+    current_user_model&.then { |user| user.respond_to?(:office_category) ? user.office_category : nil }.presence ||
+      current_app_user&.dig("office_category").presence
+  end
+
+  def current_user_office_name
+    return "" if admin_user?
+
+    user = current_user_model
+    (user.respond_to?(:office_name) ? user.office_name : nil).presence ||
+      user&.office.presence ||
+      current_app_user&.dig("office_name").presence ||
+      current_app_user&.dig("office").presence
+  end
+
+  def current_user_model
+    return @current_user_model if defined?(@current_user_model)
+    return @current_user_model = nil unless model_ready?(:User)
+
+    username = current_app_user&.dig("username").to_s
+    email = current_app_user&.dig("email").to_s
+    @current_user_model =
+      User.find_by(id: current_app_user_id) ||
+      (username.present? ? User.find_by(user_name: username) : nil) ||
+      (email.present? ? User.find_by(email: email) : nil)
+  end
+
+  def fcoc_options
+    current_category = current_user_office_category
+    return [[current_category, current_category]] if current_category.present?
+
+    (
+      @office_management_mappings.filter_map { |mapping| mapping[:office_category].presence } +
+      text_module_record_options("office-category-add", ["office_name", "category_name"])
+    ).compact_blank.uniq.map { |office_category| [office_category, office_category] }
+  end
+
+  def to_options
+    current_category = current_user_office_category
+    selected_category = current_category.presence
+    offices = @office_management_mappings
+      .select { |mapping| selected_category.blank? || mapping[:office_category].to_s.casecmp(selected_category).zero? }
+      .filter_map { |mapping| mapping[:office_name].presence }
+
+    offices << current_user_office_name
+    offices.compact_blank.uniq.map { |office_name| [office_name, office_name] }
   end
 
   def cluster_incharge_options
+    cluster_incharge_user_mappings.map { |mapping| [mapping[:label], mapping[:value]] }
+  end
+
+  def cluster_incharge_user_mappings
     return [] unless model_ready?(:User)
 
     User.order(:first_name, :last_name, :user_name)
@@ -834,9 +904,15 @@ class VrpsController < ApplicationController
 
         role = user.role_name.presence || user.role
         label = role.present? ? "#{name}(#{role})" : name
-        [label, name]
+        {
+          label: label,
+          value: name,
+          office_category: user.respond_to?(:office_category) ? user.office_category.to_s.strip : "",
+          office_name: (user.respond_to?(:office_name) ? user.office_name : nil).presence || user.office.to_s.strip,
+          parent_office: user.respond_to?(:parent_office) ? user.parent_office.to_s.strip : ""
+        }
       end
-      .uniq { |_label, value| value }
+      .uniq { |mapping| mapping[:value] }
   end
 
   def ics_options

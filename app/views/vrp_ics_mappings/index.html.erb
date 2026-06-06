@@ -4,7 +4,7 @@
   <section class="vrp-list-shell">
     <div class="vrp-list-header">
       <div>
-        <p class="vrp-eyebrow">AFL</p>
+        <p class="vrp-eyebrow">Target Mapping</p>
         <h1>VRP ICS Mapping</h1>
       </div>
     </div>
@@ -107,12 +107,16 @@
                   <td><%= mapping.village_name.presence || mapping.village_id %></td>
                   <td><%= mapping.farmer_count %></td>
                   <td><%= mapping.updated_at&.strftime("%d-%m-%Y") %></td>
-                  <td>
-                    <div class="table-actions">
-                      <%= link_to "Edit", vrp_ics_mappings_path(edit_id: mapping.id), class: "table-action" %>
-                      <%= button_to "Delete", vrp_ics_mapping_path(mapping), method: :delete, class: "table-action danger", form: { data: { turbo_confirm: "Delete this VRP ICS mapping?" } } %>
-                    </div>
-                  </td>
+	                  <td>
+	                    <div class="table-actions">
+	                      <% if @admin_mapping_actions %>
+	                        <%= link_to "Edit", vrp_ics_mappings_path(edit_id: mapping.id), class: "table-action" %>
+	                        <%= button_to "Delete", vrp_ics_mapping_path(mapping), method: :delete, class: "table-action danger", form: { data: { turbo_confirm: "Delete this VRP ICS mapping?" } } %>
+	                      <% elsif @remove_mapping_actions %>
+	                        <%= button_to "Remove", vrp_ics_mapping_path(mapping), method: :delete, class: "table-action danger", form: { data: { turbo_confirm: "Remove this VRP ICS mapping?" } } %>
+	                      <% end %>
+	                    </div>
+	                  </td>
                 </tr>
               <% end %>
             <% else %>

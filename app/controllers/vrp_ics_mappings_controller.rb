@@ -3,7 +3,9 @@ class VrpIcsMappingsController < ApplicationController
     @approved_vrps = approved_vrps
     @fco_options = fco_options
     @mappings = visible_mappings.includes(:vrp).order(updated_at: :desc).limit(100)
-    @edit_mapping = visible_mappings.find_by(id: params[:edit_id]) if params[:edit_id].present?
+    @admin_mapping_actions = admin_login?
+    @remove_mapping_actions = !admin_login?
+    @edit_mapping = visible_mappings.find_by(id: params[:edit_id]) if params[:edit_id].present? && @admin_mapping_actions
     @edit_payload = edit_payload(@edit_mapping)
   end
 
@@ -29,7 +31,7 @@ class VrpIcsMappingsController < ApplicationController
 
   def destroy
     visible_mappings.find(params[:id]).destroy
-    redirect_to vrp_ics_mappings_path, notice: "VRP ICS mapping deleted successfully."
+    redirect_to vrp_ics_mappings_path, notice: admin_login? ? "VRP ICS mapping deleted successfully." : "VRP ICS mapping removed successfully."
   end
 
   def ics_options
@@ -72,11 +74,16 @@ class VrpIcsMappingsController < ApplicationController
 
   def own_registered_vrps
     ids = current_app_user_ids
-    return Vrp.none if ids.blank?
+    emails = current_app_user_emails
+    return Vrp.none if ids.blank? && emails.blank?
 
     scope = Vrp.none
-    scope = scope.or(Vrp.where(created_by_id: ids))
-    scope = scope.or(Vrp.where(user_id: ids)) if Vrp.column_names.include?("user_id")
+    if ids.any?
+      scope = scope.or(Vrp.where(created_by_id: ids))
+      scope = scope.or(Vrp.where(user_id: ids)) if Vrp.column_names.include?("user_id")
+    end
+
+    scope = scope.or(Vrp.where("LOWER(email) IN (?)", emails)) if emails.any?
 
     scope
   end
@@ -93,11 +100,24 @@ class VrpIcsMappingsController < ApplicationController
     return [] unless defined?(ModuleRecord) && ModuleRecord.table_exists?
 
     username = current_app_user&.dig("username").to_s
-    return [] if username.blank?
+    emails = current_app_user_emails
+    return [] if username.blank? && emails.blank?
 
     ModuleRecord.where(module_slug: "new-user").select do |record|
-      record.data["user_name"].to_s == username
+      record.data["user_name"].to_s == username ||
+        emails.include?(record.data["email"].to_s.strip.downcase)
     end.map(&:id)
+  end
+
+  def current_app_user_emails
+    emails = [current_app_user&.dig("email")]
+
+    if defined?(User) && User.table_exists?
+      user = User.find_by(user_name: current_app_user&.dig("username")) || User.find_by(id: current_app_user_id)
+      emails << user&.email
+    end
+
+    emails.compact_blank.map { |email| email.to_s.strip.downcase }.uniq
   end
 
   def visible_mappings

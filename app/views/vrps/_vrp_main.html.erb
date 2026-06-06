@@ -1,4 +1,9 @@
-<div class="row gx-3 vrp-form-grid" data-location-form data-location-map="<%= json_escape(@location_hierarchy_mappings.to_json) %>">
+<div class="row gx-3 vrp-form-grid"
+     data-location-form
+     data-location-map="<%= json_escape(@location_hierarchy_mappings.to_json) %>"
+     data-vrp-office-form
+     data-office-map="<%= json_escape((@office_management_mappings || []).to_json) %>"
+     data-cluster-users="<%= json_escape((@cluster_incharge_user_mappings || []).to_json) %>">
   <div class="vrp-section-title">
     <span>Personal Details</span>
   </div>
@@ -91,7 +96,7 @@
 
   <div class="col-md-3 mb-3">
     <label class="form-label required">User Name</label>
-    <%= f.text_field :user_name, class: "form-control", placeholder: "Enter User Name", required: true %>
+    <%= f.text_field :user_name, class: "form-control", placeholder: "Enter User Name", required: true, data: { capitalize_first: true } %>
   </div>
 
   <div class="col-md-3 mb-3">
@@ -111,8 +116,25 @@
   </div>
 
   <div class="col-md-3 mb-3">
+    <label class="form-label">Project Name</label>
+    <%= select_tag "vrp[project_master_ids][]", options_for_select(@project_master_options || [], Array(f&.object&.project_master_ids).first), prompt: "Select Project Name", class: "form-select select2" %>
+  </div>
+
+  <div class="col-md-3 mb-3">
+    <label class="form-label">FCOC-C</label>
+    <% fcoc_value = f.object.fcoc.presence || (((@fcoc_options || []).one?) ? @fcoc_options.first.last : nil) %>
+    <%= f.select :fcoc, options_for_select(@fcoc_options || [], fcoc_value), { prompt: "Select FCOC-C" }, class: "form-select", data: { vrp_office_category: true, selected_value: fcoc_value } %>
+  </div>
+
+  <div class="col-md-3 mb-3">
+    <label class="form-label">TO</label>
+    <% to_value = f.object.to_name.presence || (((@to_options || []).one?) ? @to_options.first.last : nil) %>
+    <%= f.select :to_name, options_for_select(@to_options || [], to_value), { prompt: "Select TO" }, class: "form-select", data: { vrp_office_name: true, selected_value: to_value } %>
+  </div>
+
+  <div class="col-md-3 mb-3">
     <label class="form-label">Cluster Incharge</label>
-    <%= f.select :cluster_incharge, options_for_select(@cluster_incharge_options || [], f.object.cluster_incharge), { prompt: "Select Cluster Incharge" }, class: "form-select" %>
+    <%= f.select :cluster_incharge, options_for_select(@cluster_incharge_options || [], f.object.cluster_incharge), { prompt: "Select Cluster Incharge" }, class: "form-select", data: { vrp_cluster_incharge: true, selected_value: f.object.cluster_incharge } %>
   </div>
 
   <div class="vrp-section-title">

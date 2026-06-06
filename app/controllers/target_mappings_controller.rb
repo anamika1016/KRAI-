@@ -2,13 +2,15 @@ class TargetMappingsController < ApplicationController
   before_action :block_vrp_target_write, only: [:create, :destroy]
 
   def index
-    @vrp_target_view = admin_login? || non_admin_vrp_login?
+    @vrp_target_view = non_admin_vrp_login?
+    @admin_mapping_actions = admin_login?
+    @remove_mapping_actions = !admin_login? && !non_admin_vrp_login?
     @vrps = mapped_vrps
     @month_options = module_options("month-master", "month_name")
     @main_activity_options = module_options("add-activity-group", "main_activity_name", "activity_group_name")
     @sub_activity_options = module_options("add-vrp-activity", "sub_activity_name", "activity_name", "vrp_activity_name")
     @target_mappings = visible_target_mappings.includes(:vrp, :vrp_ics_mapping).order(updated_at: :desc).limit(100)
-    @edit_target = visible_target_mappings.find_by(id: params[:edit_id]) if params[:edit_id].present? && !@vrp_target_view
+    @edit_target = visible_target_mappings.find_by(id: params[:edit_id]) if params[:edit_id].present? && @admin_mapping_actions
     @edit_payload = edit_payload(@edit_target)
   end
 
@@ -28,7 +30,7 @@ class TargetMappingsController < ApplicationController
 
   def destroy
     visible_target_mappings.find(params[:id]).destroy
-    redirect_to target_mappings_path, notice: "Target mapping deleted successfully."
+    redirect_to target_mappings_path, notice: admin_login? ? "Target mapping deleted successfully." : "Target mapping removed successfully."
   end
 
   def vrp_mappings

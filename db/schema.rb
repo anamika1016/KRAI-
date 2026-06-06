@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2026_06_04_143000) do
+ActiveRecord::Schema[8.1].define(version: 2026_06_06_121000) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "pg_catalog.plpgsql"
 
@@ -138,6 +138,8 @@ ActiveRecord::Schema[8.1].define(version: 2026_06_04_143000) do
     t.string "last_name"
     t.string "mobile_no"
     t.string "office"
+    t.string "office_category"
+    t.string "office_name"
     t.string "parent_office"
     t.string "password"
     t.string "person_type"
@@ -237,6 +239,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_06_04_143000) do
     t.string "stakeholder"
     t.string "stakeholder_role"
     t.integer "status", default: 25, null: false
+    t.string "to_name"
     t.integer "to_office_detail_id", null: false
     t.datetime "updated_at", null: false
     t.integer "user_id"

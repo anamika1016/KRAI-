@@ -46,7 +46,17 @@
           </tr>
           <tr>
             <th>VRP Types</th>
-            <td colspan="9"><%= vrp_type_labels(@vrp&.vrp_type_ids) %></td>
+            <td colspan="3"><%= vrp_type_labels(@vrp&.vrp_type_ids) %></td>
+            <th>Projects</th>
+            <td colspan="5"><%= module_record_labels("project-master", @vrp&.project_master_ids, "project_name") %></td>
+          </tr>
+          <tr>
+            <th>FCOC-C</th>
+            <td colspan="3"><%= blank_display(@vrp&.fcoc) %></td>
+            <th>TO</th>
+            <td><%= blank_display(@vrp&.to_name) %></td>
+            <th>Cluster Incharge</th>
+            <td colspan="3"><%= blank_display(@vrp&.cluster_incharge) %></td>
           </tr>
           <tr>
             <th>ICS</th>

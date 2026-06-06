@@ -26,7 +26,7 @@ class AflsController < ApplicationController
   def import
     result = Afl.import(params[:file])
     total_rows = result[:imported] + result[:skipped].size
-    notice = "#{result[:imported]} AFL records uploaded successfully out of #{total_rows} Excel rows."
+    notice = "#{result[:imported]} target mapping records uploaded successfully out of #{total_rows} Excel rows."
     notice += " #{result[:skipped].size} rows skipped." if result[:skipped].any?
 
     if result[:skipped].any?
@@ -42,7 +42,7 @@ class AflsController < ApplicationController
   def import_report
     report_path = REPORT_DIR.join("#{params[:id].to_s.gsub(/[^a-zA-Z0-9_-]/, "")}.csv")
     unless report_path.file?
-      redirect_to afls_path, alert: "AFL import skipped report not found."
+      redirect_to afls_path, alert: "Target mapping import skipped report not found."
       return
     end
 

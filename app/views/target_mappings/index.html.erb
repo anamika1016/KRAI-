@@ -4,8 +4,8 @@
   <section class="vrp-list-shell">
     <div class="vrp-list-header">
       <div>
-        <p class="vrp-eyebrow"><%= @vrp_target_view ? "VRP Targets" : "AFL" %></p>
-        <h1><%= @vrp_target_view ? "Recent Target Mappings" : "Target Mapping Master" %></h1>
+        <p class="vrp-eyebrow"><%= @vrp_target_view ? "VRP Targets" : "Target Mapping Master" %></p>
+        <h1><%= @vrp_target_view ? "Recent Target Mappings" : "Target Mapping" %></h1>
       </div>
     </div>
 
@@ -98,8 +98,9 @@
       </section>
     <% end %>
 
-    <div class="vrp-list-card">
-      <div class="list-controls">
+	    <div class="vrp-list-card">
+	      <% show_mapping_actions = @admin_mapping_actions || @remove_mapping_actions %>
+	      <div class="list-controls">
         <strong>Recent Target Mappings</strong>
         <div class="list-control-actions">
           <div class="list-search compact">
@@ -121,9 +122,9 @@
               <th>Main Activity</th>
               <th>Sub Activity</th>
               <th>Target</th>
-              <% unless @vrp_target_view %>
-                <th>Action</th>
-              <% end %>
+	              <% if show_mapping_actions %>
+	                <th>Action</th>
+	              <% end %>
             </tr>
           </thead>
           <tbody>
@@ -139,19 +140,23 @@
                   <td><%= target.main_activity_name %></td>
                   <td><%= target.activity_name %></td>
                   <td><%= target.target_quantity %></td>
-                  <% unless @vrp_target_view %>
-                    <td>
-                      <div class="table-actions">
-                        <%= link_to "Edit", target_mappings_path(edit_id: target.id), class: "table-action" %>
-                        <%= button_to "Delete", target_mapping_path(target), method: :delete, class: "table-action danger", form: { data: { turbo_confirm: "Delete this target mapping?" } } %>
-                      </div>
-                    </td>
-                  <% end %>
+	                  <% if show_mapping_actions %>
+	                    <td>
+	                      <div class="table-actions">
+	                        <% if @admin_mapping_actions %>
+	                          <%= link_to "Edit", target_mappings_path(edit_id: target.id), class: "table-action" %>
+	                          <%= button_to "Delete", target_mapping_path(target), method: :delete, class: "table-action danger", form: { data: { turbo_confirm: "Delete this target mapping?" } } %>
+	                        <% elsif @remove_mapping_actions %>
+	                          <%= button_to "Remove", target_mapping_path(target), method: :delete, class: "table-action danger", form: { data: { turbo_confirm: "Remove this target mapping?" } } %>
+	                        <% end %>
+	                      </div>
+	                    </td>
+	                  <% end %>
                 </tr>
               <% end %>
             <% else %>
               <tr>
-                <td colspan="<%= @vrp_target_view ? 9 : 10 %>">No target mapping saved yet.</td>
+	                <td colspan="<%= show_mapping_actions ? 10 : 9 %>">No target mapping saved yet.</td>
               </tr>
             <% end %>
           </tbody>
