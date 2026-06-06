@@ -352,6 +352,8 @@ class ModulesController < ApplicationController
       return
     end
 
+    @dashboard_title = admin_dashboard_user? ? "Admin Dashboard" : "User Dashboard"
+    @dashboard_caption = admin_dashboard_user? ? "Live complete system summary." : "Live summary for your mapped records."
     @dashboard_cards = dashboard_cards
     @dashboard_reports = dashboard_reports
     @dashboard_generated_at = Time.current
@@ -557,15 +559,15 @@ class ModulesController < ApplicationController
     completed_total = targets.sum { |target| vrp_target_completed_quantity(target, bills) }
 
     @dashboard_cards = [
-      ["Mapped Farmers", mapped_farmer_count, "Farmers mapped with your VRP profile"],
-      ["Mapped Villages", village_count, "Villages assigned for field work"],
-      ["Main Activities", main_activity_count, "Main activities mapped to your targets"],
-      ["Sub Activities", sub_activity_count, "Sub activities mapped to your targets"],
-      ["Repeat Farmers", farmer_followup[:repeat].size, "Worked in previous month and this month"],
-      ["New Farmers", farmer_followup[:new].size, "Worked this month but not previous month"],
-      ["Pending Farmers", farmer_followup[:pending].size, "Mapped farmers not covered this month"],
-      ["Assigned Target", dashboard_quantity(target_total), "Total target from Target Mapping Master"],
-      ["Completed", dashboard_quantity(completed_total), "#{percentage(completed_total, target_total)} target completed"]
+      dashboard_card("Mapped Farmers", mapped_farmer_count, "Farmers mapped with your VRP profile", dashboard_path(anchor: "vrp_mapped_villages")),
+      dashboard_card("Mapped Villages", village_count, "Villages assigned for field work", dashboard_path(anchor: "vrp_mapped_villages")),
+      dashboard_card("Main Activities", main_activity_count, "Main activities mapped to your targets", target_mappings_path),
+      dashboard_card("Sub Activities", sub_activity_count, "Sub activities mapped to your targets", target_mappings_path),
+      dashboard_card("Repeat Farmers", farmer_followup[:repeat].size, "Worked in previous month and this month", dashboard_path(anchor: "vrp_farmer_followup")),
+      dashboard_card("New Farmers", farmer_followup[:new].size, "Worked this month but not previous month", dashboard_path(anchor: "vrp_farmer_followup")),
+      dashboard_card("Pending Farmers", farmer_followup[:pending].size, "Mapped farmers not covered this month", dashboard_path(anchor: "vrp_farmer_followup")),
+      dashboard_card("Assigned Target", dashboard_quantity(target_total), "Total target from Target Mapping Master", target_mappings_path),
+      dashboard_card("Completed", dashboard_quantity(completed_total), "#{percentage(completed_total, target_total)} target completed", dashboard_path(anchor: "vrp_target_progress"))
     ]
 
     @vrp_target_rows = targets.map do |target|
@@ -757,35 +759,35 @@ class ModulesController < ApplicationController
 
   def dashboard_cards
     vrps = dashboard_vrps
-    targets = module_records_for_dashboard("weekly-target-add")
+    targets = dashboard_target_mappings
     activities = module_records_for_dashboard("add-vrp-activity")
     hierarchy_summary = user_hierarchy_dashboard_summary
     approved_vrps = vrps.count { |vrp| vrp.status.to_i == 55 || vrp_approval_complete?(vrp) }
     pending_approvals = vrps.count { |vrp| vrp_approval_pending?(vrp) }
 
     cards = [
-      ["Total Registered VRP", vrps.size, "All VRP records saved in registration"],
-      ["Final Approved VRP", approved_vrps, "VRP records with final approval"],
-      ["VRP Waiting for Approval", pending_approvals, "VRP records currently pending"],
-      ["Weekly Targets Assigned", targets.size, "All weekly target records entered"],
-      ["Activities Configured", activities.size, "Activities available for target and bill work"]
+      dashboard_card("Total Registered VRP", vrps.size, admin_dashboard_user? ? "All VRP records saved in registration" : "VRP records visible to you", vrps_path),
+      dashboard_card("Final Approved VRP", approved_vrps, "VRP records with final approval", vrps_path),
+      dashboard_card("VRP Waiting for Approval", pending_approvals, "VRP records currently pending", approvals_vrps_path),
+      dashboard_card("VRP Targets Assigned", targets.size, "Target records assigned in VRP Targets", target_mappings_path),
+      dashboard_card("Activities Configured", activities.size, "Activities available for target and bill work", module_path("vrp-activity-list"))
     ]
 
-    cards.insert(0, ["Level 3 Users Under Level 1", hierarchy_summary[:level_3_total], "Level 3 users mapped below your Level 1 hierarchy"]) if hierarchy_summary[:level_3_total].positive?
-    cards.insert(0, ["Direct Level 2 Users", hierarchy_summary[:level_2_total], "Users directly mapped under you"]) if hierarchy_summary[:level_2_total].positive?
+    cards.insert(0, dashboard_card("Level 3 Users Under Level 1", hierarchy_summary[:level_3_total], "Level 3 users mapped below your Level 1 hierarchy", dashboard_path(anchor: "user_hierarchy_report"))) if hierarchy_summary[:level_3_total].positive?
+    cards.insert(0, dashboard_card("Direct Level 2 Users", hierarchy_summary[:level_2_total], "Users directly mapped under you", dashboard_path(anchor: "user_hierarchy_report"))) if hierarchy_summary[:level_2_total].positive?
 
     cards
   end
 
   def dashboard_reports
-    targets = module_records_for_dashboard("weekly-target-add")
+    targets = dashboard_target_mappings
     hierarchy_summary = user_hierarchy_dashboard_summary
 
     reports = [
       {
-        title: "Weekly Target Status",
-        headers: ["Week", "Assigned", "Completed"],
-        rows: grouped_count_rows(targets, "week", "completion_status", "Completed")
+        title: "VRP Target Summary",
+        headers: ["Month", "Targets", "Target Quantity"],
+        rows: dashboard_target_summary_rows(targets)
       },
       {
         title: "Live Clock",
@@ -799,6 +801,15 @@ class ModulesController < ApplicationController
       reports.insert(0, vrp_declaration_acceptance_report)
     end
     reports
+  end
+
+  def dashboard_card(title, value, caption, path = nil)
+    {
+      title: title,
+      value: value,
+      caption: caption,
+      path: path.presence || dashboard_path
+    }
   end
 
   def user_hierarchy_dashboard_report(summary)
@@ -973,6 +984,30 @@ class ModulesController < ApplicationController
     return Vrp.all.to_a if current_app_user.blank? || current_app_user["user_type"].to_s.casecmp("admin").zero?
 
     (dashboard_own_vrps.to_a + dashboard_approval_related_vrps).uniq
+  end
+
+  def dashboard_target_mappings
+    return [] unless model_ready?(:TargetMapping)
+
+    scope = TargetMapping.includes(:vrp).order(updated_at: :desc)
+    return scope.to_a if admin_dashboard_user?
+
+    visible_vrp_ids = dashboard_vrps.map(&:id)
+    return [] if visible_vrp_ids.blank?
+
+    scope.where(vrp_id: visible_vrp_ids).to_a
+  end
+
+  def dashboard_target_summary_rows(targets)
+    grouped = targets.group_by { |target| target.month_name.presence || "Not Set" }
+
+    grouped.map do |month, rows|
+      [
+        month,
+        rows.size,
+        dashboard_quantity(rows.sum { |target| target.target_quantity.to_f })
+      ]
+    end.presence || [["No data", 0, 0]]
   end
 
   def dashboard_own_vrps

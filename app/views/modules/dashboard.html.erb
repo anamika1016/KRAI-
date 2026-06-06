@@ -16,8 +16,12 @@
     </div>
 
     <div class="dashboard-grid premium">
-      <% @dashboard_cards.each_with_index do |(title, value, caption), index| %>
-        <%= link_to target_mappings_path, class: "metric-card-link", data: { dashboard_card: true } do %>
+      <% @dashboard_cards.each_with_index do |card, index| %>
+        <% title = card.is_a?(Hash) ? card[:title] : card[0] %>
+        <% value = card.is_a?(Hash) ? card[:value] : card[1] %>
+        <% caption = card.is_a?(Hash) ? card[:caption] : card[2] %>
+        <% path = card.is_a?(Hash) && card[:path].present? ? card[:path] : target_mappings_path %>
+        <%= link_to path, class: "metric-card-link", data: { dashboard_card: true } do %>
           <article class="metric-card <%= "featured" if index.zero? %>">
             <div>
               <span><%= title %></span>
@@ -30,14 +34,14 @@
       <% end %>
     </div>
 
-    <section class="module-card">
+    <section class="module-card" id="vrp_target_progress">
       <div class="module-card-header">
         <h2>Assigned Target Progress</h2>
-        <button type="button" class="list-btn export" data-export-table="vrp_target_progress">Export</button>
+        <button type="button" class="list-btn export" data-export-table="vrp_target_progress_table">Export</button>
       </div>
 
       <div class="table-shell">
-        <table class="module-table compact-table" id="vrp_target_progress" data-paginated-table data-page-size="15">
+        <table class="module-table compact-table" id="vrp_target_progress_table" data-paginated-table data-page-size="15">
           <thead>
             <tr>
               <th>Month</th>
@@ -78,7 +82,7 @@
           </tbody>
         </table>
       </div>
-      <div class="table-pagination" data-pagination-for="vrp_target_progress"></div>
+      <div class="table-pagination" data-pagination-for="vrp_target_progress_table"></div>
     </section>
 
     <% followup = @vrp_farmer_followup || { repeat: [], new: [], pending: [], current_month: Date.current.beginning_of_month, previous_month: Date.current.prev_month.beginning_of_month } %>
@@ -87,7 +91,7 @@
       ["New Farmers", followup[:new], "Worked in #{followup[:current_month].strftime("%B")} but not in #{followup[:previous_month].strftime("%B")}"],
       ["Pending Target Farmers", followup[:pending], "Mapped or targeted farmers not covered in #{followup[:current_month].strftime("%B")}"]
     ] %>
-    <section class="module-card">
+    <section class="module-card" id="vrp_farmer_followup">
       <div class="module-card-header">
         <h2>Farmer Month Follow-up</h2>
       </div>
@@ -139,7 +143,7 @@
       </div>
     </section>
 
-    <section class="module-card">
+    <section class="module-card" id="vrp_mapped_villages">
       <div class="module-card-header">
         <h2>Mapped Village Work Area</h2>
       </div>
@@ -183,8 +187,8 @@
   <div class="dashboard-topbar">
     <div>
       <p class="vrp-eyebrow">Dashboard Module</p>
-      <h1>Dashboard</h1>
-      <p>Live VRP, bill, payment, target, activity, aur training summary.</p>
+      <h1><%= @dashboard_title.presence || "Dashboard" %></h1>
+      <p><%= @dashboard_caption.presence || "Live system summary." %></p>
     </div>
 
     <div class="dashboard-actions">
@@ -200,17 +204,12 @@
   </div>
 
   <div class="dashboard-grid premium">
-    <% card_paths = {
-      "Direct Level 2 Users" => "#user_hierarchy_report",
-      "Level 3 Users Under Level 1" => "#user_hierarchy_report",
-      "Total Registered VRP" => vrps_path,
-      "Final Approved VRP" => vrps_path,
-      "VRP Waiting for Approval" => approvals_vrps_path,
-      "Weekly Targets Assigned" => module_path("weekly-target-list"),
-      "Activities Configured" => module_path("vrp-activity-list")
-    } %>
-    <% @dashboard_cards.each_with_index do |(title, value, caption), index| %>
-      <%= link_to card_paths.fetch(title, dashboard_path), class: "metric-card-link", data: { dashboard_card: true } do %>
+    <% @dashboard_cards.each_with_index do |card, index| %>
+      <% title = card.is_a?(Hash) ? card[:title] : card[0] %>
+      <% value = card.is_a?(Hash) ? card[:value] : card[1] %>
+      <% caption = card.is_a?(Hash) ? card[:caption] : card[2] %>
+      <% path = card.is_a?(Hash) && card[:path].present? ? card[:path] : dashboard_path %>
+      <%= link_to path, class: "metric-card-link", data: { dashboard_card: true } do %>
         <article class="metric-card <%= "featured" if index.zero? %>">
           <div>
             <span><%= title %></span>
