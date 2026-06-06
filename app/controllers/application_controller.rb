@@ -55,7 +55,7 @@ class ApplicationController < ActionController::Base
       "office" => user.respond_to?(:office) ? user.office : data["office"],
       "email" => user.respond_to?(:email) ? user.email : data["email"],
       "mobile_no" => user.respond_to?(:mobile_no) ? user.mobile_no : data["mobile_no"],
-      "user_type" => user.respond_to?(:user_type) ? user.user_type : (data["user_type"].presence || "User")
+      "user_type" => app_user_type(user, data)
     }
   end
 
@@ -70,6 +70,13 @@ class ApplicationController < ActionController::Base
     return user.class.name if user.is_a?(ApplicationRecord)
 
     "ModuleRecord"
+  end
+
+  def app_user_type(user, data)
+    return "VRP" if user.is_a?(Vrp)
+    return user.user_type if user.respond_to?(:user_type) && user.user_type.present?
+
+    data["user_type"].presence || "User"
   end
 
   def app_user_vrp_types(user)

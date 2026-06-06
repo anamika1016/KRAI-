@@ -1,11 +1,14 @@
 class TargetMappingsController < ApplicationController
+  before_action :block_vrp_target_write, only: [:create, :destroy]
+
   def index
+    @vrp_target_view = admin_login? || non_admin_vrp_login?
     @vrps = mapped_vrps
     @month_options = module_options("month-master", "month_name")
     @main_activity_options = module_options("add-activity-group", "main_activity_name", "activity_group_name")
     @sub_activity_options = module_options("add-vrp-activity", "sub_activity_name", "activity_name", "vrp_activity_name")
     @target_mappings = visible_target_mappings.includes(:vrp, :vrp_ics_mapping).order(updated_at: :desc).limit(100)
-    @edit_target = visible_target_mappings.find_by(id: params[:edit_id]) if params[:edit_id].present?
+    @edit_target = visible_target_mappings.find_by(id: params[:edit_id]) if params[:edit_id].present? && !@vrp_target_view
     @edit_payload = edit_payload(@edit_target)
   end
 
@@ -34,6 +37,12 @@ class TargetMappingsController < ApplicationController
 
   private
 
+  def block_vrp_target_write
+    return unless non_admin_vrp_login?
+
+    redirect_to target_mappings_path, alert: "VRP target records are view only for VRP login."
+  end
+
   def target_mapping_params
     params.require(:target_mapping).permit(:vrp_id, :vrp_ics_mapping_id, :month_name, :main_activity_name, :activity_name, :target_quantity)
   end
@@ -45,6 +54,8 @@ class TargetMappingsController < ApplicationController
   end
 
   def mapped_vrps
+    return Vrp.where(id: current_app_user["id"]).order(:name, :id) if non_admin_vrp_login?
+
     Vrp.where(id: visible_vrp_ics_mappings.select(:vrp_id).distinct).order(:name, :id)
   end
 
@@ -89,12 +100,14 @@ class TargetMappingsController < ApplicationController
 
   def visible_target_mappings
     return TargetMapping.all if admin_login?
+    return TargetMapping.where(vrp_id: current_app_user["id"]) if non_admin_vrp_login?
 
     TargetMapping.where(created_by_type: current_app_user["record_type"], created_by_id: current_app_user["id"])
   end
 
   def visible_vrp_ics_mappings
     return VrpIcsMapping.all if admin_login?
+    return VrpIcsMapping.where(vrp_id: current_app_user["id"]) if non_admin_vrp_login?
 
     VrpIcsMapping.where(created_by_type: current_app_user["record_type"], created_by_id: current_app_user["id"])
   end
@@ -106,6 +119,10 @@ class TargetMappingsController < ApplicationController
 
   def admin_login?
     current_app_user["user_type"].to_s.strip.casecmp("admin").zero?
+  end
+
+  def non_admin_vrp_login?
+    !admin_login? && current_app_user["record_type"].to_s == "Vrp"
   end
 
   def edit_payload(target)

@@ -46,6 +46,11 @@ a {
   background: var(--vrp-bg);
 }
 
+.mobile-menu-bar,
+.mobile-sidebar-backdrop {
+  display: none;
+}
+
 .app-sidebar {
   position: sticky;
   top: 0;
@@ -150,6 +155,24 @@ a {
   color: var(--vrp-muted);
   font-size: 0.76rem;
   font-weight: 800;
+}
+
+.side-vrp-link {
+  display: block;
+  margin: 0 0 10px;
+  padding: 8px 10px;
+  border: 1px solid var(--vrp-line);
+  border-radius: 4px;
+  color: var(--vrp-primary-dark);
+  font-size: 0.76rem;
+  font-weight: 800;
+  line-height: 1.35;
+  text-decoration: none;
+  word-break: break-all;
+}
+
+.side-vrp-link:hover {
+  background: rgba(127, 183, 102, 0.12);
 }
 
 .logout-link {
@@ -308,6 +331,57 @@ a {
 .app-main {
   min-width: 0;
   padding: 24px 28px 36px;
+}
+
+.app-language-bar {
+  display: flex;
+  justify-content: flex-end;
+  margin-bottom: 14px;
+}
+
+.language-switcher {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px;
+  border: 1px solid var(--vrp-line);
+  border-radius: 6px;
+  background: #fff;
+  box-shadow: 0 8px 18px rgba(23, 33, 38, 0.08);
+}
+
+.language-switcher span {
+  padding: 0 8px;
+  color: var(--vrp-muted);
+  font-size: 0.78rem;
+  font-weight: 800;
+}
+
+.language-switcher button {
+  min-height: 30px;
+  border: 0;
+  border-radius: 4px;
+  background: transparent;
+  color: var(--vrp-muted);
+  cursor: pointer;
+  font-weight: 900;
+  padding: 6px 10px;
+}
+
+.language-switcher button.active {
+  background: var(--vrp-primary);
+  color: #fff;
+}
+
+@media (max-width: 720px) {
+  .app-language-bar {
+    justify-content: stretch;
+  }
+
+  .language-switcher {
+    width: 100%;
+    justify-content: space-between;
+  }
 }
 
 .nav-kicker {
@@ -688,6 +762,29 @@ a {
 .report-card h3 {
   margin: 0 0 12px;
   font-size: 1rem;
+}
+
+.farmer-followup-count {
+  display: grid;
+  gap: 4px;
+  margin-bottom: 12px;
+  padding: 10px 12px;
+  border: 1px solid rgba(89, 143, 64, 0.20);
+  border-radius: 8px;
+  background: rgba(89, 143, 64, 0.08);
+}
+
+.farmer-followup-count strong {
+  color: var(--vrp-primary-dark);
+  font-size: 1.7rem;
+  line-height: 1;
+}
+
+.farmer-followup-count span {
+  color: var(--vrp-muted);
+  font-size: 0.82rem;
+  font-weight: 750;
+  line-height: 1.35;
 }
 
 .clock-report-card {
@@ -2731,6 +2828,161 @@ a {
   color: #9a2f1c;
 }
 
+.forgot-password-page {
+  position: relative;
+  min-height: 100vh;
+  display: grid;
+  place-items: center;
+  justify-items: center;
+  overflow: hidden;
+  padding: 48px 20px;
+  background: #fff;
+}
+
+.forgot-password-card {
+  position: relative;
+  z-index: 1;
+  display: grid;
+  place-items: center;
+  width: min(730px, calc(100vw - 40px));
+  aspect-ratio: 1;
+  border-radius: 50%;
+}
+
+.forgot-password-card::before,
+.forgot-password-card::after {
+  content: "";
+  position: absolute;
+  z-index: 0;
+  width: 86%;
+  aspect-ratio: 1;
+  border-radius: 50%;
+  pointer-events: none;
+}
+
+.forgot-password-card::before {
+  top: -1%;
+  left: 2%;
+  background: #96b18b;
+  box-shadow: 0 5px 11px rgba(87, 120, 75, 0.18);
+}
+
+.forgot-password-card::after {
+  top: 15%;
+  left: 12%;
+  background: #79989c;
+  box-shadow: 0 5px 11px rgba(58, 125, 135, 0.16);
+}
+
+.forgot-password-card-inner {
+  position: relative;
+  z-index: 1;
+  display: grid;
+  align-content: center;
+  justify-items: stretch;
+  width: 85%;
+  aspect-ratio: 1;
+  border: 1px solid rgba(24, 32, 38, 0.16);
+  border-radius: 50%;
+  background: #fff;
+  box-shadow: 0 9px 18px rgba(23, 33, 38, 0.14);
+  padding: clamp(82px, 8vw, 112px);
+}
+
+.forgot-password-card-inner h1 {
+  width: min(100%, 402px);
+  justify-self: center;
+  margin: 0 0 20px;
+  color: #1f2b44;
+  font-size: 1.75rem;
+  font-weight: 500;
+  line-height: 1.2;
+}
+
+.forgot-password-form {
+  width: min(100%, 402px);
+  justify-self: center;
+  display: grid;
+  gap: 14px;
+}
+
+.forgot-password-input {
+  width: 100%;
+  min-height: 44px;
+  border: 1px solid #d7dde3;
+  border-radius: 5px;
+  background: #fff;
+  color: #26313f;
+  font: inherit;
+  padding: 10px 13px;
+  outline: none;
+}
+
+.forgot-password-input:focus {
+  border-color: #79989c;
+  box-shadow: 0 0 0 3px rgba(121, 152, 156, 0.18);
+}
+
+.forgot-otp-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 138px;
+  gap: 14px;
+}
+
+.forgot-password-btn {
+  min-height: 46px;
+  border: 0;
+  border-radius: 4px;
+  color: #fff;
+  cursor: pointer;
+  font: inherit;
+  font-weight: 800;
+  padding: 10px 18px;
+}
+
+.forgot-password-btn.primary,
+.forgot-password-btn.secondary {
+  background: #79989c;
+}
+
+.forgot-password-btn:hover,
+.forgot-password-btn:focus {
+  background: #96b18b;
+}
+
+.forgot-password-footer {
+  width: min(100%, 402px);
+  justify-self: center;
+  display: flex;
+  justify-content: flex-end;
+  padding-top: 24px;
+}
+
+.forgot-password-footer a {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: #5b6067;
+  font-weight: 600;
+}
+
+.forgot-password-footer span {
+  font-size: 1.35rem;
+  line-height: 1;
+}
+
+.forgot-password-copy {
+  position: absolute;
+  z-index: 2;
+  bottom: 11%;
+  left: 50%;
+  transform: translateX(-50%);
+  margin: 0;
+  color: #111827;
+  font-size: 0.86rem;
+  white-space: nowrap;
+}
+
 .agreement-login-page {
   overflow-y: auto;
   padding: 34px 20px;
@@ -3058,5 +3310,504 @@ a {
 
   .agreement-actions .btn {
     width: 100%;
+  }
+}
+
+@media (max-width: 680px) {
+  body {
+    overflow-x: hidden;
+  }
+
+  body.mobile-menu-open {
+    overflow: hidden;
+  }
+
+  .app-frame {
+    display: block;
+    min-height: 100vh;
+    padding-top: 56px;
+  }
+
+  .mobile-menu-bar {
+    position: fixed;
+    top: 0;
+    right: 0;
+    left: 0;
+    z-index: 70;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    min-height: 56px;
+    padding: 8px 12px;
+    border-bottom: 1px solid var(--vrp-line);
+    background: #fff;
+    box-shadow: 0 8px 20px rgba(23, 33, 38, 0.12);
+  }
+
+  .mobile-menu-toggle {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    min-height: 38px;
+    border: 0;
+    border-radius: 6px;
+    background: var(--vrp-primary);
+    color: #fff;
+    cursor: pointer;
+    font: inherit;
+    font-weight: 900;
+    padding: 8px 12px;
+  }
+
+  .mobile-menu-toggle span {
+    font-size: 1.15rem;
+    line-height: 1;
+  }
+
+  .mobile-menu-title {
+    min-width: 0;
+    overflow: hidden;
+    color: var(--vrp-text);
+    font-size: 0.92rem;
+    font-weight: 900;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .mobile-sidebar-backdrop {
+    position: fixed;
+    inset: 0;
+    z-index: 75;
+    display: block;
+    border: 0;
+    background: rgba(23, 33, 38, 0.48);
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 160ms ease;
+  }
+
+  body.mobile-menu-open .mobile-sidebar-backdrop {
+    opacity: 1;
+    pointer-events: auto;
+  }
+
+  .app-sidebar {
+    position: fixed;
+    top: 0;
+    bottom: 0;
+    left: 0;
+    z-index: 80;
+    width: min(318px, 86vw);
+    height: auto;
+    padding: 12px 14px 18px;
+    border-right: 1px solid var(--vrp-line);
+    border-bottom: 0;
+    box-shadow: 18px 0 45px rgba(23, 33, 38, 0.22);
+    transform: translateX(-104%);
+    transition: transform 180ms ease;
+    will-change: transform;
+  }
+
+  body.mobile-menu-open .app-sidebar {
+    transform: translateX(0);
+  }
+
+  .app-brand {
+    padding: 6px 0 10px;
+  }
+
+  .brand-mark {
+    width: min(210px, 70vw);
+    height: 54px;
+  }
+
+  .brand-mark img {
+    max-width: 100%;
+    max-height: 50px;
+  }
+
+  .side-nav {
+    display: grid;
+    gap: 8px;
+    margin-top: 12px;
+    overflow: visible;
+    padding: 0;
+  }
+
+  .side-nav > .side-link,
+  .side-module {
+    flex: none;
+  }
+
+  .side-module summary,
+  .side-link {
+    min-height: 42px;
+  }
+
+  .side-subnav {
+    max-height: 220px;
+    overflow-y: auto;
+  }
+
+  .side-footer {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    gap: 8px;
+    align-items: stretch;
+    margin-top: 10px;
+    padding-top: 10px;
+  }
+
+  .side-user {
+    min-width: 0;
+    margin-bottom: 0;
+  }
+
+  .side-vrp-link {
+    grid-column: 1 / -1;
+    margin-bottom: 0;
+  }
+
+  .logout-link {
+    width: auto;
+    min-width: 112px;
+    margin: 0;
+    justify-content: center;
+  }
+
+  .app-main {
+    padding: 14px 12px 24px;
+  }
+
+  .app-language-bar {
+    justify-content: stretch;
+  }
+
+  .language-switcher {
+    width: 100%;
+  }
+
+  .module-page,
+  .vrp-list-shell,
+  .dashboard-page {
+    gap: 14px;
+  }
+
+  .module-hero,
+  .dashboard-topbar,
+  .vrp-header,
+  .vrp-list-header,
+  .module-card,
+  .vrp-card,
+  .vrp-list-card {
+    border-radius: 6px;
+  }
+
+  .module-hero,
+  .dashboard-topbar {
+    padding: 16px;
+  }
+
+  .module-card,
+  .vrp-card {
+    padding: 14px;
+  }
+
+  .module-form-grid,
+  .module-form-grid.user-registration-grid,
+  .vrp-form-grid,
+  .access-top-grid,
+  .lg-directory-filter,
+  .dashboard-grid,
+  .dashboard-report-grid,
+  .dashboard-panels,
+  .module-grid,
+  .module-grid.two,
+  .vrp-detail-grid,
+  .document-grid,
+  .detail-list {
+    grid-template-columns: 1fr;
+  }
+
+  .module-form-grid input,
+  .module-form-grid select,
+  .module-form-grid textarea,
+  .vrp-form-grid input,
+  .vrp-form-grid select,
+  .vrp-form-grid textarea {
+    min-height: 44px;
+    font-size: 16px;
+  }
+
+  .module-form-actions,
+  .vrp-actions,
+  .agreement-actions,
+  .dashboard-actions {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .module-form-actions .btn,
+  .module-form-actions .list-btn,
+  .vrp-actions .btn,
+  .dashboard-actions .list-btn,
+  .dashboard-actions .import-btn {
+    width: 100%;
+    justify-content: center;
+    text-align: center;
+  }
+
+  .list-controls {
+    align-items: stretch;
+    flex-direction: column;
+    gap: 10px;
+    padding: 10px;
+  }
+
+  .vrp-list-toolbar {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 8px;
+  }
+
+  .vrp-list-toolbar .list-btn {
+    width: 100%;
+    min-width: 0;
+    min-height: 38px;
+    padding: 8px 10px;
+    font-size: 0.84rem;
+  }
+
+  .vrp-list-toolbar .list-btn.send {
+    grid-column: 1 / -1;
+    min-width: 0;
+  }
+
+  .list-control-actions {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 8px;
+    width: 100%;
+    margin-left: 0;
+  }
+
+  .list-control-actions .list-search {
+    grid-column: 1 / -1;
+  }
+
+  .list-control-actions .import-btn,
+  .list-control-actions .list-btn {
+    width: 100%;
+    min-width: 0;
+    min-height: 38px;
+    border-radius: 6px;
+    font-size: 0.82rem;
+    line-height: 1.15;
+    padding: 8px 10px;
+    white-space: normal;
+  }
+
+  .list-search,
+  .list-search.compact {
+    width: 100%;
+  }
+
+  .list-search input {
+    min-width: 0;
+    width: 100%;
+    font-size: 16px;
+  }
+
+  .table-shell {
+    max-height: min(62vh, 520px);
+    border: 1px solid var(--vrp-line);
+    border-radius: 6px;
+  }
+
+  .module-table {
+    min-width: 760px;
+  }
+
+  .target-mapping-table,
+  .bill-activity-table,
+  .tci-entry-table {
+    min-width: 820px;
+  }
+
+  .table-pagination {
+    flex-wrap: wrap;
+    justify-content: center;
+    gap: 8px;
+  }
+
+  .approval-levels {
+    overflow-x: auto;
+  }
+
+  .approval-level-table {
+    min-width: 680px;
+  }
+}
+
+@media (max-width: 540px) {
+  .login-page {
+    min-height: 100svh;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 18px 12px;
+    overflow-y: auto;
+  }
+
+  .login-panel {
+    width: 100%;
+    aspect-ratio: auto;
+    border-radius: 0;
+  }
+
+  .login-panel::before,
+  .login-panel::after {
+    width: 260px;
+    opacity: 0.18;
+  }
+
+  .login-panel::before {
+    top: -70px;
+    left: -96px;
+  }
+
+  .login-panel::after {
+    top: auto;
+    right: -105px;
+    bottom: -76px;
+    left: auto;
+  }
+
+  .login-surface {
+    width: 100%;
+    max-width: 420px;
+    min-height: auto;
+    aspect-ratio: auto;
+    align-content: start;
+    justify-items: stretch;
+    padding: 24px 18px;
+    border-radius: 8px;
+  }
+
+  .login-surface h1 {
+    margin-bottom: 24px;
+    text-align: center;
+    font-size: 2rem;
+  }
+
+  .login-form {
+    width: 100%;
+    gap: 20px;
+  }
+
+  .login-page .form-control,
+  .login-page input[type="text"],
+  .login-page input[type="password"] {
+    min-height: 48px;
+    font-size: 16px;
+  }
+
+  .login-options {
+    justify-content: flex-start;
+    font-size: 0.92rem;
+  }
+
+  .login-page .login-submit {
+    width: 100%;
+    height: 48px;
+    min-height: 48px;
+    margin-top: 4px;
+    border-radius: 6px;
+  }
+
+  .login-notice {
+    width: 100%;
+    margin: -8px 0 18px;
+  }
+
+  .forgot-password-page {
+    min-height: 100svh;
+    align-content: center;
+    overflow-y: auto;
+    padding: 22px 12px;
+  }
+
+  .forgot-password-card {
+    width: 100%;
+    max-width: 420px;
+    aspect-ratio: auto;
+    border-radius: 0;
+  }
+
+  .forgot-password-card::before,
+  .forgot-password-card::after {
+    width: 260px;
+    opacity: 0.18;
+  }
+
+  .forgot-password-card::before {
+    top: -70px;
+    left: -96px;
+  }
+
+  .forgot-password-card::after {
+    top: auto;
+    right: -105px;
+    bottom: -76px;
+    left: auto;
+  }
+
+  .forgot-password-card-inner {
+    width: 100%;
+    max-width: 420px;
+    aspect-ratio: auto;
+    align-content: start;
+    border-radius: 8px;
+    padding: 24px 18px;
+  }
+
+  .forgot-password-card-inner h1 {
+    margin-bottom: 20px;
+    font-size: 1.55rem;
+  }
+
+  .forgot-password-copy {
+    position: static;
+    transform: none;
+    margin-top: 16px;
+    text-align: center;
+    white-space: normal;
+  }
+
+  .forgot-otp-row {
+    grid-template-columns: 1fr;
+    gap: 12px;
+  }
+
+  .side-footer {
+    grid-template-columns: 1fr;
+  }
+
+  .logout-link {
+    width: 100%;
+  }
+
+  .module-hero h1,
+  .dashboard-topbar h1 {
+    font-size: 1.45rem;
+  }
+
+  .vrp-list-header h1 {
+    font-size: 1.12rem;
+  }
+
+  .module-table {
+    min-width: 680px;
   }
 }

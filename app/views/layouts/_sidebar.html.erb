@@ -1,4 +1,4 @@
-<aside class="app-sidebar">
+<aside class="app-sidebar" id="app-sidebar" data-mobile-sidebar>
   <%= link_to root_path, class: "app-brand" do %>
     <span class="brand-mark">
       <%= image_tag app_logo_path, alt: app_display_name %>
@@ -36,6 +36,9 @@
           <small><%= current_app_user["user_type"].presence || "User" %></small>
         </span>
       </div>
+      <% if (vrp_identity_url = current_vrp_identity_url).present? %>
+        <%= link_to vrp_identity_url, vrp_identity_url, class: "side-vrp-link", target: "_blank", rel: "noopener" %>
+      <% end %>
     <% end %>
 
     <%= link_to logout_path, data: { turbo_method: :delete }, class: "side-link logout-link" do %>

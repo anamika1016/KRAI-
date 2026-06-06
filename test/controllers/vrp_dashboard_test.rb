@@ -1,0 +1,224 @@
+require "test_helper"
+
+class VrpDashboardTest < ActionDispatch::IntegrationTest
+  test "vrp sees own dashboard data and read only targets" do
+    vrp = create_vrp(
+      user_name: "dashboard_vrp",
+      password: "secret",
+      agreement_accepted_at: Time.current
+    )
+    repeat_previous = create_afl(
+      farmer_name: "Repeat Farmer",
+      father_name: "Repeat Father",
+      mobile_no: "9000000001",
+      tracenet_no: "TR_REPEAT",
+      purchase_date: Date.new(2026, 5, 12)
+    )
+    repeat_current = create_afl(
+      farmer_name: "Repeat Farmer",
+      father_name: "Repeat Father",
+      mobile_no: "9000000001",
+      tracenet_no: "TR_REPEAT",
+      purchase_date: Date.new(2026, 6, 11)
+    )
+    new_current = create_afl(
+      farmer_name: "New Farmer",
+      father_name: "New Father",
+      mobile_no: "9000000002",
+      tracenet_no: "TR_NEW",
+      purchase_date: Date.new(2026, 6, 15)
+    )
+    pending_farmer = create_afl(
+      farmer_name: "Pending Farmer",
+      father_name: "Pending Father",
+      mobile_no: "9000000003",
+      tracenet_no: "TR_PENDING",
+      purchase_date: Date.new(2026, 5, 9)
+    )
+    mapping = VrpIcsMapping.create!(
+      vrp: vrp,
+      fco_id: "FCO1",
+      fco_name: "FCO One",
+      ics_id: "ICS1",
+      ics_name: "ICS One",
+      village_id: "V1",
+      village_name: "Village One",
+      afl_ids: [repeat_previous.id, repeat_current.id, new_current.id, pending_farmer.id],
+      created_by_type: "User",
+      created_by_id: 1
+    )
+    TargetMapping.create!(
+      vrp: vrp,
+      vrp_ics_mapping: mapping,
+      fco_id: mapping.fco_id,
+      fco_name: mapping.fco_name,
+      ics_id: mapping.ics_id,
+      ics_name: mapping.ics_name,
+      village_id: mapping.village_id,
+      village_name: mapping.village_name,
+      farmer_count: 4,
+      month_name: "June",
+      main_activity_name: "Farmer Visit",
+      activity_name: "Farm Visit",
+      target_quantity: 10,
+      created_by_type: "User",
+      created_by_id: 1
+    )
+    ModuleRecord.create!(
+      module_slug: "vrp-bill-add",
+      data: {
+        "select_vrp" => "#{vrp.name} - #{vrp.mobile_no}",
+        "select_bill_month" => "June",
+        "select_activity_group" => ["Farmer Visit"],
+        "bill_items" => [
+          {
+            "activity" => "Farm Visit",
+            "no_of_unit" => "4",
+            "rate" => "0",
+            "total_amount" => "0"
+          }
+        ],
+        "grand_units" => "4"
+      }
+    )
+
+    post login_path, params: { login: "dashboard_vrp", password: "secret" }
+    follow_redirect!
+
+    assert_response :success
+    assert_includes response.body, "Mapped Farmers"
+    assert_includes response.body, "Mapped Villages"
+    assert_includes response.body, "Main Activities"
+    assert_includes response.body, "Sub Activities"
+    assert_includes response.body, "Assigned Target"
+    assert_includes response.body, "Completed"
+    assert_includes response.body, "Farmer Month Follow-up"
+    assert_includes response.body, "Repeat Farmers"
+    assert_includes response.body, "New Farmers"
+    assert_includes response.body, "Pending Target Farmers"
+    assert_includes response.body, "Repeat Farmer"
+    assert_includes response.body, "New Farmer"
+    assert_includes response.body, "Pending Farmer"
+    assert_includes response.body, "Farmer Visit"
+    assert_includes response.body, "40%"
+    assert_equal 1, response.body.scan("VRP Dashboard").size
+    assert_includes response.body, "VRP Targets"
+
+    get target_mappings_path
+
+    assert_response :success
+    assert_includes response.body, "VRP Targets"
+    assert_includes response.body, "Village One"
+    assert_includes response.body, "Farm Visit"
+    refute_includes response.body, "Save Target"
+    refute_includes response.body, "Delete this target mapping?"
+  end
+
+  test "admin sees vrp menu and can select it in access control" do
+    accepted_vrp = create_vrp(
+      name: "Accepted VRP",
+      user_name: "accepted_for_admin",
+      mobile_no: "9876543211",
+      email: "accepted@example.com",
+      aadhar_no: "123456789013",
+      agreement_accepted_at: Time.current
+    )
+    mapping = VrpIcsMapping.create!(
+      vrp: accepted_vrp,
+      fco_id: "FCO2",
+      fco_name: "FCO Two",
+      ics_id: "ICS2",
+      ics_name: "ICS Two",
+      village_id: "V2",
+      village_name: "Admin Village",
+      afl_ids: ["1"],
+      created_by_type: "User",
+      created_by_id: 1
+    )
+    TargetMapping.create!(
+      vrp: accepted_vrp,
+      vrp_ics_mapping: mapping,
+      fco_id: mapping.fco_id,
+      fco_name: mapping.fco_name,
+      ics_id: mapping.ics_id,
+      ics_name: mapping.ics_name,
+      village_id: mapping.village_id,
+      village_name: mapping.village_name,
+      farmer_count: 1,
+      month_name: "July",
+      main_activity_name: "Admin Activity",
+      activity_name: "Admin Sub Activity",
+      target_quantity: 7,
+      created_by_type: "User",
+      created_by_id: 1
+    )
+    User.create!(
+      user_name: "admin",
+      password: "secret",
+      first_name: "Admin",
+      user_type: "admin",
+      status: "Active"
+    )
+
+    post login_path, params: { login: "admin", password: "secret" }
+    follow_redirect!
+
+    assert_response :success
+    assert_includes response.body, "VRP Targets"
+    assert_includes response.body, "VRP Declaration Accepted"
+    assert_includes response.body, "Accepted VRP"
+    assert_includes response.body, "VRP Target Assigned"
+    assert_includes response.body, "Admin Village"
+    assert_includes response.body, "Admin Sub Activity"
+
+    get module_path("access-control")
+
+    assert_response :success
+    assert_includes response.body, "VRP Targets"
+    refute_includes response.body, "VRP Dashboard"
+  end
+
+  private
+
+  def create_vrp(attributes = {})
+    defaults = {
+      name: "Dashboard VRP",
+      father_husband_name: "Test Father",
+      gender: :male,
+      date_of_birth: Date.new(1990, 1, 1),
+      date_of_joining: Date.current,
+      aadhar_no: "123456789012",
+      account_no: "1234567890",
+      bank_name: "Test Bank",
+      branch: "Test Branch",
+      ifsc_code: "TEST0123456",
+      address: "Test Address",
+      mobile_no: "9876543210",
+      email: "vrp#{SecureRandom.hex(4)}@example.com",
+      experience_in_years: 1,
+      office_detail_id: 0,
+      to_office_detail_id: 0,
+      vrp_type_ids: [1],
+      gram_panchayat_ids: [1],
+      village_ids: [1],
+      is_active: true,
+      is_deleted: false
+    }
+
+    Vrp.create!(defaults.merge(attributes))
+  end
+
+  def create_afl(attributes = {})
+    defaults = {
+      fco_id: "FCO1",
+      fco: "FCO One",
+      ics_id: "ICS1",
+      ics_name: "ICS One",
+      village_id: "V1",
+      village_name: "Village One",
+      farmer_name: "Test Farmer"
+    }
+
+    Afl.create!(defaults.merge(attributes))
+  end
+end

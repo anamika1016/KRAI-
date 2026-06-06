@@ -1,5 +1,8 @@
+require "securerandom"
+
 class SessionsController < ApplicationController
   skip_before_action :require_app_login
+  FORGOT_PASSWORD_OTP_TTL = 10.minutes
 
   def new
     redirect_to dashboard_path if current_app_user
@@ -56,6 +59,82 @@ class SessionsController < ApplicationController
     redirect_to login_path, notice: "Logged out successfully."
   end
 
+  def forgot_password
+    @forgot_username = params[:username].to_s
+  end
+
+  def send_forgot_password_otp
+    @forgot_username = params[:username].to_s.strip
+    account = find_password_reset_account(@forgot_username)
+
+    if account.blank?
+      clear_password_reset_session
+      render_forgot_password_response("Username not matched. OTP not sent.", status: :unprocessable_entity, alert: true)
+      return
+    end
+
+    mobile_number = reset_account_mobile(account)
+    if mobile_number.blank?
+      clear_password_reset_session
+      render_forgot_password_response("Registered mobile number not found. OTP not sent.", status: :unprocessable_entity, alert: true)
+      return
+    end
+
+    otp = SecureRandom.random_number(10_000).to_s.rjust(4, "0")
+    session[:password_reset] = {
+      "record_type" => reset_account_type(account),
+      "record_id" => account.id,
+      "username" => @forgot_username,
+      "otp" => otp,
+      "expires_at" => FORGOT_PASSWORD_OTP_TTL.from_now.iso8601
+    }
+
+    sms_result = OtpSmsSender.new(mobile_number, otp).deliver
+    unless sms_result.success?
+      clear_password_reset_session
+      render_forgot_password_response(
+        forgot_password_sms_error_message(sms_result),
+        status: :unprocessable_entity,
+        alert: true,
+        sms: sms_result
+      )
+      return
+    end
+
+    render_forgot_password_response(
+      "OTP sent to registered mobile number.",
+      status: :ok,
+      sms: sms_result
+    )
+  end
+
+  def reset_forgot_password
+    @forgot_username = params[:username].to_s.strip
+    account = password_reset_session_account
+
+    unless account && password_reset_session_valid_for?(@forgot_username)
+      clear_password_reset_session
+      render_forgot_password_response("OTP expired or username not matched. Please get OTP again.", status: :unprocessable_entity, alert: true)
+      return
+    end
+
+    if params[:otp_code].to_s.strip != session.dig(:password_reset, "otp").to_s
+      render_forgot_password_response("Invalid OTP code.", status: :unprocessable_entity, alert: true)
+      return
+    end
+
+    password = params[:password].to_s
+    confirmed_password = params[:confirmed_password].to_s
+    if password.blank? || password != confirmed_password
+      render_forgot_password_response("Password and Confirm Password must match.", status: :unprocessable_entity, alert: true)
+      return
+    end
+
+    update_reset_account_password!(account, password)
+    clear_password_reset_session
+    redirect_to login_path, notice: "Password reset successfully. Please sign in."
+  end
+
   private
 
   def pending_vrp_agreement
@@ -100,5 +179,110 @@ class SessionsController < ApplicationController
       [record.data["user_name"], record.data["email"], record.data["mobile_no"]].compact.include?(login) &&
         record.data["password"].to_s == password
     end
+  end
+
+  def find_password_reset_account(username)
+    return if username.blank?
+
+    if "User".safe_constantize&.table_exists?
+      user = User.where.not(status: "Inactive").find { |candidate| candidate.user_name.to_s == username }
+      return user if user
+    end
+
+    if "Vrp".safe_constantize&.table_exists? && Vrp.column_names.include?("user_name")
+      vrp = Vrp.where(is_active: true, is_deleted: false).find { |candidate| candidate.user_name.to_s == username }
+      return vrp if vrp
+    end
+
+    return unless defined?(ModuleRecord) && ModuleRecord.table_exists?
+
+    ModuleRecord.where(module_slug: "new-user").order(created_at: :desc).detect do |record|
+      next false if record.data["status"] == "Inactive"
+
+      record.data["user_name"].to_s == username
+    end
+  end
+
+  def reset_account_type(account)
+    account.is_a?(ModuleRecord) ? "ModuleRecord" : account.class.name
+  end
+
+  def reset_account_mobile(account)
+    account.respond_to?(:mobile_no) ? account.mobile_no : account.data["mobile_no"]
+  end
+
+  def password_reset_session_account
+    reset_data = session[:password_reset]
+    return if reset_data.blank?
+
+    case reset_data["record_type"]
+    when "User"
+      User.find_by(id: reset_data["record_id"]) if "User".safe_constantize&.table_exists?
+    when "Vrp"
+      Vrp.find_by(id: reset_data["record_id"]) if "Vrp".safe_constantize&.table_exists?
+    when "ModuleRecord"
+      ModuleRecord.where(module_slug: "new-user").find_by(id: reset_data["record_id"]) if defined?(ModuleRecord) && ModuleRecord.table_exists?
+    end
+  end
+
+  def password_reset_session_valid_for?(username)
+    reset_data = session[:password_reset]
+    return false if reset_data.blank?
+    return false if username.blank? || reset_data["username"].to_s != username
+
+    expires_at = Time.iso8601(reset_data["expires_at"].to_s)
+    expires_at.future?
+  rescue ArgumentError
+    false
+  end
+
+  def update_reset_account_password!(account, password)
+    if account.is_a?(ModuleRecord)
+      account.update!(data: account.data.merge("password" => password, "confirmed_password" => password))
+    else
+      account.update_column(:password, password)
+    end
+  end
+
+  def clear_password_reset_session
+    session.delete(:password_reset)
+  end
+
+  def render_forgot_password_response(message, status:, alert: false, sms: nil)
+    respond_to do |format|
+      format.html do
+        flash.now[alert ? :alert : :notice] = message
+        render :forgot_password, status: status
+      end
+
+      format.json do
+        render json: forgot_password_response_body(message, alert: alert, sms: sms), status: status
+      end
+    end
+  end
+
+  def forgot_password_response_body(message, alert:, sms:)
+    body = {
+      success: !alert,
+      message: message,
+      username: @forgot_username
+    }
+
+    if sms
+      body[:sms] = {
+        message: sms.message,
+        response_code: sms.response_code,
+        response_body: sms.response_body
+      }.compact
+    end
+
+    body
+  end
+
+  def forgot_password_sms_error_message(sms_result)
+    reason = sms_result.message.to_s.strip
+    reason = "#{reason}." if reason.present? && !reason.match?(/[.!?]\z/)
+
+    ["OTP could not be sent.", reason.presence, "Please try again."].compact.join(" ")
   end
 end

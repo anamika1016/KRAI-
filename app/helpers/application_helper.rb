@@ -93,20 +93,38 @@ module ApplicationHelper
       icon: "▤",
       links: [
         ["AFL Upload", :route, :afls_path],
-        ["VRP ICS Mapping", :route, :vrp_ics_mappings_path],
-        ["Target Mapping Master", :route, :target_mappings_path]
+        ["VRP ICS Mapping", :route, :vrp_ics_mappings_path]
+      ]
+    },
+    {
+      title: "Training",
+      icon: "▥",
+      links: [
+        ["Training Form", :module, "training-form"],
+        ["Training List", :module, "training-form-list"]
+      ]
+    },
+    {
+      title: "VRP Targets",
+      icon: "▨",
+      links: [
+        ["VRP Targets", :route, :target_mappings_path]
       ]
     }
   ].freeze
 
   def sidebar_sections
+    return vrp_sidebar_sections if vrp_login_user?
+
     allowed_keys = allowed_sidebar_keys
     return SIDEBAR_SECTIONS if allowed_keys.nil?
 
-    SIDEBAR_SECTIONS.filter_map do |section|
+    visible_sections = SIDEBAR_SECTIONS.filter_map do |section|
       allowed_links = section[:links].select { |link| allowed_keys.include?(sidebar_access_key(link)) }
       section.merge(links: allowed_links) if allowed_links.any?
     end
+
+    sidebar_with_required_sections(visible_sections)
   end
 
   def sidebar_link_path(link)
@@ -201,6 +219,47 @@ module ApplicationHelper
 
   def admin_access_user?
     current_app_user["user_type"].to_s.strip.casecmp("admin").zero?
+  end
+
+  def vrp_login_user?
+    current_app_user&.dig("record_type").to_s == "Vrp"
+  end
+
+  def current_vrp_identity_url
+    return unless vrp_login_user?
+
+    vrp_id = current_app_user&.dig("id").presence
+    return if vrp_id.blank?
+
+    "http://krai.ploughmanagro.com/VRP_ID:#{vrp_id}"
+  end
+
+  def vrp_sidebar_sections
+    [
+      {
+        title: "Training",
+        icon: "▥",
+        links: [
+          ["Training Form", :module, "training-form"],
+          ["Training List", :module, "training-form-list"]
+        ]
+      },
+      {
+        title: "VRP Targets",
+        icon: "▨",
+        links: [
+          ["VRP Targets", :route, :target_mappings_path]
+        ]
+      }
+    ]
+  end
+
+  def sidebar_with_required_sections(sections)
+    required_titles = ["Training"]
+    required_sections = SIDEBAR_SECTIONS.select { |section| required_titles.include?(section[:title]) }
+    existing_titles = sections.map { |section| section[:title] }
+
+    sections + required_sections.reject { |section| existing_titles.include?(section[:title]) }
   end
 
   def current_stakeholder

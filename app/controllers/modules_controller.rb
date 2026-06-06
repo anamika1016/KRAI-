@@ -80,6 +80,49 @@ class ModulesController < ApplicationController
       purpose: "Training documents/videos upload karna.",
       fields: ["Material Title", "VRP Type", "File Upload", "Upload Date", "Status"]
     },
+    "training-form" => {
+      title: "ट्रेनिंग प्रपत्र",
+      group: "Training",
+      purpose: "VRP training details save karne ke liye.",
+      fields: [
+        "ICS / Block",
+        "Gram Name",
+        "Trainee Department",
+        "Trainer Name",
+        "Trainer Contact",
+        "Training Date",
+        "Training Location",
+        "Department",
+        "Training Topic",
+        "Training Subject",
+        "Training Description",
+        "Organic Farmer Count",
+        "Male Count",
+        "Female Count",
+        "Next Farmer Training Date",
+        "Training Register Upload",
+        "Training Photo Upload",
+        "Status"
+      ]
+    },
+    "training-form-list" => {
+      title: "Training List",
+      group: "Training",
+      purpose: "Saved training records dekhne ke liye.",
+      fields: [
+        "ICS / Block",
+        "Gram Name",
+        "Trainer Name",
+        "Training Date",
+        "Training Location",
+        "Training Topic",
+        "Organic Farmer Count",
+        "Male Count",
+        "Female Count",
+        "Next Farmer Training Date",
+        "Status"
+      ]
+    },
     "bank-master" => {
       title: "Bank Master",
       group: "Masters",
@@ -306,10 +349,16 @@ class ModulesController < ApplicationController
     "approval-list" => "approval-master",
     "access-control-list" => "access-control",
     "vrp-bill-list" => "vrp-bill-add",
+    "training-form-list" => "training-form",
     "all-user" => "new-user"
   }.freeze
 
   def dashboard
+    if vrp_login_user?
+      prepare_vrp_dashboard
+      return
+    end
+
     @dashboard_cards = dashboard_cards
     @dashboard_reports = dashboard_reports
     @dashboard_generated_at = Time.current
@@ -362,7 +411,7 @@ class ModulesController < ApplicationController
 
     if record.save
       sync_vrp_master_record(record)
-      redirect_to module_path(record_source_slug == "vrp-bill-add" ? "vrp-bill-list" : @slug), notice: "#{@module[:title]} saved successfully."
+      redirect_to module_path(module_redirect_slug), notice: "#{@module[:title]} saved successfully."
     else
       @records = module_records
       flash.now[:alert] = record.errors.full_messages.to_sentence
@@ -396,7 +445,7 @@ class ModulesController < ApplicationController
     if record.update(data: next_data)
       sync_stakeholder_name_change(previous_data, next_data)
       sync_vrp_master_record(record)
-      redirect_to module_path(record_source_slug == "vrp-bill-add" ? "vrp-bill-list" : @slug), notice: "#{@module[:title]} updated successfully."
+      redirect_to module_path(module_redirect_slug), notice: "#{@module[:title]} updated successfully."
     else
       @record = record
       @records = module_records
@@ -490,6 +539,229 @@ class ModulesController < ApplicationController
 
   private
 
+  def prepare_vrp_dashboard
+    @vrp_dashboard = true
+    @dashboard_generated_at = Time.current
+    @vrp = current_vrp_record
+
+    unless @vrp
+      @dashboard_cards = []
+      @vrp_target_rows = []
+      @vrp_village_rows = []
+      @vrp_farmer_followup = empty_vrp_farmer_followup
+      return
+    end
+
+    mappings = vrp_dashboard_mappings(@vrp)
+    targets = vrp_dashboard_targets(@vrp)
+    bills = vrp_dashboard_bills(@vrp)
+    farmer_followup = vrp_farmer_followup(mappings)
+    mapped_farmer_count = vrp_mapped_farmer_count(mappings)
+    village_count = mappings.map { |mapping| mapping.village_id.presence || mapping.village_name.presence }.compact.uniq.size
+    main_activity_count = targets.map { |target| normalize_dashboard_text(target.main_activity_name) }.reject(&:blank?).uniq.size
+    sub_activity_count = targets.map { |target| normalize_dashboard_text(target.activity_name) }.reject(&:blank?).uniq.size
+    target_total = targets.sum { |target| target.target_quantity.to_f }
+    completed_total = targets.sum { |target| vrp_target_completed_quantity(target, bills) }
+
+    @dashboard_cards = [
+      ["Mapped Farmers", mapped_farmer_count, "Farmers mapped with your VRP profile"],
+      ["Mapped Villages", village_count, "Villages assigned for field work"],
+      ["Main Activities", main_activity_count, "Main activities mapped to your targets"],
+      ["Sub Activities", sub_activity_count, "Sub activities mapped to your targets"],
+      ["Repeat Farmers", farmer_followup[:repeat].size, "Worked in previous month and this month"],
+      ["New Farmers", farmer_followup[:new].size, "Worked this month but not previous month"],
+      ["Pending Farmers", farmer_followup[:pending].size, "Mapped farmers not covered this month"],
+      ["Assigned Target", dashboard_quantity(target_total), "Total target from Target Mapping Master"],
+      ["Completed", dashboard_quantity(completed_total), "#{percentage(completed_total, target_total)} target completed"]
+    ]
+
+    @vrp_target_rows = targets.map do |target|
+      completed = vrp_target_completed_quantity(target, bills)
+      target_quantity = target.target_quantity.to_f
+      pending = [target_quantity - completed, 0].max
+
+      {
+        month: target.month_name,
+        fco: target.fco_name.presence || target.fco_id,
+        ics: target.ics_name.presence || target.ics_id,
+        village: target.village_name.presence || target.village_id,
+        farmers: target.farmer_count,
+        main_activity: target.main_activity_name,
+        activity: target.activity_name,
+        target: target_quantity,
+        completed: completed,
+        pending: pending,
+        progress: percentage(completed, target_quantity)
+      }
+    end
+
+    @vrp_village_rows = mappings.map do |mapping|
+      village_targets = targets.select { |target| target.village_id.to_s == mapping.village_id.to_s }
+      {
+        fco: mapping.fco_name.presence || mapping.fco_id,
+        ics: mapping.ics_name.presence || mapping.ics_id,
+        village: mapping.village_name.presence || mapping.village_id,
+        farmers: mapping.farmer_count,
+        targets: village_targets.size,
+        target_quantity: village_targets.sum { |target| target.target_quantity.to_f }
+      }
+    end
+
+    @vrp_farmer_followup = farmer_followup
+  end
+
+  def vrp_login_user?
+    current_app_user&.dig("record_type").to_s == "Vrp"
+  end
+
+  def current_vrp_record
+    return unless model_ready?(:Vrp)
+
+    @current_vrp_record ||= Vrp.find_by(id: current_app_user&.dig("id"))
+  end
+
+  def vrp_dashboard_mappings(vrp)
+    return [] unless model_ready?(:VrpIcsMapping)
+
+    VrpIcsMapping.where(vrp_id: vrp.id).order(:village_name, :id).to_a
+  end
+
+  def vrp_dashboard_targets(vrp)
+    return [] unless model_ready?(:TargetMapping)
+
+    TargetMapping.where(vrp_id: vrp.id).order(:month_name, :main_activity_name, :activity_name, :id).to_a
+  end
+
+  def vrp_dashboard_bills(vrp)
+    return [] unless model_ready?(:ModuleRecord)
+
+    labels = vrp_bill_match_labels(vrp)
+    ModuleRecord.where(module_slug: "vrp-bill-add").order(created_at: :desc).select do |record|
+      labels.include?(normalize_dashboard_text(record.data["select_vrp"]))
+    end
+  end
+
+  def vrp_bill_match_labels(vrp)
+    [
+      vrp.id,
+      vrp.name,
+      vrp.user_name,
+      vrp.mobile_no,
+      [vrp.name, vrp.mobile_no.presence].compact_blank.join(" - ")
+    ].map { |value| normalize_dashboard_text(value) }.reject(&:blank?).uniq
+  end
+
+  def vrp_mapped_farmer_count(mappings)
+    farmer_ids = mappings.flat_map { |mapping| Array(mapping.afl_ids).map(&:to_s) }.reject(&:blank?).uniq
+    return farmer_ids.size if farmer_ids.any?
+
+    mappings.sum(&:farmer_count)
+  end
+
+  def vrp_farmer_followup(mappings)
+    mapped_farmer_ids = mappings.flat_map { |mapping| Array(mapping.afl_ids).map(&:to_s) }.reject(&:blank?).uniq
+    return empty_vrp_farmer_followup if mapped_farmer_ids.blank? || !model_ready?(:Afl)
+
+    farmers = Afl.where(id: mapped_farmer_ids).to_a
+    work_dates = farmers.filter_map { |farmer| afl_work_date(farmer) }
+    current_month = work_dates.max&.beginning_of_month || Date.current.beginning_of_month
+    previous_month = current_month.prev_month
+    mapped_farmer_keys = farmers.map { |farmer| farmer_identity_key(farmer) }.reject(&:blank?).uniq
+    current_farmer_keys = farmers.select { |farmer| date_in_month?(afl_work_date(farmer), current_month) }.map { |farmer| farmer_identity_key(farmer) }.reject(&:blank?).uniq
+    previous_farmer_keys = farmers.select { |farmer| date_in_month?(afl_work_date(farmer), previous_month) }.map { |farmer| farmer_identity_key(farmer) }.reject(&:blank?).uniq
+
+    {
+      current_month: current_month,
+      previous_month: previous_month,
+      repeat: farmer_rows_for_keys(current_farmer_keys & previous_farmer_keys, farmers),
+      new: farmer_rows_for_keys(current_farmer_keys - previous_farmer_keys, farmers),
+      pending: farmer_rows_for_keys(mapped_farmer_keys - current_farmer_keys, farmers)
+    }
+  end
+
+  def empty_vrp_farmer_followup
+    {
+      current_month: Date.current.beginning_of_month,
+      previous_month: Date.current.prev_month.beginning_of_month,
+      repeat: [],
+      new: [],
+      pending: []
+    }
+  end
+
+  def afl_work_date(afl)
+    afl.purchase_date || afl.date || afl.qrcode_date&.to_date
+  end
+
+  def date_in_month?(date, month_start)
+    return false unless date
+
+    date >= month_start && date < month_start.next_month
+  end
+
+  def farmer_identity_key(farmer)
+    farmer.tracenet_no.presence ||
+      farmer.mobile_no.presence ||
+      farmer.aadhar.presence ||
+      [farmer.farmer_name, farmer.father_name, farmer.village_id].map { |value| normalize_dashboard_text(value) }.join("|")
+  end
+
+  def farmer_rows_for_keys(keys, farmers)
+    farmer_by_key = farmers.group_by { |farmer| farmer_identity_key(farmer) }
+    keys.filter_map do |key|
+      farmer = farmer_by_key[key.to_s]&.max_by { |row| afl_work_date(row) || Date.new(1900, 1, 1) }
+      next unless farmer
+
+      {
+        name: farmer.farmer_name.presence || "Farmer ##{farmer.id}",
+        father_name: farmer.father_name,
+        village: farmer.village_name.presence || farmer.village_id,
+        mobile_no: farmer.mobile_no,
+        tracenet_no: farmer.tracenet_no,
+        work_date: afl_work_date(farmer)
+      }
+    end.sort_by { |row| [row[:village].to_s, row[:name].to_s] }
+  end
+
+  def vrp_target_completed_quantity(target, bills)
+    relevant_bills = bills.select do |record|
+      target.month_name.blank? || normalize_dashboard_text(record.data["select_bill_month"]) == normalize_dashboard_text(target.month_name)
+    end
+
+    relevant_bills.sum do |record|
+      matching_items = vrp_bill_items(record).select do |item|
+        normalize_dashboard_text(item["activity"]) == normalize_dashboard_text(target.activity_name)
+      end
+
+      if matching_items.any?
+        matching_items.sum { |item| dashboard_numeric(item["no_of_unit"]) }
+      elsif Array(record.data["select_activity_group"]).any? { |activity| normalize_dashboard_text(activity) == normalize_dashboard_text(target.main_activity_name) }
+        dashboard_numeric(record.data["grand_units"])
+      else
+        0
+      end
+    end
+  end
+
+  def vrp_bill_items(record)
+    raw_items = record.data["bill_items"]
+    items = raw_items.is_a?(Hash) ? raw_items.values : Array(raw_items)
+    items.select { |item| item.respond_to?(:[]) }
+  end
+
+  def dashboard_numeric(value)
+    value.to_s.gsub(",", "").to_f
+  end
+
+  def dashboard_quantity(value)
+    value = value.to_f
+    value == value.to_i ? value.to_i : format("%.2f", value)
+  end
+
+  def normalize_dashboard_text(value)
+    value.to_s.strip.downcase
+  end
+
   def dashboard_cards
     vrps = dashboard_vrps
     bills = module_records_for_dashboard("vrp-bill-add")
@@ -516,7 +788,7 @@ class ModulesController < ApplicationController
     bills = module_records_for_dashboard("vrp-bill-add")
     targets = module_records_for_dashboard("weekly-target-add")
 
-    [
+    reports = [
       {
         title: "Monthly Bill Summary",
         headers: ["Month", "Bills", "Amount"],
@@ -537,6 +809,68 @@ class ModulesController < ApplicationController
         clock: true
       }
     ]
+
+    if admin_dashboard_user?
+      reports.insert(0, vrp_assigned_target_report)
+      reports.insert(0, vrp_declaration_acceptance_report)
+    end
+    reports
+  end
+
+  def vrp_declaration_acceptance_report
+    rows = if model_ready?(:Vrp) && Vrp.column_names.include?("agreement_accepted_at")
+      Vrp.where.not(agreement_accepted_at: nil)
+        .order(agreement_accepted_at: :desc)
+        .limit(50)
+        .map do |vrp|
+          [
+            vrp.name.presence || "-",
+            vrp.user_name.presence || "-",
+            vrp.mobile_no.presence || "-",
+            vrp.email.presence || "-",
+            vrp.agreement_accepted_at&.strftime("%d-%m-%Y %I:%M %p")
+          ]
+        end
+    else
+      []
+    end
+
+    {
+      title: "VRP Declaration Accepted",
+      headers: ["VRP", "Username", "Mobile", "Email", "Accepted At"],
+      rows: rows.presence || [["No accepted declaration", "-", "-", "-", "-"]]
+    }
+  end
+
+  def vrp_assigned_target_report
+    rows = if model_ready?(:TargetMapping)
+      TargetMapping.includes(:vrp)
+        .order(updated_at: :desc)
+        .limit(100)
+        .map do |target|
+          [
+            target.vrp&.name.presence || "VRP ##{target.vrp_id}",
+            target.month_name.presence || "-",
+            target.village_name.presence || target.village_id.presence || "-",
+            target.main_activity_name.presence || "-",
+            target.activity_name.presence || "-",
+            target.farmer_count,
+            dashboard_quantity(target.target_quantity)
+          ]
+        end
+    else
+      []
+    end
+
+    {
+      title: "VRP Target Assigned",
+      headers: ["VRP", "Month", "Village", "Main Activity", "Sub Activity", "Farmers", "Target"],
+      rows: rows.presence || [["No target assigned", "-", "-", "-", "-", "-", "-"]]
+    }
+  end
+
+  def admin_dashboard_user?
+    current_app_user&.dig("user_type").to_s.strip.casecmp("admin").zero?
   end
 
   def dashboard_vrps
@@ -1055,6 +1389,13 @@ class ModulesController < ApplicationController
   def record_source_slug
     slug = @slug || current_slug
     RECORD_SOURCE_SLUGS.fetch(slug, slug)
+  end
+
+  def module_redirect_slug
+    {
+      "training-form" => "training-form-list",
+      "vrp-bill-add" => "vrp-bill-list"
+    }.fetch(record_source_slug, @slug)
   end
 
   def module_record_sort_value(record)
@@ -1582,7 +1923,9 @@ class ModulesController < ApplicationController
       "State" => { module: "state-master", field: "state_name" },
       "District" => { module: "district-master", field: "district_name" },
       "Block" => { module: "block-master", field: "block_name" },
+      "ICS / Block" => { module: "block-master", field: "block_name" },
       "Gram Panchayat" => { module: "gram-panchayat-master", field: "gram_panchayat_name" },
+      "Gram Name" => { module: "gram-panchayat-master", field: "gram_panchayat_name" },
       "Village" => { module: "village-master", field: "village_name" },
       "VRP Type" => { module: "add-vrp-type", field: "vrp_type_name" },
       "Select VRP Type" => { module: "add-vrp-type", field: "vrp_type_name" },
@@ -1608,6 +1951,10 @@ class ModulesController < ApplicationController
       "Activity" => { module: "add-vrp-activity", field: "activity_name" },
       "Select Activity" => { module: "add-vrp-activity", field: "activity_name" },
       "Sub Activity Name" => { module: "add-vrp-activity", field: "sub_activity_name" },
+      "Trainee Department" => { module: "office-category-add", field: "category_name" },
+      "Department" => { module: "office-category-add", field: "category_name" },
+      "Training Topic" => { module: "add-activity-group", field: "main_activity_name" },
+      "Training Subject" => { module: "add-vrp-activity", field: "sub_activity_name" },
       "Task Indicator" => { module: "task-indicator-master", field: "task_indicator_name" },
       "Select Task Indicator" => { module: "task-indicator-master", field: "task_indicator_name" },
       "Bank Name" => { module: "bank-master", field: "bank_name" },

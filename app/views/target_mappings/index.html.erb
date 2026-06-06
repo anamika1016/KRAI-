@@ -1,32 +1,33 @@
-<% content_for :title, "Target Mapping Master" %>
+<% content_for :title, @vrp_target_view ? "VRP Targets" : "Target Mapping Master" %>
 
 <main class="vrp-list-page">
   <section class="vrp-list-shell">
     <div class="vrp-list-header">
       <div>
-        <p class="vrp-eyebrow">AFL</p>
-        <h1>Target Mapping Master</h1>
+        <p class="vrp-eyebrow"><%= @vrp_target_view ? "VRP Targets" : "AFL" %></p>
+        <h1><%= @vrp_target_view ? "Recent Target Mappings" : "Target Mapping Master" %></h1>
       </div>
     </div>
 
-    <section class="module-card target-mapping-card"
-      data-target-mapping
-      data-edit-target="<%= json_escape(@edit_payload.to_json) %>"
-      data-mappings-url="<%= vrp_mappings_target_mappings_path %>">
-      <%= form_with url: target_mappings_path, method: :post, local: true, html: { class: "module-entry-form" } do %>
-        <% if @edit_target %>
-          <input type="hidden" name="target_mapping[id]" value="<%= @edit_target.id %>">
-        <% end %>
-        <div class="module-form-grid user-registration-grid">
-          <label>
-            <span>VRP <em>*</em></span>
-            <select name="target_mapping[vrp_id]" data-target-vrp required>
-              <option value="">Select VRP</option>
-              <% @vrps.each do |vrp| %>
-                <option value="<%= vrp.id %>" <%= "selected" if @edit_target&.vrp_id == vrp.id %>><%= [vrp.name, vrp.mobile_no.presence].compact.join(" - ") %></option>
-              <% end %>
-            </select>
-          </label>
+    <% unless @vrp_target_view %>
+      <section class="module-card target-mapping-card"
+        data-target-mapping
+        data-edit-target="<%= json_escape(@edit_payload.to_json) %>"
+        data-mappings-url="<%= vrp_mappings_target_mappings_path %>">
+        <%= form_with url: target_mappings_path, method: :post, local: true, html: { class: "module-entry-form" } do %>
+          <% if @edit_target %>
+            <input type="hidden" name="target_mapping[id]" value="<%= @edit_target.id %>">
+          <% end %>
+          <div class="module-form-grid user-registration-grid">
+            <label>
+              <span>VRP <em>*</em></span>
+              <select name="target_mapping[vrp_id]" data-target-vrp required>
+                <option value="">Select VRP</option>
+                <% @vrps.each do |vrp| %>
+                  <option value="<%= vrp.id %>" <%= "selected" if @edit_target&.vrp_id == vrp.id %>><%= [vrp.name, vrp.mobile_no.presence].compact.join(" - ") %></option>
+                <% end %>
+              </select>
+            </label>
 
           <label>
             <span>Month <em>*</em></span>
@@ -93,8 +94,9 @@
           <% end %>
           <button type="submit" class="list-btn upload"><%= @edit_target ? "Update Target" : "Save Target" %></button>
         </div>
-      <% end %>
-    </section>
+        <% end %>
+      </section>
+    <% end %>
 
     <div class="vrp-list-card">
       <div class="list-controls">
@@ -119,7 +121,9 @@
               <th>Main Activity</th>
               <th>Sub Activity</th>
               <th>Target</th>
-              <th>Action</th>
+              <% unless @vrp_target_view %>
+                <th>Action</th>
+              <% end %>
             </tr>
           </thead>
           <tbody>
@@ -135,17 +139,19 @@
                   <td><%= target.main_activity_name %></td>
                   <td><%= target.activity_name %></td>
                   <td><%= target.target_quantity %></td>
-                  <td>
-                    <div class="table-actions">
-                      <%= link_to "Edit", target_mappings_path(edit_id: target.id), class: "table-action" %>
-                      <%= button_to "Delete", target_mapping_path(target), method: :delete, class: "table-action danger", form: { data: { turbo_confirm: "Delete this target mapping?" } } %>
-                    </div>
-                  </td>
+                  <% unless @vrp_target_view %>
+                    <td>
+                      <div class="table-actions">
+                        <%= link_to "Edit", target_mappings_path(edit_id: target.id), class: "table-action" %>
+                        <%= button_to "Delete", target_mapping_path(target), method: :delete, class: "table-action danger", form: { data: { turbo_confirm: "Delete this target mapping?" } } %>
+                      </div>
+                    </td>
+                  <% end %>
                 </tr>
               <% end %>
             <% else %>
               <tr>
-                <td colspan="10">No target mapping saved yet.</td>
+                <td colspan="<%= @vrp_target_view ? 9 : 10 %>">No target mapping saved yet.</td>
               </tr>
             <% end %>
           </tbody>

@@ -37,6 +37,40 @@ class SessionsControllerTest < ActionDispatch::IntegrationTest
     assert_redirected_to dashboard_path
   end
 
+  test "forgot password otp api returns json success" do
+    create_vrp(user_name: "otp_vrp", password: "secret", agreement_accepted_at: Time.current)
+    sender = Minitest::Mock.new
+    sender.expect(:deliver, OtpSmsSender::Result.new(success: true, message: "Gateway accepted OTP request."))
+
+    OtpSmsSender.stub(:new, sender) do
+      post send_forgot_password_otp_path, params: { username: "otp_vrp" }, as: :json
+    end
+
+    assert_response :success
+    assert_equal true, response.parsed_body["success"]
+    assert_equal "OTP sent to registered mobile number.", response.parsed_body["message"]
+    sender.verify
+  end
+
+  test "forgot password otp api returns json failure when sms gateway fails" do
+    create_vrp(user_name: "gateway_fail_vrp", password: "secret", agreement_accepted_at: Time.current)
+    sender = Minitest::Mock.new
+    sender.expect(
+      :deliver,
+      OtpSmsSender::Result.new(success: false, message: "Net::ReadTimeout: timed out")
+    )
+
+    OtpSmsSender.stub(:new, sender) do
+      post send_forgot_password_otp_path, params: { username: "gateway_fail_vrp" }, as: :json
+    end
+
+    assert_response :unprocessable_entity
+    assert_equal false, response.parsed_body["success"]
+    assert_equal "OTP could not be sent. Net::ReadTimeout: timed out. Please try again.", response.parsed_body["message"]
+    assert_equal "Net::ReadTimeout: timed out", response.parsed_body.dig("sms", "message")
+    sender.verify
+  end
+
   private
 
   def create_vrp(attributes = {})

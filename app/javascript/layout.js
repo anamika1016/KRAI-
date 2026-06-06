@@ -1,4 +1,27 @@
 document.addEventListener("turbo:load", () => {
+  const mobileMenuToggle = document.querySelector("[data-mobile-menu-toggle]");
+  const mobileSidebar = document.querySelector("[data-mobile-sidebar]");
+  const mobileSidebarBackdrop = document.querySelector("[data-mobile-sidebar-backdrop]");
+  const setMobileMenuOpen = (isOpen) => {
+    document.body.classList.toggle("mobile-menu-open", isOpen);
+    mobileMenuToggle?.setAttribute("aria-expanded", isOpen ? "true" : "false");
+  };
+
+  mobileMenuToggle?.addEventListener("click", () => {
+    setMobileMenuOpen(!document.body.classList.contains("mobile-menu-open"));
+  });
+
+  mobileSidebarBackdrop?.addEventListener("click", () => setMobileMenuOpen(false));
+  mobileSidebar?.querySelectorAll("a").forEach((link) => {
+    link.addEventListener("click", () => setMobileMenuOpen(false));
+  });
+
+  document.addEventListener("keydown", (event) => {
+    if (event.key === "Escape") setMobileMenuOpen(false);
+  });
+
+  setMobileMenuOpen(false);
+
   document.querySelectorAll("[data-password-toggle]").forEach((button) => {
     button.addEventListener("click", () => {
       const input = button.closest(".password-field, .login-password-field")?.querySelector("[data-password-toggle-input]");
@@ -1741,4 +1764,348 @@ document.addEventListener("turbo:load", () => {
       window.alert("This action is not configured yet.");
     });
   });
+
+  const initializeLanguageSwitcher = () => {
+    const switcher = document.querySelector("[data-language-switcher]");
+    const languageButtons = Array.from(document.querySelectorAll("[data-language-option]"));
+    const originalText = window.__vrpOriginalText ||= new WeakMap();
+    const attributeNames = ["placeholder", "title", "aria-label", "data-turbo-confirm"];
+    const translations = {
+      "Language": "भाषा",
+      "Dashboard": "डैशबोर्ड",
+      "Sign Out": "साइन आउट",
+      "Training": "प्रशिक्षण",
+      "Training Form": "प्रशिक्षण फॉर्म",
+      "Training List": "प्रशिक्षण सूची",
+      "ट्रेनिंग प्रपत्र": "प्रशिक्षण फॉर्म",
+      "VRP Targets": "वीआरपी लक्ष्य",
+      "Recent Target Mappings": "हाल की लक्ष्य मैपिंग",
+      "Target Mapping Master": "लक्ष्य मैपिंग मास्टर",
+      "AFL Upload": "एएफएल अपलोड",
+      "AFL Data Upload": "एएफएल डेटा अपलोड",
+      "VRP ICS Mapping": "वीआरपी आईसीएस मैपिंग",
+      "LG Directory": "एलजी डायरेक्टरी",
+      "All List": "सभी सूची",
+      "Stakeholder": "स्टेकहोल्डर",
+      "Stakeholder Name": "स्टेकहोल्डर नाम",
+      "Stakeholder Category": "स्टेकहोल्डर श्रेणी",
+      "Stakeholder Role": "स्टेकहोल्डर व्यक्ति प्रकार",
+      "Stakeholder Person Type": "स्टेकहोल्डर व्यक्ति प्रकार",
+      "Role": "भूमिका",
+      "Role Name": "भूमिका नाम",
+      "Activity Setup": "गतिविधि सेटअप",
+      "Main Activity": "मुख्य गतिविधि",
+      "Main Activity Name": "मुख्य गतिविधि नाम",
+      "Main Activity List": "मुख्य गतिविधि सूची",
+      "Sub Activity": "उप गतिविधि",
+      "Sub Activity Name": "उप गतिविधि नाम",
+      "Sub Activity List": "उप गतिविधि सूची",
+      "User Register": "यूज़र रजिस्टर",
+      "All User": "सभी यूज़र",
+      "Registration": "पंजीकरण",
+      "User Mapping": "यूज़र मैपिंग",
+      "User Hierarchy Mapping": "यूज़र हाइरार्की मैपिंग",
+      "Resource Person Type": "रिसोर्स पर्सन प्रकार",
+      "Access Control": "एक्सेस कंट्रोल",
+      "Access Control List": "एक्सेस कंट्रोल सूची",
+      "VRP Registration": "वीआरपी पंजीकरण",
+      "VRP Type": "वीआरपी प्रकार",
+      "VRP List": "वीआरपी सूची",
+      "VRP Approval": "वीआरपी अनुमोदन",
+      "VRP Approval Form": "वीआरपी अनुमोदन फॉर्म",
+      "VRP Approval List": "वीआरपी अनुमोदन सूची",
+      "Saved Records": "सेव रिकॉर्ड",
+      "All Training Records": "सभी प्रशिक्षण रिकॉर्ड",
+      "All Main Activities": "सभी मुख्य गतिविधियां",
+      "All Sub Activities": "सभी उप गतिविधियां",
+      "All Task Completion Indicators": "सभी कार्य पूर्णता संकेतक",
+      "All Approvals": "सभी अनुमोदन",
+      "All Access Control": "सभी एक्सेस कंट्रोल",
+      "All VRP Bills": "सभी वीआरपी बिल",
+      "Fields": "फील्ड",
+      "Edit Record": "रिकॉर्ड एडिट करें",
+      "Features": "विशेषताएं",
+      "Save": "सेव",
+      "Update": "अपडेट",
+      "Clear": "क्लियर",
+      "Upload": "अपलोड",
+      "Export": "एक्सपोर्ट",
+      "Export Excel": "एक्सेल एक्सपोर्ट",
+      "Choose Excel": "एक्सेल चुनें",
+      "Edit": "एडिट",
+      "Delete": "डिलीट",
+      "Activate": "एक्टिव करें",
+      "Deactivate": "डीएक्टिव करें",
+      "Active": "एक्टिव",
+      "Inactive": "इनएक्टिव",
+      "Pending": "पेंडिंग",
+      "Approved": "अनुमोदित",
+      "Rejected": "अस्वीकृत",
+      "Action": "कार्रवाई",
+      "Actions": "कार्रवाई",
+      "Status": "स्थिति",
+      "Saved At": "सेव समय",
+      "Updated": "अपडेट समय",
+      "Search": "खोजें",
+      "Search records": "रिकॉर्ड खोजें",
+      "Search users": "यूज़र खोजें",
+      "Search VRP": "वीआरपी खोजें",
+      "Search AFL": "एएफएल खोजें",
+      "Search dashboard": "डैशबोर्ड खोजें",
+      "Select all": "सभी चुनें",
+      "Cancel": "रद्द करें",
+      "Cancel Edit": "एडिट रद्द करें",
+      "Add More": "और जोड़ें",
+      "Apply": "लागू करें",
+      "Remove": "हटाएं",
+      "Close": "बंद करें",
+      "View": "देखें",
+      "View Targets": "लक्ष्य देखें",
+      "Send for Approval": "अनुमोदन के लिए भेजें",
+      "Upload Date": "अपलोड तारीख",
+      "Material Title": "सामग्री शीर्षक",
+      "ICS / Block": "आईसीएस / ब्लॉक",
+      "Gram Name": "ग्राम का नाम",
+      "Trainee Department": "प्रशिक्षणार्थी विभाग",
+      "Trainer Name": "प्रशिक्षक नाम",
+      "Trainer Contact": "प्रशिक्षक संपर्क",
+      "Training Date": "प्रशिक्षण तारीख",
+      "Training Location": "प्रशिक्षण स्थान",
+      "Department": "विभाग",
+      "Training Topic": "प्रशिक्षण टॉपिक",
+      "Training Subject": "प्रशिक्षण विषय",
+      "Training Description": "प्रशिक्षण विवरण",
+      "Organic Farmer Count": "जैविक किसान संख्या",
+      "Male Count": "पुरुष संख्या",
+      "Female Count": "महिला संख्या",
+      "Next Farmer Training Date": "अगली किसान प्रशिक्षण तारीख",
+      "Training Register Upload": "प्रशिक्षण रजिस्टर अपलोड",
+      "Training Photo Upload": "प्रशिक्षण फोटो अपलोड",
+      "State": "राज्य",
+      "State Name": "राज्य नाम",
+      "State Code": "राज्य कोड",
+      "District": "जिला",
+      "District Name": "जिला नाम",
+      "District Code": "जिला कोड",
+      "Block": "ब्लॉक",
+      "Block Name": "ब्लॉक नाम",
+      "Block Code": "ब्लॉक कोड",
+      "Gram Panchayat": "ग्राम पंचायत",
+      "Gram Panchayat Name": "ग्राम पंचायत नाम",
+      "GP Code": "जीपी कोड",
+      "Village": "गांव",
+      "Village Name": "गांव नाम",
+      "Village Code": "गांव कोड",
+      "VRP": "वीआरपी",
+      "FCO": "एफसीओ",
+      "ICS": "आईसीएस",
+      "Farmers": "किसान",
+      "Farmer": "किसान",
+      "Mapped Farmers": "मैप किए किसान",
+      "Mapped Villages": "मैप किए गांव",
+      "Mapped Village Work Area": "मैप गांव कार्य क्षेत्र",
+      "Assigned Target Progress": "दिए गए लक्ष्य की प्रगति",
+      "Farmer Month Follow-up": "किसान मासिक फॉलो-अप",
+      "Target": "लक्ष्य",
+      "Targets": "लक्ष्य",
+      "Target Quantity": "लक्ष्य मात्रा",
+      "Completed": "पूर्ण",
+      "Progress": "प्रगति",
+      "Month": "माह",
+      "Financial Year": "वित्तीय वर्ष",
+      "Week": "सप्ताह",
+      "Start Date": "प्रारंभ तारीख",
+      "End Date": "समाप्ति तारीख",
+      "Priority": "प्राथमिकता",
+      "Remarks": "टिप्पणी",
+      "Unit": "यूनिट",
+      "Rate": "दर",
+      "Total Amount": "कुल राशि",
+      "Grand Total": "कुल योग",
+      "Payment Status": "भुगतान स्थिति",
+      "Completion Status": "पूर्णता स्थिति",
+      "Task Completion Indicator": "कार्य पूर्णता संकेतक",
+      "Task Completion Indicators": "कार्य पूर्णता संकेतक",
+      "Indicator": "संकेतक",
+      "Mandatory": "अनिवार्य",
+      "Working Date": "कार्य तारीख",
+      "Number": "संख्या",
+      "User Type": "यूज़र प्रकार",
+      "User Name": "यूज़र नाम",
+      "Full Name": "पूरा नाम",
+      "Name": "नाम",
+      "Father Husband Name": "पिता / पति का नाम",
+      "Gender": "लिंग",
+      "Date of Birth": "जन्म तारीख",
+      "Date of Joining": "जॉइनिंग तारीख",
+      "Aadhar No": "आधार नंबर",
+      "Account No": "खाता नंबर",
+      "IFSC Code": "आईएफएससी कोड",
+      "Bank Name": "बैंक नाम",
+      "Address": "पता",
+      "Mobile": "मोबाइल",
+      "Mobile No": "मोबाइल नंबर",
+      "Email": "ईमेल",
+      "Registered By": "पंजीकरणकर्ता",
+      "Enrollment Date": "नामांकन तारीख",
+      "Office Category Add": "ऑफिस श्रेणी जोड़ें",
+      "Office Name": "ऑफिस नाम",
+      "Office": "ऑफिस",
+      "Menu": "मेनू",
+      "Sub Menu": "सब मेनू",
+      "Module Name": "मॉड्यूल नाम",
+      "Sub Module Name": "सब मॉड्यूल नाम",
+      "Can View": "देख सकते हैं",
+      "Can Create": "बना सकते हैं",
+      "Can Edit": "एडिट कर सकते हैं",
+      "Can Delete": "डिलीट कर सकते हैं",
+      "Yes": "हाँ",
+      "No": "नहीं",
+      "High": "उच्च",
+      "Medium": "मध्यम",
+      "Low": "निम्न",
+      "Male": "पुरुष",
+      "Female": "महिला",
+      "Other": "अन्य",
+      "No records saved yet.": "अभी कोई रिकॉर्ड सेव नहीं है।",
+      "No target mapping saved yet.": "अभी कोई लक्ष्य मैपिंग सेव नहीं है।",
+      "No users registered yet.": "अभी कोई यूज़र पंजीकृत नहीं है।",
+      "No AFL records uploaded yet.": "अभी कोई एएफएल रिकॉर्ड अपलोड नहीं है।",
+      "Select VRP to load mapped villages.": "मैप किए गांव लोड करने के लिए वीआरपी चुनें।",
+      "Select FCO, ICS and Village to load farmers.": "किसान लोड करने के लिए एफसीओ, आईसीएस और गांव चुनें।",
+      "Mapped FCO / ICS / Village List": "मैप एफसीओ / आईसीएस / गांव सूची",
+      "0 mapping selected": "0 मैपिंग चुनी गई",
+      "Dashboard Reports": "डैशबोर्ड रिपोर्ट",
+      "Dashboard Module": "डैशबोर्ड मॉड्यूल",
+      "VRP training details save karne ke liye.": "वीआरपी प्रशिक्षण विवरण सेव करने के लिए।",
+      "Saved training records dekhne ke liye.": "सेव प्रशिक्षण रिकॉर्ड देखने के लिए।",
+      "Training documents/videos upload karna.": "प्रशिक्षण दस्तावेज / वीडियो अपलोड करने के लिए।",
+      "Location hierarchy maintain karne ke liye.": "स्थान हाइरार्की बनाए रखने के लिए।",
+      "State, District, Block, GP, Village ek sath maintain karne ke liye.": "राज्य, जिला, ब्लॉक, जीपी और गांव एक साथ बनाए रखने के लिए।",
+      "Stakeholder name aur logo maintain karna.": "स्टेकहोल्डर नाम और लोगो बनाए रखने के लिए।",
+      "Main activity add karne ke liye.": "मुख्य गतिविधि जोड़ने के लिए।",
+      "Sub activity add karne ke liye.": "उप गतिविधि जोड़ने के लिए।",
+      "Saved main activities dekhne ke liye.": "सेव मुख्य गतिविधियां देखने के लिए।",
+      "Saved sub activities dekhne ke liye.": "सेव उप गतिविधियां देखने के लिए।",
+      "VRP type add karne ke liye.": "वीआरपी प्रकार जोड़ने के लिए।",
+      "Saved access control records dekhne ke liye.": "सेव एक्सेस कंट्रोल रिकॉर्ड देखने के लिए।",
+      "Live VRP, bill, payment, target, activity, aur training summary.": "वीआरपी, बिल, भुगतान, लक्ष्य, गतिविधि और प्रशिक्षण का लाइव सारांश।",
+      "Your mapped farmers, villages, assigned targets, and completed work summary.": "आपके मैप किसान, गांव, दिए गए लक्ष्य और पूर्ण कार्य का सारांश।"
+    };
+    const englishAliases = {
+      "ट्रेनिंग प्रपत्र": "Training Form",
+      "VRP training details save karne ke liye.": "Save VRP training details.",
+      "Saved training records dekhne ke liye.": "View saved training records.",
+      "Training documents/videos upload karna.": "Upload training documents/videos.",
+      "Location hierarchy maintain karne ke liye.": "Maintain the location hierarchy.",
+      "State, District, Block, GP, Village ek sath maintain karne ke liye.": "Maintain State, District, Block, GP, and Village together.",
+      "Stakeholder name aur logo maintain karna.": "Maintain stakeholder name and logo.",
+      "Main activity add karne ke liye.": "Add main activity.",
+      "Sub activity add karne ke liye.": "Add sub activity.",
+      "Saved main activities dekhne ke liye.": "View saved main activities.",
+      "Saved sub activities dekhne ke liye.": "View saved sub activities.",
+      "VRP type add karne ke liye.": "Add VRP type.",
+      "Saved access control records dekhne ke liye.": "View saved access control records."
+    };
+    const englishTranslations = {
+      ...Object.fromEntries(Object.entries(translations).map(([english, hindi]) => [hindi, english])),
+      ...englishAliases
+    };
+
+    const preserveSpacing = (original, replacement) => {
+      const leading = original.match(/^\s*/)?.[0] || "";
+      const trailing = original.match(/\s*$/)?.[0] || "";
+      return `${leading}${replacement}${trailing}`;
+    };
+
+    const translatePhrase = (text, language) => {
+      const trimmed = text.trim();
+      if (!trimmed) return text;
+      if (/^[\s\d.,:;/%#()\-–—|]+$/.test(trimmed)) return text;
+
+      const exact = language === "hi" ? translations[trimmed] : englishTranslations[trimmed];
+      if (exact) return preserveSpacing(text, exact);
+      if (language === "en") return text;
+
+      let match = trimmed.match(/^Select (.+)$/);
+      if (match) return preserveSpacing(text, `${translatePhrase(match[1], "hi").trim()} चुनें`);
+
+      match = trimmed.match(/^Enter (.+)$/);
+      if (match) return preserveSpacing(text, `${translatePhrase(match[1], "hi").trim()} दर्ज करें`);
+
+      match = trimmed.match(/^Search (.+)$/);
+      if (match) return preserveSpacing(text, `${translatePhrase(match[1], "hi").trim()} खोजें`);
+
+      match = trimmed.match(/^No (.+) saved yet\.$/);
+      if (match) return preserveSpacing(text, `अभी कोई ${translatePhrase(match[1], "hi").trim()} सेव नहीं है।`);
+
+      match = trimmed.match(/^(\d+) records$/);
+      if (match) return preserveSpacing(text, `${match[1]} रिकॉर्ड`);
+
+      match = trimmed.match(/^Page (\d+) of (\d+)$/);
+      if (match) return preserveSpacing(text, `पेज ${match[1]} / ${match[2]}`);
+
+      match = trimmed.match(/^(\d+) to (\d+) of (\d+)$/);
+      if (match) return preserveSpacing(text, `${match[1]} से ${match[2]} कुल ${match[3]}`);
+
+      return text;
+    };
+
+    const translateTextNode = (node, language) => {
+      if (!node.nodeValue.trim()) return;
+      const parent = node.parentElement;
+      if (!parent || parent.closest("script, style, textarea, code, pre")) return;
+
+      const original = originalText.get(node) || node.nodeValue;
+      originalText.set(node, original);
+      node.nodeValue = translatePhrase(original, language);
+    };
+
+    const translateAttributes = (element, language) => {
+      attributeNames.forEach((attribute) => {
+        const value = element.getAttribute(attribute);
+        if (!value) return;
+
+        const dataKey = `i18nOriginal${attribute.replace(/(^|-)([a-z])/g, (_match, _dash, letter) => letter.toUpperCase())}`;
+        const original = element.dataset[dataKey] || value;
+        element.dataset[dataKey] = original;
+        element.setAttribute(attribute, translatePhrase(original, language));
+      });
+
+      if ((element.matches("input[type='submit'], input[type='button']")) && element.value) {
+        element.dataset.i18nOriginalValue ||= element.value;
+        element.value = translatePhrase(element.dataset.i18nOriginalValue, language).trim();
+      }
+    };
+
+    const applyLanguage = (language) => {
+      document.documentElement.lang = language === "hi" ? "hi" : "en";
+      languageButtons.forEach((button) => {
+        button.classList.toggle("active", button.dataset.languageOption === language);
+      });
+
+      document.querySelectorAll("body *").forEach((element) => {
+        translateAttributes(element, language);
+        element.childNodes.forEach((node) => {
+          if (node.nodeType === Node.TEXT_NODE) translateTextNode(node, language);
+        });
+      });
+    };
+
+    const setLanguage = (language) => {
+      const nextLanguage = language === "hi" ? "hi" : "en";
+      localStorage.setItem("vrp_language", nextLanguage);
+      applyLanguage(nextLanguage);
+    };
+
+    if (switcher) {
+      languageButtons.forEach((button) => {
+        button.addEventListener("click", () => setLanguage(button.dataset.languageOption));
+      });
+    }
+
+    setLanguage(localStorage.getItem("vrp_language") || "en");
+  };
+
+  initializeLanguageSwitcher();
 });

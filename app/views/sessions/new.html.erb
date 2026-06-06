@@ -29,6 +29,7 @@
             <%= check_box_tag :remember_me, "1" %>
             Keep me logged in.
           </label>
+          <%= link_to "Forgot Password?", forgot_password_path %>
         </div>
 
         <%= f.submit "GO!", class: "btn btn-primary login-submit" %>

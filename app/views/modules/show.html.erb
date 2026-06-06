@@ -9,8 +9,8 @@
     </div>
   </div>
 
-  <% list_only_slugs = ["activity-group-list", "vrp-activity-list", "task-completion-indicator-list", "approval-list", "access-control-list", "vrp-bill-list"] %>
-  <% entry_only_slugs = ["add-activity-group", "add-vrp-activity", "task-completion-indicator", "approval-master", "access-control", "vrp-bill-add"] %>
+  <% list_only_slugs = ["activity-group-list", "vrp-activity-list", "task-completion-indicator-list", "approval-list", "access-control-list", "vrp-bill-list", "training-form-list"] %>
+  <% entry_only_slugs = ["add-activity-group", "add-vrp-activity", "task-completion-indicator", "approval-master", "access-control", "vrp-bill-add", "training-form"] %>
 
   <% if @slug == "approval-master" && @record.blank? %>
     <% module_options = static_field_options("Module Name") %>
@@ -659,7 +659,7 @@
     <% table_id = "#{@slug.tr("-", "_")}_table" %>
     <section class="module-card list-only-card">
       <div class="module-card-header list-title-header">
-        <h2><%= { "activity-group-list" => "All Main Activities", "vrp-activity-list" => "All Sub Activities", "task-completion-indicator-list" => "All Task Completion Indicators", "approval-list" => "All Approvals", "access-control-list" => "All Access Control", "vrp-bill-list" => "All VRP Bills" }[@slug] %></h2>
+        <h2><%= { "activity-group-list" => "All Main Activities", "vrp-activity-list" => "All Sub Activities", "task-completion-indicator-list" => "All Task Completion Indicators", "approval-list" => "All Approvals", "access-control-list" => "All Access Control", "vrp-bill-list" => "All VRP Bills", "training-form-list" => "All Training Records" }[@slug] %></h2>
       </div>
 
       <div class="vrp-list-toolbar compact">
@@ -698,7 +698,7 @@
             <% if @records.any? %>
               <% @records.each do |record| %>
                 <tr>
-                  <% edit_slug = { "approval-list" => "approval-master", "access-control-list" => "access-control", "vrp-bill-list" => "vrp-bill-add" }.fetch(@slug, @slug) %>
+                  <% edit_slug = { "approval-list" => "approval-master", "access-control-list" => "access-control", "vrp-bill-list" => "vrp-bill-add", "training-form-list" => "training-form" }.fetch(@slug, @slug) %>
                   <td><input type="checkbox" value="<%= edit_module_record_path(edit_slug, record) %>" data-module-row-select></td>
                   <% @module[:fields].each do |field| %>
                     <% field_key = field.parameterize(separator: "_") %>

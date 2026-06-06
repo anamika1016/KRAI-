@@ -3,6 +3,9 @@ Rails.application.routes.draw do
 
   get    "login",  to: "sessions#new",     as: :login
   post   "login",  to: "sessions#create"
+  get    "forgot-password", to: "sessions#forgot_password", as: :forgot_password
+  post   "forgot-password/send-otp", to: "sessions#send_forgot_password_otp", as: :send_forgot_password_otp
+  post   "forgot-password/reset", to: "sessions#reset_forgot_password", as: :reset_forgot_password
   get    "vrp-agreement", to: "sessions#agreement", as: :vrp_agreement
   post   "vrp-agreement", to: "sessions#complete_agreement"
   get    "logout", to: "sessions#destroy", as: nil
