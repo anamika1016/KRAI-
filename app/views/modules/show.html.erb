@@ -270,7 +270,10 @@
       <div class="module-card-header">
         <h2>All List</h2>
         <%= form_with url: import_module_path(@slug), method: :post, multipart: true, local: true, class: "lg-directory-upload" do |form| %>
-          <%= form.file_field :file, accept: ".xlsx,.csv", required: true %>
+          <label class="import-btn">
+            Choose Excel
+            <%= form.file_field :file, accept: ".xlsx,.csv", required: true, data: { import_file: true }, hidden: true %>
+          </label>
           <%= form.submit "Upload", class: "list-btn upload" %>
         <% end %>
       </div>
@@ -279,8 +282,8 @@
         <label>
           <span>Select Table:</span>
           <select name="table">
-            <% ["State", "State Code", "District", "Block", "Gram Panchayat", "GP Code", "Village", "Village Code"].each do |field| %>
-              <option value="<%= field %>" <%= "selected" if @lg_directory_filter == field %>><%= field == "Gram Panchayat" ? "GP" : field %></option>
+            <% ["State Name", "State Code", "District Name", "District Code", "Block Name", "Block Code", "Gram Name", "Gram Code", "Village Name", "Village Code"].each do |field| %>
+              <option value="<%= field %>" <%= "selected" if @lg_directory_filter == field %>><%= field %></option>
             <% end %>
           </select>
         </label>
@@ -305,13 +308,15 @@
             <thead>
               <tr>
                 <th><input type="checkbox" data-module-select-all></th>
-                <th>State</th>
+                <th>State Name</th>
                 <th>State Code</th>
-                <th>District</th>
-                <th>Block</th>
-                <th>Gram Panchayat</th>
-                <th>GP Code</th>
-                <th>Village</th>
+                <th>District Name</th>
+                <th>District Code</th>
+                <th>Block Name</th>
+                <th>Block Code</th>
+                <th>Gram Name</th>
+                <th>Gram Code</th>
+                <th>Village Name</th>
                 <th>Village Code</th>
                 <th>Status</th>
               </tr>
@@ -324,7 +329,9 @@
                     <td><%= row[:state].presence || "-" %></td>
                     <td><%= row[:state_code].presence || "-" %></td>
                     <td><%= row[:district].presence || "-" %></td>
+                    <td><%= row[:district_code].presence || "-" %></td>
                     <td><%= row[:block].presence || "-" %></td>
+                    <td><%= row[:block_code].presence || "-" %></td>
                     <td><%= row[:gram_panchayat].presence || "-" %></td>
                     <td><%= row[:gp_code].presence || "-" %></td>
                     <td><%= row[:village].presence || "-" %></td>
@@ -334,7 +341,7 @@
                 <% end %>
               <% else %>
                 <tr>
-                  <td colspan="10">No LG Directory records saved yet.</td>
+                  <td colspan="12">No LG Directory records saved yet.</td>
                 </tr>
               <% end %>
             </tbody>

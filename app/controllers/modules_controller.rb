@@ -60,7 +60,7 @@ class ModulesController < ApplicationController
       title: "All List",
       group: "LG Directory",
       purpose: "State, District, Block, GP, Village ek sath maintain karne ke liye.",
-      fields: ["State", "State Code", "District", "Block", "Gram Panchayat", "GP Code", "Village", "Village Code", "Status"]
+      fields: ["State Name", "State Code", "District Name", "District Code", "Block Name", "Block Code", "Gram Name", "Gram Code", "Village Name", "Village Code"]
     },
     "stakeholder-master" => {
       title: "Stakeholder Master",
@@ -1376,7 +1376,7 @@ class ModulesController < ApplicationController
   end
 
   def prepare_lg_directory_data
-    @lg_directory_filter = params[:table].presence_in(lg_directory_filter_fields) || "State"
+    @lg_directory_filter = params[:table].presence_in(lg_directory_filter_fields) || "State Name"
     @lg_directory_query = params[:q].to_s.strip
     @lg_directory_rows = filtered_lg_directory_rows(lg_directory_rows)
   end
@@ -1384,7 +1384,7 @@ class ModulesController < ApplicationController
   def filtered_lg_directory_rows(rows)
     return rows if @lg_directory_query.blank?
 
-    key = @lg_directory_filter.parameterize(separator: "_").to_sym
+    key = lg_directory_filter_key(@lg_directory_filter)
     rows.select { |row| row[key].to_s.downcase.include?(@lg_directory_query.downcase) }
   end
 
@@ -1392,23 +1392,34 @@ class ModulesController < ApplicationController
     return [] unless model_ready?(:ModuleRecord)
 
     rows = []
+    rows.concat(lg_rows_from_records("lg-directory-list",
+      state: "state_name",
+      district: "district_name",
+      sub_district: "sub_district_name",
+      block: "cd_block_name",
+      block_code: "cd_block_code",
+      village: "village_name"))
     rows.concat(lg_rows_from_records("village-master", village: "village_name"))
     rows.concat(lg_rows_from_records("gram-panchayat-master", gram_panchayat: "gram_panchayat_name"))
     rows.concat(lg_rows_from_records("block-master", block: "block_name"))
     rows.concat(lg_rows_from_records("district-master", district: "district_name"))
     rows.concat(lg_rows_from_records("state-master", state: "state_name"))
     state_codes = lg_directory_code_lookup(rows, :state, :state_code)
+    district_codes = lg_directory_code_lookup(rows, :district, :district_code)
+    block_codes = lg_directory_code_lookup(rows, :block, :block_code)
     gp_codes = lg_directory_code_lookup(rows, :gram_panchayat, :gp_code)
 
     compact_lg_directory_rows(rows)
       .map do |row|
         row.merge(
           state_code: row[:state_code].presence || state_codes[row[:state].to_s.strip.downcase],
+          district_code: row[:district_code].presence || district_codes[row[:district].to_s.strip.downcase],
+          block_code: row[:block_code].presence || block_codes[row[:block].to_s.strip.downcase],
           gp_code: row[:gp_code].presence || gp_codes[row[:gram_panchayat].to_s.strip.downcase]
         )
       end
       .uniq { |row| lg_directory_row_key(row) }
-      .sort_by { |row| [row[:state], row[:district], row[:block], row[:gram_panchayat], row[:village]].map(&:to_s) }
+      .sort_by { |row| [row[:state], row[:district], row[:sub_district], row[:block], row[:gram_panchayat], row[:village]].map(&:to_s) }
   end
 
   def lg_rows_from_records(module_slug, aliases)
@@ -1422,7 +1433,11 @@ class ModulesController < ApplicationController
           state: record.data["state"].presence || record.data[aliases[:state].to_s].presence,
           state_code: record.data["state_code"].presence || record.data[aliases[:state_code].to_s].presence,
           district: record.data["district"].presence || record.data[aliases[:district].to_s].presence,
+          district_code: record.data["district_code"].presence || record.data[aliases[:district_code].to_s].presence,
+          sub_district: record.data["sub_district"].presence || record.data[aliases[:sub_district].to_s].presence,
+          sub_district_code: record.data["sub_district_code"].presence || record.data[aliases[:sub_district_code].to_s].presence,
           block: record.data["block"].presence || record.data[aliases[:block].to_s].presence,
+          block_code: record.data["block_code"].presence || record.data[aliases[:block_code].to_s].presence,
           gram_panchayat: record.data["gram_panchayat"].presence || record.data[aliases[:gram_panchayat].to_s].presence,
           gp_code: record.data["gp_code"].presence || record.data[aliases[:gp_code].to_s].presence,
           village: record.data["village"].presence || record.data[aliases[:village].to_s].presence,
@@ -1445,7 +1460,7 @@ class ModulesController < ApplicationController
   end
 
   def lg_directory_prefix_covered?(row, rows)
-    levels = [:state, :district, :block, :gram_panchayat, :village]
+    levels = [:state, :district, :sub_district, :block, :gram_panchayat, :village]
     last_present_index = levels.rindex { |key| row[key].present? }
     return false unless last_present_index
     return false if last_present_index == levels.size - 1
@@ -1460,17 +1475,33 @@ class ModulesController < ApplicationController
   end
 
   def lg_directory_row_key(row)
-    [:state, :district, :block, :gram_panchayat, :village]
+    [:state_code, :state, :district_code, :district, :sub_district_code, :sub_district, :village_code, :village, :block_code, :block]
       .map { |key| row[key].to_s.strip.downcase }
       .join("|")
   end
 
   def lg_directory_filter_fields
-    ["State", "State Code", "District", "Block", "Gram Panchayat", "GP Code", "Village", "Village Code"]
+    ["State Name", "State Code", "District Name", "District Code", "Block Name", "Block Code", "Gram Name", "Gram Code", "Village Name", "Village Code"]
+  end
+
+  def lg_directory_filter_key(field)
+    {
+      "State Name" => :state,
+      "State Code" => :state_code,
+      "District Name" => :district,
+      "District Code" => :district_code,
+      "Block Name" => :block,
+      "Block Code" => :block_code,
+      "Gram Name" => :gram_panchayat,
+      "Gram Code" => :gp_code,
+      "Village Name" => :village,
+      "Village Code" => :village_code
+    }.fetch(field, :state)
   end
 
   def lg_directory_import_notice_counts(counts)
     {
+      "lg-directory-list" => "All List",
       "state-master" => "State",
       "district-master" => "District",
       "block-master" => "Block",
@@ -1484,6 +1515,7 @@ class ModulesController < ApplicationController
 
   def lg_directory_selected_records
     allowed_slugs = [
+      "lg-directory-list",
       "state-master",
       "district-master",
       "block-master",
@@ -1501,18 +1533,19 @@ class ModulesController < ApplicationController
 
   def lg_directory_csv(rows)
     CSV.generate(headers: true) do |csv|
-      csv << ["State", "State Code", "District", "Block", "Gram Panchayat", "GP Code", "Village", "Village Code", "Status"]
+      csv << ["State Name", "State Code", "District Name", "District Code", "Block Name", "Block Code", "Gram Name", "Gram Code", "Village Name", "Village Code"]
       rows.each do |row|
         csv << [
           row[:state],
           row[:state_code],
           row[:district],
+          row[:district_code],
           row[:block],
+          row[:block_code],
           row[:gram_panchayat],
           row[:gp_code],
           row[:village],
-          row[:village_code],
-          row[:status]
+          row[:village_code]
         ]
       end
     end
