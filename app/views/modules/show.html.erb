@@ -294,7 +294,7 @@
         <button type="submit" class="list-btn upload">Search</button>
       <% end %>
 
-      <%= form_with url: bulk_update_module_path(@slug), method: :patch, local: true do %>
+      <%= form_with url: bulk_update_module_path(@slug), method: :patch, local: true, data: { turbo: false } do %>
         <div class="vrp-list-toolbar compact lg-directory-actions">
           <button type="submit" name="bulk_action" value="active" class="list-btn active">Active</button>
           <button type="submit" name="bulk_action" value="inactive" class="list-btn deactive">Inactive</button>

@@ -470,11 +470,7 @@ class ModulesController < ApplicationController
   def destroy
     load_module!
     ModuleRecord.find(params[:id]).destroy
-    if request.format.turbo_stream? || request.xhr?
-      head :no_content
-    else
-      redirect_to module_path(@slug), notice: "#{@module[:title]} deleted successfully."
-    end
+    redirect_to module_path(@slug), notice: "#{@module[:title]} deleted successfully.", status: :see_other
   end
 
   def toggle_status
@@ -534,13 +530,18 @@ class ModulesController < ApplicationController
     when "edit"
       redirect_to module_path(@slug), alert: "Please select one row only for edit." and return unless selected_records.one?
 
-      redirect_to edit_module_record_path(selected_records.first.module_slug, selected_records.first)
+      edit_record = lg_directory_edit_record(selected_records.first)
+      redirect_to module_path(@slug), alert: "This LG Directory row cannot be edited from All List." and return unless edit_record
+
+      redirect_to edit_module_record_path(edit_record.module_slug, edit_record)
     when "active", "inactive"
       next_status = params[:bulk_action] == "active" ? "Active" : "Inactive"
-      selected_records.each { |record| record.update!(data: record.data.merge("status" => next_status)) }
+      records_to_update = lg_directory_matching_records(selected_records)
+      records_to_update.each { |record| record.update!(data: record.data.merge("status" => next_status)) }
       redirect_to module_path(@slug), notice: "#{selected_records.size} LG Directory row(s) marked #{next_status}."
     when "delete"
-      selected_records.each(&:destroy!)
+      records_to_delete = lg_directory_matching_records(selected_records)
+      records_to_delete.each(&:destroy!)
       redirect_to module_path(@slug), notice: "#{selected_records.size} LG Directory row(s) deleted."
     else
       redirect_to module_path(@slug), alert: "Please choose a valid action."
@@ -1392,6 +1393,11 @@ class ModulesController < ApplicationController
     return [] unless model_ready?(:ModuleRecord)
 
     rows = []
+    rows.concat(lg_rows_from_records("village-master", village: "village_name"))
+    rows.concat(lg_rows_from_records("gram-panchayat-master", gram_panchayat: "gram_panchayat_name"))
+    rows.concat(lg_rows_from_records("block-master", block: "block_name"))
+    rows.concat(lg_rows_from_records("district-master", district: "district_name"))
+    rows.concat(lg_rows_from_records("state-master", state: "state_name"))
     rows.concat(lg_rows_from_records("lg-directory-list",
       state: "state_name",
       district: "district_name",
@@ -1399,11 +1405,6 @@ class ModulesController < ApplicationController
       block: "cd_block_name",
       block_code: "cd_block_code",
       village: "village_name"))
-    rows.concat(lg_rows_from_records("village-master", village: "village_name"))
-    rows.concat(lg_rows_from_records("gram-panchayat-master", gram_panchayat: "gram_panchayat_name"))
-    rows.concat(lg_rows_from_records("block-master", block: "block_name"))
-    rows.concat(lg_rows_from_records("district-master", district: "district_name"))
-    rows.concat(lg_rows_from_records("state-master", state: "state_name"))
     state_codes = lg_directory_code_lookup(rows, :state, :state_code)
     district_codes = lg_directory_code_lookup(rows, :district, :district_code)
     block_codes = lg_directory_code_lookup(rows, :block, :block_code)
@@ -1426,25 +1427,66 @@ class ModulesController < ApplicationController
     ModuleRecord
       .where(module_slug: module_slug)
       .order(created_at: :desc)
-      .map do |record|
-        {
-          record_id: record.id,
-          source_slug: record.module_slug,
-          state: record.data["state"].presence || record.data[aliases[:state].to_s].presence,
-          state_code: record.data["state_code"].presence || record.data[aliases[:state_code].to_s].presence,
-          district: record.data["district"].presence || record.data[aliases[:district].to_s].presence,
-          district_code: record.data["district_code"].presence || record.data[aliases[:district_code].to_s].presence,
-          sub_district: record.data["sub_district"].presence || record.data[aliases[:sub_district].to_s].presence,
-          sub_district_code: record.data["sub_district_code"].presence || record.data[aliases[:sub_district_code].to_s].presence,
-          block: record.data["block"].presence || record.data[aliases[:block].to_s].presence,
-          block_code: record.data["block_code"].presence || record.data[aliases[:block_code].to_s].presence,
-          gram_panchayat: record.data["gram_panchayat"].presence || record.data[aliases[:gram_panchayat].to_s].presence,
-          gp_code: record.data["gp_code"].presence || record.data[aliases[:gp_code].to_s].presence,
-          village: record.data["village"].presence || record.data[aliases[:village].to_s].presence,
-          village_code: record.data["village_code"].presence || record.data[aliases[:village_code].to_s].presence,
-          status: record.data["status"].presence || "Active"
-        }
+      .map { |record| lg_directory_row_from_record(record, aliases) }
+  end
+
+  def lg_directory_row_from_record(record, aliases = {})
+    {
+      record_id: record.id,
+      source_slug: record.module_slug,
+      state: record.data["state"].presence || record.data[aliases[:state].to_s].presence,
+      state_code: record.data["state_code"].presence || record.data[aliases[:state_code].to_s].presence,
+      district: record.data["district"].presence || record.data[aliases[:district].to_s].presence,
+      district_code: record.data["district_code"].presence || record.data[aliases[:district_code].to_s].presence,
+      sub_district: record.data["sub_district"].presence || record.data[aliases[:sub_district].to_s].presence,
+      sub_district_code: record.data["sub_district_code"].presence || record.data[aliases[:sub_district_code].to_s].presence,
+      block: record.data["block"].presence || record.data[aliases[:block].to_s].presence,
+      block_code: record.data["block_code"].presence || record.data[aliases[:block_code].to_s].presence,
+      gram_panchayat: record.data["gram_panchayat"].presence || record.data[aliases[:gram_panchayat].to_s].presence,
+      gp_code: record.data["gp_code"].presence || record.data[aliases[:gp_code].to_s].presence,
+      village: record.data["village"].presence || record.data[aliases[:village].to_s].presence,
+      village_code: record.data["village_code"].presence || record.data[aliases[:village_code].to_s].presence,
+      status: record.data["status"].presence || "Active"
+    }
+  end
+
+  def lg_directory_aliases_for_slug(module_slug)
+    {
+      "lg-directory-list" => {
+        state: "state_name",
+        district: "district_name",
+        sub_district: "sub_district_name",
+        block: "cd_block_name",
+        block_code: "cd_block_code",
+        village: "village_name"
+      },
+      "village-master" => { village: "village_name" },
+      "gram-panchayat-master" => { gram_panchayat: "gram_panchayat_name" },
+      "block-master" => { block: "block_name" },
+      "district-master" => { district: "district_name" },
+      "state-master" => { state: "state_name" }
+    }.fetch(module_slug, {})
+  end
+
+  def lg_directory_matching_records(records)
+    row_keys = records.map do |record|
+      lg_directory_row_key(lg_directory_row_from_record(record, lg_directory_aliases_for_slug(record.module_slug)))
+    end.uniq
+
+    ModuleRecord
+      .where(module_slug: lg_directory_allowed_slugs)
+      .select do |record|
+        row_keys.include?(lg_directory_row_key(lg_directory_row_from_record(record, lg_directory_aliases_for_slug(record.module_slug))))
       end
+  end
+
+  def lg_directory_edit_record(record)
+    records = lg_directory_matching_records([record])
+    preferred_slugs = ["village-master", "gram-panchayat-master", "block-master", "district-master", "state-master"]
+
+    records
+      .select { |candidate| preferred_slugs.include?(candidate.module_slug) }
+      .min_by { |candidate| preferred_slugs.index(candidate.module_slug) }
   end
 
   def lg_directory_code_lookup(rows, name_key, code_key)
@@ -1475,7 +1517,7 @@ class ModulesController < ApplicationController
   end
 
   def lg_directory_row_key(row)
-    [:state_code, :state, :district_code, :district, :sub_district_code, :sub_district, :village_code, :village, :block_code, :block]
+    [:state_code, :state, :district_code, :district, :sub_district_code, :sub_district, :block_code, :block, :gp_code, :gram_panchayat, :village_code, :village]
       .map { |key| row[key].to_s.strip.downcase }
       .join("|")
   end
@@ -1514,7 +1556,16 @@ class ModulesController < ApplicationController
   end
 
   def lg_directory_selected_records
-    allowed_slugs = [
+    Array(params[:row_tokens]).filter_map do |token|
+      slug, id = token.to_s.split(":", 2)
+      next unless lg_directory_allowed_slugs.include?(slug) && id.present?
+
+      ModuleRecord.where(module_slug: slug).find_by(id: id)
+    end.uniq
+  end
+
+  def lg_directory_allowed_slugs
+    [
       "lg-directory-list",
       "state-master",
       "district-master",
@@ -1522,13 +1573,6 @@ class ModulesController < ApplicationController
       "gram-panchayat-master",
       "village-master"
     ]
-
-    Array(params[:row_tokens]).filter_map do |token|
-      slug, id = token.to_s.split(":", 2)
-      next unless allowed_slugs.include?(slug) && id.present?
-
-      ModuleRecord.where(module_slug: slug).find_by(id: id)
-    end.uniq
   end
 
   def lg_directory_csv(rows)
