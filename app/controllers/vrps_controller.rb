@@ -1301,7 +1301,8 @@ class VrpsController < ApplicationController
     return "" if id.blank? || !model_ready?(:ModuleRecord)
 
     record = ModuleRecord.find_by(module_slug: module_slug, id: id)
-    return record.data[field_key].to_s if record&.data&.[](field_key).present?
+    label = module_record_display_label(module_slug, record, field_key)
+    return label if label.present?
 
     id.to_s.match?(/\A\d+\z/) ? "" : id.to_s
   end
@@ -1322,6 +1323,19 @@ class VrpsController < ApplicationController
     end
 
     module_record_labels("add-vrp-type", ids, "vrp_type_name")
+  end
+
+  def module_record_display_label(module_slug, record, field_key)
+    return "" unless record
+
+    case module_slug
+    when "gram-panchayat-master"
+      gram_panchayat_name_from_record(record)
+    when "village-master"
+      first_present_data(record, "village_name", "village", "name")
+    else
+      Array(field_key).filter_map { |key| record.data[key].presence }.first
+    end.to_s
   end
 
   def sync_existing_vrp_master_records

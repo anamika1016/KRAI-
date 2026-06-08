@@ -936,11 +936,28 @@ document.addEventListener("turbo:load", () => {
     "village": ["state", "district", "block", "gram-panchayat"]
   };
 
-  const selectedLocationValues = (select) => {
-    if (!select || !select.value) return [];
+  const locationSelectedValuesFromDataset = (select) => {
+    if (!select) return [];
 
-    const option = select.selectedOptions?.[0];
-    return uniquePresent([select.value, option?.textContent]);
+    if (select.dataset.selectedValues) {
+      try {
+        const values = JSON.parse(select.dataset.selectedValues);
+        if (Array.isArray(values)) return values.map((value) => String(value));
+      } catch (_error) {
+        return select.dataset.selectedValues.split(",").map((value) => value.trim());
+      }
+    }
+
+    return select.dataset.selectedValue ? [select.dataset.selectedValue] : [];
+  };
+
+  const selectedLocationValues = (select) => {
+    if (!select) return [];
+
+    const selectedOptions = Array.from(select.selectedOptions || []);
+    if (selectedOptions.length === 0) return [];
+
+    return uniquePresent(selectedOptions.flatMap((option) => [option.value, option.textContent]));
   };
 
   const locationRowMatchesParents = (row, selects, level) => {
@@ -966,7 +983,7 @@ document.addEventListener("turbo:load", () => {
   const replaceLocationOptions = (select, originalOptions, allowedRows, level) => {
     if (!select) return;
 
-    const selected = select.dataset.selectedValue || select.value;
+    const selectedValues = uniquePresent(locationSelectedValuesFromDataset(select).concat(selectedLocationValues(select)));
     const blankOption = originalOptions.find((option) => option.value === "") || { value: "", label: `Select ${level}` };
     const filteredOptions = originalOptions.filter((option) => {
       if (option.value === "") return false;
@@ -991,9 +1008,10 @@ document.addEventListener("turbo:load", () => {
       const option = document.createElement("option");
       option.value = optionData.value;
       option.textContent = optionData.label;
-      option.selected = optionData.value === selected || optionData.label === selected;
+      option.selected = selectedValues.some((selected) => optionData.value === selected || optionData.label === selected);
       select.appendChild(option);
     });
+    select.dispatchEvent(new Event("chip:refresh"));
   };
 
   document.querySelectorAll("[data-location-form]").forEach((formShell) => {
@@ -1017,27 +1035,50 @@ document.addEventListener("turbo:load", () => {
       }));
     });
 
+    const syncLocationPrimary = (level) => {
+      const select = selects[level];
+      const hidden = formShell.querySelector(`[data-location-primary="${level}"]`);
+      if (!select || !hidden) return;
+
+      hidden.value = Array.from(select.selectedOptions || []).find((option) => option.value)?.value || "";
+    };
+
+    const syncLocationPrimaries = () => {
+      Object.keys(selects).forEach(syncLocationPrimary);
+    };
+
     const refreshLocationLevel = (level) => {
       if (!selects[level]) return;
 
       const key = locationKeys[level];
       const allowedRows = mappings.filter((row) => row[key] && locationRowMatchesParents(row, selects, level));
       replaceLocationOptions(selects[level], originalOptions[level], allowedRows, level);
+      syncLocationPrimary(level);
     };
 
     const refreshFrom = (level) => {
       const startIndex = locationLevels.indexOf(level) + 1;
       locationLevels.slice(startIndex).forEach((childLevel) => {
-        if (selects[childLevel]) selects[childLevel].dataset.selectedValue = "";
+        if (selects[childLevel]) {
+          selects[childLevel].dataset.selectedValue = "";
+          selects[childLevel].dataset.selectedValues = "[]";
+        }
         refreshLocationLevel(childLevel);
       });
+      syncLocationPrimaries();
     };
 
     locationLevels.forEach((level) => {
-      selects[level]?.addEventListener("change", () => refreshFrom(level));
+      selects[level]?.addEventListener("change", () => {
+        delete selects[level].dataset.selectedValue;
+        delete selects[level].dataset.selectedValues;
+        syncLocationPrimary(level);
+        refreshFrom(level);
+      });
     });
 
     locationLevels.slice(1).forEach(refreshLocationLevel);
+    syncLocationPrimaries();
   });
 
   document.querySelectorAll("[data-training-target-form]").forEach((formShell) => {
@@ -1813,6 +1854,9 @@ document.addEventListener("turbo:load", () => {
     const dropdown = document.createElement("div");
     const arrow = document.createElement("span");
     const placeholder = select.dataset.placeholder || "Select";
+    const selectAllCheckbox = select.dataset.locationLevel
+      ? select.closest("[data-location-form]")?.querySelector(`[data-chip-select-all-for="${select.dataset.locationLevel}"]`)
+      : null;
 
     control.className = "chip-multi-control";
     chips.className = "chip-multi-values";
@@ -1827,7 +1871,18 @@ document.addEventListener("turbo:load", () => {
     control.appendChild(arrow);
     control.appendChild(dropdown);
 
-    const selectedOptions = () => Array.from(select.options).filter((option) => option.selected);
+    const selectableOptions = () => Array.from(select.options).filter((option) => option.value !== "");
+    const selectedOptions = () => selectableOptions().filter((option) => option.selected);
+
+    const syncSelectAllCheckbox = () => {
+      if (!selectAllCheckbox) return;
+
+      const options = selectableOptions();
+      const selected = selectedOptions();
+      selectAllCheckbox.disabled = select.disabled || options.length === 0;
+      selectAllCheckbox.checked = options.length > 0 && selected.length === options.length;
+      selectAllCheckbox.indeterminate = selected.length > 0 && selected.length < options.length;
+    };
 
     const render = () => {
       const selected = selectedOptions();
@@ -1835,6 +1890,7 @@ document.addEventListener("turbo:load", () => {
       dropdown.innerHTML = "";
       control.classList.toggle("disabled", select.disabled);
       control.setAttribute("aria-disabled", select.disabled ? "true" : "false");
+      syncSelectAllCheckbox();
 
       if (!selected.length) {
         const empty = document.createElement("span");
@@ -1858,7 +1914,7 @@ document.addEventListener("turbo:load", () => {
         chips.appendChild(chip);
       });
 
-      const options = Array.from(select.options);
+      const options = selectableOptions();
 
       if (!options.length) {
         const emptyOption = document.createElement("div");
@@ -1884,6 +1940,16 @@ document.addEventListener("turbo:load", () => {
         dropdown.appendChild(item);
       });
     };
+
+    selectAllCheckbox?.addEventListener("change", () => {
+      if (select.disabled) return;
+
+      selectableOptions().forEach((option) => {
+        option.selected = selectAllCheckbox.checked;
+      });
+      select.dispatchEvent(new Event("change", { bubbles: true }));
+      render();
+    });
 
     control.addEventListener("click", () => {
       if (select.disabled) return;

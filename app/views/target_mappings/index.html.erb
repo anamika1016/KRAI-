@@ -115,7 +115,9 @@
             <tr>
               <th>VRP</th>
               <th>FCO</th>
-              <th>ICS</th>
+              <% unless @vrp_target_view %>
+                <th>ICS</th>
+              <% end %>
               <th>Village</th>
               <th>Farmers</th>
               <th>Month</th>
@@ -133,7 +135,9 @@
                 <tr>
                   <td><%= target.vrp&.name %></td>
                   <td><%= target.fco_name.presence || target.fco_id %></td>
-                  <td><%= target.ics_name.presence || target.ics_id %></td>
+                  <% unless @vrp_target_view %>
+                    <td><%= target.ics_name.presence || target.ics_id %></td>
+                  <% end %>
                   <td><%= target.village_name.presence || target.village_id %></td>
                   <td><%= target.farmer_count %></td>
                   <td><%= target.month_name %></td>
@@ -156,7 +160,7 @@
               <% end %>
             <% else %>
               <tr>
-	                <td colspan="<%= show_mapping_actions ? 10 : 9 %>">No target mapping saved yet.</td>
+	                <td colspan="<%= show_mapping_actions ? 10 : (@vrp_target_view ? 8 : 9) %>">No target mapping saved yet.</td>
               </tr>
             <% end %>
           </tbody>

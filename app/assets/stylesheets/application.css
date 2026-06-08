@@ -1227,6 +1227,28 @@ a {
   cursor: pointer;
 }
 
+.location-multi-label {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.location-select-all {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  color: #172126;
+  font-weight: 500;
+  white-space: nowrap;
+}
+
+.location-select-all input {
+  width: 14px;
+  height: 14px;
+  margin: 0;
+}
+
 .chip-multi-control.disabled {
   background: #f4f7f8;
   color: #7b8b98;
@@ -1235,7 +1257,7 @@ a {
 
 .chip-multi-values {
   display: flex;
-  min-height: 42px;
+  min-height: 48px;
   align-items: center;
   flex-wrap: wrap;
   gap: 6px;
@@ -2037,9 +2059,8 @@ a {
 }
 
 .vrp-page select[multiple] {
-  height: 42px;
-  min-height: 42px;
-  overflow: hidden;
+  min-height: 132px;
+  overflow: auto;
   padding: 9px 11px;
 }
 

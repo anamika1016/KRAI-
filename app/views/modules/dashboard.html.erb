@@ -46,7 +46,6 @@
             <tr>
               <th>Month</th>
               <th>FCO</th>
-              <th>ICS</th>
               <th>Village</th>
               <th>Farmers</th>
               <th>Main Activity</th>
@@ -63,7 +62,6 @@
                 <tr>
                   <td><%= row[:month] %></td>
                   <td><%= row[:fco] %></td>
-                  <td><%= row[:ics] %></td>
                   <td><%= row[:village] %></td>
                   <td><%= row[:farmers] %></td>
                   <td><%= row[:main_activity] %></td>
@@ -76,7 +74,7 @@
               <% end %>
             <% else %>
               <tr>
-                <td colspan="11">No target has been assigned to this VRP yet.</td>
+                <td colspan="10">No target has been assigned to this VRP yet.</td>
               </tr>
             <% end %>
           </tbody>
@@ -153,7 +151,7 @@
           <thead>
             <tr>
               <th>FCO</th>
-              <th>ICS</th>
+              <th>Gram Panchayat</th>
               <th>Village</th>
               <th>Mapped Farmers</th>
               <th>Targets</th>
@@ -165,7 +163,7 @@
               <% @vrp_village_rows.each do |row| %>
                 <tr>
                   <td><%= row[:fco] %></td>
-                  <td><%= row[:ics] %></td>
+                  <td><%= row[:gram_panchayat].presence || "-" %></td>
                   <td><%= row[:village] %></td>
                   <td><%= row[:farmers] %></td>
                   <td><%= row[:targets] %></td>

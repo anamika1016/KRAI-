@@ -43,6 +43,7 @@ class Vrp < ApplicationRecord
   validate :uploaded_documents_are_images
   before_validation :set_default_office_values
   before_validation :sync_bank_name_from_master
+  before_validation :sync_profile_location_from_lists
   before_validation :sync_location_lists_from_profile
   before_save :remove_blank_array_values
 
@@ -64,6 +65,16 @@ class Vrp < ApplicationRecord
 
     self.gram_panchayat_ids = [vrp_profile.gram_panchayat_id] if gram_panchayat_ids.blank? && vrp_profile.gram_panchayat_id.present?
     self.village_ids = [vrp_profile.village_id] if village_ids.blank? && vrp_profile.village_id.present?
+  end
+
+  def sync_profile_location_from_lists
+    return unless vrp_profile
+
+    first_gram_panchayat_id = cleaned_ids(gram_panchayat_ids).first
+    first_village_id = cleaned_ids(village_ids).first
+
+    vrp_profile.gram_panchayat_id = first_gram_panchayat_id if first_gram_panchayat_id.present?
+    vrp_profile.village_id = first_village_id if first_village_id.present?
   end
 
   def remove_blank_array_values
