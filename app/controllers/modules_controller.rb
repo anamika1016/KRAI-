@@ -9,6 +9,8 @@ class ModulesController < ApplicationController
                 :training_activity_mappings, :approval_user_mappings, :approval_user_options,
                 :parent_office_mappings
 
+  APPROVAL_REGISTRATION_MODULES = ["Farmer Registration", "VRP Registration", "Jeevika Jankar Registration"].freeze
+
   DASHBOARD_CARDS = [
     ["Total VRP", "0", "Registered field resources"],
     ["Active VRP", "0", "Currently active"],
@@ -392,6 +394,7 @@ class ModulesController < ApplicationController
     load_module!
     @record = ModuleRecord.find(params[:id])
     @records = module_records
+    prepare_approval_channel_form(@record) if record_source_slug == "approval-master"
     prepare_vrp_bill_data if @slug == "vrp-bill-add"
     render :show
   end
@@ -436,6 +439,12 @@ class ModulesController < ApplicationController
   def update
     load_module!
     record = ModuleRecord.find(params[:id])
+
+    if record_source_slug == "approval-master" && approval_channel_params?
+      update_approval_channel(record)
+      return
+    end
+
     previous_data = record.data.dup
 
     next_data = record.data.merge(normalized_module_data)
@@ -1087,7 +1096,7 @@ class ModulesController < ApplicationController
     @dashboard_approval_visibility_steps
       .select do |record|
         record.data["status"].to_s != "Inactive" &&
-          ["Farmer Registration", "VRP Registration"].include?(record.data["module_name"].to_s) &&
+          approval_registration_module?(record.data["module_name"]) &&
           dashboard_vrp_name_matches?(record.data["vrp_name"], vrp) &&
           identities.any? do |identity|
             dashboard_value_matches?(record.data["stakeholder_name"], identity[:stakeholder]) &&
@@ -1219,7 +1228,7 @@ class ModulesController < ApplicationController
     @dashboard_approval_steps
       .select do |record|
         record.data["status"].to_s != "Inactive" &&
-          ["Farmer Registration", "VRP Registration"].include?(record.data["module_name"].to_s) &&
+          approval_registration_module?(record.data["module_name"]) &&
           identities.any? do |identity|
             record_role = record.data["role"].presence || record.data["role_name"]
             record_role_name = record.data["role"].present? ? record.data["role_name"] : nil
@@ -1280,11 +1289,12 @@ class ModulesController < ApplicationController
       person_type: current_app_user&.dig("person_type"),
       office: current_app_user&.dig("sub_office_name").presence || current_app_user&.dig("office"),
       office_category: current_app_user&.dig("office_category").presence || current_app_user&.dig("office_name"),
-      user_name: current_app_user&.dig("username").presence || current_app_user&.dig("user_name")
+      user_name: current_app_user&.dig("username").presence || current_app_user&.dig("user_name"),
+      user_names: [current_app_user&.dig("username"), current_app_user&.dig("user_name"), current_app_user&.dig("name")]
     } if vrp.created_by_id.blank?
 
     identities
-      .select { |identity| identity[:role].present? && identity[:stakeholder].present? }
+      .select { |identity| identity[:stakeholder].present? && (identity[:role].present? || identity_user_name_values(identity).present?) }
       .uniq
   end
 
@@ -1297,11 +1307,14 @@ class ModulesController < ApplicationController
       person_type: user.respond_to?(:person_type) ? user.person_type : nil,
       office: user.respond_to?(:sub_office_name) ? user.sub_office_name.presence || user.office : user.office,
       office_category: (user.respond_to?(:office_category) ? user.office_category : nil).presence || (user.respond_to?(:office_name) ? user.office_name : nil),
-      user_name: user.user_name
+      user_name: user.user_name,
+      user_names: [user.user_name, user.full_name]
     }
   end
 
   def record_dashboard_identity(record)
+    full_name = [record.data["first_name"], record.data["last_name"]].compact_blank.join(" ")
+
     {
       role: record.data["role"],
       stakeholder: record.data["stakeholder"],
@@ -1310,7 +1323,8 @@ class ModulesController < ApplicationController
       person_type: record.data["person_type"],
       office: record.data["sub_office_name"].presence || record.data["office"],
       office_category: record.data["office_category"].presence || record.data["office_name"],
-      user_name: record.data["user_name"]
+      user_name: record.data["user_name"],
+      user_names: [record.data["user_name"], full_name, record.data["name"]]
     }
   end
 
@@ -1337,10 +1351,14 @@ class ModulesController < ApplicationController
     expected.to_s.strip.casecmp(actual.to_s.strip).zero?
   end
 
+  def approval_registration_module?(module_name)
+    module_name.blank? || APPROVAL_REGISTRATION_MODULES.any? { |name| dashboard_value_matches?(module_name, name) }
+  end
+
   def approval_identity_filters_match?(record, identity)
     approval_value_matches?(approval_record_office(record), identity[:office]) &&
       approval_value_matches?(record.data["office_category"], identity[:office_category]) &&
-      approval_user_name_matches?(record.data["user_name"], identity[:user_name])
+      approval_user_name_matches?(record.data["user_name"], identity_user_name_values(identity))
   end
 
   def approval_value_matches?(expected, actual)
@@ -1348,7 +1366,13 @@ class ModulesController < ApplicationController
   end
 
   def approval_user_name_matches?(expected, actual)
-    expected.blank? || (actual.present? && dashboard_value_matches?(expected, actual))
+    return true if expected.blank?
+
+    Array(actual).compact_blank.any? { |value| dashboard_value_matches?(expected, value) }
+  end
+
+  def identity_user_name_values(identity)
+    (Array(identity[:user_names]) + [identity[:user_name]]).compact_blank.uniq
   end
 
   def approval_record_office(record)
@@ -1978,6 +2002,68 @@ class ModulesController < ApplicationController
     end
   end
 
+  def update_approval_channel(record)
+    data = normalized_module_data
+    steps = data.delete("approval_steps").to_h
+    channel_records = approval_channel_records_for(record)
+    records_by_sequence = channel_records.group_by { |approval_record| approval_sequence_from_level(approval_record.data["approval_level"]) }
+    saved_records = []
+
+    steps.each do |level, approver|
+      next if approver.blank?
+
+      sequence = approval_sequence_from_level(level)
+      approval_record = records_by_sequence[sequence]&.shift || ModuleRecord.new(module_slug: "approval-master")
+      approval_record.data = data.merge(
+        "approval_level" => level,
+        "approver_approved_by" => approver,
+        "status" => data["status"].presence || "Active"
+      )
+      approval_record.save!
+      saved_records << approval_record
+    end
+
+    if saved_records.blank?
+      @record = record
+      @records = module_records
+      prepare_approval_channel_form(record)
+      flash.now[:alert] = "Please select at least one approval user."
+      render :show, status: :unprocessable_entity
+      return
+    end
+
+    stale_records = (channel_records - saved_records)
+    stale_records.each(&:destroy)
+
+    redirect_to module_path("approval-list"), notice: "Approval channel updated successfully."
+  rescue ActiveRecord::RecordInvalid => e
+    @record = record
+    @records = module_records
+    prepare_approval_channel_form(record)
+    flash.now[:alert] = e.record.errors.full_messages.to_sentence
+    render :show, status: :unprocessable_entity
+  end
+
+  def prepare_approval_channel_form(record)
+    @approval_channel_records = approval_channel_records_for(record)
+  end
+
+  def approval_channel_records_for(record)
+    return [] unless record
+
+    data = record.data
+    ModuleRecord
+      .where(module_slug: "approval-master")
+      .order(created_at: :asc)
+      .select { |approval_record| same_approval_channel?(approval_record.data, data) }
+  end
+
+  def same_approval_channel?(left_data, right_data)
+    ["module_name", "stakeholder_name", "user_name"].all? do |key|
+      left_data[key].to_s.strip.casecmp(right_data[key].to_s.strip).zero?
+    end
+  end
+
   def valid_module_data?(data)
     return true unless record_source_slug == "new-user"
 
@@ -2440,7 +2526,7 @@ class ModulesController < ApplicationController
       "Select Mandatory" => ["Yes", "No"],
       "Office Level" => ["State", "District", "Block", "Gram Panchayat", "Village"],
       "Parent Office Type" => ["Parent Office", "Sub Parent Office"],
-      "Module Name" => ["VRP Registration", "VRP Bill"],
+      "Module Name" => ["Jeevika Jankar Registration", "VRP Registration", "VRP Bill"],
       "VRP Name" => vrp_name_options,
       "Sub Module Name" => sidebar_submodule_names
     }[field] || []

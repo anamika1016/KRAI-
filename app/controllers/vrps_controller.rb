@@ -2,6 +2,8 @@ class VrpsController < ApplicationController
   helper_method :blank_display, :module_record_label, :module_record_labels, :vrp_type_labels,
                 :approval_step_closed?, :closing_approval_history
 
+  APPROVAL_REGISTRATION_MODULES = ["Farmer Registration", "VRP Registration", "Jeevika Jankar Registration"].freeze
+
   before_action :set_form_dependencies, only: [:new, :create]
   before_action :set_edit_dependencies, only: [:edit, :update]
 
@@ -13,7 +15,6 @@ class VrpsController < ApplicationController
         status: vrp.status,
         name: vrp.name,
         father_husband_name: vrp.father_husband_name,
-        person_type: vrp.person_type,
         gender: vrp.gender,
         date_of_birth: vrp.date_of_birth&.strftime("%d-%m-%Y"),
         date_of_joining: vrp.date_of_joining&.strftime("%d-%m-%Y"),
@@ -448,7 +449,7 @@ class VrpsController < ApplicationController
         record_vrp_name = record.data["vrp_name"].to_s
 
         active_module_record?(record) &&
-          ["Farmer Registration", "VRP Registration"].include?(record.data["module_name"].to_s) &&
+          approval_registration_module?(record.data["module_name"]) &&
           vrp_name_matches?(record_vrp_name, vrp) &&
           creator_identities.any? do |identity|
             module_value_matches?(record_stakeholder, identity[:stakeholder]) &&
@@ -559,6 +560,10 @@ class VrpsController < ApplicationController
     normalize_approver_label(expected).casecmp(normalize_approver_label(actual)).zero?
   end
 
+  def approval_registration_module?(module_name)
+    module_name.blank? || APPROVAL_REGISTRATION_MODULES.any? { |name| module_value_matches?(module_name, name) }
+  end
+
   def approval_office_matches?(expected, actual)
     expected.blank? || actual.blank? || module_value_matches?(expected, actual)
   end
@@ -566,7 +571,7 @@ class VrpsController < ApplicationController
   def approval_identity_filters_match?(record, identity)
     approval_office_matches?(approval_record_office(record), identity[:office]) &&
       approval_office_matches?(record.data["office_category"], identity[:office_category]) &&
-      approval_user_name_matches?(record.data["user_name"], identity[:user_name])
+      approval_user_name_matches?(record.data["user_name"], identity_user_name_values(identity))
   end
 
   def approval_record_office(record)
@@ -574,7 +579,13 @@ class VrpsController < ApplicationController
   end
 
   def approval_user_name_matches?(expected, actual)
-    expected.blank? || (actual.present? && module_value_matches?(expected, actual))
+    return true if expected.blank?
+
+    Array(actual).compact_blank.any? { |value| module_value_matches?(expected, value) }
+  end
+
+  def identity_user_name_values(identity)
+    (Array(identity[:user_names]) + [identity[:user_name]]).compact_blank.uniq
   end
 
   def vrp_name_matches?(expected, vrp)
@@ -668,11 +679,17 @@ class VrpsController < ApplicationController
     identities << current_approval_identity if current_app_user.present?
 
     identities
-      .select { |identity| identity[:role].present? && identity[:stakeholder].present? }
+      .select { |identity| identity[:stakeholder].present? && (identity[:role].present? || identity_user_name_values(identity).present?) }
       .uniq
   end
 
   def current_approval_identity
+    user_names = [
+      current_app_user&.dig("username"),
+      current_app_user&.dig("user_name"),
+      current_app_user&.dig("name")
+    ]
+
     {
       role: current_app_user&.dig("role").presence || current_app_user&.dig("role_name"),
       stakeholder: current_app_user&.dig("stakeholder"),
@@ -681,11 +698,14 @@ class VrpsController < ApplicationController
       person_type: current_app_user&.dig("person_type"),
       office: current_app_user&.dig("sub_office_name").presence || current_app_user&.dig("office"),
       office_category: current_app_user&.dig("office_category").presence || current_app_user&.dig("office_name"),
-      user_name: current_app_user&.dig("username").presence || current_app_user&.dig("user_name")
+      user_name: user_names.compact_blank.first,
+      user_names: user_names
     }
   end
 
   def user_approval_identity(user)
+    user_names = [user.user_name, user.full_name]
+
     {
       role: user.role.presence || (user.role_name if user.respond_to?(:role_name)),
       stakeholder: user.stakeholder,
@@ -694,11 +714,14 @@ class VrpsController < ApplicationController
       person_type: user.respond_to?(:person_type) ? user.person_type : nil,
       office: user.respond_to?(:sub_office_name) ? user.sub_office_name.presence || user.office : user.office,
       office_category: (user.respond_to?(:office_category) ? user.office_category : nil).presence || (user.respond_to?(:office_name) ? user.office_name : nil),
-      user_name: user.user_name
+      user_name: user.user_name,
+      user_names: user_names
     }
   end
 
   def record_approval_identity(record)
+    full_name = [record.data["first_name"], record.data["last_name"]].compact_blank.join(" ")
+
     {
       role: record.data["role"].presence || record.data["role_name"],
       stakeholder: record.data["stakeholder"],
@@ -707,7 +730,8 @@ class VrpsController < ApplicationController
       person_type: record.data["person_type"],
       office: record.data["sub_office_name"].presence || record.data["office"],
       office_category: record.data["office_category"].presence || record.data["office_name"],
-      user_name: record.data["user_name"]
+      user_name: record.data["user_name"],
+      user_names: [record.data["user_name"], full_name, record.data["name"]]
     }
   end
 

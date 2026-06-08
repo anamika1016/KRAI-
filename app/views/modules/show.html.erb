@@ -12,20 +12,40 @@
   <% list_only_slugs = ["activity-group-list", "vrp-activity-list", "task-completion-indicator-list", "approval-list", "access-control-list", "vrp-bill-list", "training-form-list"] %>
   <% entry_only_slugs = ["add-activity-group", "add-vrp-activity", "task-completion-indicator", "approval-master", "access-control", "vrp-bill-add", "training-form"] %>
 
-  <% if @slug == "approval-master" && @record.blank? %>
+  <% if @slug == "approval-master" %>
     <% module_options = static_field_options("Module Name") %>
     <% stakeholder_options = module_field_options("Stakeholder Name") %>
     <% approver_options = module_field_options("Approver (Approved By)") %>
-    <% approval_levels = (1..3).map { |number| "Approval #{number}" } %>
+    <% selected_module_name = @record&.data&.[]("module_name").to_s %>
+    <% selected_stakeholder_name = @record&.data&.[]("stakeholder_name").to_s %>
+    <% selected_user_name = @record&.data&.[]("user_name").to_s %>
+    <% selected_status = @record&.data&.[]("status").presence || "Active" %>
+    <%
+      approval_channel_records = Array(@approval_channel_records.presence || (@record.present? ? [@record] : []))
+      approval_rows = approval_channel_records
+        .sort_by { |record| record.data["approval_level"].to_s[/\d+/].to_i.presence || 1 }
+        .map.with_index do |record, index|
+          level = record.data["approval_level"].presence || "Approval #{index + 1}"
+          {
+            level: level,
+            sequence: level.to_s[/\d+/].to_i.presence || index + 1,
+            approver: record.data["approver_approved_by"].to_s
+          }
+        end
+      approval_rows = (1..3).map { |number| { level: "Approval #{number}", sequence: number, approver: "" } } if approval_rows.blank?
+      next_approval_level = approval_rows.map { |row| row[:sequence].to_i }.max.to_i + 1
+    %>
+    <% form_url = @record.present? ? module_record_path(@slug, @record) : records_module_path(@slug) %>
+    <% form_method = @record.present? ? :patch : :post %>
     <section class="module-card approval-channel-card">
-      <%= form_with url: records_module_path(@slug), method: :post, html: { class: "module-entry-form", data: { user_role_form: true } } do %>
+      <%= form_with url: form_url, method: form_method, html: { class: "module-entry-form", data: { user_role_form: true } } do %>
         <div class="module-form-grid user-registration-grid">
           <label>
             <span>Module Name <em>*</em></span>
             <select name="module_record[module_name]" required>
               <option value="">Select Module</option>
               <% module_options.each do |option| %>
-                <option value="<%= option %>"><%= option %></option>
+                <option value="<%= option %>" <%= "selected" if option == selected_module_name %>><%= option %></option>
               <% end %>
             </select>
           </label>
@@ -35,7 +55,7 @@
             <select name="module_record[stakeholder_name]" required data-role-stakeholder-select>
               <option value="">Select Stakeholder Category</option>
               <% stakeholder_options.each do |option| %>
-                <option value="<%= option %>"><%= option %></option>
+                <option value="<%= option %>" <%= "selected" if option == selected_stakeholder_name %>><%= option %></option>
               <% end %>
             </select>
           </label>
@@ -45,13 +65,13 @@
             <select name="module_record[user_name]" required data-office-user-select>
               <option value="">Select User Name</option>
               <% approver_options.each do |option| %>
-                <option value="<%= option %>"><%= option %></option>
+                <option value="<%= option %>" <%= "selected" if option == selected_user_name %>><%= option %></option>
               <% end %>
             </select>
           </label>
         </div>
 
-        <div class="approval-levels" data-approval-levels data-next-approval-level="<%= approval_levels.size + 1 %>">
+        <div class="approval-levels" data-approval-levels data-next-approval-level="<%= next_approval_level %>">
           <div class="approval-level-toolbar">
             <h2>Approval Levels</h2>
             <button type="button" class="add-level-btn" data-add-approval-level>Add More</button>
@@ -61,32 +81,32 @@
             <div class="approval-level-head">Approval User</div>
             <div class="approval-level-head">Action</div>
 
-            <% approval_levels.each_with_index do |level, index| %>
-              <div class="approval-level-cell" data-approval-row="<%= index + 1 %>">
-                <strong><%= level %></strong>
-                <small>Approval step <%= index + 1 %></small>
+            <% approval_rows.each do |row| %>
+              <div class="approval-level-cell" data-approval-row="<%= row[:sequence] %>">
+                <strong><%= row[:level] %></strong>
+                <small>Approval step <%= row[:sequence] %></small>
               </div>
-              <div class="approval-level-cell" data-approval-row="<%= index + 1 %>">
-                <select name="module_record[approval_steps][<%= level %>]">
+              <div class="approval-level-cell" data-approval-row="<%= row[:sequence] %>">
+                <select name="module_record[approval_steps][<%= row[:level] %>]">
                   <option value="">Select approval user</option>
                   <% approver_options.each do |option| %>
-                    <option value="<%= option %>"><%= option %></option>
+                    <option value="<%= option %>" <%= "selected" if option == row[:approver] %>><%= option %></option>
                   <% end %>
                 </select>
                 <small>Select the user responsible at this approval stage.</small>
               </div>
-              <div class="approval-level-cell" data-approval-row="<%= index + 1 %>">
+              <div class="approval-level-cell" data-approval-row="<%= row[:sequence] %>">
                 <button type="button" class="remove-level-btn" data-remove-approval-level>Remove</button>
               </div>
             <% end %>
           </div>
         </div>
 
-        <input type="hidden" name="module_record[status]" value="Active">
+        <input type="hidden" name="module_record[status]" value="<%= selected_status %>">
 
         <div class="module-form-actions">
           <%= link_to "Clear", module_path(@slug), class: "btn btn-secondary" %>
-          <button type="submit" class="btn btn-primary">Save</button>
+          <button type="submit" class="btn btn-primary"><%= @record.present? ? "Update" : "Save" %></button>
         </div>
       <% end %>
     </section>
@@ -653,6 +673,92 @@
         </table>
       </div>
       <div class="table-pagination" data-pagination-for="all_user_list"></div>
+    </section>
+  <% elsif @slug == "approval-list" && @record.blank? %>
+    <% table_id = "approval_list_table" %>
+    <%
+      grouped_approval_records = @records.group_by do |record|
+        [
+        record.data["module_name"].to_s.strip,
+        record.data["stakeholder_name"].to_s.strip,
+        record.data["user_name"].to_s.strip,
+        record.data["status"].presence || "Active"
+        ]
+      end
+    %>
+    <section class="module-card list-only-card">
+      <div class="module-card-header list-title-header">
+        <h2>All Approvals</h2>
+      </div>
+
+      <div class="vrp-list-toolbar compact">
+        <button type="button" class="list-btn edit" data-module-edit-selected>Edit</button>
+        <button type="button" class="list-btn active" data-module-status-selected="Active">Active</button>
+        <button type="button" class="list-btn deactive" data-module-status-selected="Inactive">Deactive</button>
+        <button type="button" class="list-btn delete" data-module-delete-selected>Delete</button>
+      </div>
+
+      <div class="list-controls">
+        <div class="list-search">
+          <span>⌕</span>
+          <input type="search" placeholder="Search records" data-table-search="<%= table_id %>">
+        </div>
+        <div class="list-control-actions">
+          <label class="import-btn">
+            Choose Excel
+            <input type="file" accept=".csv,.xlsx,.xls" data-import-file hidden>
+          </label>
+          <button type="button" class="list-btn upload" data-upload-selected>Upload</button>
+          <button type="button" class="list-btn export" data-export-table="<%= table_id %>">Export</button>
+        </div>
+      </div>
+
+      <div class="table-shell">
+        <table class="module-table user-list-table" id="<%= table_id %>" data-paginated-table data-page-size="15">
+          <thead>
+            <tr>
+              <th><input type="checkbox" data-module-select-all></th>
+              <% @module[:fields].each do |field| %>
+                <th><%= resource_person_label(field) %></th>
+              <% end %>
+            </tr>
+          </thead>
+          <tbody>
+            <% if grouped_approval_records.any? %>
+              <% grouped_approval_records.each_value do |approval_records| %>
+                <% sorted_records = approval_records.sort_by { |record| record.data["approval_level"].to_s[/\d+/].to_i.presence || 1 } %>
+                <% group_paths = sorted_records.map { |record| edit_module_record_path("approval-master", record) } %>
+                <% sorted_records.each_with_index do |record, index| %>
+                  <tr>
+                    <% if index.zero? %>
+                      <td rowspan="<%= sorted_records.size %>">
+                        <input type="checkbox" value="<%= group_paths.first %>" data-module-row-select data-module-row-paths="<%= json_escape(group_paths.to_json) %>">
+                      </td>
+                    <% end %>
+                    <% @module[:fields].each do |field| %>
+                      <% rowspanned_field = ["Module Name", "Stakeholder Name", "Status", "User Name"].include?(field) %>
+                      <% next if rowspanned_field && !index.zero? %>
+                      <% field_key = field.parameterize(separator: "_") %>
+                      <% value = record.data[field_key].presence || "-" %>
+                      <% rowspan = rowspanned_field ? " rowspan=\"#{sorted_records.size}\"".html_safe : "" %>
+                      <% if field == "Status" %>
+                        <td<%= rowspan %>><span class="status-pill <%= value == "Inactive" ? "inactive" : "active" %>"><%= value == "-" ? "Active" : value %></span></td>
+                      <% else %>
+                        <td<%= rowspan %>><%= value %></td>
+                      <% end %>
+                    <% end %>
+                  </tr>
+                <% end %>
+              <% end %>
+            <% else %>
+              <tr>
+                <td colspan="<%= @module[:fields].size + 1 %>">No records saved yet.</td>
+              </tr>
+            <% end %>
+          </tbody>
+        </table>
+      </div>
+      <div class="table-pagination" data-pagination-for="<%= table_id %>"></div>
     </section>
   <% elsif list_only_slugs.include?(@slug) && @record.blank? %>
     <% table_id = "#{@slug.tr("-", "_")}_table" %>

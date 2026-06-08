@@ -207,6 +207,17 @@ document.addEventListener("turbo:load", () => {
     });
   }
 
+  const moduleRowPaths = (checkbox) => {
+    if (!checkbox.dataset.moduleRowPaths) return [checkbox.value];
+
+    try {
+      const paths = JSON.parse(checkbox.dataset.moduleRowPaths);
+      return Array.isArray(paths) && paths.length ? paths : [checkbox.value];
+    } catch (_error) {
+      return [checkbox.value];
+    }
+  };
+
   const moduleEditButton = document.querySelector("[data-module-edit-selected]");
   if (moduleEditButton) {
     moduleEditButton.addEventListener("click", () => {
@@ -225,7 +236,8 @@ document.addEventListener("turbo:load", () => {
   if (moduleDeleteButton) {
     moduleDeleteButton.addEventListener("click", () => {
       const paths = Array.from(document.querySelectorAll("[data-module-row-select]:checked"))
-        .map((checkbox) => checkbox.value.replace(/\/edit$/, ""));
+        .flatMap((checkbox) => moduleRowPaths(checkbox))
+        .map((path) => path.replace(/\/edit$/, ""));
 
       deleteSelected(paths, "Delete selected record(s)?");
     });
@@ -241,8 +253,9 @@ document.addEventListener("turbo:load", () => {
         return;
       }
 
-      const responses = await Promise.all(selected.map((checkbox) => {
-        const path = `${checkbox.value.replace(/\/edit$/, "/set_status")}?status=${encodeURIComponent(status)}`;
+      const paths = selected.flatMap((checkbox) => moduleRowPaths(checkbox));
+      const responses = await Promise.all(paths.map((selectedPath) => {
+        const path = `${selectedPath.replace(/\/edit$/, "/set_status")}?status=${encodeURIComponent(status)}`;
         return fetch(path, {
           method: "PATCH",
           headers: {
