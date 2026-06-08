@@ -1,4 +1,11 @@
 document.addEventListener("turbo:load", () => {
+  const vrpUiLabel = "Jeevika Jankar";
+  const replaceVrpUiText = (value) => `${value || ""}`
+    .replace(/\bvrp\b/gi, vrpUiLabel)
+    .replace(/वीआरपी/g, vrpUiLabel)
+    .replace(/व्हीआरपी/g, vrpUiLabel)
+    .replace(/ଭିଆରପି/g, vrpUiLabel);
+
   const mobileMenuToggle = document.querySelector("[data-mobile-menu-toggle]");
   const mobileSidebar = document.querySelector("[data-mobile-sidebar]");
   const mobileSidebarBackdrop = document.querySelector("[data-mobile-sidebar-backdrop]");
@@ -79,7 +86,7 @@ document.addEventListener("turbo:load", () => {
       const selected = Array.from(document.querySelectorAll("[data-vrp-row-select]:checked"));
 
       if (selected.length !== 1) {
-        window.alert("Please select one VRP only");
+        window.alert(replaceVrpUiText("Please select one VRP only"));
         return;
       }
 
@@ -144,7 +151,7 @@ document.addEventListener("turbo:load", () => {
       const paths = Array.from(document.querySelectorAll("[data-vrp-row-select]:checked"))
         .map((checkbox) => `/vrps/${checkbox.value}`);
 
-      deleteSelected(paths, "Delete selected VRP record(s)?");
+      deleteSelected(paths, replaceVrpUiText("Delete selected VRP record(s)?"));
     });
   }
 
@@ -154,7 +161,7 @@ document.addEventListener("turbo:load", () => {
       const selected = Array.from(document.querySelectorAll("[data-vrp-row-select]:checked"));
 
       if (selected.length !== 1) {
-        window.alert("Please select one VRP only");
+        window.alert(replaceVrpUiText("Please select one VRP only"));
         return;
       }
 
@@ -168,7 +175,7 @@ document.addEventListener("turbo:load", () => {
       const active = button.dataset.vrpActiveSelected;
 
       if (selected.length === 0) {
-        window.alert("Please select at least one VRP");
+        window.alert(replaceVrpUiText("Please select at least one VRP"));
         return;
       }
 
@@ -183,7 +190,7 @@ document.addEventListener("turbo:load", () => {
       }));
 
       if (responses.some((response) => !response.ok)) {
-        window.alert("Some selected VRP record(s) could not be updated.");
+        window.alert(replaceVrpUiText("Some selected VRP record(s) could not be updated."));
         return;
       }
 
@@ -1361,7 +1368,7 @@ document.addEventListener("turbo:load", () => {
       if (!rowsBody) return;
 
       if (!mappings.length) {
-        rowsBody.innerHTML = `<tr><td colspan="6">No VRP ICS mapping found for selected VRP.</td></tr>`;
+        rowsBody.innerHTML = `<tr><td colspan="6">${replaceVrpUiText("No VRP ICS mapping found for selected VRP.")}</td></tr>`;
         setCount("0 mapping selected");
         return;
       }
@@ -1416,7 +1423,7 @@ document.addEventListener("turbo:load", () => {
       if (!rowsBody) return;
 
       if (!vrpSelect.value) {
-        rowsBody.innerHTML = `<tr><td colspan="6">Select VRP to load mapped villages.</td></tr>`;
+        rowsBody.innerHTML = `<tr><td colspan="6">${replaceVrpUiText("Select VRP to load mapped villages.")}</td></tr>`;
         setCount("0 mapping selected");
         return;
       }
@@ -2704,7 +2711,7 @@ document.addEventListener("turbo:load", () => {
 
       const original = originalText.get(node) || node.nodeValue;
       originalText.set(node, original);
-      node.nodeValue = translatePhrase(original, language);
+      node.nodeValue = replaceVrpUiText(translatePhrase(original, language));
     };
 
     const translateAttributes = (element, language) => {
@@ -2715,17 +2722,18 @@ document.addEventListener("turbo:load", () => {
         const dataKey = `i18nOriginal${attribute.replace(/(^|-)([a-z])/g, (_match, _dash, letter) => letter.toUpperCase())}`;
         const original = element.dataset[dataKey] || value;
         element.dataset[dataKey] = original;
-        element.setAttribute(attribute, translatePhrase(original, language));
+        element.setAttribute(attribute, replaceVrpUiText(translatePhrase(original, language)));
       });
 
       if ((element.matches("input[type='submit'], input[type='button']")) && element.value) {
         element.dataset.i18nOriginalValue ||= element.value;
-        element.value = translatePhrase(element.dataset.i18nOriginalValue, language).trim();
+        element.value = replaceVrpUiText(translatePhrase(element.dataset.i18nOriginalValue, language)).trim();
       }
     };
 
 	    const applyLanguage = (language) => {
 	      document.documentElement.lang = language;
+      document.title = replaceVrpUiText(document.title);
       languageButtons.forEach((button) => {
         button.classList.toggle("active", button.dataset.languageOption === language);
       });
