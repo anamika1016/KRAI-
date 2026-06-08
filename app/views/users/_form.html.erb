@@ -2,7 +2,7 @@
 <% form_method = user.persisted? ? :patch : :post %>
 <% stakeholder_role_value = user.respond_to?(:stakeholder_role) ? user.stakeholder_role : nil %>
 
-<section class="module-card" data-user-role-form data-role-map="<%= json_escape(@role_management_mappings.to_json) %>" data-location-form data-location-map="<%= json_escape(@location_hierarchy_mappings.to_json) %>">
+<section class="module-card" data-user-role-form data-role-map="<%= json_escape(@role_management_mappings.to_json) %>" data-office-map="<%= json_escape((@office_category_mappings || []).to_json) %>" data-location-form data-location-map="<%= json_escape(@location_hierarchy_mappings.to_json) %>">
   <%= form_with model: user, url: form_url, method: form_method, html: { class: "module-entry-form", multipart: true } do |f| %>
     <div class="module-form-grid user-registration-grid">
       <label>
@@ -36,12 +36,13 @@
       <% end %>
 
       <label>
-        <span>Parent Office Name</span>
-        <%= f.select :parent_office, options_for_select(@parent_office_options, user.parent_office), { include_blank: "Select Parent Office Name" } %>
+        <span>Office Name</span>
+        <%= f.select :office_name, options_for_select(@office_name_options, user.office_name.presence || user.office), { include_blank: "Select Office Name" }, data: { office_name_select: true, selected_value: user.office_name.presence || user.office } %>
       </label>
       <label>
-        <span>Office Name</span>
-        <%= f.select :office_name, options_for_select(@office_name_options, user.office_name.presence || user.office), { include_blank: "Select Office Name" } %>
+        <span>Sub Office Name</span>
+        <% sub_office_value = user.respond_to?(:sub_office_name) ? user.sub_office_name : nil %>
+        <%= f.select :sub_office_name, options_for_select(@sub_office_name_options || [], sub_office_value.presence || user.office), { include_blank: "Select Sub Office Name" }, data: { sub_office_name_select: true, selected_value: sub_office_value.presence || user.office } %>
       </label>
 
       <label>

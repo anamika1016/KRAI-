@@ -71,11 +71,11 @@ class UsersController < ApplicationController
   def user_params
     permitted = params.require(:user).permit(
       :stakeholder, :stakeholder_role, :role, :state, :district, :block, :gram_panchayat, :village,
-      :parent_office, :office_category, :office_name, :office, :full_address, :pincode, :first_name, :last_name,
+      :parent_office, :office_category, :office_name, :sub_office_name, :office, :full_address, :pincode, :first_name, :last_name,
       :gender, :email, :password, :user_name, :mobile_no,
       :user_type, :user_management_role, :person_type, :role_name, :status
     )
-    permitted[:office] = permitted[:office_name].presence || permitted[:office]
+    permitted[:office] = permitted[:sub_office_name].presence || permitted[:office_name].presence || permitted[:office]
     permitted
   end
 
@@ -100,6 +100,8 @@ class UsersController < ApplicationController
     @location_hierarchy_mappings = location_hierarchy_mappings
     @parent_office_options = module_record_options("parent-office-add", ["parent_office_name", "parent_category"])
     @office_name_options = module_record_options("office-category-add", ["office_name", "category_name"])
+    @office_category_mappings = office_category_mappings
+    @sub_office_name_options = module_record_options("office-mapping-add", ["sub_office_name", "office_mapping", "office"])
     @ics_options = module_record_options("ics-master", "ics_name")
   end
 
@@ -130,11 +132,17 @@ class UsersController < ApplicationController
       .select { |record| record.data["status"].blank? || record.data["status"].to_s.casecmp("Active").zero? }
       .flat_map do |record|
         stakeholder_role = first_present_data(record, "stakeholder_role").to_s.strip
+        parent_office = first_present_data(record, "parent_office", "parent_category", "office_name", "office").to_s.strip
+        office_name = first_present_data(record, "office_name", "office").to_s.strip
         mapping_labels_for_option(stakeholder_role, :stakeholder_role).map do |stakeholder_role_label|
           {
             stakeholder: first_present_data(record, "stakeholder_category", "stakeholder_name", "stakeholder").to_s.strip,
             stakeholder_role: stakeholder_role,
             stakeholder_role_label: stakeholder_role_label,
+            parent_office: parent_office,
+            office_category: parent_office,
+            office_name: office_name,
+            office: office_name,
             role: "",
             role_label: "",
             role_name: "",
@@ -276,7 +284,7 @@ class UsersController < ApplicationController
     return [] unless defined?(ModuleRecord) && ModuleRecord.table_exists?
 
     ModuleRecord
-      .where(module_slug: "office-category-add")
+      .where(module_slug: ["office-category-add", "office-mapping-add"])
       .order(created_at: :desc)
       .select { |record| record.data["status"].blank? || record.data["status"].to_s.casecmp("Active").zero? }
       .map do |record|
@@ -285,6 +293,9 @@ class UsersController < ApplicationController
         if record.module_slug == "office-category-add"
           office_category = office_name if office_category.blank?
           office_name = ""
+        elsif record.module_slug == "office-mapping-add"
+          office_category = office_name if office_category.blank?
+          office_name = first_present_data(record, "sub_office_name", "office_mapping", "office").to_s.strip
         end
 
         {

@@ -27,7 +27,8 @@ module ApplicationHelper
       icon: "▧",
       links: [
         ["Parent Office Add", :module, "parent-office-add"],
-        ["Office Category Add", :module, "office-category-add"]
+        ["Office Category Add", :module, "office-category-add"],
+        ["Sub Office Add", :module, "office-mapping-add"]
       ]
     },
     {
@@ -163,6 +164,7 @@ module ApplicationHelper
       "User Management Role" => "User Management Person Type",
       "Person Type" => "Person Type",
       "Parent Office" => "Parent Office Name",
+      "Sub Office Name" => "Sub Office Name",
       "ICS / Block" => "ICS Name",
       "Gram Name" => "Village Name",
       "Activity Group" => "Main Activity",

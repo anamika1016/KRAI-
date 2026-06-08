@@ -570,7 +570,7 @@ class VrpsController < ApplicationController
   end
 
   def approval_record_office(record)
-    record.data["office_name"].presence || record.data["office"]
+    record.data["sub_office_name"].presence || record.data["office"]
   end
 
   def approval_user_name_matches?(expected, actual)
@@ -679,8 +679,8 @@ class VrpsController < ApplicationController
       stakeholder_role: current_app_user&.dig("stakeholder_role"),
       user_management_role: current_app_user&.dig("user_management_role"),
       person_type: current_app_user&.dig("person_type"),
-      office: current_app_user&.dig("office_name").presence || current_app_user&.dig("office"),
-      office_category: current_app_user&.dig("office_category"),
+      office: current_app_user&.dig("sub_office_name").presence || current_app_user&.dig("office"),
+      office_category: current_app_user&.dig("office_category").presence || current_app_user&.dig("office_name"),
       user_name: current_app_user&.dig("username").presence || current_app_user&.dig("user_name")
     }
   end
@@ -692,8 +692,8 @@ class VrpsController < ApplicationController
       stakeholder_role: user.stakeholder_role,
       user_management_role: user.user_management_role,
       person_type: user.respond_to?(:person_type) ? user.person_type : nil,
-      office: user.respond_to?(:office_name) ? user.office_name.presence || user.office : user.office,
-      office_category: user.respond_to?(:office_category) ? user.office_category : nil,
+      office: user.respond_to?(:sub_office_name) ? user.sub_office_name.presence || user.office : user.office,
+      office_category: (user.respond_to?(:office_category) ? user.office_category : nil).presence || (user.respond_to?(:office_name) ? user.office_name : nil),
       user_name: user.user_name
     }
   end
@@ -705,8 +705,8 @@ class VrpsController < ApplicationController
       stakeholder_role: record.data["stakeholder_role"],
       user_management_role: record.data["user_management_role"],
       person_type: record.data["person_type"],
-      office: record.data["office_name"].presence || record.data["office"],
-      office_category: record.data["office_category"],
+      office: record.data["sub_office_name"].presence || record.data["office"],
+      office_category: record.data["office_category"].presence || record.data["office_name"],
       user_name: record.data["user_name"]
     }
   end
@@ -846,16 +846,19 @@ class VrpsController < ApplicationController
     return "" if admin_user?
 
     current_user_model&.then { |user| user.respond_to?(:office_category) ? user.office_category : nil }.presence ||
+      current_user_model&.then { |user| user.respond_to?(:office_name) ? user.office_name : nil }.presence ||
       current_user_model&.then { |user| user.respond_to?(:parent_office) ? user.parent_office : nil }.presence ||
-      current_app_user&.dig("office_category").presence
+      current_app_user&.dig("office_category").presence ||
+      current_app_user&.dig("office_name").presence
   end
 
   def current_user_office_name
     return "" if admin_user?
 
     user = current_user_model
-    (user.respond_to?(:office_name) ? user.office_name : nil).presence ||
+    (user.respond_to?(:sub_office_name) ? user.sub_office_name : nil).presence ||
       user&.office.presence ||
+      current_app_user&.dig("sub_office_name").presence ||
       current_app_user&.dig("office_name").presence ||
       current_app_user&.dig("office").presence
   end
@@ -926,8 +929,8 @@ class VrpsController < ApplicationController
       .order(created_at: :desc)
       .select { |record| active_module_record?(record) }
       .filter_map do |record|
-        office_category = record.data["office_category"].presence || record.data["parent_office"].to_s.strip
-        office_name = record.data["office_name"].presence || record.data["office"].to_s.strip
+        office_category = record.data["office_category"].presence || record.data["office_name"].presence || record.data["parent_office"].to_s.strip
+        office_name = record.data["sub_office_name"].presence || record.data["office"].to_s.strip
         next if office_category.blank? && office_name.blank?
 
         {
@@ -945,17 +948,18 @@ class VrpsController < ApplicationController
     return [] unless model_ready?(:ModuleRecord)
 
     ModuleRecord
-      .where(module_slug: "office-category-add")
+      .where(module_slug: ["office-category-add", "office-mapping-add"])
       .order(created_at: :desc)
       .select { |record| active_module_record?(record) }
       .map do |record|
         office_category = first_present_data(record, "office_category", "category_name", "office_name", "office").to_s.strip
+        office_name = record.module_slug == "office-mapping-add" ? first_present_data(record, "sub_office_name", "office_mapping", "office").to_s.strip : ""
         {
           stakeholder: first_present_data(record, "stakeholder_category", "stakeholder_name", "stakeholder").to_s.strip,
           parent_office: first_present_data(record, "parent_office", "parent_office_name", "parent_category").to_s.strip,
           office_category: office_category,
-          office_name: "",
-          office: "",
+          office_name: office_name,
+          office: office_name,
           office_level: first_present_data(record, "office_level").to_s.strip
         }
       end
@@ -965,11 +969,12 @@ class VrpsController < ApplicationController
 
   def user_office_category(user)
     (user.respond_to?(:office_category) ? user.office_category : nil).presence ||
+      (user.respond_to?(:office_name) ? user.office_name : nil).presence ||
       (user.respond_to?(:parent_office) ? user.parent_office : nil).to_s.strip
   end
 
   def user_office_name(user)
-    (user.respond_to?(:office_name) ? user.office_name : nil).presence ||
+    (user.respond_to?(:sub_office_name) ? user.sub_office_name : nil).presence ||
       (user.respond_to?(:office) ? user.office : nil).to_s.strip
   end
 
@@ -1039,7 +1044,7 @@ class VrpsController < ApplicationController
       .select { |record| active_module_record?(record) }
       .flat_map do |record|
         stakeholder_role = first_present_data(record, "stakeholder_role").to_s.strip
-        mapping_labels_for_option(stakeholder_role, :stakeholder_role).map do |stakeholder_role_label|
+        [stakeholder_role].compact_blank.map do |stakeholder_role_label|
           {
             stakeholder: first_present_data(record, "stakeholder_category", "stakeholder_name", "stakeholder").to_s.strip,
             stakeholder_role: stakeholder_role,

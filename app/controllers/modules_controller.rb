@@ -159,6 +159,12 @@ class ModulesController < ApplicationController
       purpose: "Office category aur office level maintain karne ke liye.",
       fields: ["Stakeholder Category", "Parent Category", "Office Name", "Office Level", "Status"]
     },
+    "office-mapping-add" => {
+      title: "Sub Office Add",
+      group: "Office Setup",
+      purpose: "Office name wise sub office maintain karne ke liye.",
+      fields: ["Stakeholder Category", "Parent Category", "Office Name", "Sub Office Name", "Office Level", "Status"]
+    },
     "add-vrp-type" => {
       title: "Add VRP Type",
       group: "Activity Setup",
@@ -290,13 +296,13 @@ class ModulesController < ApplicationController
       title: "New User",
       group: "User Register",
       purpose: "System login user create karne ke liye.",
-      fields: ["Stakeholder Category", "Stakeholder Role", "Role", "User Management Role", "Person Type", "State", "District", "Block", "Gram Panchayat", "Village", "Parent Office", "Office Name", "Full Address", "Pincode", "First Name", "Last Name", "Gender", "Email", "Password", "Confirmed Password", "User Name", "Mobile No", "User Type", "Status"]
+      fields: ["Stakeholder Category", "Stakeholder Role", "Role", "User Management Role", "Person Type", "State", "District", "Block", "Gram Panchayat", "Village", "Office Name", "Sub Office Name", "Full Address", "Pincode", "First Name", "Last Name", "Gender", "Email", "Password", "Confirmed Password", "User Name", "Mobile No", "User Type", "Status"]
     },
     "all-user" => {
       title: "All User",
       group: "User Register",
       purpose: "Registered users dekhne ke liye.",
-      fields: ["Stakeholder Category", "Stakeholder Role", "Role", "User Management Role", "Person Type", "State", "District", "Block", "Gram Panchayat", "Village", "Parent Office", "Office Name", "Full Address", "Pincode", "First Name", "Last Name", "Gender", "Email", "Password", "Confirmed Password", "User Name", "Mobile No", "User Type", "Status"]
+      fields: ["Stakeholder Category", "Stakeholder Role", "Role", "User Management Role", "Person Type", "State", "District", "Block", "Gram Panchayat", "Village", "Office Name", "Sub Office Name", "Full Address", "Pincode", "First Name", "Last Name", "Gender", "Email", "Password", "Confirmed Password", "User Name", "Mobile No", "User Type", "Status"]
     },
     "user-hierarchy-mapping" => {
       title: "User Hierarchy Mapping",
@@ -308,7 +314,7 @@ class ModulesController < ApplicationController
       title: "Stakeholder Person Type",
       group: "Stakeholder",
       purpose: "Stakeholder category wise stakeholder person type maintain karne ke liye.",
-      fields: ["Stakeholder Category", "Stakeholder Role", "Status"]
+      fields: ["Stakeholder Category", "Office Name", "Stakeholder Role", "Status"]
     },
     # "role-management" => {
     #   title: "Resource Person Type",
@@ -1272,8 +1278,8 @@ class ModulesController < ApplicationController
       stakeholder_role: current_app_user&.dig("stakeholder_role"),
       user_management_role: current_app_user&.dig("user_management_role"),
       person_type: current_app_user&.dig("person_type"),
-      office: current_app_user&.dig("office_name").presence || current_app_user&.dig("office"),
-      office_category: current_app_user&.dig("office_category"),
+      office: current_app_user&.dig("sub_office_name").presence || current_app_user&.dig("office"),
+      office_category: current_app_user&.dig("office_category").presence || current_app_user&.dig("office_name"),
       user_name: current_app_user&.dig("username").presence || current_app_user&.dig("user_name")
     } if vrp.created_by_id.blank?
 
@@ -1289,8 +1295,8 @@ class ModulesController < ApplicationController
       stakeholder_role: user.stakeholder_role,
       user_management_role: user.user_management_role,
       person_type: user.respond_to?(:person_type) ? user.person_type : nil,
-      office: user.respond_to?(:office_name) ? user.office_name.presence || user.office : user.office,
-      office_category: user.respond_to?(:office_category) ? user.office_category : nil,
+      office: user.respond_to?(:sub_office_name) ? user.sub_office_name.presence || user.office : user.office,
+      office_category: (user.respond_to?(:office_category) ? user.office_category : nil).presence || (user.respond_to?(:office_name) ? user.office_name : nil),
       user_name: user.user_name
     }
   end
@@ -1302,8 +1308,8 @@ class ModulesController < ApplicationController
       stakeholder_role: record.data["stakeholder_role"],
       user_management_role: record.data["user_management_role"],
       person_type: record.data["person_type"],
-      office: record.data["office_name"].presence || record.data["office"],
-      office_category: record.data["office_category"],
+      office: record.data["sub_office_name"].presence || record.data["office"],
+      office_category: record.data["office_category"].presence || record.data["office_name"],
       user_name: record.data["user_name"]
     }
   end
@@ -1346,7 +1352,7 @@ class ModulesController < ApplicationController
   end
 
   def approval_record_office(record)
-    record.data["office_name"].presence || record.data["office"]
+    record.data["sub_office_name"].presence || record.data["office"]
   end
 
   def percentage(value, total)
@@ -2117,11 +2123,17 @@ class ModulesController < ApplicationController
       .select { |record| active_module_record?(record) }
       .flat_map do |record|
         stakeholder_role = first_present_data(record, "stakeholder_role").to_s.strip
+        parent_office = first_present_data(record, "parent_office", "parent_category", "office_name", "office").to_s.strip
+        office_name = first_present_data(record, "office_name", "office").to_s.strip
         mapping_labels_for_option(stakeholder_role, :stakeholder_role).map do |stakeholder_role_label|
           {
             stakeholder: first_present_data(record, "stakeholder_category", "stakeholder_name", "stakeholder").to_s.strip,
             stakeholder_role: stakeholder_role,
             stakeholder_role_label: stakeholder_role_label,
+            parent_office: parent_office,
+            office_category: parent_office,
+            office_name: office_name,
+            office: office_name,
             role: "",
             role_label: "",
             role_name: "",
@@ -2464,7 +2476,9 @@ class ModulesController < ApplicationController
       "Parent Office" => { module: "parent-office-add", field: "parent_office_name" },
       "Parent Category" => { module: "parent-office-add", field: "parent_office_name" },
       "Office Category" => { module: "office-category-add", field: "office_name" },
+      "Office Name" => { module: "office-category-add", field: "office_name" },
       "Office" => { module: "office-category-add", field: "office_name" },
+      "Sub Office Name" => { module: "office-mapping-add", field: "sub_office_name" },
       "Approver (Approved By)" => { module: "new-user", field: "approver_name_with_role" },
       "Level 1 User" => { module: "new-user", field: "approver_name_with_role" },
       "Level 2 User" => { module: "new-user", field: "approver_name_with_role" },
@@ -2496,7 +2510,7 @@ class ModulesController < ApplicationController
     return [] unless model_ready?(:ModuleRecord)
 
     ModuleRecord
-      .where(module_slug: "office-category-add")
+      .where(module_slug: ["office-category-add", "office-mapping-add"])
       .order(created_at: :desc)
       .select { |record| active_module_record?(record) }
       .map do |record|
@@ -2505,6 +2519,9 @@ class ModulesController < ApplicationController
         if record.module_slug == "office-category-add"
           office_category = office_name if office_category.blank?
           office_name = ""
+        elsif record.module_slug == "office-mapping-add"
+          office_category = office_name if office_category.blank?
+          office_name = first_present_data(record, "sub_office_name", "office_mapping", "office").to_s.strip
         end
 
         {
@@ -2609,9 +2626,9 @@ class ModulesController < ApplicationController
       value: username,
       label: approval_user_label(username, role),
       stakeholder: data["stakeholder"].presence || data["stakeholder_name"].presence || data["stakeholder_category"].to_s.strip,
-      office_category: data["office_category"].to_s.strip,
-      office_name: data["office_name"].presence || data["office"].to_s.strip,
-      office: data["office_name"].presence || data["office"].to_s.strip
+      office_category: data["office_category"].presence || data["office_name"].to_s.strip,
+      office_name: data["sub_office_name"].presence || data["office"].to_s.strip,
+      office: data["sub_office_name"].presence || data["office"].to_s.strip
     }
   end
 
@@ -2621,13 +2638,15 @@ class ModulesController < ApplicationController
 
     role = (user.respond_to?(:role) ? user.role : nil).presence ||
       (user.respond_to?(:role_name) ? user.role_name : nil).presence
-    office_name = user.respond_to?(:office_name) ? user.office_name.presence : nil
+    office_category = (user.respond_to?(:office_category) ? user.office_category : nil).presence ||
+      (user.respond_to?(:office_name) ? user.office_name.to_s.strip : "")
+    office_name = user.respond_to?(:sub_office_name) ? user.sub_office_name.presence : nil
     office_name ||= user.respond_to?(:office) ? user.office.to_s.strip : ""
     {
       value: username,
       label: approval_user_label(username, role),
       stakeholder: user.respond_to?(:stakeholder) ? user.stakeholder.to_s.strip : "",
-      office_category: user.respond_to?(:office_category) ? user.office_category.to_s.strip : "",
+      office_category: office_category,
       office_name: office_name,
       office: office_name
     }

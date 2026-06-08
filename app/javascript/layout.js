@@ -363,10 +363,11 @@ document.addEventListener("turbo:load", () => {
     const parentOfficeSelect = formShell.querySelector("[data-parent-office-select]");
     const officeCategorySelect = formShell.querySelector("[data-office-category-select]");
     const officeNameSelect = formShell.querySelector("[data-office-name-select]");
-    const officeSelect = officeNameSelect || formShell.querySelector("[data-office-select]");
+    const subOfficeSelect = formShell.querySelector("[data-sub-office-name-select]");
+    const officeSelect = subOfficeSelect || officeNameSelect || formShell.querySelector("[data-office-select]");
     const officeUserSelect = formShell.querySelector("[data-office-user-select]");
     const approvalOfficeCascade = formShell.dataset.approvalOfficeCascade === "true";
-    if (!stakeholderSelect && !stakeholderRoleSelect && !roleSelect && !roleNameSelect && !userManagementRoleSelect && !personTypeSelect && !parentOfficeSelect && !officeCategorySelect && !officeSelect && !officeUserSelect) return;
+    if (!stakeholderSelect && !stakeholderRoleSelect && !roleSelect && !roleNameSelect && !userManagementRoleSelect && !personTypeSelect && !parentOfficeSelect && !officeCategorySelect && !officeNameSelect && !subOfficeSelect && !officeSelect && !officeUserSelect) return;
 
     let mappings = [];
     try {
@@ -394,6 +395,9 @@ document.addEventListener("turbo:load", () => {
     };
     const initialParentOfficeOptions = parentOfficeSelect
       ? Array.from(parentOfficeSelect.options).map((option) => option.value).filter(Boolean)
+      : [];
+    const initialOfficeNameOptions = officeNameSelect
+      ? Array.from(officeNameSelect.options).map((option) => option.value).filter(Boolean)
       : [];
     const initialOfficeUserOptions = officeUserSelect
       ? Array.from(officeUserSelect.options)
@@ -514,34 +518,63 @@ document.addEventListener("turbo:load", () => {
     const refreshParentOffices = () => {
       if (!parentOfficeSelect) return;
       const normalizedStakeholder = normalizeOption(stakeholderSelect?.value);
+      const normalizedStakeholderRole = normalizeOption(stakeholderRoleSelect?.value);
       const mappedParentOffices = uniquePresent(
         officeMappings
           .filter((mapping) => {
             const mappedStakeholder = normalizeOption(mapping.stakeholder);
-            return !normalizedStakeholder || !mappedStakeholder || mappedStakeholder === normalizedStakeholder;
+            const mappedStakeholderRole = normalizeOption(mapping.stakeholder_role);
+            const stakeholderMatches = !normalizedStakeholder || !mappedStakeholder || mappedStakeholder === normalizedStakeholder;
+            const stakeholderRoleMatches = !normalizedStakeholderRole || !mappedStakeholderRole || mappedStakeholderRole === normalizedStakeholderRole;
+            return stakeholderMatches && stakeholderRoleMatches;
           })
-          .map((mapping) => mapping.parent_office)
+          .map((mapping) => mapping.parent_office || mapping.office_category || (!mapping.office_name ? mapping.office : ""))
       );
-      const parentOffices = mappedParentOffices.length ? mappedParentOffices : initialParentOfficeOptions;
-      replaceSelectOptions(parentOfficeSelect, parentOffices, "Select Parent Office");
+      const parentOffices = uniquePresent(initialParentOfficeOptions.concat(mappedParentOffices));
+      replaceSelectOptions(parentOfficeSelect, parentOffices, "Select Parent Office Name");
     };
 
     const officeMappingMatches = (mapping, stakeholder, parentOffice, officeCategory = "") => {
       const normalizedStakeholder = normalizeOption(stakeholder);
+      const normalizedStakeholderRole = normalizeOption(stakeholderRoleSelect?.value);
       const normalizedParentOffice = normalizeOption(parentOffice);
       const normalizedOfficeCategory = normalizeOption(officeCategory);
 
       const mappedStakeholder = normalizeOption(mapping.stakeholder);
+      const mappedStakeholderRole = normalizeOption(mapping.stakeholder_role);
       const mappedParentOffice = normalizeOption(mapping.parent_office);
       const mappedOfficeCategory = normalizeOption(mapping.office_category || mapping.category_name || (!mapping.office_name ? mapping.office : ""));
       const stakeholderMatches = approvalOfficeCascade
         ? mappedStakeholder === normalizedStakeholder
         : (!normalizedStakeholder || !mappedStakeholder || mappedStakeholder === normalizedStakeholder);
+      const stakeholderRoleMatches = !normalizedStakeholderRole || !mappedStakeholderRole || mappedStakeholderRole === normalizedStakeholderRole;
       const parentOfficeMatches = !normalizedParentOffice || !mappedParentOffice || mappedParentOffice === normalizedParentOffice;
       const officeCategoryMatches = approvalOfficeCascade
         ? mappedOfficeCategory === normalizedOfficeCategory
         : (!normalizedOfficeCategory || !mappedOfficeCategory || mappedOfficeCategory === normalizedOfficeCategory);
-      return stakeholderMatches && parentOfficeMatches && officeCategoryMatches;
+      return stakeholderMatches && stakeholderRoleMatches && parentOfficeMatches && officeCategoryMatches;
+    };
+
+    const refreshOfficeNames = () => {
+      if (!officeNameSelect) return;
+
+      const normalizedStakeholder = normalizeOption(stakeholderSelect?.value);
+      const normalizedParentOffice = normalizeOption(parentOfficeSelect?.value);
+      const officeNames = uniquePresent(
+        officeMappings
+          .filter((mapping) => {
+            const mappedStakeholder = normalizeOption(mapping.stakeholder);
+            const mappedParentOffice = normalizeOption(mapping.parent_office);
+            const hasSubOffice = normalizeOption(mapping.office_name || mapping.sub_office_name);
+            const stakeholderMatches = !normalizedStakeholder || !mappedStakeholder || mappedStakeholder === normalizedStakeholder;
+            const parentOfficeMatches = !normalizedParentOffice || !mappedParentOffice || mappedParentOffice === normalizedParentOffice;
+            return stakeholderMatches && parentOfficeMatches && !hasSubOffice;
+          })
+          .map((mapping) => mapping.office_category || mapping.category_name || mapping.office)
+      );
+      const options = normalizedStakeholder || normalizedParentOffice ? officeNames : uniquePresent(initialOfficeNameOptions.concat(officeNames));
+      replaceSelectOptions(officeNameSelect, options, "Select Office Name");
+      refreshOffices();
     };
 
     const refreshOfficeCategories = () => {
@@ -574,23 +607,28 @@ document.addEventListener("turbo:load", () => {
     const refreshOffices = () => {
       if (!officeSelect) return;
       const selectedStakeholder = stakeholderSelect?.value || "";
-      const selectedOfficeCategory = officeCategorySelect?.value || "";
+      const selectedOfficeCategory = officeCategorySelect?.value || officeNameSelect?.value || "";
       if (approvalOfficeCascade && (!normalizeOption(selectedStakeholder) || !normalizeOption(selectedOfficeCategory))) {
-        replaceSelectOptions(officeSelect, [], officeNameSelect ? "Select Office Name" : "Select Office");
+        replaceSelectOptions(officeSelect, [], subOfficeSelect ? "Select Sub Office Name" : (officeNameSelect ? "Select Office Name" : "Select Office"));
         refreshOfficeUsers();
         return;
       }
 
       const offices = uniquePresent(
         officeMappings
-          .filter((mapping) => officeMappingMatches(mapping, selectedStakeholder, parentOfficeSelect?.value, selectedOfficeCategory))
+          .filter((mapping) => {
+            const hasSubOffice = normalizeOption(mapping.office_name || mapping.sub_office_name);
+            return officeMappingMatches(mapping, selectedStakeholder, parentOfficeSelect?.value, selectedOfficeCategory) &&
+              (!subOfficeSelect || hasSubOffice);
+          })
           .map((mapping) => {
+            if (subOfficeSelect) return mapping.office_name || mapping.sub_office_name || "";
             if (officeNameSelect) return mapping.office_name || "";
 
             return mapping.office || mapping.office_name || mapping.office_category;
           })
       );
-      replaceSelectOptions(officeSelect, offices, officeNameSelect ? "Select Office Name" : "Select Office");
+      replaceSelectOptions(officeSelect, offices, subOfficeSelect ? "Select Sub Office Name" : (officeNameSelect ? "Select Office Name" : "Select Office"));
       refreshOfficeUsers();
     };
 
@@ -634,6 +672,8 @@ document.addEventListener("turbo:load", () => {
       if (personTypeSelect) personTypeSelect.dataset.selectedValue = "";
       if (parentOfficeSelect) parentOfficeSelect.dataset.selectedValue = "";
       if (officeCategorySelect) officeCategorySelect.dataset.selectedValue = "";
+      if (officeNameSelect) officeNameSelect.dataset.selectedValue = "";
+      if (subOfficeSelect) subOfficeSelect.dataset.selectedValue = "";
       if (officeSelect) officeSelect.dataset.selectedValue = "";
       refreshStakeholderRoles();
       refreshRoles();
@@ -642,16 +682,27 @@ document.addEventListener("turbo:load", () => {
       refreshPersonTypes();
       refreshParentOffices();
       refreshOfficeCategories();
+      refreshOfficeNames();
       refreshOffices();
     });
     parentOfficeSelect?.addEventListener("change", () => {
       if (officeCategorySelect) officeCategorySelect.dataset.selectedValue = "";
+      if (officeNameSelect) officeNameSelect.dataset.selectedValue = "";
+      if (subOfficeSelect) subOfficeSelect.dataset.selectedValue = "";
       if (officeSelect) officeSelect.dataset.selectedValue = "";
       refreshOfficeCategories();
+      refreshOfficeNames();
       refreshOffices();
     });
     officeCategorySelect?.addEventListener("change", () => {
       if (officeSelect) officeSelect.dataset.selectedValue = "";
+      if (officeUserSelect) officeUserSelect.dataset.selectedValue = "";
+      refreshOffices();
+    });
+    officeNameSelect?.addEventListener("change", () => {
+      if (!subOfficeSelect) return;
+
+      subOfficeSelect.dataset.selectedValue = "";
       if (officeUserSelect) officeUserSelect.dataset.selectedValue = "";
       refreshOffices();
     });
@@ -664,10 +715,19 @@ document.addEventListener("turbo:load", () => {
       if (roleNameSelect) roleNameSelect.dataset.selectedValue = "";
       if (userManagementRoleSelect) userManagementRoleSelect.dataset.selectedValue = "";
       if (personTypeSelect) personTypeSelect.dataset.selectedValue = "";
+      if (parentOfficeSelect) parentOfficeSelect.dataset.selectedValue = "";
+      if (officeCategorySelect) officeCategorySelect.dataset.selectedValue = "";
+      if (officeNameSelect) officeNameSelect.dataset.selectedValue = "";
+      if (subOfficeSelect) subOfficeSelect.dataset.selectedValue = "";
+      if (officeSelect) officeSelect.dataset.selectedValue = "";
       refreshRoles();
       refreshRoleNames();
       refreshUserManagementRoles();
       refreshPersonTypes();
+      refreshParentOffices();
+      refreshOfficeCategories();
+      refreshOfficeNames();
+      refreshOffices();
     });
     roleSelect?.addEventListener("change", () => {
       if (userManagementRoleSelect) userManagementRoleSelect.dataset.selectedValue = "";
@@ -685,6 +745,7 @@ document.addEventListener("turbo:load", () => {
     refreshRoleNames();
     refreshParentOffices();
     refreshOfficeCategories();
+    refreshOfficeNames();
     refreshOffices();
     refreshOfficeUsers();
   });
@@ -2358,6 +2419,8 @@ document.addEventListener("turbo:load", () => {
       "Parent Office Type": "पैरेंट ऑफिस प्रकार",
       "Sub Parent Office": "सब पैरेंट ऑफिस",
       "Parent Category": "पैरेंट श्रेणी",
+      "Sub Office Add": "सब ऑफिस जोड़ें",
+      "Sub Office Name": "सब ऑफिस नाम",
       "Select Parent Office": "पैरेंट ऑफिस चुनें",
       "Select Parent Office Type": "पैरेंट ऑफिस प्रकार चुनें",
       "Project Add": "प्रोजेक्ट जोड़ें",
@@ -2538,6 +2601,8 @@ document.addEventListener("turbo:load", () => {
 	      "Office Category Add": "ऑफिस श्रेणी जोड़ें",
 	      "Office Category": "ऑफिस श्रेणी",
 	      "Office Name": "ऑफिस नाम",
+      "Sub Office Add": "सब ऑफिस जोड़ें",
+      "Sub Office Name": "सब ऑफिस नाम",
       "Office Level": "ऑफिस लेवल",
       "Select Office Category": "ऑफिस श्रेणी चुनें",
       "Select Office Name": "ऑफिस नाम चुनें",
@@ -2621,6 +2686,8 @@ document.addEventListener("turbo:load", () => {
 	      "Office Setup": "ऑफिस सेटअप",
 	      "Office Category": "ऑफिस श्रेणी",
 	      "Office Name": "ऑफिस नाव",
+      "Sub Office Add": "सब ऑफिस जोडा",
+      "Sub Office Name": "सब ऑफिस नाव",
 	      "Office Level": "ऑफिस लेवल",
 	      "Select Office Category": "ऑफिस श्रेणी निवडा",
 	      "Select Office Name": "ऑफिस नाव निवडा",
@@ -2676,6 +2743,8 @@ document.addEventListener("turbo:load", () => {
 	      "Office Setup": "ଅଫିସ୍ ସେଟଅପ୍",
 	      "Office Category": "ଅଫିସ୍ ବର୍ଗ",
 	      "Office Name": "ଅଫିସ୍ ନାମ",
+      "Sub Office Add": "ସବ୍ ଅଫିସ୍ ଯୋଡନ୍ତୁ",
+      "Sub Office Name": "ସବ୍ ଅଫିସ୍ ନାମ",
 	      "Office Level": "ଅଫିସ୍ ସ୍ତର",
 	      "Select Office Category": "ଅଫିସ୍ ବର୍ଗ ବାଛନ୍ତୁ",
 	      "Select Office Name": "ଅଫିସ୍ ନାମ ବାଛନ୍ତୁ",

@@ -40,8 +40,8 @@
             <th>User Type</th>
             <th>Mobile No</th>
             <th>Stakeholder Category</th>
-            <th>Parent Office Name</th>
             <th>Office Name</th>
+            <th>Sub Office Name</th>
             <th>Status</th>
           </tr>
         </thead>
@@ -60,8 +60,8 @@
                 <td><%= user.user_type.presence || "-" %></td>
                 <td><%= user.mobile_no.presence || "-" %></td>
                 <td><%= user.stakeholder.presence || "-" %></td>
-                <td><%= user.parent_office.presence || "-" %></td>
                 <td><%= (user.respond_to?(:office_name) ? user.office_name : nil).presence || user.office.presence || "-" %></td>
+                <td><%= (user.respond_to?(:sub_office_name) ? user.sub_office_name : nil).presence || user.office.presence || "-" %></td>
                 <td><span class="status-pill <%= user.status == "Inactive" ? "inactive" : "active" %>"><%= user.status.presence || "Active" %></span></td>
               </tr>
             <% end %>

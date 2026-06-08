@@ -55,6 +55,7 @@ class ApplicationController < ActionController::Base
       "parent_office" => user.respond_to?(:parent_office) ? user.parent_office : data["parent_office"],
       "office_category" => user.respond_to?(:office_category) ? user.office_category : data["office_category"],
       "office_name" => user.respond_to?(:office_name) ? user.office_name : data["office_name"],
+      "sub_office_name" => user.respond_to?(:sub_office_name) ? user.sub_office_name : data["sub_office_name"],
       "office" => user.respond_to?(:office) ? user.office : data["office"],
       "email" => user.respond_to?(:email) ? user.email : data["email"],
       "mobile_no" => user.respond_to?(:mobile_no) ? user.mobile_no : data["mobile_no"],
