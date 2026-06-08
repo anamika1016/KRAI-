@@ -7,7 +7,7 @@ class ModulesController < ApplicationController
                 :access_control_role_mappings, :access_control_field_options,
                 :location_hierarchy_mappings, :office_category_mappings, :training_target_mappings,
                 :training_activity_mappings, :approval_user_mappings, :approval_user_options,
-                :parent_office_mappings
+                :parent_office_mappings, :user_hierarchy_list_rows, :jeevika_jankar_cluster_rows
 
   APPROVAL_REGISTRATION_MODULES = ["Farmer Registration", "VRP Registration", "Jeevika Jankar Registration"].freeze
 
@@ -312,6 +312,12 @@ class ModulesController < ApplicationController
       purpose: "Kis user ke under kaun user kaam karega map karne ke liye.",
       fields: ["Stakeholder Category", "Level 1 User", "Level 2 User", "Level 3 User", "Status"]
     },
+    "user-hierarchy-list" => {
+      title: "Cluster Incharge Under Agronomist",
+      group: "User Mapping",
+      purpose: "Saved user hierarchy aur Jeevika Jankar cluster incharge mapping dekhne ke liye.",
+      fields: ["Stakeholder Category", "Level 1 User", "Level 2 User", "Level 3 User", "Status"]
+    },
     "stakeholder-role" => {
       title: "Stakeholder Person Type",
       group: "Stakeholder",
@@ -364,6 +370,7 @@ class ModulesController < ApplicationController
     "access-control-list" => "access-control",
     "vrp-bill-list" => "vrp-bill-add",
     "training-form-list" => "training-form",
+    "user-hierarchy-list" => "user-hierarchy-mapping",
     "all-user" => "new-user"
   }.freeze
 
@@ -915,8 +922,8 @@ class ModulesController < ApplicationController
     {
       title: "User Hierarchy",
       dom_id: "user_hierarchy_report",
-      headers: ["Group", "Level", "User", "Reports To"],
-      rows: summary[:rows].presence || [["No mapped user", "-", "-", "-"]]
+      headers: ["Name", "Reports To", "Level"],
+      rows: summary[:rows].presence || [["No mapped user", "-", "-"]]
     }
   end
 
@@ -952,17 +959,17 @@ class ModulesController < ApplicationController
           level_3_users = Array(mapping["level_3_users"]).map(&:to_s).map(&:strip).reject(&:blank?)
 
           if dashboard_user_label_matches?(level_1_user, current_labels)
-            direct_rows << ["Direct Level 2 Users", "Level 2", level_2_user, level_1_user] if level_2_user.present?
-            level_3_users.each { |user| level_3_rows << ["Level 3 Users Under Level 1", "Level 3", user, level_2_user.presence || level_1_user] }
+            direct_rows << [level_2_user, level_1_user, "Level 2"] if level_2_user.present?
+            level_3_users.each { |user| level_3_rows << [user, level_2_user.presence || level_1_user, "Level 3"] }
           elsif dashboard_user_label_matches?(level_2_user, current_labels)
-            level_3_users.each { |user| level_3_rows << ["Level 3 Users Under Me", "Level 3", user, level_2_user] }
+            level_3_users.each { |user| level_3_rows << [user, level_2_user, "Level 3"] }
           end
         end
       end
 
     [
-      direct_rows.reject { |row| row[2].blank? },
-      level_3_rows.reject { |row| row[2].blank? }
+      direct_rows.reject { |row| row[0].blank? },
+      level_3_rows.reject { |row| row[0].blank? }
     ]
   end
 
@@ -2122,6 +2129,68 @@ class ModulesController < ApplicationController
     ["module_name", "stakeholder_name", "user_name"].all? do |key|
       left_data[key].to_s.strip.casecmp(right_data[key].to_s.strip).zero?
     end
+  end
+
+  def user_hierarchy_list_rows(records)
+    records.flat_map do |record|
+      base = {
+        id: record.id,
+        edit_path: edit_module_record_path("user-hierarchy-mapping", record),
+        stakeholder: record.data["stakeholder_category"].presence || "-",
+        level_1_user: record.data["level_1_user"].presence || "-",
+        status: record.data["status"].presence || "Active"
+      }
+
+      mappings = normalized_user_hierarchy_list_mappings(record)
+      if mappings.blank?
+        [base.merge(level_2_user: record.data["level_2_user"].presence || "-", level_3_user: record.data["level_3_user"].presence || "-")]
+      else
+        mappings.flat_map do |mapping|
+          level_2_user = mapping["level_2_user"].presence || "-"
+          level_3_users = Array(mapping["level_3_users"]).compact_blank
+          level_3_users = ["-"] if level_3_users.blank?
+          level_3_users.map { |level_3_user| base.merge(level_2_user: level_2_user, level_3_user: level_3_user) }
+        end
+      end
+    end
+  end
+
+  def normalized_user_hierarchy_list_mappings(record)
+    mappings = record.data["level_2_mappings"]
+    mappings = mappings.values if mappings.is_a?(Hash)
+
+    Array(mappings).filter_map do |mapping|
+      next unless mapping.respond_to?(:[])
+
+      {
+        "level_2_user" => mapping["level_2_user"].to_s.strip,
+        "level_3_users" => Array(mapping["level_3_users"]).flat_map { |value| value.to_s.split(",") }.map(&:strip).compact_blank
+      }
+    end
+  end
+
+  def jeevika_jankar_cluster_rows
+    return [] unless model_ready?(:Vrp)
+
+    Vrp.order(updated_at: :desc, id: :desc).map do |vrp|
+      {
+        id: vrp.id,
+        name: vrp.name.presence || vrp.user_name.presence || "Jeevika Jankar ##{vrp.id}",
+        user_name: vrp.user_name.presence || "-",
+        mobile_no: vrp.mobile_no.presence || "-",
+        office_name: vrp.fcoc.presence || vrp.to_name.presence || "-",
+        cluster_incharge: vrp.cluster_incharge.presence || "-",
+        status: vrp_status_for_hierarchy_list(vrp)
+      }
+    end
+  end
+
+  def vrp_status_for_hierarchy_list(vrp)
+    return "Inactive" if vrp.respond_to?(:is_active) && vrp.is_active == false
+    return "Final Approved" if vrp.status.to_i == 55
+    return "Pending Approval" if vrp.status.to_i >= 25
+
+    "Active"
   end
 
   def valid_module_data?(data)

@@ -674,6 +674,119 @@
       </div>
       <div class="table-pagination" data-pagination-for="all_user_list"></div>
     </section>
+  <% elsif @slug == "user-hierarchy-list" && @record.blank? %>
+    <% table_id = "user_hierarchy_list_table" %>
+    <% cluster_table_id = "jeevika_jankar_cluster_list" %>
+    <% hierarchy_rows = user_hierarchy_list_rows(@records) %>
+    <% cluster_rows = jeevika_jankar_cluster_rows %>
+    <section class="module-card list-only-card">
+      <div class="module-card-header list-title-header">
+        <h2>Cluster Incharge Under Agronomist</h2>
+      </div>
+
+      <div class="vrp-list-toolbar compact">
+        <button type="button" class="list-btn edit" data-module-edit-selected>Edit</button>
+        <button type="button" class="list-btn active" data-module-status-selected="Active">Active</button>
+        <button type="button" class="list-btn deactive" data-module-status-selected="Inactive">Deactive</button>
+        <button type="button" class="list-btn delete" data-module-delete-selected>Delete</button>
+      </div>
+
+      <div class="list-controls">
+        <div class="list-search">
+          <span>⌕</span>
+          <input type="search" placeholder="Search hierarchy" data-table-search="<%= table_id %>">
+        </div>
+        <div class="list-control-actions">
+          <button type="button" class="list-btn export" data-export-table="<%= table_id %>">Export</button>
+        </div>
+      </div>
+
+      <div class="table-shell">
+        <table class="module-table user-list-table" id="<%= table_id %>" data-paginated-table data-page-size="15">
+          <thead>
+            <tr>
+              <th><input type="checkbox" data-module-select-all></th>
+              <th>Stakeholder Category</th>
+              <th>Level 1 User</th>
+              <th>Level 2 User</th>
+              <th>Level 3 User</th>
+              <th>Status</th>
+            </tr>
+          </thead>
+          <tbody>
+            <% if hierarchy_rows.any? %>
+              <% hierarchy_rows.each_with_index do |row, index| %>
+                <tr>
+                  <td>
+                    <% if index.zero? || hierarchy_rows[index - 1][:id] != row[:id] %>
+                      <input type="checkbox" value="<%= row[:edit_path] %>" data-module-row-select>
+                    <% end %>
+                  </td>
+                  <td><%= row[:stakeholder] %></td>
+                  <td><%= row[:level_1_user] %></td>
+                  <td><%= row[:level_2_user] %></td>
+                  <td><%= row[:level_3_user] %></td>
+                  <td><span class="status-pill <%= row[:status] == "Inactive" ? "inactive" : "active" %>"><%= row[:status] %></span></td>
+                </tr>
+              <% end %>
+            <% else %>
+              <tr>
+                <td colspan="6">No user hierarchy mapping saved yet.</td>
+              </tr>
+            <% end %>
+          </tbody>
+        </table>
+      </div>
+      <div class="table-pagination" data-pagination-for="<%= table_id %>"></div>
+    </section>
+
+    <section class="module-card list-only-card">
+      <div class="module-card-header list-title-header">
+        <h2>Cluster Incharge Under Jeevika Jankar User</h2>
+      </div>
+      <div class="list-controls">
+        <div class="list-search">
+          <span>⌕</span>
+          <input type="search" placeholder="Search Jeevika Jankar" data-table-search="<%= cluster_table_id %>">
+        </div>
+        <div class="list-control-actions">
+          <button type="button" class="list-btn export" data-export-table="<%= cluster_table_id %>">Export</button>
+        </div>
+      </div>
+      <div class="table-shell">
+        <table class="module-table user-list-table" id="<%= cluster_table_id %>" data-paginated-table data-page-size="15">
+          <thead>
+            <tr>
+              <th>Jeevika Jankar</th>
+              <th>User Name</th>
+              <th>Mobile No</th>
+              <th>Office</th>
+              <th>Cluster Incharge</th>
+              <th>Status</th>
+            </tr>
+          </thead>
+          <tbody>
+            <% if cluster_rows.any? %>
+              <% cluster_rows.each do |row| %>
+                <tr>
+                  <td><%= row[:name] %></td>
+                  <td><%= row[:user_name] %></td>
+                  <td><%= row[:mobile_no] %></td>
+                  <td><%= row[:office_name] %></td>
+                  <td><%= row[:cluster_incharge] %></td>
+                  <td><span class="status-pill <%= row[:status] == "Inactive" ? "inactive" : "active" %>"><%= row[:status] %></span></td>
+                </tr>
+              <% end %>
+            <% else %>
+              <tr>
+                <td colspan="6">No Jeevika Jankar registration saved yet.</td>
+              </tr>
+            <% end %>
+          </tbody>
+        </table>
+      </div>
+      <div class="table-pagination" data-pagination-for="<%= cluster_table_id %>"></div>
+    </section>
   <% elsif @slug == "approval-list" && @record.blank? %>
     <% table_id = "approval_list_table" %>
     <%

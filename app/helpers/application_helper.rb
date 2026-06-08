@@ -54,7 +54,8 @@ module ApplicationHelper
       title: "User Mapping",
       icon: "▧",
       links: [
-        ["User Hierarchy Mapping", :module, "user-hierarchy-mapping"]
+        ["User Hierarchy Mapping", :module, "user-hierarchy-mapping"],
+        ["Cluster Incharge Under Agronomist", :module, "user-hierarchy-list"]
       ]
     },
     {
