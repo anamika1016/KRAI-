@@ -23,12 +23,11 @@ module ApplicationHelper
       ]
     },
     {
-      title: "Office Management",
+      title: "Office Setup",
       icon: "▧",
       links: [
         ["Parent Office Add", :module, "parent-office-add"],
-        ["Office Category Add", :module, "office-category-add"],
-        ["Office Management", :module, "office-management"]
+        ["Office Category Add", :module, "office-category-add"]
       ]
     },
     {
@@ -163,6 +162,7 @@ module ApplicationHelper
       "Stakeholder Role" => "Stakeholder Person Type",
       "User Management Role" => "User Management Person Type",
       "Person Type" => "Person Type",
+      "Parent Office" => "Parent Office Name",
       "ICS / Block" => "ICS Name",
       "Gram Name" => "Village Name",
       "Activity Group" => "Main Activity",

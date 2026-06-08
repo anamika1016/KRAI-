@@ -6,7 +6,8 @@ class ModulesController < ApplicationController
   helper_method :module_field_options, :module_select_field?, :static_field_options, :role_management_mappings,
                 :access_control_role_mappings, :access_control_field_options,
                 :location_hierarchy_mappings, :office_category_mappings, :training_target_mappings,
-                :training_activity_mappings, :approval_user_mappings, :approval_user_options
+                :training_activity_mappings, :approval_user_mappings, :approval_user_options,
+                :parent_office_mappings
 
   DASHBOARD_CARDS = [
     ["Total VRP", "0", "Registered field resources"],
@@ -148,21 +149,15 @@ class ModulesController < ApplicationController
     },
     "parent-office-add" => {
       title: "Parent Office Add",
-      group: "Office Management",
+      group: "Office Setup",
       purpose: "Parent office category maintain karne ke liye.",
-      fields: ["Stakeholder Category", "Parent Office Name", "Office Level", "Status"]
+      fields: ["Stakeholder Category", "Parent Office Type", "Parent Office", "Parent Office Name", "Office Level", "Status"]
     },
     "office-category-add" => {
       title: "Office Category Add",
-      group: "Office Management",
+      group: "Office Setup",
       purpose: "Office category aur office level maintain karne ke liye.",
       fields: ["Stakeholder Category", "Parent Category", "Office Name", "Office Level", "Status"]
-    },
-    "office-management" => {
-      title: "Office Management",
-      group: "Office Management",
-      purpose: "Parent office aur office mapping maintain karne ke liye.",
-      fields: ["Stakeholder Category", "Parent Office", "Office Category", "Office Name", "Office Level", "Status"]
     },
     "add-vrp-type" => {
       title: "Add VRP Type",
@@ -216,13 +211,13 @@ class ModulesController < ApplicationController
       title: "VRP Approval Form",
       group: "VRP Registration",
       purpose: "VRP registration aur bill approval ke approver maintain karne ke liye.",
-      fields: ["Module Name", "Stakeholder Name", "Office Category", "Office Name", "Approval Level", "Approver (Approved By)", "Status", "User Name"]
+      fields: ["Module Name", "Stakeholder Name", "Approval Level", "Approver (Approved By)", "Status", "User Name"]
     },
     "approval-list" => {
       title: "VRP Approval List",
       group: "VRP Registration",
       purpose: "Saved approval mappings dekhne ke liye.",
-      fields: ["Module Name", "Stakeholder Name", "Office Category", "Office Name", "Approval Level", "Approver (Approved By)", "Status", "User Name"]
+      fields: ["Module Name", "Stakeholder Name", "Approval Level", "Approver (Approved By)", "Status", "User Name"]
     },
     "ics-master" => {
       title: "ICS Master",
@@ -295,13 +290,13 @@ class ModulesController < ApplicationController
       title: "New User",
       group: "User Register",
       purpose: "System login user create karne ke liye.",
-      fields: ["Stakeholder Category", "Stakeholder Role", "Role", "User Management Role", "Person Type", "State", "District", "Block", "Gram Panchayat", "Village", "Parent Office", "Office Category", "Office Name", "Full Address", "Pincode", "First Name", "Last Name", "Gender", "Email", "Password", "Confirmed Password", "User Name", "Mobile No", "User Type", "Status"]
+      fields: ["Stakeholder Category", "Stakeholder Role", "Role", "User Management Role", "Person Type", "State", "District", "Block", "Gram Panchayat", "Village", "Parent Office", "Office Name", "Full Address", "Pincode", "First Name", "Last Name", "Gender", "Email", "Password", "Confirmed Password", "User Name", "Mobile No", "User Type", "Status"]
     },
     "all-user" => {
       title: "All User",
       group: "User Register",
       purpose: "Registered users dekhne ke liye.",
-      fields: ["Stakeholder Category", "Stakeholder Role", "Role", "User Management Role", "Person Type", "State", "District", "Block", "Gram Panchayat", "Village", "Parent Office", "Office Category", "Office Name", "Full Address", "Pincode", "First Name", "Last Name", "Gender", "Email", "Password", "Confirmed Password", "User Name", "Mobile No", "User Type", "Status"]
+      fields: ["Stakeholder Category", "Stakeholder Role", "Role", "User Management Role", "Person Type", "State", "District", "Block", "Gram Panchayat", "Village", "Parent Office", "Office Name", "Full Address", "Pincode", "First Name", "Last Name", "Gender", "Email", "Password", "Confirmed Password", "User Name", "Mobile No", "User Type", "Status"]
     },
     "user-hierarchy-mapping" => {
       title: "User Hierarchy Mapping",
@@ -1431,7 +1426,7 @@ class ModulesController < ApplicationController
   end
 
   def lg_directory_row_from_record(record, aliases = {})
-    {
+    normalize_lg_gram_fields(
       record_id: record.id,
       source_slug: record.module_slug,
       state: record.data["state"].presence || record.data[aliases[:state].to_s].presence,
@@ -1447,7 +1442,17 @@ class ModulesController < ApplicationController
       village: record.data["village"].presence || record.data[aliases[:village].to_s].presence,
       village_code: record.data["village_code"].presence || record.data[aliases[:village_code].to_s].presence,
       status: record.data["status"].presence || "Active"
-    }
+    )
+  end
+
+  def normalize_lg_gram_fields(row)
+    gram_name = row[:gram_panchayat].to_s.strip
+    gram_code = row[:gp_code].to_s.strip
+    if code_like_location_value?(gram_name) && gram_code.present? && !code_like_location_value?(gram_code)
+      row.merge(gram_panchayat: gram_code, gp_code: gram_name)
+    else
+      row
+    end
   end
 
   def lg_directory_aliases_for_slug(module_slug)
@@ -1804,6 +1809,11 @@ class ModulesController < ApplicationController
       data["status"] = data["status"].presence || "Active"
     end
 
+    if record_source_slug == "parent-office-add"
+      data["parent_office_type"] = data["parent_office_type"].presence || (data["parent_office"].present? ? "Sub Parent Office" : "Parent Office")
+      data["parent_office"] = "" if data["parent_office_type"] == "Parent Office"
+    end
+
     data = normalize_training_form_data(data) if record_source_slug == "training-form"
 
     data
@@ -1983,6 +1993,7 @@ class ModulesController < ApplicationController
 
   def module_select_field?(field)
     return false if current_slug == "training-topic-mapping" && ["Department", "Training Topic", "Training Subject"].include?(field)
+    return true if current_slug == "parent-office-add" && field == "Parent Office"
     return true if training_target_field?(field)
     return true if training_activity_field?(field)
 
@@ -1991,6 +2002,7 @@ class ModulesController < ApplicationController
   end
 
   def module_field_options(field)
+    return parent_office_parent_options if current_slug == "parent-office-add" && field == "Parent Office"
     return training_target_field_options(field) if training_target_field?(field)
     return training_activity_field_options(field) if training_activity_field?(field)
 
@@ -2349,7 +2361,7 @@ class ModulesController < ApplicationController
         state: first_present_data(record, "state"),
         district: first_present_data(record, "district"),
         block: first_present_data(record, "block"),
-        gram_panchayat: first_present_data(record, "gram_panchayat_name"))
+        gram_panchayat: gram_panchayat_name_from_record(record))
     end
 
     villages = active_records_for_location("village-master").map do |record|
@@ -2361,7 +2373,16 @@ class ModulesController < ApplicationController
         village: first_present_data(record, "village_name"))
     end
 
-    states + districts + blocks + gram_panchayats + villages
+    lg_directory_rows = active_records_for_location("lg-directory-list").map do |record|
+      location_row(record,
+        state: first_present_data(record, "state", "state_name"),
+        district: first_present_data(record, "district", "district_name"),
+        block: first_present_data(record, "block", "cd_block_name"),
+        gram_panchayat: gram_panchayat_name_from_record(record),
+        village: first_present_data(record, "village", "village_name"))
+    end
+
+    states + districts + blocks + gram_panchayats + villages + lg_directory_rows
   end
 
   def active_records_for_location(module_slug)
@@ -2375,6 +2396,18 @@ class ModulesController < ApplicationController
     row = { id: record.id.to_s }
     values.each { |key, value| row[key] = value.to_s.strip if value.present? }
     row
+  end
+
+  def gram_panchayat_name_from_record(record)
+    first_non_code_data(record, "gram_panchayat_name", "gram_panchayat", "gp_name", "gram_name", "name", "gp_code")
+  end
+
+  def first_non_code_data(record, *keys)
+    keys.filter_map { |key| record.data[key].to_s.strip.presence }.find { |value| !code_like_location_value?(value) }
+  end
+
+  def code_like_location_value?(value)
+    value.to_s.strip.match?(/\A[\d\s.\/-]+\z/)
   end
 
   def static_field_options(field)
@@ -2393,6 +2426,7 @@ class ModulesController < ApplicationController
       "Can Delete" => ["Yes", "No"],
       "Select Mandatory" => ["Yes", "No"],
       "Office Level" => ["State", "District", "Block", "Gram Panchayat", "Village"],
+      "Parent Office Type" => ["Parent Office", "Sub Parent Office"],
       "Module Name" => ["VRP Registration", "VRP Bill"],
       "VRP Name" => vrp_name_options,
       "Sub Module Name" => sidebar_submodule_names
@@ -2462,7 +2496,7 @@ class ModulesController < ApplicationController
     return [] unless model_ready?(:ModuleRecord)
 
     ModuleRecord
-      .where(module_slug: ["office-category-add", "office-management"])
+      .where(module_slug: "office-category-add")
       .order(created_at: :desc)
       .select { |record| active_module_record?(record) }
       .map do |record|
@@ -2483,6 +2517,38 @@ class ModulesController < ApplicationController
         }
       end
       .reject { |mapping| mapping[:office_category].blank? && mapping[:office_name].blank? }
+      .uniq
+  end
+
+  def parent_office_mappings
+    return [] unless model_ready?(:ModuleRecord)
+
+    ModuleRecord
+      .where(module_slug: "parent-office-add")
+      .order(created_at: :desc)
+      .select { |record| active_module_record?(record) }
+      .filter_map do |record|
+        name = first_present_data(record, "parent_office_name", "parent_category").to_s.strip
+        next if name.blank?
+
+        parent_office = first_present_data(record, "parent_office").to_s.strip
+        parent_office_type = first_present_data(record, "parent_office_type").to_s.strip
+        parent_office_type = parent_office.present? ? "Sub Parent Office" : "Parent Office" if parent_office_type.blank?
+
+        {
+          stakeholder: first_present_data(record, "stakeholder_category", "stakeholder_name", "stakeholder").to_s.strip,
+          parent_office_name: name,
+          parent_office_type: parent_office_type,
+          parent_office: parent_office,
+          office_level: first_present_data(record, "office_level").to_s.strip
+        }
+      end
+      .uniq
+  end
+
+  def parent_office_parent_options
+    parent_office_mappings
+      .filter_map { |mapping| mapping[:parent_office_name].presence }
       .uniq
   end
 
@@ -2600,6 +2666,14 @@ class ModulesController < ApplicationController
 
   def values_from_module(module_slug, field_key)
     return approver_options if module_slug == "new-user" && field_key == "approver_name_with_role"
+    if module_slug == "gram-panchayat-master" && field_key == "gram_panchayat_name"
+      return ModuleRecord
+        .where(module_slug: module_slug)
+        .order(created_at: :desc)
+        .select { |record| active_module_record?(record) }
+        .filter_map { |record| gram_panchayat_name_from_record(record) }
+        .uniq
+    end
 
     field_keys = [field_key]
     field_keys << "role_name" if module_slug == "role-management" && field_key == "role"

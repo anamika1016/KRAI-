@@ -18,7 +18,7 @@
     <% approver_options = module_field_options("Approver (Approved By)") %>
     <% approval_levels = (1..3).map { |number| "Approval #{number}" } %>
     <section class="module-card approval-channel-card">
-      <%= form_with url: records_module_path(@slug), method: :post, html: { class: "module-entry-form", data: { user_role_form: true, approval_office_cascade: true, office_map: json_escape(office_category_mappings.to_json), office_user_map: json_escape(approval_user_mappings.to_json) } } do %>
+      <%= form_with url: records_module_path(@slug), method: :post, html: { class: "module-entry-form", data: { user_role_form: true } } do %>
         <div class="module-form-grid user-registration-grid">
           <label>
             <span>Module Name <em>*</em></span>
@@ -41,23 +41,12 @@
           </label>
 
           <label>
-            <span>Office Category <em>*</em></span>
-            <select name="module_record[office_category]" required data-office-category-select data-selected-value="">
-              <option value="">Select Office Category</option>
-            </select>
-          </label>
-
-          <label>
-            <span>Office Name <em>*</em></span>
-            <select name="module_record[office_name]" required data-office-name-select data-selected-value="">
-              <option value="">Select Office Name</option>
-            </select>
-          </label>
-
-          <label>
             <span>User Name <em>*</em></span>
             <select name="module_record[user_name]" required data-office-user-select>
               <option value="">Select User Name</option>
+              <% approver_options.each do |option| %>
+                <option value="<%= option %>"><%= option %></option>
+              <% end %>
             </select>
           </label>
         </div>
@@ -624,6 +613,8 @@
               <th>Block</th>
               <th>Gram Panchayat</th>
               <th>Village</th>
+              <th>Parent Office Name</th>
+              <th>Office Name</th>
               <th>User Type</th>
               <th>Enrollment Date</th>
               <th>Status</th>
@@ -646,6 +637,8 @@
                   <td><%= record.data["block"].presence || "-" %></td>
                   <td><%= record.data["gram_panchayat"].presence || "-" %></td>
                   <td><%= record.data["village"].presence || "-" %></td>
+                  <td><%= record.data["parent_office"].presence || "-" %></td>
+                  <td><%= record.data["office_name"].presence || record.data["office"].presence || "-" %></td>
                   <td><%= record.data["user_type"].presence || "-" %></td>
                   <td><%= record.created_at&.strftime("%d-%m-%Y %I:%M %p") %></td>
                   <td><span class="status-pill <%= record.data["status"] == "Inactive" ? "inactive" : "active" %>"><%= record.data["status"].presence || "Active" %></span></td>
@@ -653,7 +646,7 @@
               <% end %>
             <% else %>
               <tr>
-                <td colspan="16">No users registered yet.</td>
+                <td colspan="18">No users registered yet.</td>
               </tr>
             <% end %>
           </tbody>
@@ -759,7 +752,7 @@
   <div class="module-grid">
     <% location_fields = ["State", "District", "Block", "Gram Panchayat", "Village"] %>
     <% has_location_fields = (@module[:fields] & location_fields).any? %>
-    <section class="module-card" id="module-form" <% if ["role-management", "role-name", "user-management-role", "person-type"].include?(@slug) %>data-user-role-form data-role-map="<%= json_escape(role_management_mappings.to_json) %>"<% end %> <% if has_location_fields %>data-location-form data-location-map="<%= json_escape(location_hierarchy_mappings.to_json) %>"<% end %> <% if @slug == "training-form" %>data-training-target-form data-training-target-map="<%= json_escape(training_target_mappings.to_json) %>" data-training-activity-map="<%= json_escape(training_activity_mappings.to_json) %>"<% end %>>
+    <section class="module-card" id="module-form" <% if ["role-management", "role-name", "user-management-role", "person-type"].include?(@slug) %>data-user-role-form data-role-map="<%= json_escape(role_management_mappings.to_json) %>"<% end %> <% if @slug == "parent-office-add" %>data-parent-office-form data-parent-office-map="<%= json_escape(parent_office_mappings.to_json) %>"<% end %> <% if has_location_fields %>data-location-form data-location-map="<%= json_escape(location_hierarchy_mappings.to_json) %>"<% end %> <% if @slug == "training-form" %>data-training-target-form data-training-target-map="<%= json_escape(training_target_mappings.to_json) %>" data-training-activity-map="<%= json_escape(training_activity_mappings.to_json) %>"<% end %>>
       <div class="module-card-header">
         <h2><%= @slug == "new-user" ? "Registration" : (@record.present? ? "Edit Record" : "Fields") %></h2>
       </div>
@@ -773,6 +766,9 @@
             <% field_value = @record&.data&.[](field_key).to_s %>
             <% field_value = @record&.data&.[]("role_name").to_s if field == "Role" && field_value.blank? %>
             <% field_value = (@record&.data&.[]("category_name").presence || @record&.data&.[]("office")).to_s if field == "Office Name" && field_value.blank? %>
+            <% if @slug == "parent-office-add" && field == "Parent Office Type" && field_value.blank? %>
+              <% field_value = @record&.data&.[]("parent_office").present? ? "Sub Parent Office" : "Parent Office" if @record.present? %>
+            <% end %>
             <% if @slug == "training-form" && field_value.blank? %>
               <% field_value = current_app_user&.dig("name").to_s if field == "Trainer Name" %>
               <% field_value = current_app_user&.dig("mobile_no").to_s if field == "Trainer Contact" %>
@@ -828,7 +824,16 @@
                   when "Training Subject"
                     "data-training-subject data-selected-value=\"#{ERB::Util.html_escape(field_value)}\""
                   end if @slug == "training-form" %>
-                <select name="module_record[<%= field_key %>]" <%= role_dependency_attr&.html_safe %> <%= location_dependency_attr&.html_safe %> <%= training_target_attr&.html_safe %>>
+                <% parent_office_dependency_attr =
+                  case field
+                  when "Stakeholder Category"
+                    "data-parent-office-stakeholder-select"
+                  when "Parent Office Type"
+                    "data-parent-office-type-select data-selected-value=\"#{ERB::Util.html_escape(field_value)}\""
+                  when "Parent Office"
+                    "data-parent-office-select data-selected-value=\"#{ERB::Util.html_escape(field_value)}\""
+                  end if @slug == "parent-office-add" %>
+                <select name="module_record[<%= field_key %>]" <%= role_dependency_attr&.html_safe %> <%= location_dependency_attr&.html_safe %> <%= training_target_attr&.html_safe %> <%= parent_office_dependency_attr&.html_safe %>>
                   <option value=""><%= options.any? ? "Select #{resource_person_label(field)}" : "No #{resource_person_label(field)} saved yet" %></option>
                   <% options.each do |option| %>
                     <option value="<%= option %>" <%= "selected" if option == field_value %>><%= option %></option>

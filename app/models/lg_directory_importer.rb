@@ -162,6 +162,7 @@ class LgDirectoryImporter
         attrs = attributes_from_row(row, attributes_by_index)
         next if attrs.values.all?(&:blank?)
 
+        attrs = normalize_gram_fields(attrs)
         attrs[:status] = normalized_status(attrs[:status])
         created_for_row = create_hierarchy_records(attrs, existing_records, created_counts)
         skipped << skipped_row(index + 2, "No LG Directory value found.") if created_for_row.zero?
@@ -195,6 +196,18 @@ class LgDirectoryImporter
     end
 
     created
+  end
+
+  def self.normalize_gram_fields(attrs)
+    gram_name = attrs[:gram_panchayat].to_s.strip
+    gram_code = attrs[:gp_code].to_s.strip
+    return attrs unless code_like_value?(gram_name) && gram_code.present? && !code_like_value?(gram_code)
+
+    attrs.merge(gram_panchayat: gram_code, gp_code: gram_name)
+  end
+
+  def self.code_like_value?(value)
+    value.to_s.strip.match?(/\A[\d\s.\/-]+\z/)
   end
 
   def self.rows_from_upload(file)

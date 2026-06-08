@@ -819,7 +819,7 @@ class VrpsController < ApplicationController
     @state_options = module_record_options("state-master", "state_name")
     @district_options = module_record_options("district-master", "district_name")
     @block_options = module_record_options("block-master", "block_name")
-    @gram_panchayat_options = module_record_options("gram-panchayat-master", "gram_panchayat_name")
+    @gram_panchayat_options = module_record_options("gram-panchayat-master", ["gram_panchayat_name", "gram_panchayat", "gp_name", "gram_name", "name"])
     @village_options = module_record_options("village-master", "village_name")
     @location_hierarchy_mappings = location_hierarchy_mappings
   end
@@ -839,29 +839,14 @@ class VrpsController < ApplicationController
   end
 
   def office_management_mappings
-    return [] unless model_ready?(:ModuleRecord)
-
-    ModuleRecord
-      .where(module_slug: "office-management")
-      .order(created_at: :desc)
-      .select { |record| active_module_record?(record) }
-      .map do |record|
-        {
-          stakeholder: first_present_data(record, "stakeholder_category", "stakeholder_name", "stakeholder").to_s.strip,
-          parent_office: first_present_data(record, "parent_office", "parent_office_name", "parent_category").to_s.strip,
-          office_category: first_present_data(record, "office_category", "category_name").to_s.strip,
-          office_name: first_present_data(record, "office_name", "office").to_s.strip,
-          office_level: first_present_data(record, "office_level").to_s.strip
-        }
-      end
-      .reject { |mapping| mapping[:office_category].blank? && mapping[:office_name].blank? }
-      .uniq
+    registered_user_office_mappings + office_category_master_mappings
   end
 
   def current_user_office_category
     return "" if admin_user?
 
     current_user_model&.then { |user| user.respond_to?(:office_category) ? user.office_category : nil }.presence ||
+      current_user_model&.then { |user| user.respond_to?(:parent_office) ? user.parent_office : nil }.presence ||
       current_app_user&.dig("office_category").presence
   end
 
@@ -908,6 +893,86 @@ class VrpsController < ApplicationController
     offices.compact_blank.uniq.map { |office_name| [office_name, office_name] }
   end
 
+  def registered_user_office_mappings
+    user_model_office_mappings + module_record_user_office_mappings
+  end
+
+  def user_model_office_mappings
+    return [] unless model_ready?(:User)
+
+    User.order(created_at: :desc).filter_map do |user|
+      next unless user.status.blank? || user.status.to_s.casecmp("Active").zero?
+
+      office_category = user_office_category(user)
+      office_name = user_office_name(user)
+      next if office_category.blank? && office_name.blank?
+
+      {
+        stakeholder: user.respond_to?(:stakeholder) ? user.stakeholder.to_s.strip : "",
+        parent_office: user.respond_to?(:parent_office) ? user.parent_office.to_s.strip : "",
+        office_category: office_category,
+        office_name: office_name,
+        office: office_name,
+        office_level: ""
+      }
+    end.uniq
+  end
+
+  def module_record_user_office_mappings
+    return [] unless model_ready?(:ModuleRecord)
+
+    ModuleRecord
+      .where(module_slug: "new-user")
+      .order(created_at: :desc)
+      .select { |record| active_module_record?(record) }
+      .filter_map do |record|
+        office_category = record.data["office_category"].presence || record.data["parent_office"].to_s.strip
+        office_name = record.data["office_name"].presence || record.data["office"].to_s.strip
+        next if office_category.blank? && office_name.blank?
+
+        {
+          stakeholder: record.data["stakeholder"].to_s.strip,
+          parent_office: record.data["parent_office"].to_s.strip,
+          office_category: office_category,
+          office_name: office_name,
+          office: office_name,
+          office_level: ""
+        }
+      end.uniq
+  end
+
+  def office_category_master_mappings
+    return [] unless model_ready?(:ModuleRecord)
+
+    ModuleRecord
+      .where(module_slug: "office-category-add")
+      .order(created_at: :desc)
+      .select { |record| active_module_record?(record) }
+      .map do |record|
+        office_category = first_present_data(record, "office_category", "category_name", "office_name", "office").to_s.strip
+        {
+          stakeholder: first_present_data(record, "stakeholder_category", "stakeholder_name", "stakeholder").to_s.strip,
+          parent_office: first_present_data(record, "parent_office", "parent_office_name", "parent_category").to_s.strip,
+          office_category: office_category,
+          office_name: "",
+          office: "",
+          office_level: first_present_data(record, "office_level").to_s.strip
+        }
+      end
+      .reject { |mapping| mapping[:office_category].blank? }
+      .uniq
+  end
+
+  def user_office_category(user)
+    (user.respond_to?(:office_category) ? user.office_category : nil).presence ||
+      (user.respond_to?(:parent_office) ? user.parent_office : nil).to_s.strip
+  end
+
+  def user_office_name(user)
+    (user.respond_to?(:office_name) ? user.office_name : nil).presence ||
+      (user.respond_to?(:office) ? user.office : nil).to_s.strip
+  end
+
   def cluster_incharge_options
     cluster_incharge_user_mappings.map { |mapping| [mapping[:label], mapping[:value]] }
   end
@@ -926,8 +991,8 @@ class VrpsController < ApplicationController
         {
           label: label,
           value: name,
-          office_category: user.respond_to?(:office_category) ? user.office_category.to_s.strip : "",
-          office_name: (user.respond_to?(:office_name) ? user.office_name : nil).presence || user.office.to_s.strip,
+          office_category: user_office_category(user),
+          office_name: user_office_name(user),
           parent_office: user.respond_to?(:parent_office) ? user.parent_office.to_s.strip : ""
         }
       end
@@ -941,12 +1006,13 @@ class VrpsController < ApplicationController
   def module_record_options(module_slug, field_key)
     return [] unless model_ready?(:ModuleRecord)
 
+    field_keys = Array(field_key)
     ModuleRecord
       .where(module_slug: module_slug)
       .order(created_at: :desc)
       .select { |record| active_module_record?(record) }
       .filter_map do |record|
-        label = record.data[field_key].presence
+        label = module_slug == "gram-panchayat-master" ? gram_panchayat_name_from_record(record) : first_present_data(record, *field_keys)
         [label, record.id] if label
       end
       .uniq { |label, _value| label }
@@ -1129,7 +1195,7 @@ class VrpsController < ApplicationController
         state: first_present_data(record, "state"),
         district: first_present_data(record, "district"),
         block: first_present_data(record, "block"),
-        gram_panchayat: first_present_data(record, "gram_panchayat_name"))
+        gram_panchayat: gram_panchayat_name_from_record(record))
     end
 
     villages = active_records_for_location("village-master").map do |record|
@@ -1141,7 +1207,16 @@ class VrpsController < ApplicationController
         village: first_present_data(record, "village_name"))
     end
 
-    states + districts + blocks + gram_panchayats + villages
+    lg_directory_rows = active_records_for_location("lg-directory-list").map do |record|
+      location_row(record,
+        state: first_present_data(record, "state", "state_name"),
+        district: first_present_data(record, "district", "district_name"),
+        block: first_present_data(record, "block", "cd_block_name"),
+        gram_panchayat: gram_panchayat_name_from_record(record),
+        village: first_present_data(record, "village", "village_name"))
+    end
+
+    states + districts + blocks + gram_panchayats + villages + lg_directory_rows
   end
 
   def active_records_for_location(module_slug)
@@ -1155,6 +1230,18 @@ class VrpsController < ApplicationController
     row = { id: record.id.to_s }
     values.each { |key, value| row[key] = value.to_s.strip if value.present? }
     row
+  end
+
+  def gram_panchayat_name_from_record(record)
+    first_non_code_data(record, "gram_panchayat_name", "gram_panchayat", "gp_name", "gram_name", "name", "gp_code")
+  end
+
+  def first_non_code_data(record, *keys)
+    keys.filter_map { |key| record.data[key].to_s.strip.presence }.find { |value| !code_like_location_value?(value) }
+  end
+
+  def code_like_location_value?(value)
+    value.to_s.strip.match?(/\A[\d\s.\/-]+\z/)
   end
 
   def first_present_data(record, *keys)

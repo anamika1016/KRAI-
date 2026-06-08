@@ -92,20 +92,14 @@ class UsersController < ApplicationController
     @state_options = module_record_options("state-master", "state_name")
     @district_options = module_record_options("district-master", "district_name")
     @block_options = module_record_options("block-master", "block_name")
-    @gram_panchayat_options = module_record_options("gram-panchayat-master", "gram_panchayat_name")
+    @gram_panchayat_options = (
+      module_record_options("gram-panchayat-master", ["gram_panchayat_name", "gram_panchayat", "gp_name", "gram_name", "name"]) +
+      module_record_options("lg-directory-list", ["gram_panchayat", "gp_code"])
+    ).compact_blank.uniq
     @village_options = module_record_options("village-master", "village_name")
     @location_hierarchy_mappings = location_hierarchy_mappings
-    @parent_office_options = module_record_options("parent-office-add", "parent_office_name")
-    @office_category_options = (
-      module_record_options("office-category-add", ["office_name", "category_name"]) +
-      module_record_options("office-management", ["office_category", "category_name"])
-    ).compact_blank.uniq
-    @office_name_options = module_record_options("office-management", ["office_name", "office"]).compact_blank.uniq
-    @office_options = (
-      module_record_options("office-category-add", ["office_name", "category_name"]) +
-      module_record_options("office-management", ["office_name", "office"])
-    ).compact_blank.uniq
-    @office_category_mappings = office_category_mappings
+    @parent_office_options = module_record_options("parent-office-add", ["parent_office_name", "parent_category"])
+    @office_name_options = module_record_options("office-category-add", ["office_name", "category_name"])
     @ics_options = module_record_options("ics-master", "ics_name")
   end
 
@@ -117,7 +111,13 @@ class UsersController < ApplicationController
       .where(module_slug: module_slug)
       .order(created_at: :desc)
       .select { |record| record.data["status"].blank? || record.data["status"] == "Active" }
-      .flat_map { |record| field_keys.filter_map { |key| record.data[key].presence } }
+      .filter_map do |record|
+        if ["gram-panchayat-master", "lg-directory-list"].include?(module_slug)
+          gram_panchayat_name_from_record(record)
+        else
+          first_present_data(record, *field_keys)
+        end
+      end
       .uniq
   end
 
@@ -260,11 +260,23 @@ class UsersController < ApplicationController
     keys.filter_map { |key| record.data[key].presence }.first
   end
 
+  def gram_panchayat_name_from_record(record)
+    first_non_code_data(record, "gram_panchayat_name", "gram_panchayat", "gp_name", "gram_name", "name", "gp_code")
+  end
+
+  def first_non_code_data(record, *keys)
+    keys.filter_map { |key| record.data[key].to_s.strip.presence }.find { |value| !code_like_location_value?(value) }
+  end
+
+  def code_like_location_value?(value)
+    value.to_s.strip.match?(/\A[\d\s.\/-]+\z/)
+  end
+
   def office_category_mappings
     return [] unless defined?(ModuleRecord) && ModuleRecord.table_exists?
 
     ModuleRecord
-      .where(module_slug: ["office-category-add", "office-management"])
+      .where(module_slug: "office-category-add")
       .order(created_at: :desc)
       .select { |record| record.data["status"].blank? || record.data["status"].to_s.casecmp("Active").zero? }
       .map do |record|
@@ -313,7 +325,7 @@ class UsersController < ApplicationController
         state: first_present_data(record, "state"),
         district: first_present_data(record, "district"),
         block: first_present_data(record, "block"),
-        gram_panchayat: first_present_data(record, "gram_panchayat_name"))
+        gram_panchayat: gram_panchayat_name_from_record(record))
     end
 
     villages = active_records_for_location("village-master").map do |record|
@@ -325,7 +337,16 @@ class UsersController < ApplicationController
         village: first_present_data(record, "village_name"))
     end
 
-    states + districts + blocks + gram_panchayats + villages
+    lg_directory_rows = active_records_for_location("lg-directory-list").map do |record|
+      location_row(record,
+        state: first_present_data(record, "state", "state_name"),
+        district: first_present_data(record, "district", "district_name"),
+        block: first_present_data(record, "block", "cd_block_name"),
+        gram_panchayat: gram_panchayat_name_from_record(record),
+        village: first_present_data(record, "village", "village_name"))
+    end
+
+    states + districts + blocks + gram_panchayats + villages + lg_directory_rows
   end
 
   def active_records_for_location(module_slug)

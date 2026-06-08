@@ -689,6 +689,64 @@ document.addEventListener("turbo:load", () => {
     refreshOfficeUsers();
   });
 
+  document.querySelectorAll("[data-parent-office-form]").forEach((formShell) => {
+    const stakeholderSelect = formShell.querySelector("[data-parent-office-stakeholder-select]");
+    const parentOfficeTypeSelect = formShell.querySelector("[data-parent-office-type-select]");
+    const parentOfficeSelect = formShell.querySelector("[data-parent-office-select]");
+    if (!parentOfficeTypeSelect && !parentOfficeSelect) return;
+
+    let parentOfficeMappings = [];
+    try {
+      parentOfficeMappings = JSON.parse(formShell.dataset.parentOfficeMap || "[]");
+    } catch (_error) {
+      parentOfficeMappings = [];
+    }
+
+    const parentOfficeLabel = parentOfficeSelect?.closest("label");
+    const initialParentOfficeOptions = parentOfficeSelect
+      ? Array.from(parentOfficeSelect.options).map((option) => option.value).filter(Boolean)
+      : [];
+
+    const parentOfficeOptions = () => {
+      const options = uniquePresent(
+        parentOfficeMappings
+          .map((mapping) => mapping.parent_office_name)
+      );
+
+      return options.length ? options : initialParentOfficeOptions;
+    };
+
+    const refreshParentOfficeField = () => {
+      if (!parentOfficeSelect) return;
+
+      const selectedType = normalizeOption(parentOfficeTypeSelect?.value);
+      const isSubParentOffice = selectedType === normalizeOption("Sub Parent Office");
+
+      if (parentOfficeLabel) parentOfficeLabel.hidden = false;
+      parentOfficeSelect.disabled = !isSubParentOffice;
+      parentOfficeSelect.required = isSubParentOffice;
+      if (!isSubParentOffice) {
+        parentOfficeSelect.value = "";
+        parentOfficeSelect.dataset.selectedValue = "";
+        return;
+      }
+
+      replaceSelectOptions(parentOfficeSelect, parentOfficeOptions(), "Select Parent Office");
+    };
+
+    stakeholderSelect?.addEventListener("change", () => {
+      if (parentOfficeSelect) parentOfficeSelect.dataset.selectedValue = "";
+      refreshParentOfficeField();
+    });
+
+    parentOfficeTypeSelect?.addEventListener("change", () => {
+      if (parentOfficeSelect) parentOfficeSelect.dataset.selectedValue = "";
+      refreshParentOfficeField();
+    });
+
+    refreshParentOfficeField();
+  });
+
   document.querySelectorAll("[data-vrp-office-form]").forEach((formShell) => {
     const officeCategorySelect = formShell.querySelector("[data-vrp-office-category]");
     const officeNameSelect = formShell.querySelector("[data-vrp-office-name]");
@@ -2293,12 +2351,15 @@ document.addEventListener("turbo:load", () => {
       "Village Entry": "गांव प्रविष्टि",
       "Month Entry": "माह प्रविष्टि",
       "Stakeholder": "स्टेकहोल्डर",
-      "Office Management": "ऑफिस प्रबंधन",
+      "Office Setup": "ऑफिस सेटअप",
       "Parent Office Add": "पैरेंट ऑफिस जोड़ें",
       "Parent Office": "पैरेंट ऑफिस",
       "Parent Office Name": "पैरेंट ऑफिस नाम",
+      "Parent Office Type": "पैरेंट ऑफिस प्रकार",
+      "Sub Parent Office": "सब पैरेंट ऑफिस",
       "Parent Category": "पैरेंट श्रेणी",
       "Select Parent Office": "पैरेंट ऑफिस चुनें",
+      "Select Parent Office Type": "पैरेंट ऑफिस प्रकार चुनें",
       "Project Add": "प्रोजेक्ट जोड़ें",
       "Project Name": "प्रोजेक्ट नाम",
       "Stakeholder Name": "स्टेकहोल्डर नाम",
@@ -2557,7 +2618,7 @@ document.addEventListener("turbo:load", () => {
 	      "VRP ICS Mapping": "व्हीआरपी आयसीएस मॅपिंग",
 	      "Recent Target Mappings": "अलीकडील लक्ष्य मॅपिंग",
 	      "Recent VRP ICS Mappings": "अलीकडील व्हीआरपी आयसीएस मॅपिंग",
-	      "Office Management": "ऑफिस व्यवस्थापन",
+	      "Office Setup": "ऑफिस सेटअप",
 	      "Office Category": "ऑफिस श्रेणी",
 	      "Office Name": "ऑफिस नाव",
 	      "Office Level": "ऑफिस लेवल",
@@ -2612,7 +2673,7 @@ document.addEventListener("turbo:load", () => {
 	      "VRP ICS Mapping": "ଭିଆରପି ଆଇସିଏସ୍ ମ୍ୟାପିଂ",
 	      "Recent Target Mappings": "ସମ୍ପ୍ରତି ଟାର୍ଗେଟ୍ ମ୍ୟାପିଂ",
 	      "Recent VRP ICS Mappings": "ସମ୍ପ୍ରତି ଭିଆରପି ଆଇସିଏସ୍ ମ୍ୟାପିଂ",
-	      "Office Management": "ଅଫିସ୍ ପରିଚାଳନା",
+	      "Office Setup": "ଅଫିସ୍ ସେଟଅପ୍",
 	      "Office Category": "ଅଫିସ୍ ବର୍ଗ",
 	      "Office Name": "ଅଫିସ୍ ନାମ",
 	      "Office Level": "ଅଫିସ୍ ସ୍ତର",
