@@ -560,6 +560,12 @@ document.addEventListener("turbo:load", () => {
 
       const normalizedStakeholder = normalizeOption(stakeholderSelect?.value);
       const normalizedParentOffice = normalizeOption(parentOfficeSelect?.value);
+      if (!normalizedStakeholder && !normalizedParentOffice) {
+        replaceSelectOptions(officeNameSelect, [], "Select Office Name");
+        refreshOffices();
+        return;
+      }
+
       const officeNames = uniquePresent(
         officeMappings
           .filter((mapping) => {
@@ -608,6 +614,12 @@ document.addEventListener("turbo:load", () => {
       if (!officeSelect) return;
       const selectedStakeholder = stakeholderSelect?.value || "";
       const selectedOfficeCategory = officeCategorySelect?.value || officeNameSelect?.value || "";
+      if (subOfficeSelect && !normalizeOption(officeNameSelect?.value)) {
+        replaceSelectOptions(subOfficeSelect, [], "Select Sub Office Name");
+        refreshOfficeUsers();
+        return;
+      }
+
       if (approvalOfficeCascade && (!normalizeOption(selectedStakeholder) || !normalizeOption(selectedOfficeCategory))) {
         replaceSelectOptions(officeSelect, [], subOfficeSelect ? "Select Sub Office Name" : (officeNameSelect ? "Select Office Name" : "Select Office"));
         refreshOfficeUsers();

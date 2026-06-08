@@ -112,7 +112,7 @@ class UsersController < ApplicationController
     ModuleRecord
       .where(module_slug: module_slug)
       .order(created_at: :desc)
-      .select { |record| record.data["status"].blank? || record.data["status"] == "Active" }
+      .select { |record| active_module_record?(record) }
       .filter_map do |record|
         if ["gram-panchayat-master", "lg-directory-list"].include?(module_slug)
           gram_panchayat_name_from_record(record)
@@ -129,7 +129,7 @@ class UsersController < ApplicationController
     stakeholder_role_mappings = ModuleRecord
       .where(module_slug: "stakeholder-role")
       .order(created_at: :desc)
-      .select { |record| record.data["status"].blank? || record.data["status"].to_s.casecmp("Active").zero? }
+      .select { |record| active_module_record?(record) }
       .flat_map do |record|
         stakeholder_role = first_present_data(record, "stakeholder_role").to_s.strip
         parent_office = first_present_data(record, "parent_office", "parent_category", "office_name", "office").to_s.strip
@@ -158,7 +158,7 @@ class UsersController < ApplicationController
     role_mappings = ModuleRecord
       .where(module_slug: "role-name")
       .order(created_at: :desc)
-      .select { |record| record.data["status"].blank? || record.data["status"].to_s.casecmp("Active").zero? }
+      .select { |record| active_module_record?(record) }
       .flat_map do |record|
         role = first_present_data(record, "role_name").to_s.strip
         mapping_labels_for_option(role, :role).map do |role_label|
@@ -180,7 +180,7 @@ class UsersController < ApplicationController
     user_management_role_mappings = ModuleRecord
       .where(module_slug: "user-management-role")
       .order(created_at: :desc)
-      .select { |record| record.data["status"].blank? || record.data["status"].to_s.casecmp("Active").zero? }
+      .select { |record| active_module_record?(record) }
       .flat_map do |record|
         user_management_role = first_present_data(record, "user_management_role").to_s.strip
         mapping_labels_for_option(user_management_role, :user_management_role).map do |user_management_role_label|
@@ -201,7 +201,7 @@ class UsersController < ApplicationController
     person_type_mappings = ModuleRecord
       .where(module_slug: "person-type")
       .order(created_at: :desc)
-      .select { |record| record.data["status"].blank? || record.data["status"].to_s.casecmp("Active").zero? }
+      .select { |record| active_module_record?(record) }
       .flat_map do |record|
         person_type = first_present_data(record, "person_type").to_s.strip
         mapping_labels_for_option(person_type, :person_type).map do |person_type_label|
@@ -260,12 +260,27 @@ class UsersController < ApplicationController
     ModuleRecord
       .where(module_slug: "new-user")
       .order(updated_at: :desc)
-      .select { |record| (record.data["status"].blank? || record.data["status"].to_s.casecmp("Active").zero?) && record.data[key].to_s.strip.casecmp(value.to_s.strip).zero? }
+      .select { |record| active_module_record?(record) && record.data[key].to_s.strip.casecmp(value.to_s.strip).zero? }
       .filter_map { |record| [record.data["first_name"], record.data["last_name"]].compact_blank.join(" ").presence || record.data["user_name"].presence }
   end
 
   def first_present_data(record, *keys)
     keys.filter_map { |key| record.data[key].presence }.first
+  end
+
+  def active_module_record?(record)
+    return false if truthy_module_flag?(record.data["deleted"]) ||
+      truthy_module_flag?(record.data["is_deleted"]) ||
+      truthy_module_flag?(record.data["discarded"])
+
+    status = record.data["status"].to_s.strip
+    return true if status.blank?
+
+    status.casecmp("Active").zero?
+  end
+
+  def truthy_module_flag?(value)
+    ["1", "true", "yes", "deleted"].include?(value.to_s.strip.downcase)
   end
 
   def gram_panchayat_name_from_record(record)
@@ -286,7 +301,7 @@ class UsersController < ApplicationController
     ModuleRecord
       .where(module_slug: ["office-category-add", "office-mapping-add"])
       .order(created_at: :desc)
-      .select { |record| record.data["status"].blank? || record.data["status"].to_s.casecmp("Active").zero? }
+      .select { |record| active_module_record?(record) }
       .map do |record|
         office_category = first_present_data(record, "office_category", "category_name")
         office_name = first_present_data(record, "office_name", "office")
@@ -364,7 +379,7 @@ class UsersController < ApplicationController
     ModuleRecord
       .where(module_slug: module_slug)
       .order(created_at: :desc)
-      .select { |record| record.data["status"].blank? || record.data["status"].to_s.casecmp("Active").zero? }
+      .select { |record| active_module_record?(record) }
   end
 
   def location_row(record, values)

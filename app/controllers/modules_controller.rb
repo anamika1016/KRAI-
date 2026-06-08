@@ -2739,7 +2739,18 @@ class ModulesController < ApplicationController
   end
 
   def active_module_record?(record)
-    record.data["status"].blank? || record.data["status"] == "Active"
+    return false if truthy_module_flag?(record.data["deleted"]) ||
+      truthy_module_flag?(record.data["is_deleted"]) ||
+      truthy_module_flag?(record.data["discarded"])
+
+    status = record.data["status"].to_s.strip
+    return true if status.blank?
+
+    status.casecmp("Active").zero?
+  end
+
+  def truthy_module_flag?(value)
+    ["1", "true", "yes", "deleted"].include?(value.to_s.strip.downcase)
   end
 
   def sync_vrp_master_record(record)
