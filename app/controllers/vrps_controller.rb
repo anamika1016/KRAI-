@@ -1208,8 +1208,8 @@ class VrpsController < ApplicationController
         state: first_present_data(record, "state"),
         district: first_present_data(record, "district"),
         block: first_present_data(record, "block"),
-        gram_panchayat: first_present_data(record, "gram_panchayat"),
-        village: first_present_data(record, "village_name"))
+        gram_panchayat: gram_panchayat_name_from_record(record),
+        village: first_present_data(record, "village_name", "village", "name"))
     end
 
     lg_directory_rows = active_records_for_location("lg-directory-list").map do |record|
@@ -1238,11 +1238,12 @@ class VrpsController < ApplicationController
   end
 
   def gram_panchayat_name_from_record(record)
-    first_non_code_data(record, "gram_panchayat_name", "gram_panchayat", "gp_name", "gram_name", "name", "gp_code")
+    first_non_code_data(record, "gram_panchayat_name", "gram_panchayat", "gram_panchayat_id", "gp_name", "gram_name", "name", "gp_code", "gram_code")
   end
 
   def first_non_code_data(record, *keys)
-    keys.filter_map { |key| record.data[key].to_s.strip.presence }.find { |value| !code_like_location_value?(value) }
+    values = keys.filter_map { |key| record.data[key].to_s.strip.presence }
+    values.find { |value| !code_like_location_value?(value) } || values.first
   end
 
   def code_like_location_value?(value)
