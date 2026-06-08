@@ -380,7 +380,7 @@ class ModulesController < ApplicationController
       return
     end
 
-    @dashboard_title = admin_dashboard_user? ? "Admin Dashboard" : "User Dashboard"
+    @dashboard_title = admin_dashboard_user? ? "Admin Dashboard" : dashboard_current_user_title
     @dashboard_caption = admin_dashboard_user? ? "Live complete system summary." : "Live summary for your mapped records."
     @dashboard_cards = dashboard_cards
     @dashboard_reports = dashboard_reports
@@ -1072,6 +1072,13 @@ class ModulesController < ApplicationController
 
   def admin_dashboard_user?
     current_app_user&.dig("user_type").to_s.strip.casecmp("admin").zero?
+  end
+
+  def dashboard_current_user_title
+    current_app_user&.dig("name").presence ||
+      current_app_user&.dig("username").presence ||
+      current_app_user&.dig("user_name").presence ||
+      "Dashboard"
   end
 
   def dashboard_vrps
