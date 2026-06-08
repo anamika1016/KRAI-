@@ -1474,7 +1474,7 @@ a {
 }
 
 .user-hierarchy-table {
-  grid-template-columns: 130px minmax(220px, 1fr) minmax(300px, 1.35fr) 140px;
+  grid-template-columns: 130px minmax(260px, 1fr) 140px;
 }
 
 .approval-level-head {
@@ -1501,10 +1501,6 @@ a {
 }
 
 .user-hierarchy-table .approval-level-cell:not(:nth-child(3n + 1)) {
-  border-left: 0;
-}
-
-.user-hierarchy-table .approval-level-cell:not(:nth-child(4n + 1)) {
   border-left: 1px solid var(--vrp-line);
 }
 

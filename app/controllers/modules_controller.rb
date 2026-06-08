@@ -310,13 +310,13 @@ class ModulesController < ApplicationController
       title: "User Hierarchy Mapping",
       group: "User Mapping",
       purpose: "Kis user ke under kaun user kaam karega map karne ke liye.",
-      fields: ["Stakeholder Category", "Level 1 User", "Level 2 User", "Level 3 User", "Status"]
+      fields: ["Stakeholder Category", "Level 1 User", "Level 2 User", "Status"]
     },
     "user-hierarchy-list" => {
-      title: "Cluster Incharge Under Agronomist",
+      title: "Cluster Incharge Under Jeevika Jankar User",
       group: "User Mapping",
       purpose: "Saved user hierarchy aur Jeevika Jankar cluster incharge mapping dekhne ke liye.",
-      fields: ["Stakeholder Category", "Level 1 User", "Level 2 User", "Level 3 User", "Status"]
+      fields: ["Stakeholder Category", "Level 1 User", "Level 2 User", "Status"]
     },
     "stakeholder-role" => {
       title: "Stakeholder Person Type",
@@ -879,8 +879,7 @@ class ModulesController < ApplicationController
       dashboard_card("Activities Configured", activities.size, "Activities available for target and bill work", module_path("vrp-activity-list"))
     ]
 
-    cards.insert(0, dashboard_card("Level 3 Users Under Level 1", hierarchy_summary[:level_3_total], "Level 3 users mapped below your Level 1 hierarchy", dashboard_path(anchor: "user_hierarchy_report"))) if hierarchy_summary[:level_3_total].positive?
-    cards.insert(0, dashboard_card("Direct Level 2 Users", hierarchy_summary[:level_2_total], "Users directly mapped under you", dashboard_path(anchor: "user_hierarchy_report"))) if hierarchy_summary[:level_2_total].positive?
+    cards.insert(0, dashboard_card("Level 2 Users", hierarchy_summary[:level_2_total], "Users directly mapped under you", dashboard_path(anchor: "user_hierarchy_report"))) if hierarchy_summary[:level_2_total].positive?
 
     cards
   end
@@ -929,11 +928,10 @@ class ModulesController < ApplicationController
 
   def user_hierarchy_dashboard_summary
     @user_hierarchy_dashboard_summary ||= begin
-      direct_rows, level_3_rows = user_hierarchy_dashboard_rows
-      rows = direct_rows + level_3_rows
+      rows = user_hierarchy_dashboard_rows
       {
-        level_2_total: direct_rows.size,
-        level_3_total: level_3_rows.size,
+        level_2_total: rows.size,
+        level_3_total: 0,
         total: rows.size,
         rows: rows
       }
@@ -941,13 +939,12 @@ class ModulesController < ApplicationController
   end
 
   def user_hierarchy_dashboard_rows
-    return [[], []] unless model_ready?(:ModuleRecord)
+    return [] unless model_ready?(:ModuleRecord)
 
     current_labels = current_dashboard_user_labels
-    return [[], []] if current_labels.blank?
+    return [] if current_labels.blank?
 
-    direct_rows = []
-    level_3_rows = []
+    rows = []
     ModuleRecord
       .where(module_slug: "user-hierarchy-mapping")
       .order(updated_at: :desc)
@@ -956,21 +953,14 @@ class ModulesController < ApplicationController
         level_1_user = record.data["level_1_user"].to_s.strip
         hierarchy_mappings_for_dashboard(record).each do |mapping|
           level_2_user = mapping["level_2_user"].to_s.strip
-          level_3_users = Array(mapping["level_3_users"]).map(&:to_s).map(&:strip).reject(&:blank?)
 
           if dashboard_user_label_matches?(level_1_user, current_labels)
-            direct_rows << [level_2_user, level_1_user, "Level 2"] if level_2_user.present?
-            level_3_users.each { |user| level_3_rows << [user, level_2_user.presence || level_1_user, "Level 3"] }
-          elsif dashboard_user_label_matches?(level_2_user, current_labels)
-            level_3_users.each { |user| level_3_rows << [user, level_2_user, "Level 3"] }
+            rows << [level_2_user, level_1_user, "Level 2"] if level_2_user.present?
           end
         end
       end
 
-    [
-      direct_rows.reject { |row| row[0].blank? },
-      level_3_rows.reject { |row| row[0].blank? }
-    ]
+    rows.reject { |row| row[0].blank? }
   end
 
   def hierarchy_mappings_for_dashboard(record)
@@ -980,18 +970,17 @@ class ModulesController < ApplicationController
       mapping = mapping.to_h if mapping.respond_to?(:to_h)
       next unless mapping.is_a?(Hash)
 
-      {
-        "level_2_user" => mapping["level_2_user"],
-        "level_3_users" => Array(mapping["level_3_users"]).flat_map { |value| value.to_s.split(",") }.map(&:strip).reject(&:blank?)
-      }
+      users = collapsed_hierarchy_users(mapping["level_2_user"], mapping["level_3_users"])
+      users.map { |user| { "level_2_user" => user, "level_3_users" => [] } }
     end
+    mappings.flatten!
 
     return mappings if mappings.any?
 
-    Array(record.data["level_2_users"].presence || record.data["level_2_user"]).flat_map { |value| value.to_s.split(",") }.map(&:strip).reject(&:blank?).map do |level_2_user|
+    collapsed_hierarchy_users(record.data["level_2_users"].presence || record.data["level_2_user"], record.data["level_3_users"].presence || record.data["level_3_user"]).map do |level_2_user|
       {
         "level_2_user" => level_2_user,
-        "level_3_users" => Array(record.data["level_3_users"].presence || record.data["level_3_user"]).flat_map { |value| value.to_s.split(/[;,]/) }.map(&:strip).reject(&:blank?)
+        "level_3_users" => []
       }
     end
   end
@@ -1892,17 +1881,12 @@ class ModulesController < ApplicationController
     if record_source_slug == "user-hierarchy-mapping"
       level_2_mappings = normalize_user_hierarchy_mappings(data)
       level_2_users = level_2_mappings.filter_map { |mapping| mapping["level_2_user"].presence }.uniq
-      level_3_users = level_2_mappings.flat_map { |mapping| mapping["level_3_users"] }.uniq
 
       data["level_2_mappings"] = level_2_mappings
       data["level_2_users"] = level_2_users
       data["level_2_user"] = level_2_users.join(", ")
-      data["level_3_users"] = level_3_users
-      data["level_3_user"] = level_2_mappings.filter_map do |mapping|
-        next if mapping["level_2_user"].blank? || mapping["level_3_users"].blank?
-
-        "#{mapping["level_2_user"]} -> #{mapping["level_3_users"].join(", ")}"
-      end.join("; ")
+      data["level_3_users"] = []
+      data["level_3_user"] = ""
       data["status"] = data["status"].presence || "Active"
     end
 
@@ -1954,19 +1938,21 @@ class ModulesController < ApplicationController
       mapping = mapping.to_h if mapping.respond_to?(:to_h)
       next unless mapping.is_a?(Hash)
 
-      level_2_user = mapping["level_2_user"].to_s.strip
-      level_3_users = Array(mapping["level_3_users"]).flat_map { |value| value.to_s.split(",") }.map(&:strip).reject(&:blank?).uniq
-      next if level_2_user.blank? && level_3_users.blank?
+      users = collapsed_hierarchy_users(mapping["level_2_user"], mapping["level_3_users"])
+      next if users.blank?
 
-      {
-        "level_2_user" => level_2_user,
-        "level_3_users" => level_3_users
-      }
+      users.map do |level_2_user|
+        {
+          "level_2_user" => level_2_user,
+          "level_3_users" => []
+        }
+      end
     end
+    mappings.flatten!
 
     return mappings if mappings.any?
 
-    Array(data["level_2_users"]).map { |value| value.to_s.strip }.reject(&:blank?).uniq.map do |level_2_user|
+    collapsed_hierarchy_users(data["level_2_users"], data["level_3_users"]).map do |level_2_user|
       {
         "level_2_user" => level_2_user,
         "level_3_users" => []
@@ -2143,14 +2129,11 @@ class ModulesController < ApplicationController
 
       mappings = normalized_user_hierarchy_list_mappings(record)
       if mappings.blank?
-        [base.merge(level_2_user: record.data["level_2_user"].presence || "-", level_3_user: record.data["level_3_user"].presence || "-")]
+        users = collapsed_hierarchy_users(record.data["level_2_users"].presence || record.data["level_2_user"], record.data["level_3_users"].presence || record.data["level_3_user"])
+        users = ["-"] if users.blank?
+        users.map { |level_2_user| base.merge(level_2_user: level_2_user) }
       else
-        mappings.flat_map do |mapping|
-          level_2_user = mapping["level_2_user"].presence || "-"
-          level_3_users = Array(mapping["level_3_users"]).compact_blank
-          level_3_users = ["-"] if level_3_users.blank?
-          level_3_users.map { |level_3_user| base.merge(level_2_user: level_2_user, level_3_user: level_3_user) }
-        end
+        mappings.map { |mapping| base.merge(level_2_user: mapping["level_2_user"].presence || "-") }
       end
     end
   end
@@ -2162,11 +2145,20 @@ class ModulesController < ApplicationController
     Array(mappings).filter_map do |mapping|
       next unless mapping.respond_to?(:[])
 
-      {
-        "level_2_user" => mapping["level_2_user"].to_s.strip,
-        "level_3_users" => Array(mapping["level_3_users"]).flat_map { |value| value.to_s.split(",") }.map(&:strip).compact_blank
-      }
+      collapsed_hierarchy_users(mapping["level_2_user"], mapping["level_3_users"]).map do |level_2_user|
+        { "level_2_user" => level_2_user, "level_3_users" => [] }
+      end
     end
+      .flatten
+  end
+
+  def collapsed_hierarchy_users(*values)
+    values.flatten.flat_map do |value|
+      value.to_s.split(";").flat_map do |segment|
+        user_segment = segment.include?("->") ? segment.split("->", 2).last : segment
+        user_segment.to_s.split(",")
+      end
+    end.map(&:strip).compact_blank.uniq
   end
 
   def jeevika_jankar_cluster_rows
