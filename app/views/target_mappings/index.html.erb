@@ -29,72 +29,79 @@
               </select>
             </label>
 
-          <label>
-            <span>Month <em>*</em></span>
-            <select name="target_mapping[month_name]" required>
-              <option value="">Select Month</option>
-              <% @month_options.each do |option| %>
-                <option value="<%= option %>" <%= "selected" if @edit_target&.month_name.to_s == option.to_s %>><%= option %></option>
-              <% end %>
-            </select>
-          </label>
+            <label>
+              <span>FCO Name <em>*</em></span>
+              <select name="target_mapping[fco_id]" data-target-fco data-selected-value="<%= [@edit_target&.fco_id, @edit_target&.fco_name].compact_blank.join("||") %>" required>
+                <option value="">Select FCO Name</option>
+              </select>
+            </label>
 
-          <label>
-            <span>Main Activity <em>*</em></span>
-            <select name="target_mapping[main_activity_name]" required>
-              <option value="">Select Main Activity</option>
-              <% @main_activity_options.each do |option| %>
-                <option value="<%= option %>" <%= "selected" if @edit_target&.main_activity_name.to_s == option.to_s %>><%= option %></option>
-              <% end %>
-            </select>
-          </label>
+            <label>
+              <span>ICS <em>*</em></span>
+              <select name="target_mapping[ics_id]" data-target-ics data-selected-value="<%= [@edit_target&.ics_id, @edit_target&.ics_name].compact_blank.join("||") %>" required disabled>
+                <option value="">Select ICS</option>
+              </select>
+            </label>
 
-          <label>
-            <span>Sub Activity <em>*</em></span>
-            <select name="target_mapping[activity_name]" required>
-              <option value="">Select Sub Activity</option>
-              <% @sub_activity_options.each do |option| %>
-                <option value="<%= option %>" <%= "selected" if @edit_target&.activity_name.to_s == option.to_s %>><%= option %></option>
-              <% end %>
-            </select>
-          </label>
+            <label>
+              <span>Village <em>*</em></span>
+              <select name="target_mapping[village_id]" data-target-village data-selected-value="<%= [@edit_target&.village_id, @edit_target&.village_name].compact_blank.join("||") %>" required disabled>
+                <option value="">Select Village</option>
+              </select>
+            </label>
 
-        </div>
+            <label>
+              <span>Month <em>*</em></span>
+              <select name="target_mapping[month_name]" required>
+                <option value="">Select Month</option>
+                <% @month_options.each do |option| %>
+                  <option value="<%= option %>" <%= "selected" if @edit_target&.month_name.to_s == option.to_s %>><%= option %></option>
+                <% end %>
+              </select>
+            </label>
 
-        <div class="target-mapping-panel">
-          <div class="target-mapping-toolbar">
-            <strong>Mapped FCO / ICS / Village List</strong>
-            <span data-target-mapping-count>0 mapping selected</span>
+            <label>
+              <span>Main Activity <em>*</em></span>
+              <select name="target_mapping[main_activity_name]" required>
+                <option value="">Select Main Activity</option>
+                <% @main_activity_options.each do |option| %>
+                  <option value="<%= option %>" <%= "selected" if @edit_target&.main_activity_name.to_s == option.to_s %>><%= option %></option>
+                <% end %>
+              </select>
+            </label>
+
+            <label>
+              <span>Sub Activity <em>*</em></span>
+              <select name="target_mapping[activity_name]" required>
+                <option value="">Select Sub Activity</option>
+                <% @sub_activity_options.each do |option| %>
+                  <option value="<%= option %>" <%= "selected" if @edit_target&.activity_name.to_s == option.to_s %>><%= option %></option>
+                <% end %>
+              </select>
+            </label>
+
+            <label>
+              <span>Registered Farmers</span>
+              <input type="text" value="0" data-target-registered-count readonly>
+            </label>
+
+            <label>
+              <span>Target <em>*</em></span>
+              <input type="number" name="target_mapping[target_quantity]" min="1" step="1" placeholder="Selected farmer count" value="<%= @edit_target&.target_quantity %>" data-target-quantity-input readonly required>
+            </label>
           </div>
 
-          <div class="table-shell">
-            <table class="module-table target-mapping-table">
-              <thead>
-                <tr>
-                  <th>Select</th>
-                  <th>FCO</th>
-                  <th>ICS</th>
-                  <th>Village</th>
-                  <th>Registered Farmers</th>
-                  <th>Target</th>
-                </tr>
-              </thead>
-              <tbody data-target-mapping-rows>
-                <tr>
-                  <td colspan="6">Select VRP to load mapped villages.</td>
-                </tr>
-              </tbody>
-            </table>
-          </div>
-        </div>
-
-        <div class="target-farmer-panel" data-target-farmer-panel hidden>
+        <div class="target-farmer-panel" data-target-farmer-panel>
           <div class="target-mapping-toolbar">
             <strong>Farmer List</strong>
+            <label class="vrp-ics-select-all">
+              <input type="checkbox" data-target-farmer-select-all>
+              <span>Select all</span>
+            </label>
             <span data-target-farmer-count>0 farmer selected</span>
           </div>
           <div class="vrp-ics-farmer-list target-farmer-list" data-target-farmer-list>
-            Select a partial target to load farmers.
+            Select FCO Name, ICS and Village to load farmers.
           </div>
         </div>
 

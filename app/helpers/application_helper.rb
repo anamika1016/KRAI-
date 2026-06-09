@@ -102,8 +102,8 @@ module ApplicationHelper
       title: "Target Mapping",
       icon: "▤",
       links: [
-        ["Target Mapping Upload", :route, :afls_path],
-        ["VRP ICS Mapping", :route, :vrp_ics_mappings_path],
+        ["AFL Upload", :route, :afls_path],
+        # ["VRP ICS Mapping", :route, :vrp_ics_mappings_path],
         ["Target Mapping Master", :route, :target_mappings_path]
       ]
     },

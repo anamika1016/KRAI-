@@ -1208,30 +1208,30 @@ class VrpsController < ApplicationController
 
     districts = active_records_for_location("district-master").map do |record|
       location_row(record,
-        state: first_present_data(record, "state"),
+        state: location_name_from_record(record, "state_name", "state", "state_id", "state_code"),
         district: first_present_data(record, "district_name"))
     end
 
     blocks = active_records_for_location("block-master").map do |record|
       location_row(record,
-        state: first_present_data(record, "state"),
-        district: first_present_data(record, "district"),
+        state: location_name_from_record(record, "state_name", "state", "state_id", "state_code"),
+        district: location_name_from_record(record, "district_name", "district", "district_id", "district_code"),
         block: first_present_data(record, "block_name"))
     end
 
     gram_panchayats = active_records_for_location("gram-panchayat-master").map do |record|
       location_row(record,
-        state: first_present_data(record, "state"),
-        district: first_present_data(record, "district"),
-        block: first_present_data(record, "block"),
+        state: location_name_from_record(record, "state_name", "state", "state_id", "state_code"),
+        district: location_name_from_record(record, "district_name", "district", "district_id", "district_code"),
+        block: location_name_from_record(record, "block_name", "block", "block_id", "block_code"),
         gram_panchayat: gram_panchayat_name_from_record(record))
     end
 
     villages = active_records_for_location("village-master").map do |record|
       location_row(record,
-        state: first_present_data(record, "state"),
-        district: first_present_data(record, "district"),
-        block: first_present_data(record, "block"),
+        state: location_name_from_record(record, "state_name", "state", "state_id", "state_code"),
+        district: location_name_from_record(record, "district_name", "district", "district_id", "district_code"),
+        block: location_name_from_record(record, "block_name", "block", "block_id", "block_code"),
         gram_panchayat: gram_panchayat_name_from_record(record),
         village: first_present_data(record, "village_name", "village", "name"))
     end
@@ -1263,6 +1263,10 @@ class VrpsController < ApplicationController
 
   def gram_panchayat_name_from_record(record)
     first_non_code_data(record, "gram_panchayat_name", "gram_panchayat", "gram_panchayat_id", "gp_name", "gram_name", "name", "gp_code", "gram_code")
+  end
+
+  def location_name_from_record(record, *keys)
+    first_non_code_data(record, *keys)
   end
 
   def first_non_code_data(record, *keys)

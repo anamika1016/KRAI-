@@ -285,17 +285,34 @@ class VrpDashboardTest < ActionDispatch::IntegrationTest
     assert_equal 2, target.farmer_count
     assert_equal farmers.first(2).map { |farmer| farmer.id.to_s }, target.afl_ids
 
-    get vrp_mappings_target_mappings_path, params: { vrp_id: vrp.id, month_name: "July" }
+    get vrp_mappings_target_mappings_path, params: {
+      vrp_id: vrp.id,
+      fco_id: mapping.fco_id,
+      ics_id: mapping.ics_id,
+      village_id: mapping.village_id,
+      month_name: "July"
+    }
 
-    farmer_rows = JSON.parse(response.body).dig("mappings", 0, "farmers")
+    farmer_rows = JSON.parse(response.body).fetch("farmers")
     assigned_rows = farmer_rows.select { |farmer| farmer["assigned_to_other"] }
     available_rows = farmer_rows.reject { |farmer| farmer["assigned_to_other"] }
     assert_equal farmers.first(2).map { |farmer| farmer.id.to_s }.sort, assigned_rows.map { |farmer| farmer["id"] }.sort
     assert_equal [farmers.last.id.to_s], available_rows.map { |farmer| farmer["id"] }
 
+    get vrp_mappings_target_mappings_path, params: {
+      vrp_id: vrp.id,
+      fco_id: mapping.fco_id,
+      ics_id: mapping.ics_id,
+      village_id: mapping.village_id,
+      month_name: "August"
+    }
+    august_rows = JSON.parse(response.body).fetch("farmers")
+    assert_equal farmers.first(2).map { |farmer| farmer.id.to_s }.sort,
+      august_rows.select { |farmer| farmer["assigned_to_other"] }.map { |farmer| farmer["id"] }.sort
+
     assert_no_difference("TargetMapping.count") do
       post target_mappings_path, params: {
-        target_mapping: target_params(vrp, mapping, "July", 1, [farmers.first.id])
+        target_mapping: target_params(vrp, mapping, "August", 1, [farmers.first.id])
       }
     end
 
@@ -311,7 +328,9 @@ class VrpDashboardTest < ActionDispatch::IntegrationTest
   def target_params(vrp, mapping, month, target_quantity, farmer_ids)
     {
       vrp_id: vrp.id,
-      vrp_ics_mapping_id: mapping.id,
+      fco_id: mapping.fco_id,
+      ics_id: mapping.ics_id,
+      village_id: mapping.village_id,
       month_name: month,
       main_activity_name: "Farmer Visit",
       activity_name: "Farm Visit",

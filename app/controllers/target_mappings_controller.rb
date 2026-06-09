@@ -5,7 +5,7 @@ class TargetMappingsController < ApplicationController
     @vrp_target_view = non_admin_vrp_login?
     @admin_mapping_actions = admin_login?
     @remove_mapping_actions = !admin_login? && !non_admin_vrp_login?
-    @vrps = mapped_vrps
+    @vrps = target_vrps
     @month_options = module_options("month-master", "month_name")
     @main_activity_options = module_options("add-activity-group", "main_activity_name", "activity_group_name")
     @sub_activity_options = module_options("add-vrp-activity", "sub_activity_name", "activity_name", "vrp_activity_name")
@@ -15,13 +15,14 @@ class TargetMappingsController < ApplicationController
   end
 
   def create
-    mapping = visible_vrp_ics_mappings.find(target_mapping_params[:vrp_ics_mapping_id])
     target_mapping = editable_target || TargetMapping.new
     target_mapping.assign_attributes(target_mapping_params)
-    target_mapping.assign_attributes(mapping_attributes(mapping))
+    target_mapping.vrp_ics_mapping_id = nil
+    normalize_location_values(target_mapping)
+    assign_afl_location_names(target_mapping)
     assign_creator(target_mapping) if target_mapping.new_record?
 
-    if assign_target_farmers(target_mapping, mapping) && target_mapping.save
+    if assign_target_farmers(target_mapping) && target_mapping.save
       redirect_to target_mappings_path, notice: "Target mapping saved successfully."
     else
       redirect_to target_mappings_path, alert: target_mapping.errors.full_messages.to_sentence
@@ -34,7 +35,19 @@ class TargetMappingsController < ApplicationController
   end
 
   def vrp_mappings
-    render json: { mappings: mappings_for(params[:vrp_id]) }
+    render json: {
+      fco_options: fco_options,
+      ics_options: ics_options_for(params[:fco_id]),
+      village_options: village_options_for(params[:fco_id], params[:ics_id]),
+      farmers: target_farmers_for(
+        vrp_id: params[:vrp_id],
+        fco_id: params[:fco_id],
+        ics_id: params[:ics_id],
+        village_id: params[:village_id],
+        month_name: params[:month_name],
+        edit_target: edit_target_for_json
+      )
+    }
   end
 
   private
@@ -46,7 +59,17 @@ class TargetMappingsController < ApplicationController
   end
 
   def target_mapping_params
-    params.require(:target_mapping).permit(:vrp_id, :vrp_ics_mapping_id, :month_name, :main_activity_name, :activity_name, :target_quantity, afl_ids: [])
+    params.require(:target_mapping).permit(
+      :vrp_id,
+      :fco_id,
+      :ics_id,
+      :village_id,
+      :month_name,
+      :main_activity_name,
+      :activity_name,
+      :target_quantity,
+      afl_ids: []
+    )
   end
 
   def editable_target
@@ -55,78 +78,67 @@ class TargetMappingsController < ApplicationController
     visible_target_mappings.find(params.dig(:target_mapping, :id))
   end
 
-  def mapped_vrps
+  def target_vrps
     return Vrp.where(id: current_app_user["id"]).order(:name, :id) if non_admin_vrp_login?
 
-    Vrp.where(id: visible_vrp_ics_mappings.select(:vrp_id).distinct).order(:name, :id)
+    scope = Vrp.all
+    scope = scope.where(status: 55) if Vrp.column_names.include?("status")
+    scope = scope.where(is_active: true) if Vrp.column_names.include?("is_active")
+    scope.order(:name, :id)
   end
 
-  def mappings_for(vrp_id)
-    return [] if vrp_id.blank?
+  def assign_afl_location_names(target_mapping)
+    afl = afl_scope_for_location(
+      target_mapping.fco_id,
+      target_mapping.ics_id,
+      target_mapping.village_id,
+      target_mapping.fco_name,
+      target_mapping.ics_name,
+      target_mapping.village_name
+    ).first
 
-    visible_vrp_ics_mappings.where(vrp_id: vrp_id)
-      .order(:fco_name, :ics_name, :village_name, :id)
-      .map do |mapping|
-        {
-          id: mapping.id,
-          fco: mapping.fco_name.presence || mapping.fco_id,
-          ics: mapping.ics_name.presence || mapping.ics_id,
-          village: mapping.village_name.presence || mapping.village_id,
-          farmer_count: mapping.farmer_count,
-          farmers: farmers_for_mapping(mapping, edit_target_for_json, params[:month_name])
-        }
-      end
+    target_mapping.fco_name = target_mapping.fco_name.presence || afl&.fco
+    target_mapping.ics_name = target_mapping.ics_name.presence || afl&.ics_name
+    target_mapping.village_name = target_mapping.village_name.presence || afl&.village_name
   end
 
-  def mapping_attributes(mapping)
-    {
-      vrp_id: mapping.vrp_id,
-      fco_id: mapping.fco_id,
-      fco_name: mapping.fco_name,
-      ics_id: mapping.ics_id,
-      ics_name: mapping.ics_name,
-      village_id: mapping.village_id,
-      village_name: mapping.village_name
-    }
-  end
-
-  def assign_target_farmers(target_mapping, mapping)
-    mapped_farmer_ids = normalized_afl_ids(mapping.afl_ids)
+  def assign_target_farmers(target_mapping)
+    mapped_farmer_ids = afl_ids_for_location(
+      target_mapping.fco_id,
+      target_mapping.ics_id,
+      target_mapping.village_id,
+      target_mapping.fco_name,
+      target_mapping.ics_name,
+      target_mapping.village_name
+    )
     target_count = target_farmer_count(target_mapping)
     return false unless target_count
 
-    if target_count > mapped_farmer_ids.size
-      target_mapping.errors.add(:target_quantity, "cannot be greater than registered farmers")
+    selected_ids = normalized_afl_ids(target_mapping_params[:afl_ids])
+    if selected_ids.blank?
+      target_mapping.errors.add(:afl_ids, "select at least one farmer")
       return false
     end
 
-    assigned_ids = assigned_farmer_ids_for(mapping, target_mapping, target_mapping.month_name)
-    available_ids = mapped_farmer_ids - assigned_ids
-    selected_ids = if target_count == mapped_farmer_ids.size
-      mapped_farmer_ids
-    else
-      normalized_afl_ids(target_mapping_params[:afl_ids])
+    if target_count != selected_ids.size
+      target_mapping.errors.add(:target_quantity, "must match selected farmers count")
+      return false
     end
 
-    if target_count < mapped_farmer_ids.size && selected_ids.size != target_count
-      target_mapping.errors.add(:afl_ids, "select exactly #{target_count} farmers")
+    if selected_ids.size > mapped_farmer_ids.size
+      target_mapping.errors.add(:target_quantity, "cannot be greater than registered farmers")
       return false
     end
 
     invalid_ids = selected_ids - mapped_farmer_ids
     if invalid_ids.any?
-      target_mapping.errors.add(:afl_ids, "include farmers outside this VRP ICS mapping")
+      target_mapping.errors.add(:afl_ids, "include farmers outside selected village")
       return false
     end
 
-    blocked_ids = selected_ids & assigned_ids
+    blocked_ids = selected_ids & assigned_farmer_ids_for(target_mapping)
     if blocked_ids.any?
-      target_mapping.errors.add(:afl_ids, "#{blocked_ids.size} farmer already assigned in this month")
-      return false
-    end
-
-    if target_count > available_ids.size
-      target_mapping.errors.add(:target_quantity, "has only #{available_ids.size} unassigned farmers available in this month")
+      target_mapping.errors.add(:afl_ids, "#{blocked_ids.size} farmer already assigned in this village")
       return false
     end
 
@@ -148,14 +160,33 @@ class TargetMappingsController < ApplicationController
     nil
   end
 
-  def farmers_for_mapping(mapping, edit_target = nil, month_name = nil)
-    ids = normalized_afl_ids(mapping.afl_ids)
-    return [] if ids.blank? || !defined?(Afl) || !Afl.table_exists?
+  def target_farmers_for(vrp_id:, fco_id:, ics_id:, village_id:, month_name:, edit_target: nil)
+    return [] if vrp_id.blank? || fco_id.blank? || ics_id.blank? || village_id.blank?
+    return [] unless defined?(Afl) && Afl.table_exists?
 
-    assigned_ids = assigned_farmer_ids_for(mapping, edit_target, month_name.presence || edit_target&.month_name)
+    assigned_ids = assigned_farmer_ids_for_location(
+      vrp_id: vrp_id,
+      fco_id: fco_id,
+      ics_id: ics_id,
+      village_id: village_id,
+      month_name: nil,
+      edit_target: edit_target
+    )
     selected_ids = normalized_afl_ids(edit_target&.afl_ids)
 
-    Afl.where(id: ids)
+    parsed_fco_id, parsed_fco_name = parse_location_value(fco_id)
+    parsed_ics_id, parsed_ics_name = parse_location_value(ics_id)
+    parsed_village_id, parsed_village_name = parse_location_value(village_id)
+
+    afl_scope_for_location(
+      parsed_fco_id,
+      parsed_ics_id,
+      parsed_village_id,
+      parsed_fco_name,
+      parsed_ics_name,
+      parsed_village_name
+    )
+      .select(:id, :farmer_name, :father_name, :tracenet_no, :mobile_no, :khasara_no)
       .order(:farmer_name, :id)
       .map do |afl|
         {
@@ -171,11 +202,114 @@ class TargetMappingsController < ApplicationController
       end
   end
 
-  def assigned_farmer_ids_for(mapping, target_mapping = nil, month_name = nil)
-    scope = TargetMapping.where(vrp_id: mapping.vrp_id)
+  def assigned_farmer_ids_for(target_mapping)
+    assigned_farmer_ids_for_location(
+      vrp_id: target_mapping.vrp_id,
+      fco_id: encoded_location_value(target_mapping.fco_id, target_mapping.fco_name),
+      ics_id: encoded_location_value(target_mapping.ics_id, target_mapping.ics_name),
+      village_id: encoded_location_value(target_mapping.village_id, target_mapping.village_name),
+      month_name: nil,
+      edit_target: target_mapping
+    )
+  end
+
+  def assigned_farmer_ids_for_location(vrp_id:, fco_id:, ics_id:, village_id:, month_name:, edit_target: nil)
+    parsed_fco_id, parsed_fco_name = parse_location_value(fco_id)
+    parsed_ics_id, parsed_ics_name = parse_location_value(ics_id)
+    parsed_village_id, parsed_village_name = parse_location_value(village_id)
+
+    scope = TargetMapping.where(vrp_id: vrp_id, fco_id: parsed_fco_id, ics_id: parsed_ics_id, village_id: parsed_village_id)
+    scope = scope.where(fco_name: parsed_fco_name) if parsed_fco_name.present?
+    scope = scope.where(ics_name: parsed_ics_name) if parsed_ics_name.present?
+    scope = scope.where(village_name: parsed_village_name) if parsed_village_name.present?
     scope = scope.where(month_name: month_name) if month_name.present?
-    scope = scope.where.not(id: target_mapping.id) if target_mapping&.persisted?
+    scope = scope.where.not(id: edit_target.id) if edit_target&.persisted?
     scope.pluck(:afl_ids).flat_map { |ids| normalized_afl_ids(ids) }.uniq
+  end
+
+  def afl_ids_for_location(fco_id, ics_id, village_id, fco_name = nil, ics_name = nil, village_name = nil)
+    return [] unless defined?(Afl) && Afl.table_exists?
+
+    afl_scope_for_location(fco_id, ics_id, village_id, fco_name, ics_name, village_name).pluck(:id).map(&:to_s).uniq
+  end
+
+  def fco_options
+    return [] unless defined?(Afl) && Afl.table_exists?
+
+    Afl.where.not(fco_id: [nil, ""])
+      .select(:fco_id, :fco)
+      .distinct
+      .order(:fco, :fco_id)
+      .map { |afl| option_hash(afl.fco_id, afl.fco) }
+  end
+
+  def ics_options_for(fco_value)
+    return [] if fco_value.blank? || !defined?(Afl) || !Afl.table_exists?
+
+    fco_id, fco_name = parse_location_value(fco_value)
+    scope = Afl.where(fco_id: fco_id)
+    scope = scope.where(fco: fco_name) if fco_name.present?
+    scope
+      .where.not(ics_id: [nil, ""])
+      .select(:ics_id, :ics_name)
+      .distinct
+      .order(:ics_name, :ics_id)
+      .map { |afl| option_hash(afl.ics_id, afl.ics_name) }
+  end
+
+  def village_options_for(fco_value, ics_value)
+    return [] if fco_value.blank? || ics_value.blank? || !defined?(Afl) || !Afl.table_exists?
+
+    fco_id, fco_name = parse_location_value(fco_value)
+    ics_id, ics_name = parse_location_value(ics_value)
+    scope = Afl.where(fco_id: fco_id, ics_id: ics_id)
+    scope = scope.where(fco: fco_name) if fco_name.present?
+    scope = scope.where(ics_name: ics_name) if ics_name.present?
+    scope
+      .where.not(village_id: [nil, ""])
+      .select(:village_id, :village_name)
+      .distinct
+      .order(:village_name, :village_id)
+      .map { |afl| option_hash(afl.village_id, afl.village_name) }
+  end
+
+  def option_hash(value, label)
+    text = [label.presence, value].compact.join(" - ")
+    { value: encoded_location_value(value, label), label: text.presence || value.to_s }
+  end
+
+  def normalize_location_values(target_mapping)
+    fco_id, fco_name = parse_location_value(target_mapping.fco_id)
+    ics_id, ics_name = parse_location_value(target_mapping.ics_id)
+    village_id, village_name = parse_location_value(target_mapping.village_id)
+
+    target_mapping.fco_id = fco_id
+    target_mapping.fco_name = fco_name
+    target_mapping.ics_id = ics_id
+    target_mapping.ics_name = ics_name
+    target_mapping.village_id = village_id
+    target_mapping.village_name = village_name
+  end
+
+  def afl_scope_for_location(fco_id, ics_id, village_id, fco_name = nil, ics_name = nil, village_name = nil)
+    scope = Afl.where(fco_id: fco_id, ics_id: ics_id, village_id: village_id)
+    scope = scope.where(fco: fco_name) if fco_name.present?
+    scope = scope.where(ics_name: ics_name) if ics_name.present?
+    scope = scope.where(village_name: village_name) if village_name.present?
+    scope
+  end
+
+  def encoded_location_value(value, label)
+    value = value.to_s
+    label = label.to_s
+    return value if label.blank?
+
+    "#{value}||#{label}"
+  end
+
+  def parse_location_value(value)
+    id, label = value.to_s.split("||", 2)
+    [id.to_s, label.to_s.presence]
   end
 
   def normalized_afl_ids(ids)
@@ -234,7 +368,10 @@ class TargetMappingsController < ApplicationController
     {
       id: target.id,
       vrp_id: target.vrp_id.to_s,
-      vrp_ics_mapping_id: target.vrp_ics_mapping_id.to_s,
+      fco_id: encoded_location_value(target.fco_id, target.fco_name),
+      ics_id: encoded_location_value(target.ics_id, target.ics_name),
+      village_id: encoded_location_value(target.village_id, target.village_name),
+      month_name: target.month_name.to_s,
       target_quantity: target.target_quantity.to_s,
       afl_ids: Array(target.afl_ids).map(&:to_s)
     }
