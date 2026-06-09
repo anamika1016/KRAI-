@@ -88,6 +88,16 @@
           </div>
         </div>
 
+        <div class="target-farmer-panel" data-target-farmer-panel hidden>
+          <div class="target-mapping-toolbar">
+            <strong>Farmer List</strong>
+            <span data-target-farmer-count>0 farmer selected</span>
+          </div>
+          <div class="vrp-ics-farmer-list target-farmer-list" data-target-farmer-list>
+            Select a partial target to load farmers.
+          </div>
+        </div>
+
         <div class="module-form-actions">
           <% if @edit_target %>
             <%= link_to "Cancel Edit", target_mappings_path, class: "btn btn-secondary" %>

@@ -178,7 +178,147 @@ class VrpDashboardTest < ActionDispatch::IntegrationTest
     refute_includes response.body, "VRP Dashboard"
   end
 
+  test "vrp training form shows only target assigned farmers" do
+    vrp = create_vrp(
+      name: "Training VRP",
+      user_name: "training_vrp",
+      mobile_no: "9876543888",
+      email: "training-vrp@example.com",
+      aadhar_no: "123456789088",
+      agreement_accepted_at: Time.current
+    )
+    farmers = 3.times.map do |index|
+      create_afl(
+        farmer_name: "Training Farmer #{index + 1}",
+        tracenet_no: "TR_TRAINING_#{index + 1}",
+        mobile_no: "900000020#{index}"
+      )
+    end
+    mapping = VrpIcsMapping.create!(
+      vrp: vrp,
+      fco_id: "FCO1",
+      fco_name: "FCO One",
+      ics_id: "ICS1",
+      ics_name: "ICS One",
+      village_id: "V1",
+      village_name: "Village One",
+      afl_ids: farmers.map(&:id),
+      created_by_type: "User",
+      created_by_id: 1
+    )
+    TargetMapping.create!(
+      vrp: vrp,
+      vrp_ics_mapping: mapping,
+      fco_id: mapping.fco_id,
+      fco_name: mapping.fco_name,
+      ics_id: mapping.ics_id,
+      ics_name: mapping.ics_name,
+      village_id: mapping.village_id,
+      village_name: mapping.village_name,
+      farmer_count: 2,
+      month_name: "July",
+      main_activity_name: "Farmer Visit",
+      activity_name: "Farm Visit",
+      target_quantity: 2,
+      afl_ids: farmers.first(2).map(&:id),
+      created_by_type: "User",
+      created_by_id: 1
+    )
+
+    post login_path, params: { login: "training_vrp", password: "secret" }
+    follow_redirect!
+    get module_path("training-form")
+
+    assert_response :success
+    assert_includes response.body, "Farmer Training Form"
+    assert_includes response.body, "Target Farmers"
+    assert_includes response.body, "Training Farmer 1"
+    assert_includes response.body, "Training Farmer 2"
+    refute_includes response.body, "Training Farmer 3"
+  end
+
+  test "partial target requires selected farmers and blocks same month reassignment" do
+    vrp = create_vrp(
+      name: "Target VRP",
+      user_name: "target_vrp",
+      mobile_no: "9876543999",
+      email: "target-vrp@example.com",
+      aadhar_no: "123456789099"
+    )
+    farmers = 3.times.map do |index|
+      create_afl(
+        farmer_name: "Target Farmer #{index + 1}",
+        tracenet_no: "TR_TARGET_#{index + 1}",
+        mobile_no: "900000010#{index}"
+      )
+    end
+    mapping = VrpIcsMapping.create!(
+      vrp: vrp,
+      fco_id: "FCO1",
+      fco_name: "FCO One",
+      ics_id: "ICS1",
+      ics_name: "ICS One",
+      village_id: "V1",
+      village_name: "Village One",
+      afl_ids: farmers.map(&:id),
+      created_by_type: "User",
+      created_by_id: 1
+    )
+    User.create!(
+      user_name: "target_admin",
+      password: "secret",
+      first_name: "Target Admin",
+      user_type: "admin",
+      status: "Active"
+    )
+
+    post login_path, params: { login: "target_admin", password: "secret" }
+    follow_redirect!
+
+    assert_difference("TargetMapping.count", 1) do
+      post target_mappings_path, params: {
+        target_mapping: target_params(vrp, mapping, "July", 2, farmers.first(2).map(&:id))
+      }
+    end
+
+    target = TargetMapping.order(:id).last
+    assert_equal 2, target.farmer_count
+    assert_equal farmers.first(2).map { |farmer| farmer.id.to_s }, target.afl_ids
+
+    get vrp_mappings_target_mappings_path, params: { vrp_id: vrp.id, month_name: "July" }
+
+    farmer_rows = JSON.parse(response.body).dig("mappings", 0, "farmers")
+    assigned_rows = farmer_rows.select { |farmer| farmer["assigned_to_other"] }
+    available_rows = farmer_rows.reject { |farmer| farmer["assigned_to_other"] }
+    assert_equal farmers.first(2).map { |farmer| farmer.id.to_s }.sort, assigned_rows.map { |farmer| farmer["id"] }.sort
+    assert_equal [farmers.last.id.to_s], available_rows.map { |farmer| farmer["id"] }
+
+    assert_no_difference("TargetMapping.count") do
+      post target_mappings_path, params: {
+        target_mapping: target_params(vrp, mapping, "July", 1, [farmers.first.id])
+      }
+    end
+
+    assert_difference("TargetMapping.count", 1) do
+      post target_mappings_path, params: {
+        target_mapping: target_params(vrp, mapping, "July", 1, [farmers.last.id])
+      }
+    end
+  end
+
   private
+
+  def target_params(vrp, mapping, month, target_quantity, farmer_ids)
+    {
+      vrp_id: vrp.id,
+      vrp_ics_mapping_id: mapping.id,
+      month_name: month,
+      main_activity_name: "Farmer Visit",
+      activity_name: "Farm Visit",
+      target_quantity: target_quantity,
+      afl_ids: farmer_ids
+    }
+  end
 
   def create_vrp(attributes = {})
     defaults = {

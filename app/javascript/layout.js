@@ -1216,14 +1216,14 @@ document.addEventListener("turbo:load", () => {
 	      const farmers = mappedFarmers();
 
 	      if (!villageSelect.value) {
-	        farmerList.textContent = "Select Village Name to load mapped farmers.";
+	        farmerList.textContent = "Select Village Name to load target farmers.";
 	        if (farmerSelectAll) farmerSelectAll.checked = false;
 	        updateFarmerCount();
 	        return;
 	      }
 
 	      if (!farmers.length) {
-	        farmerList.textContent = "No mapped farmers found for selected village.";
+	        farmerList.textContent = "No target farmers found for selected village.";
 	        if (farmerSelectAll) farmerSelectAll.checked = false;
 	        updateFarmerCount();
 	        return;
@@ -1529,8 +1529,15 @@ document.addEventListener("turbo:load", () => {
 
   document.querySelectorAll("[data-target-mapping]").forEach((shell) => {
     const vrpSelect = shell.querySelector("[data-target-vrp]");
+    const monthSelect = shell.querySelector("select[name='target_mapping[month_name]']");
     const rowsBody = shell.querySelector("[data-target-mapping-rows]");
     const countLabel = shell.querySelector("[data-target-mapping-count]");
+    const farmerPanel = shell.querySelector("[data-target-farmer-panel]");
+    const farmerList = shell.querySelector("[data-target-farmer-list]");
+    const farmerCountLabel = shell.querySelector("[data-target-farmer-count]");
+    const form = shell.querySelector("form");
+    let currentMappings = [];
+    let selectedMapping = null;
     let editTarget = {};
     try {
       editTarget = JSON.parse(shell.dataset.editTarget || "{}");
@@ -1549,12 +1556,126 @@ document.addEventListener("turbo:load", () => {
       if (countLabel) countLabel.textContent = text;
     };
 
+    const selectedTargetBoxes = () => Array.from(shell.querySelectorAll("[data-target-farmer-checkbox]:checked"));
+
+    const clearTargetFarmers = (message = "Select a partial target to load farmers.") => {
+      selectedMapping = null;
+      if (farmerPanel) farmerPanel.hidden = true;
+      if (farmerList) farmerList.textContent = message;
+      if (farmerCountLabel) farmerCountLabel.textContent = "0 farmer selected";
+    };
+
+    const updateTargetFarmerCount = () => {
+      if (!farmerCountLabel) return;
+
+      const targetCount = Number(shell.querySelector("[data-target-quantity-input][name='target_mapping[target_quantity]']")?.value || 0);
+      const selectedCount = selectedTargetBoxes().length;
+      farmerCountLabel.textContent = targetCount > 0 ? `${selectedCount} of ${targetCount} farmer selected` : `${selectedCount} farmer selected`;
+    };
+
+    const renderTargetFarmers = (mapping, targetCount) => {
+      selectedMapping = mapping;
+      if (!farmerPanel || !farmerList) return;
+
+      if (!mapping || targetCount >= Number(mapping.farmer_count || 0)) {
+        clearTargetFarmers();
+        return;
+      }
+
+      const farmers = mapping.farmers || [];
+      farmerPanel.hidden = false;
+
+      if (!farmers.length) {
+        farmerList.textContent = "No farmers found for selected mapping.";
+        updateTargetFarmerCount();
+        return;
+      }
+
+      farmerList.innerHTML = farmers.map((farmer) => {
+        const meta = [
+          farmer.father_name ? `Father: ${farmer.father_name}` : "",
+          farmer.tracenet_no ? `Tracenet: ${farmer.tracenet_no}` : "",
+          farmer.mobile_no ? `Mobile: ${farmer.mobile_no}` : "",
+          farmer.khasara_no ? `Khasara: ${farmer.khasara_no}` : ""
+        ].filter(Boolean).join(" | ");
+        const disabled = farmer.assigned_to_other ? " disabled" : "";
+        const checked = farmer.selected ? " checked" : "";
+
+        return `
+          <label class="vrp-ics-farmer-item${farmer.assigned_to_other ? " disabled" : ""}">
+            <input type="checkbox" name="target_mapping[afl_ids][]" value="${escapeHtml(farmer.id)}" data-target-farmer-checkbox${disabled}${checked}>
+            <span>
+              <strong>${escapeHtml(farmer.farmer_name || `Farmer #${farmer.id}`)}</strong>
+              <small>${escapeHtml(meta)}${farmer.assigned_to_other ? " | Already assigned" : ""}</small>
+            </span>
+          </label>
+        `;
+      }).join("");
+
+      farmerList.querySelectorAll("[data-target-farmer-checkbox]").forEach((checkbox) => {
+        checkbox.addEventListener("change", () => {
+          const checkedBoxes = selectedTargetBoxes();
+          if (checkedBoxes.length > targetCount) {
+            checkbox.checked = false;
+            window.alert(`Please select only ${targetCount} farmers.`);
+          }
+          updateTargetFarmerCount();
+        });
+      });
+      updateTargetFarmerCount();
+    };
+
+    const refreshTargetFarmers = (input) => {
+      const row = input?.closest("tr");
+      const radio = row?.querySelector("[data-target-mapping-radio]");
+      const mapping = currentMappings.find((item) => String(item.id) === String(radio?.value));
+      const registeredFarmers = Number(mapping?.farmer_count || 0);
+      const targetCount = Number(input?.value || 0);
+
+      if (!mapping || !input?.value || targetCount >= registeredFarmers) {
+        clearTargetFarmers();
+        return;
+      }
+
+      renderTargetFarmers(mapping, targetCount);
+    };
+
+    const loadMappings = async () => {
+      if (!rowsBody) return;
+
+      clearTargetFarmers();
+      if (!vrpSelect?.value) {
+        rowsBody.innerHTML = `<tr><td colspan="6">${replaceVrpUiText("Select VRP to load mapped villages.")}</td></tr>`;
+        setCount("0 mapping selected");
+        return;
+      }
+
+      rowsBody.innerHTML = `<tr><td colspan="6">Loading mapped villages...</td></tr>`;
+
+      const url = new URL(shell.dataset.mappingsUrl, window.location.origin);
+      url.searchParams.set("vrp_id", vrpSelect.value);
+      if (monthSelect?.value) url.searchParams.set("month_name", monthSelect.value);
+      if (editTarget.id) url.searchParams.set("edit_id", editTarget.id);
+
+      try {
+        const response = await fetch(url, { headers: { Accept: "application/json" } });
+        if (!response.ok) throw new Error("Request failed");
+        const data = await response.json();
+        renderRows(data.mappings || []);
+      } catch (_error) {
+        rowsBody.innerHTML = `<tr><td colspan="6">Mapped villages load nahi ho paye.</td></tr>`;
+        setCount("0 mapping selected");
+      }
+    };
+
     const renderRows = (mappings) => {
       if (!rowsBody) return;
+      currentMappings = mappings;
 
       if (!mappings.length) {
         rowsBody.innerHTML = `<tr><td colspan="6">${replaceVrpUiText("No VRP ICS mapping found for selected VRP.")}</td></tr>`;
         setCount("0 mapping selected");
+        clearTargetFarmers();
         return;
       }
 
@@ -1568,7 +1689,7 @@ document.addEventListener("turbo:load", () => {
           <td>${escapeHtml(mapping.village)}</td>
           <td>${escapeHtml(mapping.farmer_count)}</td>
           <td>
-            <input type="number" min="0" step="0.01" placeholder="Enter target" disabled data-target-quantity-input>
+            <input type="number" min="0" step="1" placeholder="Enter target" disabled data-target-quantity-input>
           </td>
         </tr>
       `).join("");
@@ -1588,7 +1709,9 @@ document.addEventListener("turbo:load", () => {
             targetInput.disabled = false;
             targetInput.required = true;
             targetInput.name = "target_mapping[target_quantity]";
+            targetInput.max = farmers;
             targetInput.focus();
+            refreshTargetFarmers(targetInput);
           }
           setCount(`${farmers} registered farmers selected`);
         });
@@ -1597,41 +1720,43 @@ document.addEventListener("turbo:load", () => {
           radio.checked = true;
           radio.dispatchEvent(new Event("change", { bubbles: true }));
           const targetInput = radio.closest("tr")?.querySelector("[data-target-quantity-input]");
-          if (targetInput) targetInput.value = editTarget.target_quantity || "";
+          if (targetInput) {
+            targetInput.value = editTarget.target_quantity || "";
+            refreshTargetFarmers(targetInput);
+          }
           preselected = true;
         }
       });
       if (!preselected) setCount("0 mapping selected");
+
+      rowsBody.querySelectorAll("[data-target-quantity-input]").forEach((input) => {
+        input.addEventListener("input", () => {
+          const row = input.closest("tr");
+          const farmers = Number(row?.children?.[4]?.textContent?.trim() || 0);
+          const targetCount = Number(input.value || 0);
+          if (targetCount > farmers) input.setCustomValidity(`Target cannot be greater than ${farmers} registered farmers.`);
+          else input.setCustomValidity("");
+          refreshTargetFarmers(input);
+        });
+      });
     };
 
-    vrpSelect?.addEventListener("change", async () => {
-      if (!rowsBody) return;
+    form?.addEventListener("submit", (event) => {
+      const targetInput = shell.querySelector("[data-target-quantity-input][name='target_mapping[target_quantity]']");
+      if (!targetInput || !selectedMapping) return;
 
-      if (!vrpSelect.value) {
-        rowsBody.innerHTML = `<tr><td colspan="6">${replaceVrpUiText("Select VRP to load mapped villages.")}</td></tr>`;
-        setCount("0 mapping selected");
-        return;
-      }
-
-      rowsBody.innerHTML = `<tr><td colspan="6">Loading mapped villages...</td></tr>`;
-
-      const url = new URL(shell.dataset.mappingsUrl, window.location.origin);
-      url.searchParams.set("vrp_id", vrpSelect.value);
-
-      try {
-        const response = await fetch(url, { headers: { Accept: "application/json" } });
-        if (!response.ok) throw new Error("Request failed");
-        const data = await response.json();
-        renderRows(data.mappings || []);
-      } catch (_error) {
-        rowsBody.innerHTML = `<tr><td colspan="6">Mapped villages load nahi ho paye.</td></tr>`;
-        setCount("0 mapping selected");
+      const targetCount = Number(targetInput.value || 0);
+      const registeredFarmers = Number(selectedMapping.farmer_count || 0);
+      if (targetCount > 0 && targetCount < registeredFarmers && selectedTargetBoxes().length !== targetCount) {
+        event.preventDefault();
+        window.alert(`Please select exactly ${targetCount} farmers.`);
       }
     });
 
-    if (editTarget.id && vrpSelect?.value) {
-      vrpSelect.dispatchEvent(new Event("change", { bubbles: true }));
-    }
+    vrpSelect?.addEventListener("change", loadMappings);
+    monthSelect?.addEventListener("change", loadMappings);
+
+    if (vrpSelect?.value) loadMappings();
   });
 
   document.querySelectorAll("[data-export-table]").forEach((button) => {
@@ -2427,9 +2552,13 @@ document.addEventListener("turbo:load", () => {
       "Dashboard": "डैशबोर्ड",
       "Sign Out": "साइन आउट",
       "Training": "प्रशिक्षण",
+      "Farmer Training": "किसान प्रशिक्षण",
       "Training Form": "प्रशिक्षण फॉर्म",
+      "Farmer Training Form": "किसान प्रशिक्षण फॉर्म",
       "Training List": "प्रशिक्षण सूची",
+      "Farmer Training Form List": "किसान प्रशिक्षण फॉर्म सूची",
       "Training Topic Mapping": "प्रशिक्षण टॉपिक मैपिंग",
+      "Farmer Training Topic Mapping": "किसान प्रशिक्षण टॉपिक मैपिंग",
       "ट्रेनिंग प्रपत्र": "प्रशिक्षण फॉर्म",
       "VRP Targets": "वीआरपी लक्ष्य",
       "Recent Target Mappings": "हाल की लक्ष्य मैपिंग",
@@ -2490,6 +2619,7 @@ document.addEventListener("turbo:load", () => {
       "VRP Approval List": "वीआरपी अनुमोदन सूची",
       "Saved Records": "सेव रिकॉर्ड",
       "All Training Records": "सभी प्रशिक्षण रिकॉर्ड",
+      "All Farmer Training Records": "सभी किसान प्रशिक्षण रिकॉर्ड",
       "All Main Activities": "सभी मुख्य गतिविधियां",
       "All Sub Activities": "सभी उप गतिविधियां",
       "All Task Completion Indicators": "सभी कार्य पूर्णता संकेतक",
@@ -2585,8 +2715,11 @@ document.addEventListener("turbo:load", () => {
       "Farmers": "किसान",
       "Farmer": "किसान",
       "Mapped Farmers": "मैप किए किसान",
+      "Target Farmers": "लक्षित किसान",
       "Select Village Name to load mapped farmers.": "मैप किए किसान लोड करने के लिए गांव नाम चुनें।",
+      "Select Village Name to load target farmers.": "लक्षित किसान लोड करने के लिए गांव नाम चुनें।",
       "No mapped farmers found for selected village.": "चुने गए गांव के लिए कोई मैप किसान नहीं मिला।",
+      "No target farmers found for selected village.": "चुने गए गांव के लिए कोई लक्षित किसान नहीं मिला।",
       "Mapped Villages": "मैप किए गांव",
       "Mapped Village Work Area": "मैप गांव कार्य क्षेत्र",
       "Assigned Target Progress": "दिए गए लक्ष्य की प्रगति",
@@ -2675,7 +2808,9 @@ document.addEventListener("turbo:load", () => {
       "Dashboard Reports": "डैशबोर्ड रिपोर्ट",
       "Dashboard Module": "डैशबोर्ड मॉड्यूल",
       "VRP training details save karne ke liye.": "वीआरपी प्रशिक्षण विवरण सेव करने के लिए।",
+      "Farmer training details save karne ke liye.": "किसान प्रशिक्षण विवरण सेव करने के लिए।",
       "Saved training records dekhne ke liye.": "सेव प्रशिक्षण रिकॉर्ड देखने के लिए।",
+      "Saved farmer training records dekhne ke liye.": "सेव किसान प्रशिक्षण रिकॉर्ड देखने के लिए।",
       "Training documents/videos upload karna.": "प्रशिक्षण दस्तावेज / वीडियो अपलोड करने के लिए।",
       "Location hierarchy maintain karne ke liye.": "स्थान हाइरार्की बनाए रखने के लिए।",
       "State, District, Block, GP, Village ek sath maintain karne ke liye.": "राज्य, जिला, ब्लॉक, जीपी और गांव एक साथ बनाए रखने के लिए।",
@@ -2754,16 +2889,23 @@ document.addEventListener("turbo:load", () => {
 	      "Select all": "सर्व निवडा",
 	      "No VRP ICS mapping saved yet.": "अजून कोणतेही व्हीआरपी आयसीएस मॅपिंग सेव नाही.",
 	      "No target mapping saved yet.": "अजून कोणतेही लक्ष्य मॅपिंग सेव नाही."
-	      ,"Training Form": "प्रशिक्षण फॉर्म",
-	      "Training Topic Mapping": "प्रशिक्षण टॉपिक मॅपिंग",
+      ,"Training Form": "प्रशिक्षण फॉर्म",
+	      "Farmer Training": "किसान प्रशिक्षण",
+	      "Farmer Training Form": "किसान प्रशिक्षण फॉर्म",
+	      "Farmer Training Form List": "किसान प्रशिक्षण फॉर्म सूची",
+      "Training Topic Mapping": "प्रशिक्षण टॉपिक मॅपिंग",
+	      "Farmer Training Topic Mapping": "किसान प्रशिक्षण टॉपिक मॅपिंग",
 	      "Trainer Name": "प्रशिक्षक नाव",
 	      "Trainer Contact": "प्रशिक्षक संपर्क",
 	      "Farmer Count": "किसान संख्या",
 	      "Selected Farmers": "निवडलेले किसान",
 	      "Training Photo Upload with Geo Tag": "जिओ टॅगसह प्रशिक्षण फोटो अपलोड",
 	      "Mapped Farmers": "मॅप केलेले किसान",
+	      "Target Farmers": "लक्षित किसान",
 	      "Select Village Name to load mapped farmers.": "मॅप केलेले किसान लोड करण्यासाठी गाव नाव निवडा.",
-	      "No mapped farmers found for selected village.": "निवडलेल्या गावासाठी कोणतेही मॅप किसान सापडले नाहीत."
+	      "Select Village Name to load target farmers.": "लक्षित किसान लोड करण्यासाठी गाव नाव निवडा.",
+	      "No mapped farmers found for selected village.": "निवडलेल्या गावासाठी कोणतेही मॅप किसान सापडले नाहीत.",
+	      "No target farmers found for selected village.": "निवडलेल्या गावासाठी कोणतेही लक्षित किसान सापडले नाहीत."
 	    };
 	    const odiaTranslations = {
 	      "Language": "ଭାଷା",
@@ -2811,16 +2953,23 @@ document.addEventListener("turbo:load", () => {
 	      "Select all": "ସବୁ ବାଛନ୍ତୁ",
 	      "No VRP ICS mapping saved yet.": "ଏପର୍ଯ୍ୟନ୍ତ କୌଣସି ଭିଆରପି ଆଇସିଏସ୍ ମ୍ୟାପିଂ ସେଭ୍ ହୋଇନାହିଁ.",
 	      "No target mapping saved yet.": "ଏପର୍ଯ୍ୟନ୍ତ କୌଣସି ଟାର୍ଗେଟ୍ ମ୍ୟାପିଂ ସେଭ୍ ହୋଇନାହିଁ."
-	      ,"Training Form": "ପ୍ରଶିକ୍ଷଣ ଫର୍ମ",
-	      "Training Topic Mapping": "ପ୍ରଶିକ୍ଷଣ ଟପିକ୍ ମ୍ୟାପିଂ",
+      ,"Training Form": "ପ୍ରଶିକ୍ଷଣ ଫର୍ମ",
+	      "Farmer Training": "କୃଷକ ପ୍ରଶିକ୍ଷଣ",
+	      "Farmer Training Form": "କୃଷକ ପ୍ରଶିକ୍ଷଣ ଫର୍ମ",
+	      "Farmer Training Form List": "କୃଷକ ପ୍ରଶିକ୍ଷଣ ଫର୍ମ ତାଲିକା",
+      "Training Topic Mapping": "ପ୍ରଶିକ୍ଷଣ ଟପିକ୍ ମ୍ୟାପିଂ",
+	      "Farmer Training Topic Mapping": "କୃଷକ ପ୍ରଶିକ୍ଷଣ ଟପିକ୍ ମ୍ୟାପିଂ",
 	      "Trainer Name": "ପ୍ରଶିକ୍ଷକ ନାମ",
 	      "Trainer Contact": "ପ୍ରଶିକ୍ଷକ ଯୋଗାଯୋଗ",
 	      "Farmer Count": "କୃଷକ ସଂଖ୍ୟା",
 	      "Selected Farmers": "ବାଛିଥିବା କୃଷକ",
 	      "Training Photo Upload with Geo Tag": "ଜିଓ ଟ୍ୟାଗ୍ ସହିତ ପ୍ରଶିକ୍ଷଣ ଫଟୋ ଅପଲୋଡ୍",
 	      "Mapped Farmers": "ମ୍ୟାପ୍ ହୋଇଥିବା କୃଷକ",
+	      "Target Farmers": "ଲକ୍ଷ୍ୟ କୃଷକ",
 	      "Select Village Name to load mapped farmers.": "ମ୍ୟାପ୍ ହୋଇଥିବା କୃଷକ ଲୋଡ୍ କରିବାକୁ ଗ୍ରାମ ନାମ ବାଛନ୍ତୁ.",
-	      "No mapped farmers found for selected village.": "ବାଛିଥିବା ଗ୍ରାମ ପାଇଁ କୌଣସି ମ୍ୟାପ୍ କୃଷକ ମିଳିଲେ ନାହିଁ."
+	      "Select Village Name to load target farmers.": "ଲକ୍ଷ୍ୟ କୃଷକ ଲୋଡ୍ କରିବାକୁ ଗ୍ରାମ ନାମ ବାଛନ୍ତୁ.",
+	      "No mapped farmers found for selected village.": "ବାଛିଥିବା ଗ୍ରାମ ପାଇଁ କୌଣସି ମ୍ୟାପ୍ କୃଷକ ମିଳିଲେ ନାହିଁ.",
+	      "No target farmers found for selected village.": "ବାଛିଥିବା ଗ୍ରାମ ପାଇଁ କୌଣସି ଲକ୍ଷ୍ୟ କୃଷକ ମିଳିଲେ ନାହିଁ."
 	    };
 	    const languageTranslations = {
 	      hi: translations,

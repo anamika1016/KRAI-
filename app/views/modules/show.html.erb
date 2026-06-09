@@ -860,7 +860,7 @@
     <% table_id = "#{@slug.tr("-", "_")}_table" %>
     <section class="module-card list-only-card">
       <div class="module-card-header list-title-header">
-        <h2><%= { "activity-group-list" => "All Main Activities", "vrp-activity-list" => "All Sub Activities", "task-completion-indicator-list" => "All Task Completion Indicators", "approval-list" => "All Approvals", "access-control-list" => "All Access Control", "vrp-bill-list" => "All VRP Bills", "training-form-list" => "All Training Records" }[@slug] %></h2>
+        <h2><%= { "activity-group-list" => "All Main Activities", "vrp-activity-list" => "All Sub Activities", "task-completion-indicator-list" => "All Task Completion Indicators", "approval-list" => "All Approvals", "access-control-list" => "All Access Control", "vrp-bill-list" => "All VRP Bills", "training-form-list" => "All Farmer Training Records" }[@slug] %></h2>
       </div>
 
       <div class="vrp-list-toolbar compact">
@@ -1054,7 +1054,7 @@
             <% if @slug == "training-form" && field == "Training Photo Upload with Geo Tag" %>
               <div class="training-farmer-panel" data-training-farmer-panel data-selected-farmer-ids="<%= json_escape((selected_training_farmer_ids || []).to_json) %>">
                 <div class="target-mapping-toolbar">
-                  <strong>Mapped Farmers</strong>
+                  <strong>Target Farmers</strong>
                   <label class="training-select-all">
                     <input type="checkbox" data-training-farmer-select-all>
                     <span>Select all</span>
@@ -1063,7 +1063,7 @@
                   <span data-training-farmer-count>0 farmer selected</span>
                 </div>
                 <div class="vrp-ics-farmer-list" data-training-farmer-list>
-                  Select Village Name to load mapped farmers.
+                  Select Village Name to load target farmers.
                 </div>
               </div>
             <% end %>

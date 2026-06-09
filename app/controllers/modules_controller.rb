@@ -78,9 +78,9 @@ class ModulesController < ApplicationController
       fields: ["Stakeholder Name", "Profile Name", "CIN", "Phone Number", "Email", "Website", "Full Address", "Logo Upload", "Status"]
     },
     "training-form" => {
-      title: "ट्रेनिंग प्रपत्र",
-      group: "Training",
-      purpose: "VRP training details save karne ke liye.",
+      title: "Farmer Training Form",
+      group: "Farmer Training",
+      purpose: "Farmer training details save karne ke liye.",
       fields: [
         "ICS / Block",
         "Gram Name",
@@ -102,9 +102,9 @@ class ModulesController < ApplicationController
       ]
     },
     "training-form-list" => {
-      title: "Training List",
-      group: "Training",
-      purpose: "Saved training records dekhne ke liye.",
+      title: "Farmer Training Form List",
+      group: "Farmer Training",
+      purpose: "Saved farmer training records dekhne ke liye.",
       fields: [
         "ICS / Block",
         "Gram Name",
@@ -120,8 +120,8 @@ class ModulesController < ApplicationController
       ]
     },
     "training-topic-mapping" => {
-      title: "Training Topic Mapping",
-      group: "Training",
+      title: "Farmer Training Topic Mapping",
+      group: "Farmer Training",
       purpose: "Department, training topic aur training subject mapping maintain karne ke liye.",
       fields: ["Department", "Training Topic", "Training Subject", "Status"]
     },
@@ -596,8 +596,9 @@ class ModulesController < ApplicationController
     mappings = vrp_dashboard_mappings(@vrp)
     targets = vrp_dashboard_targets(@vrp)
     bills = vrp_dashboard_bills(@vrp)
-    farmer_followup = vrp_farmer_followup(mappings)
-    mapped_farmer_count = vrp_mapped_farmer_count(mappings)
+    targeted_farmer_ids = vrp_targeted_farmer_ids(targets)
+    farmer_followup = targeted_farmer_ids.any? ? vrp_farmer_followup_for_ids(targeted_farmer_ids) : vrp_farmer_followup(mappings)
+    mapped_farmer_count = targeted_farmer_ids.any? ? targeted_farmer_ids.size : vrp_mapped_farmer_count(mappings)
     main_activity_count = targets.map { |target| normalize_dashboard_text(target.main_activity_name) }.reject(&:blank?).uniq.size
     sub_activity_count = targets.map { |target| normalize_dashboard_text(target.activity_name) }.reject(&:blank?).uniq.size
     target_total = targets.sum { |target| target.target_quantity.to_f }
@@ -699,13 +700,14 @@ class ModulesController < ApplicationController
   def vrp_dashboard_village_rows(vrp, mappings, targets)
     mapping_rows = mappings.map do |mapping|
       village_targets = targets.select { |target| target.village_id.to_s == mapping.village_id.to_s }
+      target_farmer_ids = village_targets.flat_map { |target| target.respond_to?(:afl_ids) ? Array(target.afl_ids).map(&:to_s) : [] }.reject(&:blank?).uniq
       village = mapping.village_name.presence || module_record_label_for_dashboard("village-master", mapping.village_id, "village_name")
 
       {
         fco: mapping.fco_name.presence || mapping.fco_id,
         gram_panchayat: gram_panchayat_label_for_village(mapping.village_id),
         village: village.presence || mapping.village_id,
-        farmers: mapping.farmer_count,
+        farmers: target_farmer_ids.any? ? target_farmer_ids.size : mapping.farmer_count,
         targets: village_targets.size,
         target_quantity: village_targets.sum { |target| target.target_quantity.to_f }
       }
@@ -759,8 +761,16 @@ class ModulesController < ApplicationController
     mappings.sum(&:farmer_count)
   end
 
+  def vrp_targeted_farmer_ids(targets)
+    targets.flat_map { |target| target.respond_to?(:afl_ids) ? Array(target.afl_ids).map(&:to_s) : [] }.reject(&:blank?).uniq
+  end
+
   def vrp_farmer_followup(mappings)
     mapped_farmer_ids = mappings.flat_map { |mapping| Array(mapping.afl_ids).map(&:to_s) }.reject(&:blank?).uniq
+    vrp_farmer_followup_for_ids(mapped_farmer_ids)
+  end
+
+  def vrp_farmer_followup_for_ids(mapped_farmer_ids)
     return empty_vrp_farmer_followup if mapped_farmer_ids.blank? || !model_ready?(:Afl)
 
     farmers = Afl.where(id: mapped_farmer_ids).to_a
@@ -2297,21 +2307,20 @@ class ModulesController < ApplicationController
     scope
       .order(:ics_name, :ics_id, :village_name, :village_id, :id)
       .map do |target|
-        mapping = target.vrp_ics_mapping
         {
           ics: target.ics_name.presence || target.ics_id,
           village: target.village_name.presence || target.village_id,
-          farmers: training_farmers_for_mapping(mapping)
+          farmers: training_farmers_for_ids(target.afl_ids)
         }
       end
       .reject { |mapping| mapping[:ics].blank? && mapping[:village].blank? }
       .uniq
   end
 
-  def training_farmers_for_mapping(mapping)
-    return [] unless mapping && model_ready?(:Afl)
+  def training_farmers_for_ids(farmer_ids)
+    return [] unless model_ready?(:Afl)
 
-    farmer_ids = Array(mapping.afl_ids).map(&:to_s).reject(&:blank?).uniq
+    farmer_ids = Array(farmer_ids).map(&:to_s).reject(&:blank?).uniq
     return [] if farmer_ids.blank?
 
     Afl.where(id: farmer_ids)

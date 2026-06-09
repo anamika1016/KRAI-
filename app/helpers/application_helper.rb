@@ -108,12 +108,12 @@ module ApplicationHelper
       ]
     },
     {
-      title: "Training",
+      title: "Farmer Training",
       icon: "▥",
       links: [
-        ["Training Topic Mapping", :module, "training-topic-mapping"],
-        ["Training Form", :module, "training-form"],
-        ["Training List", :module, "training-form-list"]
+        ["Farmer Training Topic Mapping", :module, "training-topic-mapping"],
+        ["Farmer Training Form", :module, "training-form"],
+        ["Farmer Training Form List", :module, "training-form-list"]
       ]
     },
   ].freeze
@@ -263,11 +263,11 @@ module ApplicationHelper
         ]
       },
       {
-        title: "Training",
+        title: "Farmer Training",
         icon: "▥",
         links: [
-          ["Training Form", :module, "training-form"],
-          ["Training List", :module, "training-form-list"]
+          ["Farmer Training Form", :module, "training-form"],
+          ["Farmer Training Form List", :module, "training-form-list"]
         ]
       }
     ]

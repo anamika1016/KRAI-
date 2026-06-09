@@ -2328,6 +2328,19 @@ a {
   padding: 12px;
 }
 
+.target-farmer-panel {
+  display: grid;
+  gap: 12px;
+  border: 1px solid var(--vrp-line);
+  border-radius: 6px;
+  background: #f8fbfc;
+  padding: 12px;
+}
+
+.target-farmer-panel[hidden] {
+  display: none;
+}
+
 .target-mapping-toolbar {
   display: flex;
   align-items: center;
@@ -2343,6 +2356,10 @@ a {
 
 .target-mapping-table {
   min-width: 860px;
+}
+
+.target-farmer-list {
+  max-height: 320px;
 }
 
 @media (max-width: 1180px) {
