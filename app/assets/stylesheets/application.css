@@ -1313,6 +1313,26 @@ a {
   display: grid;
 }
 
+.chip-search-input {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  width: 100%;
+  min-height: 38px;
+  border: 0;
+  border-bottom: 1px solid #d5e0e6;
+  border-radius: 6px 6px 0 0;
+  background: #fff;
+  color: #172126;
+  padding: 8px 12px;
+  font: inherit;
+  outline: none;
+}
+
+.chip-search-input:focus {
+  box-shadow: inset 0 0 0 2px rgba(89, 143, 64, 0.18);
+}
+
 .chip-option {
   border: 0;
   background: #fff;

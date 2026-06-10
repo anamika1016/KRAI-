@@ -1045,6 +1045,7 @@ class VrpsController < ApplicationController
         [label, record.id] if label
       end
       .uniq { |label, _value| label }
+      .sort_by { |label, _value| label.to_s.downcase }
   end
 
   def text_module_record_options(module_slug, field_key)

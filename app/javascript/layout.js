@@ -998,6 +998,7 @@ document.addEventListener("turbo:load", () => {
     const finalOptions = hasParents && !parentSelected
       ? []
       : (hasParents && filteredOptions.length > 0 ? filteredOptions : fallbackOptions);
+    finalOptions.sort((left, right) => left.label.localeCompare(right.label, undefined, { sensitivity: "base" }));
     select.innerHTML = "";
 
     const prompt = document.createElement("option");
@@ -1945,6 +1946,7 @@ document.addEventListener("turbo:load", () => {
     const selectAllCheckbox = select.dataset.locationLevel
       ? select.closest("[data-location-form]")?.querySelector(`[data-chip-select-all-for="${select.dataset.locationLevel}"]`)
       : null;
+    let chipSearchTerm = "";
 
     control.className = "chip-multi-control";
     chips.className = "chip-multi-values";
@@ -1959,7 +1961,9 @@ document.addEventListener("turbo:load", () => {
     control.appendChild(arrow);
     control.appendChild(dropdown);
 
-    const selectableOptions = () => Array.from(select.options).filter((option) => option.value !== "");
+    const selectableOptions = () => Array.from(select.options)
+      .filter((option) => option.value !== "")
+      .sort((left, right) => left.textContent.localeCompare(right.textContent, undefined, { sensitivity: "base" }));
     const selectedOptions = () => selectableOptions().filter((option) => option.selected);
 
     const syncSelectAllCheckbox = () => {
@@ -1972,7 +1976,7 @@ document.addEventListener("turbo:load", () => {
       selectAllCheckbox.indeterminate = selected.length > 0 && selected.length < options.length;
     };
 
-    const render = () => {
+    const render = (focusSearch = false) => {
       const selected = selectedOptions();
       chips.innerHTML = "";
       dropdown.innerHTML = "";
@@ -2002,7 +2006,25 @@ document.addEventListener("turbo:load", () => {
         chips.appendChild(chip);
       });
 
+      const searchInput = document.createElement("input");
+      searchInput.type = "search";
+      searchInput.className = "chip-search-input";
+      searchInput.placeholder = `Search ${placeholder}`;
+      searchInput.value = chipSearchTerm;
+      searchInput.disabled = select.disabled;
+      searchInput.addEventListener("click", (event) => event.stopPropagation());
+      searchInput.addEventListener("keydown", (event) => event.stopPropagation());
+      searchInput.addEventListener("input", () => {
+        chipSearchTerm = searchInput.value;
+        render(true);
+      });
+      dropdown.appendChild(searchInput);
+
       const options = selectableOptions();
+      const normalizedSearch = chipSearchTerm.trim().toLowerCase();
+      const visibleOptions = normalizedSearch
+        ? options.filter((option) => option.textContent.toLowerCase().includes(normalizedSearch))
+        : options;
 
       if (!options.length) {
         const emptyOption = document.createElement("div");
@@ -2011,7 +2033,14 @@ document.addEventListener("turbo:load", () => {
         dropdown.appendChild(emptyOption);
       }
 
-      options.forEach((option) => {
+      if (options.length > 0 && !visibleOptions.length) {
+        const emptyOption = document.createElement("div");
+        emptyOption.className = "chip-option empty";
+        emptyOption.textContent = "No matching options";
+        dropdown.appendChild(emptyOption);
+      }
+
+      visibleOptions.forEach((option) => {
         const item = document.createElement("button");
         item.type = "button";
         item.className = "chip-option";
@@ -2027,6 +2056,13 @@ document.addEventListener("turbo:load", () => {
         });
         dropdown.appendChild(item);
       });
+
+      if (focusSearch) {
+        window.requestAnimationFrame(() => {
+          searchInput.focus();
+          searchInput.setSelectionRange(searchInput.value.length, searchInput.value.length);
+        });
+      }
     };
 
     selectAllCheckbox?.addEventListener("change", () => {
