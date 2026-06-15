@@ -8,6 +8,11 @@ class VrpAgreementsControllerTest < ActionDispatch::IntegrationTest
       agreement_accepted_at: Time.current,
       agreement_signature_data: "data:image/png;base64,signature"
     )
+    create_vrp(
+      user_name: "unsigned_vrp",
+      password: "secret",
+      agreement_accepted_at: Time.current
+    )
 
     post login_path, params: { login: "signed_vrp", password: "secret" }
     follow_redirect!
@@ -17,6 +22,7 @@ class VrpAgreementsControllerTest < ActionDispatch::IntegrationTest
     assert_response :success
     assert_includes response.body, "Accepted Agreement by Jeevika Jankar"
     assert_includes response.body, vrp.name
+    refute_includes response.body, "unsigned_vrp"
   end
 
   test "accepted agreement detail page shows signature" do

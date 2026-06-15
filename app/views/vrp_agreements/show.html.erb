@@ -1,61 +1,11 @@
 <% content_for :title, "Signed Agreement - #{@agreement_details[:name].presence || 'Jeevika Jankar'}" %>
 
 <section class="module-page agreement-detail-page">
-  <div class="agreement-detail-actions no-print">
-    <%= link_to "Back", vrp_agreements_path, class: "list-btn" %>
-    <button type="button" class="list-btn export" onclick="window.print()">Print / Save PDF</button>
-  </div>
-
-  <div class="app-language-bar agreement-language-bar no-print">
-    <div class="language-switcher" data-language-switcher>
-      <span>Language</span>
-      <button type="button" data-language-option="en">English</button>
-      <button type="button" data-language-option="hi">हिन्दी</button>
-      <button type="button" data-language-option="mr">मराठी</button>
-      <button type="button" data-language-option="gu">ગુજરાતી</button>
-    </div>
-  </div>
-
-  <div id="google_translate_element" class="google-translate-holder" aria-hidden="true"></div>
-
   <div class="agreement-detail-card">
     <div class="agreement-detail-hero">
-      <p class="vrp-eyebrow">Accepted Agreement</p>
-      <h1><%= @agreement_details[:name].presence || "-" %></h1>
+      <p class="vrp-eyebrow">Jeevika Jankar First Login</p>
+      <h1>Accepted Agreement by Jeevika Jankar</h1>
       <p>Signed declaration captured for Jeevika Jankar registration.</p>
-    </div>
-
-    <div class="agreement-signature-layout">
-      <div class="agreement-identity-stack" aria-label="Signed agreement details">
-        <div>
-          <span>Name</span>
-          <strong><%= @agreement_details[:name].presence || "-" %></strong>
-        </div>
-        <div>
-          <span>Village</span>
-          <strong><%= @agreement_details[:village].presence || "-" %></strong>
-        </div>
-        <div>
-          <span>Mobile Number</span>
-          <strong><%= @agreement_details[:mobile_no].presence || "-" %></strong>
-        </div>
-        <div>
-          <span>Date</span>
-          <strong><%= @agreement_details[:date].presence || "-" %></strong>
-        </div>
-      </div>
-
-      <div class="agreement-signature-preview">
-        <span class="agreement-signature-header">
-          <strong>Digital Signature</strong>
-          <small>Captured at the time of acceptance.</small>
-        </span>
-        <% if @vrp.agreement_signature_data.present? %>
-          <%= image_tag @vrp.agreement_signature_data, alt: "Signed agreement signature" %>
-        <% else %>
-          <div class="empty-state">No signature stored for this agreement.</div>
-        <% end %>
-      </div>
     </div>
 
     <div class="agreement-document" aria-label="Signed declaration text">
@@ -72,6 +22,39 @@
       </ul>
 
       <p>I have read and understood the above conditions and agree to participate as a Jeevika Jankar.</p>
+
+      <div class="agreement-signature-layout agreement-signature-layout--detail">
+        <div class="agreement-identity-stack" aria-label="Signed agreement details">
+          <div>
+            <span>Name</span>
+            <strong><%= @agreement_details[:name].presence || "-" %></strong>
+          </div>
+          <div>
+            <span>Village</span>
+            <strong><%= @agreement_details[:village].presence || "-" %></strong>
+          </div>
+          <div>
+            <span>Mobile Number</span>
+            <strong><%= @agreement_details[:mobile_no].presence || "-" %></strong>
+          </div>
+          <div>
+            <span>Date</span>
+            <strong><%= @agreement_details[:date].presence || "-" %></strong>
+          </div>
+        </div>
+
+        <div class="agreement-signature-preview agreement-signature-shell" aria-label="Digital signature preview">
+          <span class="agreement-signature-header">
+            <strong>Digital Signature</strong>
+            <small>Captured at the time of acceptance.</small>
+          </span>
+          <% if @vrp.agreement_signature_data.present? %>
+            <%= image_tag @vrp.agreement_signature_data, alt: "Signed agreement signature" %>
+          <% else %>
+            <div class="agreement-signature-empty"></div>
+          <% end %>
+        </div>
+      </div>
     </div>
   </div>
 </section>

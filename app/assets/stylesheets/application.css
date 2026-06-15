@@ -4314,9 +4314,21 @@ body {
   color: var(--vrp-muted);
 }
 
+.agreement-pdf-body {
+  margin: 0;
+  background: var(--vrp-bg);
+}
+
+.agreement-pdf-page {
+  min-height: 100vh;
+  padding: 28px;
+}
+
 .agreement-detail-page {
   display: grid;
   gap: 18px;
+  width: min(1100px, 100%);
+  margin: 0 auto;
 }
 
 .agreement-detail-card {
@@ -4362,6 +4374,17 @@ body {
 
 .agreement-signature-preview .agreement-signature-header {
   margin: 0;
+}
+
+.agreement-signature-empty {
+  min-height: 220px;
+  border: 1px solid rgba(43, 61, 47, 0.16);
+  border-radius: 8px;
+  background: #fbfdfc;
+}
+
+.agreement-signature-layout--detail {
+  margin-top: 14px;
 }
 
 .modal-dialog {
