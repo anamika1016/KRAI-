@@ -184,17 +184,82 @@ class VrpDashboardTest < ActionDispatch::IntegrationTest
       user_type: "admin",
       status: "Active"
     )
+    ModuleRecord.create!(
+      module_slug: "approval-master",
+      data: {
+        "module_name" => "Jeevika Jankar Registration",
+        "stakeholder_name" => "PAPL",
+        "approval_level" => "Approval 1",
+        "approver_approved_by" => "Anamika Vishwakarma (Aggronomist)",
+        "status" => "Active",
+        "user_name" => "Anamika Vishwakarma"
+      }
+    )
+    ModuleRecord.create!(
+      module_slug: "approval-master",
+      data: {
+        "module_name" => "Jeevika Jankar Registration",
+        "stakeholder_name" => "PAPL",
+        "approval_level" => "Approval 2",
+        "approver_approved_by" => "rohit sharma sharma (IT Excicutive)",
+        "status" => "Active",
+        "user_name" => "rohit sharma sharma"
+      }
+    )
+    ModuleRecord.create!(
+      module_slug: "approval-master",
+      data: {
+        "module_name" => "Jeevika Jankar Registration",
+        "stakeholder_name" => "PAPL",
+        "approval_level" => "Approval 3",
+        "approver_approved_by" => "third approver",
+        "status" => "Active",
+        "user_name" => "Anamika Vishwakarma"
+      }
+    )
+    ModuleRecord.create!(
+      module_slug: "approval-master",
+      data: {
+        "module_name" => "Jeevika Jankar Registration",
+        "stakeholder_name" => "PAPL",
+        "approval_level" => "Approval 4",
+        "approver_approved_by" => "fourth approver",
+        "status" => "Active",
+        "user_name" => "Anamika Vishwakarma"
+      }
+    )
 
     post login_path, params: { login: "admin", password: "secret" }
     follow_redirect!
 
     assert_response :success
     assert_includes response.body, "VRP Targets"
-    assert_includes response.body, "VRP Declaration Accepted"
     assert_includes response.body, "Accepted VRP"
-    assert_includes response.body, "VRP Target Assigned"
     assert_includes response.body, "Admin Village"
     assert_includes response.body, "Admin Sub Activity"
+    assert_includes response.body, "VRP Declaration Accepted"
+    assert_includes response.body, "VRP Target Assigned"
+
+    get module_path("approval-list")
+
+    assert_response :success
+    assert_includes response.body, "Stakeholder Category"
+    assert_includes response.body, "Approval Levels"
+    assert_includes response.body, "First Approval"
+    assert_includes response.body, "Second Approval"
+    assert_includes response.body, "Third Approval"
+    assert_includes response.body, "Fourth Approval"
+    refute_includes response.body, "Approval 1"
+
+    approval_record = ModuleRecord.where(module_slug: "approval-master").first
+    get edit_module_record_path("approval-master", approval_record)
+
+    assert_response :success
+    assert_includes response.body, "First Approval"
+    assert_includes response.body, "Second Approval"
+    assert_includes response.body, "Third Approval"
+    assert_includes response.body, "Fourth Approval"
+    refute_includes response.body, "Approval step 0"
 
     get module_path("access-control")
 

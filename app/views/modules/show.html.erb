@@ -392,16 +392,16 @@
     <%
       approval_channel_records = Array(@approval_channel_records.presence || (@record.present? ? [@record] : []))
       approval_rows = approval_channel_records
-        .sort_by { |record| record.data["approval_level"].to_s[/\d+/].to_i.presence || 1 }
-        .map.with_index do |record, index|
-          level = record.data["approval_level"].presence || "Approval #{index + 1}"
+        .sort_by { |record| approval_sequence_from_level(record.data["approval_level"]) }
+        .map do |record|
+          sequence = approval_sequence_from_level(record.data["approval_level"])
           {
-            level: level,
-            sequence: level.to_s[/\d+/].to_i.presence || index + 1,
+            level: approval_level_label_for_sequence(sequence),
+            sequence: sequence,
             approver: record.data["approver_approved_by"].to_s
           }
         end
-      approval_rows = (1..3).map { |number| { level: "Approval #{number}", sequence: number, approver: "" } } if approval_rows.blank?
+      approval_rows = (1..3).map { |number| { level: approval_level_label_for_sequence(number), sequence: number, approver: "" } } if approval_rows.blank?
       next_approval_level = approval_rows.map { |row| row[:sequence].to_i }.max.to_i + 1
     %>
     <% form_url = @record.present? ? module_record_path(@slug, @record) : records_module_path(@slug) %>
@@ -1226,12 +1226,12 @@
   <% elsif @slug == "approval-list" && @record.blank? %>
     <% table_id = "approval_list_table" %>
     <%
-      grouped_approval_records = @records.group_by do |record|
+      approval_groups = Array(@records).group_by do |record|
         [
-        record.data["module_name"].to_s.strip,
-        record.data["stakeholder_name"].to_s.strip,
-        record.data["user_name"].to_s.strip,
-        record.data["status"].presence || "Active"
+          record.data["module_name"].to_s.strip.downcase,
+          record.data["stakeholder_name"].to_s.strip.downcase,
+          record.data["user_name"].to_s.strip.downcase,
+          record.data["status"].presence || "Active"
         ]
       end
     %>
@@ -1267,41 +1267,48 @@
           <thead>
             <tr>
               <th><input type="checkbox" data-module-select-all></th>
-              <% @module[:fields].each do |field| %>
-                <th><%= resource_person_label(field) %></th>
-              <% end %>
+              <th>Module Name</th>
+              <th>Stakeholder Category</th>
+              <th>User Name</th>
+              <th>Approval Levels</th>
+              <th>Status</th>
             </tr>
           </thead>
           <tbody>
-            <% if grouped_approval_records.any? %>
-              <% grouped_approval_records.each_value do |approval_records| %>
-                <% sorted_records = approval_records.sort_by { |record| record.data["approval_level"].to_s[/\d+/].to_i.presence || 1 } %>
+            <% if approval_groups.any? %>
+              <% approval_groups.each_value do |approval_records| %>
+                <% sorted_records = approval_records.sort_by { |record| approval_sequence_from_level(record.data["approval_level"]) } %>
                 <% group_paths = sorted_records.map { |record| edit_module_record_path("approval-master", record) } %>
-                <% sorted_records.each_with_index do |record, index| %>
-                  <tr>
-                    <% if index.zero? %>
-                      <td rowspan="<%= sorted_records.size %>">
-                        <input type="checkbox" value="<%= group_paths.first %>" data-module-row-select data-module-row-paths="<%= json_escape(group_paths.to_json) %>">
-                      </td>
-                    <% end %>
-                    <% @module[:fields].each do |field| %>
-                      <% rowspanned_field = ["Module Name", "Stakeholder Name", "Status", "User Name"].include?(field) %>
-                      <% next if rowspanned_field && !index.zero? %>
-                      <% field_key = field.parameterize(separator: "_") %>
-                      <% value = record.data[field_key].presence || "-" %>
-                      <% rowspan = rowspanned_field ? " rowspan=\"#{sorted_records.size}\"".html_safe : "" %>
-                      <% if field == "Status" %>
-                        <td<%= rowspan %>><span class="status-pill <%= value == "Inactive" ? "inactive" : "active" %>"><%= value == "-" ? "Active" : value %></span></td>
-                      <% else %>
-                        <td<%= rowspan %>><%= value %></td>
+                <% primary_record = sorted_records.first %>
+                <% module_name = primary_record.data["module_name"].presence || "-" %>
+                <% stakeholder_name = primary_record.data["stakeholder_name"].presence || "-" %>
+                <% user_name = primary_record.data["user_name"].presence || "-" %>
+                <% status_value = primary_record.data["status"].presence || "Active" %>
+                <tr>
+                  <td>
+                    <input type="checkbox" value="<%= group_paths.first %>" data-module-row-select data-module-row-paths="<%= json_escape(group_paths.to_json) %>">
+                  </td>
+                  <td><%= module_name %></td>
+                  <td><%= stakeholder_name %></td>
+              <td><%= user_name %></td>
+              <td>
+                    <div class="approval-level-stack">
+                      <% sorted_records.each do |record| %>
+                        <% approval_level = approval_level_label_for_sequence(approval_sequence_from_level(record.data["approval_level"])) %>
+                        <% approver_name = module_record_field_value(record, "Approver (Approved By)").presence || record.data["approver_approved_by"].presence || "-" %>
+                        <div class="approval-level-item">
+                          <strong><%= approval_level %></strong>
+                          <small><%= approver_name %></small>
+                        </div>
                       <% end %>
-                    <% end %>
-                  </tr>
-                <% end %>
+                    </div>
+                  </td>
+                  <td><span class="status-pill <%= status_value == "Inactive" ? "inactive" : "active" %>"><%= status_value %></span></td>
+                </tr>
               <% end %>
             <% else %>
               <tr>
-                <td colspan="<%= @module[:fields].size + 1 %>">No records saved yet.</td>
+                <td colspan="6">No records saved yet.</td>
               </tr>
             <% end %>
           </tbody>

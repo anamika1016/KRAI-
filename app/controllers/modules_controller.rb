@@ -18,7 +18,8 @@ class ModulesController < ApplicationController
                 :jeevika_bill_description_rows, :jeevika_bill_bank_rows,
                 :jeevika_bill_prepared_by, :jeevika_bill_approved_by_rows,
                 :jeevika_bill_vrp, :bill_display_date, :bill_display_datetime,
-                :approval_sequence_from_level, :module_record_field_value
+                :approval_sequence_from_level, :module_record_field_value,
+                :approval_level_display_label, :approval_level_label_for_sequence
 
   APPROVAL_REGISTRATION_MODULES = ["Farmer Registration", "VRP Registration", "Jeevika Jankar Registration"].freeze
 
@@ -1011,8 +1012,8 @@ class ModulesController < ApplicationController
 
     reports.insert(0, user_hierarchy_dashboard_report(hierarchy_summary)) if hierarchy_summary[:total].positive?
     if admin_dashboard_user?
-      reports.insert(0, vrp_assigned_target_report)
-      reports.insert(0, vrp_declaration_acceptance_report)
+      reports.insert(0, vrp_assigned_target_report.merge(collapsible: true, collapsed: true))
+      reports.insert(0, vrp_declaration_acceptance_report.merge(collapsible: true, collapsed: true))
     end
     reports
   end
@@ -1543,9 +1544,10 @@ class ModulesController < ApplicationController
     current_labels = current_dashboard_user_labels
     return false if current_labels.blank?
 
-    dashboard_approval_steps_for_visibility(vrp).any? do |step|
-      dashboard_user_label_matches?(step.data["approver_approved_by"], current_labels)
-    end
+    step = dashboard_current_approval_step_for_visibility(vrp)
+    return false unless step
+
+    dashboard_user_label_matches?(step.data["approver_approved_by"], current_labels)
   end
 
   def dashboard_approval_steps_for_visibility(vrp)
@@ -1569,6 +1571,12 @@ class ModulesController < ApplicationController
       .values
       .map { |records| records.max_by { |record| approval_record_priority(record) } }
       .sort_by { |record| vrp_approval_sequence(record) }
+  end
+
+  def dashboard_current_approval_step_for_visibility(vrp)
+    dashboard_approval_steps_for_visibility(vrp).find do |step|
+      !vrp_approval_step_closed?(vrp, step)
+    end
   end
 
   def dashboard_current_app_user_ids
@@ -1795,12 +1803,30 @@ class ModulesController < ApplicationController
   end
 
   def approval_sequence_from_level(level)
-    level = level.to_s.downcase
-    return 1 if level.include?("first")
-    return 2 if level.include?("second")
-    return 3 if level.include?("third")
+    approval_level_sequence_from_text(level).presence || 1
+  end
 
-    level[/\d+/].to_i.presence || 1
+  def approval_level_sequence_from_text(value)
+    normalized = value.to_s.downcase.gsub(/\s+/, " ").strip
+    return if normalized.blank?
+
+    {
+      "first approval" => 1,
+      "second approval" => 2,
+      "third approval" => 3,
+      "fourth approval" => 4,
+      "fifth approval" => 5,
+      "sixth approval" => 6,
+      "seventh approval" => 7,
+      "eighth approval" => 8,
+      "ninth approval" => 9,
+      "tenth approval" => 10
+    }.each do |label, sequence|
+      return sequence if normalized.include?(label)
+    end
+
+    normalized[/\bapproval\s*(\d+)\b/, 1]&.to_i.presence ||
+      normalized[/\b(\d+)\b/, 1]&.to_i.presence
   end
 
   def normalize_approval_label(label)
@@ -2721,7 +2747,10 @@ class ModulesController < ApplicationController
       field.parameterize(separator: "_"),
       *module_field_aliases(field)
     ].compact.uniq
-    first_present_data(record, *keys)
+    value = first_present_data(record, *keys)
+    return approval_level_display_label(value) if field == "Approval Level"
+
+    value
   end
 
   def module_field_aliases(field)
@@ -3947,6 +3976,31 @@ class ModulesController < ApplicationController
 
   def approval_user_label(username, role)
     role.present? ? "#{username}(#{role})" : username
+  end
+
+  def approval_level_display_label(value)
+    text = value.to_s.strip
+    return text if text.blank?
+
+    sequence = approval_level_sequence_from_text(text)
+    sequence ? approval_level_label_for_sequence(sequence) : text
+  end
+
+  def approval_level_label_for_sequence(sequence)
+    ordinal = {
+      1 => "First",
+      2 => "Second",
+      3 => "Third",
+      4 => "Fourth",
+      5 => "Fifth",
+      6 => "Sixth",
+      7 => "Seventh",
+      8 => "Eighth",
+      9 => "Ninth",
+      10 => "Tenth"
+    }[sequence.to_i]
+
+    ordinal ? "#{ordinal} Approval" : "Approval #{sequence.to_i}"
   end
 
   def sidebar_module_names

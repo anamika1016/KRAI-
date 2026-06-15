@@ -111,7 +111,7 @@ module ApplicationHelper
       title: "Farmer Training",
       icon: "▥",
       links: [
-        ["Farmer Training Topic Mapping", :module, "training-topic-mapping"],
+        # ["Farmer Training Topic Mapping", :module, "training-topic-mapping"],
         ["Farmer Training Form", :module, "training-form"],
         ["Farmer Training Form List", :module, "training-form-list"]
       ]

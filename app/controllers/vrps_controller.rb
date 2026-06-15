@@ -392,7 +392,7 @@ class VrpsController < ApplicationController
 
   def approval_related_vrps
     Vrp.all.select do |vrp|
-      approval_sent?(vrp) && current_user_in_approval_channel?(vrp)
+      approval_sent?(vrp) && current_user_can_approve?(vrp)
     end
   end
 
@@ -406,9 +406,7 @@ class VrpsController < ApplicationController
   end
 
   def current_user_in_approval_channel?(vrp)
-    approval_steps_for(vrp).any? do |step|
-      approver_matches_current_user?(step.data["approver_approved_by"].to_s)
-    end
+    current_user_can_approve?(vrp)
   end
 
   def current_approval_step(vrp)
@@ -469,12 +467,19 @@ class VrpsController < ApplicationController
   end
 
   def approval_sequence_from_level(level)
-    level = level.to_s.downcase
-    return 1 if level.include?("first")
-    return 2 if level.include?("second")
-    return 3 if level.include?("third")
+    normalized = level.to_s.downcase.gsub(/\s+/, " ").strip
+    return 1 if normalized.include?("first approval")
+    return 2 if normalized.include?("second approval")
+    return 3 if normalized.include?("third approval")
+    return 4 if normalized.include?("fourth approval")
+    return 5 if normalized.include?("fifth approval")
+    return 6 if normalized.include?("sixth approval")
+    return 7 if normalized.include?("seventh approval")
+    return 8 if normalized.include?("eighth approval")
+    return 9 if normalized.include?("ninth approval")
+    return 10 if normalized.include?("tenth approval")
 
-    level[/\d+/].to_i.presence || 1
+    normalized[/\bapproval\s*(\d+)\b/, 1].to_i.presence || normalized[/\b(\d+)\b/, 1].to_i.presence || 1
   end
 
   def approver_labels

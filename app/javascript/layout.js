@@ -2534,6 +2534,21 @@ document.addEventListener("turbo:load", () => {
     const approverOptions = firstSelect
       ? Array.from(firstSelect.options).map((option) => ({ value: option.value, label: option.textContent }))
       : [{ value: "", label: "Select approval user" }];
+    const approvalLevelLabel = (sequence) => {
+      const labels = {
+        1: "First Approval",
+        2: "Second Approval",
+        3: "Third Approval",
+        4: "Fourth Approval",
+        5: "Fifth Approval",
+        6: "Sixth Approval",
+        7: "Seventh Approval",
+        8: "Eighth Approval",
+        9: "Ninth Approval",
+        10: "Tenth Approval"
+      };
+      return labels[sequence] || `Approval ${sequence}`;
+    };
 
     const approvalRowCount = () => new Set(Array.from(table?.querySelectorAll("[data-approval-row]") || []).map((cell) => cell.dataset.approvalRow)).size;
 
@@ -2547,7 +2562,7 @@ document.addEventListener("turbo:load", () => {
       if (!table) return;
 
       const rowIndex = Number(shell.dataset.nextApprovalLevel || approvalRowCount() + 1);
-      const level = `Approval ${rowIndex}`;
+      const level = approvalLevelLabel(rowIndex);
       shell.dataset.nextApprovalLevel = String(rowIndex + 1);
 
       const levelCell = document.createElement("div");

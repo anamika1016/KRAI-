@@ -237,8 +237,8 @@
     <div class="dashboard-report-grid" id="dashboard_reports">
       <% @dashboard_reports.each do |report| %>
         <article class="report-card <%= "clock-report-card" if report[:clock] %>" <%= "id=\"#{report[:dom_id]}\"".html_safe if report[:dom_id].present? %> data-dashboard-card>
-          <h3><%= report[:title] %></h3>
           <% if report[:clock] %>
+            <h3><%= report[:title] %></h3>
             <div class="dashboard-clock-face">
               <div class="clock-content">
                 <div class="clock-info">
@@ -257,7 +257,37 @@
                 <small>Refresh: <%= @dashboard_generated_at.strftime("%d-%m-%Y %I:%M %p") %></small>
               </div>
             </div>
+          <% elsif report[:collapsible] %>
+            <details class="dashboard-report-details" <%= "open" if report[:expanded] %>>
+              <summary class="dashboard-report-summary">
+                <h3><%= report[:title] %></h3>
+                <span>▾</span>
+              </summary>
+              <div class="dashboard-report-body">
+                <div class="table-shell compact-scroll">
+                  <table class="module-table compact-table">
+                    <thead>
+                      <tr>
+                        <% report[:headers].each do |header| %>
+                          <th><%= header %></th>
+                        <% end %>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      <% report[:rows].each do |row| %>
+                        <tr>
+                          <% row.each do |value| %>
+                            <td><%= value %></td>
+                          <% end %>
+                        </tr>
+                      <% end %>
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            </details>
           <% else %>
+            <h3><%= report[:title] %></h3>
             <div class="table-shell compact-scroll">
               <table class="module-table compact-table">
                 <thead>
