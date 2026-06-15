@@ -116,6 +116,14 @@ module ApplicationHelper
         ["Farmer Training Form List", :module, "training-form-list"]
       ]
     },
+    {
+      title: "Jeevika Jankar Bill",
+      icon: "▧",
+      links: [
+        ["Bill Process", :module, "jeevika-jankar-bill-process"],
+        ["Bill List", :module, "jeevika-jankar-bill-list"]
+      ]
+    },
   ].freeze
 
   def sidebar_sections
@@ -216,6 +224,12 @@ module ApplicationHelper
     if ["Target Mapping Master", "Target Mapping", "VRP Targets"].include?(name.to_s.strip)
       keys.concat(["target-mapping-master", "target-mapping", "vrp-targets"])
     end
+    if ["Bill Process", "Jeevika Jankar Bill", "Jeevika Jankar Bill Process"].include?(name.to_s.strip)
+      keys.concat(["bill-process", "jeevika-jankar-bill", "jeevika-jankar-bill-process"])
+    end
+    if ["Bill List", "Jeevika Jankar Bill List"].include?(name.to_s.strip)
+      keys.concat(["bill-list", "jeevika-jankar-bill-list"])
+    end
     keys.uniq
   end
 
@@ -268,6 +282,14 @@ module ApplicationHelper
         links: [
           ["Farmer Training Form", :module, "training-form"],
           ["Farmer Training Form List", :module, "training-form-list"]
+        ]
+      },
+      {
+        title: "Jeevika Jankar Bill",
+        icon: "▧",
+        links: [
+          ["Bill Process", :module, "jeevika-jankar-bill-process"],
+          ["Bill List", :module, "jeevika-jankar-bill-list"]
         ]
       }
     ]

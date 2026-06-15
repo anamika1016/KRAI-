@@ -96,6 +96,184 @@ document.addEventListener("turbo:load", () => {
 
   const csrfToken = document.querySelector("meta[name='csrf-token']")?.content;
 
+  document.querySelectorAll("[data-dashboard-training-filter-select]").forEach((select) => {
+    select.addEventListener("change", () => {
+      const form = select.closest("form");
+      if (!form) return;
+
+      if (select.hasAttribute("data-dashboard-training-month-select")) {
+        const subActivitySelect = form.querySelector("[data-dashboard-training-sub-activity-select]");
+        if (subActivitySelect) subActivitySelect.value = "";
+      }
+
+      if (typeof form.requestSubmit === "function") {
+        form.requestSubmit();
+        return;
+      }
+
+      form.submit();
+    });
+  });
+
+  const trainingDrilldown = document.querySelector("[data-training-participation-drilldown]");
+  if (trainingDrilldown) {
+    const drilldownTitle = trainingDrilldown.querySelector("[data-training-participation-drilldown-title]");
+    const drilldownCount = trainingDrilldown.querySelector("[data-training-participation-drilldown-count]");
+    const drilldownList = trainingDrilldown.querySelector("[data-training-participation-drilldown-list]");
+    const trainingTriggers = Array.from(document.querySelectorAll("[data-training-participation-trigger]"));
+
+    const statusLabels = {
+      green: "Green Farmers",
+      yellow: "Yellow Farmers",
+      red: "Red Farmers"
+    };
+
+    const formatCountLabel = (count) => `${count} farmer${count === 1 ? "" : "s"}`;
+    const formatTrainingDate = (value) => {
+      const text = `${value || ""}`.trim();
+      if (!text) return "-";
+
+      const match = text.match(/^(\d{4})-(\d{2})-(\d{2})/);
+      if (!match) return text;
+
+      return `${match[3]}-${match[2]}-${match[1]}`;
+    };
+
+    const clearActiveTrainingTrigger = () => {
+      trainingTriggers.forEach((button) => {
+        button.classList.remove("is-active");
+        button.setAttribute("aria-pressed", "false");
+      });
+    };
+
+    const renderTrainingDetails = (details, status) => {
+      const farmers = Array.isArray(details?.[status]) ? details[status] : [];
+      if (!drilldownList) return;
+
+      drilldownList.innerHTML = "";
+
+      if (!farmers.length) {
+        const row = document.createElement("tr");
+        const cell = document.createElement("td");
+        cell.colSpan = 7;
+        cell.textContent = "No farmers found for this status.";
+        row.appendChild(cell);
+        drilldownList.appendChild(row);
+        return;
+      }
+
+      farmers.forEach((farmer) => {
+        const row = document.createElement("tr");
+        const farmerCell = document.createElement("td");
+
+        const farmerName = document.createElement("div");
+        farmerName.textContent = farmer.farmer_name || "-";
+        farmerCell.appendChild(farmerName);
+
+        if (farmer.father_name) {
+          const fatherName = document.createElement("small");
+          fatherName.textContent = `Father: ${farmer.father_name}`;
+          farmerCell.appendChild(fatherName);
+        }
+
+        [
+          farmerCell,
+          farmer.ics || "-",
+          farmer.village || "-",
+          farmer.vrp || "-",
+          farmer.attendance_count ?? 0,
+          farmer.status_label || statusLabels[status] || status,
+          formatTrainingDate(farmer.work_date)
+        ].forEach((value, index) => {
+          if (index === 0) {
+            row.appendChild(value);
+            return;
+          }
+
+          const cell = document.createElement("td");
+          cell.textContent = `${value}`;
+          row.appendChild(cell);
+        });
+
+        drilldownList.appendChild(row);
+      });
+    };
+
+    const activateTrainingDrilldown = (button) => {
+      let details = {};
+      try {
+        details = JSON.parse(button.dataset.trainingParticipationDetails || "{}");
+      } catch (_error) {
+        details = {};
+      }
+
+      const status = button.dataset.trainingParticipationStatus || "green";
+      const rows = Array.isArray(details[status]) ? details[status] : [];
+
+      clearActiveTrainingTrigger();
+      button.classList.add("is-active");
+      button.setAttribute("aria-pressed", "true");
+
+      if (drilldownTitle) {
+        drilldownTitle.textContent = button.dataset.trainingParticipationTitle || statusLabels[status] || "Farmer Details";
+      }
+
+      if (drilldownCount) {
+        drilldownCount.textContent = formatCountLabel(rows.length);
+      }
+
+      renderTrainingDetails(details, status);
+    };
+
+    trainingTriggers.forEach((button) => {
+      button.setAttribute("aria-pressed", "false");
+      button.addEventListener("click", () => activateTrainingDrilldown(button));
+    });
+  }
+
+  document.querySelectorAll("[data-training-row-toggle]").forEach((button) => {
+    button.addEventListener("click", () => {
+      const targetId = button.dataset.trainingRowTarget;
+      if (!targetId) return;
+
+      const target = document.getElementById(targetId);
+      if (!target) return;
+
+      const isOpen = !target.hasAttribute("hidden");
+      document.querySelectorAll("[data-training-row-details]").forEach((detail) => {
+        detail.setAttribute("hidden", "");
+      });
+      document.querySelectorAll("[data-training-row-toggle]").forEach((toggle) => {
+        toggle.setAttribute("aria-expanded", "false");
+      });
+
+      if (isOpen) {
+        target.setAttribute("hidden", "");
+        return;
+      }
+
+      target.removeAttribute("hidden");
+      button.setAttribute("aria-expanded", "true");
+    });
+  });
+
+  const themeToggle = document.querySelector("[data-theme-toggle]");
+  const themeToggleIcon = document.querySelector("[data-theme-toggle-icon]");
+  const themeToggleLabel = document.querySelector("[data-theme-toggle-label]");
+  const applyTheme = (theme) => {
+    const nextTheme = theme === "dark" ? "dark" : "light";
+    document.documentElement.dataset.theme = nextTheme;
+    localStorage.setItem("vrp_theme", nextTheme);
+    if (themeToggleIcon) themeToggleIcon.textContent = nextTheme === "dark" ? "☀" : "☾";
+    if (themeToggleLabel) themeToggleLabel.textContent = nextTheme === "dark" ? "Light" : "Dark";
+    themeToggle?.setAttribute("aria-label", nextTheme === "dark" ? "Switch to light mode" : "Switch to dark mode");
+  };
+
+  applyTheme(localStorage.getItem("vrp_theme") || "light");
+  themeToggle?.addEventListener("click", () => {
+    applyTheme(document.documentElement.dataset.theme === "dark" ? "light" : "dark");
+  });
+
   const submitPatch = (path) => {
     const form = document.createElement("form");
     form.method = "post";
@@ -242,6 +420,52 @@ document.addEventListener("turbo:load", () => {
       deleteSelected(paths, "Delete selected record(s)?");
     });
   }
+
+  const selectedBillRows = () => Array.from(document.querySelectorAll("[data-module-row-select]:checked"))
+    .filter((checkbox) => checkbox.dataset.billSendPath || checkbox.dataset.billDeletePath);
+
+  const patchBillRows = async (paths, emptyMessage) => {
+    if (!paths.length) {
+      window.alert(emptyMessage);
+      return;
+    }
+
+    const responses = await Promise.all(paths.map((path) => fetch(path, {
+      method: "PATCH",
+      credentials: "same-origin",
+      headers: {
+        "X-CSRF-Token": csrfToken,
+        "Accept": "text/vnd.turbo-stream.html, text/html, application/xhtml+xml"
+      }
+    })));
+
+    if (responses.some((response) => !(response.ok || response.redirected))) {
+      window.alert("Some selected bill(s) could not be updated.");
+      return;
+    }
+
+    window.location.reload();
+  };
+
+  document.querySelector("[data-bill-send-selected]")?.addEventListener("click", () => {
+    const paths = selectedBillRows().map((checkbox) => checkbox.dataset.billSendPath).filter(Boolean);
+    patchBillRows(paths, "Please select at least one bill");
+  });
+
+  document.querySelectorAll("[data-bill-state-selected]").forEach((button) => {
+    button.addEventListener("click", () => {
+      const state = button.dataset.billStateSelected;
+      const paths = selectedBillRows()
+        .map((checkbox) => state === "Inactive" ? checkbox.dataset.billInactivePath : checkbox.dataset.billActivePath)
+        .filter(Boolean);
+      patchBillRows(paths, "Please select at least one bill");
+    });
+  });
+
+  document.querySelector("[data-bill-delete-selected]")?.addEventListener("click", () => {
+    const paths = selectedBillRows().map((checkbox) => checkbox.dataset.billDeletePath).filter(Boolean);
+    deleteSelected(paths, "Delete selected bill(s)?");
+  });
 
   document.querySelectorAll("[data-module-status-selected]").forEach((button) => {
     button.addEventListener("click", async () => {
@@ -995,9 +1219,15 @@ document.addEventListener("turbo:load", () => {
     });
     const hasParents = (locationParents[level] || []).length > 0;
     const fallbackOptions = originalOptions.filter((option) => option.value !== "");
+    const mergedOptions = [...filteredOptions];
+    fallbackOptions.forEach((option) => {
+      if (!mergedOptions.some((existing) => normalizeOption(existing.value) === normalizeOption(option.value))) {
+        mergedOptions.push(option);
+      }
+    });
     const finalOptions = hasParents && !parentSelected
       ? []
-      : (hasParents && filteredOptions.length > 0 ? filteredOptions : fallbackOptions);
+      : (hasParents ? mergedOptions : fallbackOptions);
     finalOptions.sort((left, right) => left.label.localeCompare(right.label, undefined, { sensitivity: "base" }));
     select.innerHTML = "";
 
@@ -1085,23 +1315,23 @@ document.addEventListener("turbo:load", () => {
 
   document.querySelectorAll("[data-training-target-form]").forEach((formShell) => {
     let mappings = [];
-    let activityMappings = [];
+    let monthOptions = [];
     try {
       mappings = JSON.parse(formShell.dataset.trainingTargetMap || "[]");
     } catch (_error) {
       mappings = [];
     }
     try {
-      activityMappings = JSON.parse(formShell.dataset.trainingActivityMap || "[]");
+      monthOptions = JSON.parse(formShell.dataset.trainingMonthOptions || "[]");
     } catch (_error) {
-      activityMappings = [];
+      monthOptions = [];
     }
 
+	    const monthSelect = formShell.querySelector("[data-training-target-month]");
 	    const icsSelect = formShell.querySelector("[data-training-target-ics]");
 	    const villageSelect = formShell.querySelector("[data-training-target-village]");
-	    const departmentSelect = formShell.querySelector("[data-training-department]");
-	    const trainingTopicSelect = formShell.querySelector("[data-training-topic]");
-	    const trainingSubjectSelect = formShell.querySelector("[data-training-subject]");
+	    const mainActivitySelect = formShell.querySelector("[data-training-main-activity]");
+	    const subActivitySelect = formShell.querySelector("[data-training-sub-activity]");
 	    const farmerPanel = formShell.querySelector("[data-training-farmer-panel]");
 	    const farmerList = formShell.querySelector("[data-training-farmer-list]");
 	    const farmerSelectAll = formShell.querySelector("[data-training-farmer-select-all]");
@@ -1145,51 +1375,68 @@ document.addEventListener("turbo:load", () => {
       });
     };
 
-    const mappedIcsOptions = () => uniqueOptions(mappings.map((mapping) => makeOption(mapping.ics, mapping.ics))).map(optionValue);
-    const mappedDepartmentOptions = () => uniqueOptions(activityMappings.map((mapping) => makeOption(mapping.department, mapping.department))).map(optionValue);
-    const mappedTrainingTopicOptions = () => {
-      const selectedDepartment = normalizeOption(departmentSelect?.value);
-      const rows = selectedDepartment
-        ? activityMappings.filter((mapping) => normalizeOption(mapping.department) === selectedDepartment)
-        : activityMappings;
+    const targetRowsForSelection = ({
+      requireMonth = false,
+      requireVillage = false,
+      includeMainActivity = true,
+      requireMainActivity = false,
+      includeSubActivity = true,
+      requireSubActivity = false
+    } = {}) => {
+      const selectedMonth = normalizeOption(monthSelect?.value);
+      const selectedIcs = normalizeOption(icsSelect.value);
+      const selectedVillage = normalizeOption(villageSelect.value);
+      const selectedMainActivity = includeMainActivity ? normalizeOption(mainActivitySelect?.value) : "";
+      const selectedSubActivity = includeSubActivity ? normalizeOption(subActivitySelect?.value) : "";
 
-      return uniqueOptions(rows.map((mapping) => makeOption(mapping.training_topic, mapping.training_topic))).map(optionValue);
-    };
-    const mappedTrainingSubjectOptions = () => {
-      const selectedDepartment = normalizeOption(departmentSelect?.value);
-      const selectedTopic = normalizeOption(trainingTopicSelect?.value);
-      const rows = activityMappings.filter((mapping) => {
-        const departmentMatches = !selectedDepartment || normalizeOption(mapping.department) === selectedDepartment;
-        const topicMatches = !selectedTopic || normalizeOption(mapping.training_topic) === selectedTopic;
-        return departmentMatches && topicMatches;
+      if (requireMonth && !selectedMonth) return [];
+      if (requireVillage && !selectedVillage) return [];
+      if (requireMainActivity && !selectedMainActivity) return [];
+      if (requireSubActivity && !selectedSubActivity) return [];
+
+      return mappings.filter((mapping) => {
+        const monthMatches = !selectedMonth || normalizeOption(mapping.month) === selectedMonth;
+        const icsMatches = !selectedIcs || normalizeOption(mapping.ics) === selectedIcs;
+        const villageMatches = !selectedVillage || normalizeOption(mapping.village) === selectedVillage;
+        const mainActivityMatches = !selectedMainActivity || normalizeOption(mapping.main_activity) === selectedMainActivity;
+        const subActivityMatches = !selectedSubActivity || normalizeOption(mapping.sub_activity) === selectedSubActivity;
+        return monthMatches && icsMatches && villageMatches && mainActivityMatches && subActivityMatches;
       });
-
-      return uniqueOptions(rows.map((mapping) => makeOption(mapping.training_subject, mapping.training_subject))).map(optionValue);
     };
+
+    const mappedMonthOptions = () => uniqueOptions(
+      monthOptions.concat(mappings.map((mapping) => mapping.month)).map((month) => makeOption(month, month))
+    ).map(optionValue);
+    const mappedIcsOptions = () => uniqueOptions(targetRowsForSelection({ requireMonth: true }).map((mapping) => makeOption(mapping.ics, mapping.ics))).map(optionValue);
+    const mappedMainActivityOptions = () => uniqueOptions(
+      targetRowsForSelection({ requireMonth: true, includeMainActivity: false, includeSubActivity: false }).map((mapping) => makeOption(mapping.main_activity, mapping.main_activity))
+    ).map(optionValue);
+    const mappedSubActivityOptions = () => uniqueOptions(
+      targetRowsForSelection({ requireMonth: true, requireMainActivity: true, includeSubActivity: false }).map((mapping) => makeOption(mapping.sub_activity, mapping.sub_activity))
+    ).map(optionValue);
 	    const mappedVillageOptions = () => {
-	      const selectedIcs = icsSelect.value;
-	      const rows = selectedIcs
-	        ? mappings.filter((mapping) => normalizeOption(mapping.ics) === normalizeOption(selectedIcs))
-	        : mappings;
+	      const rows = targetRowsForSelection({ requireMonth: true });
 
 	      return uniqueOptions(rows.map((mapping) => makeOption(mapping.village, mapping.village))).map(optionValue);
 	    };
 
-	    const mappedFarmers = () => {
-	      const selectedIcs = normalizeOption(icsSelect.value);
-	      const selectedVillage = normalizeOption(villageSelect.value);
-	      if (!selectedVillage) return [];
+    const mappedFarmers = () => {
+      const selectedVillage = normalizeOption(villageSelect.value);
+      const selectedMainActivity = normalizeOption(mainActivitySelect?.value);
+      const selectedSubActivity = normalizeOption(subActivitySelect?.value);
+      if (!monthSelect?.value || !selectedVillage || !selectedMainActivity) return [];
 
-	      const farmersById = new Map();
-	      mappings
-	        .filter((mapping) => {
-	          const icsMatches = !selectedIcs || normalizeOption(mapping.ics) === selectedIcs;
-	          return icsMatches && normalizeOption(mapping.village) === selectedVillage;
-	        })
-	        .flatMap((mapping) => mapping.farmers || [])
-	        .forEach((farmer) => {
-	          if (!farmer.id) return;
-	          farmersById.set(String(farmer.id), farmer);
+      const farmersById = new Map();
+      const completedFarmerIds = new Set();
+      targetRowsForSelection({ requireMonth: true, requireVillage: true, requireMainActivity: true })
+        .filter((mapping) => !selectedSubActivity || normalizeOption(mapping.sub_activity) === selectedSubActivity)
+        .forEach((mapping) => {
+          (mapping.completed_farmer_ids || []).forEach((id) => completedFarmerIds.add(String(id)));
+          (mapping.farmers || []).forEach((farmer) => {
+            if (!farmer.id) return;
+	            if (completedFarmerIds.has(String(farmer.id)) && !selectedFarmerIds.has(String(farmer.id))) return;
+	            farmersById.set(String(farmer.id), farmer);
+	          });
 	        });
 	      return Array.from(farmersById.values());
 	    };
@@ -1217,6 +1464,13 @@ document.addEventListener("turbo:load", () => {
 	      if (!farmerList) return;
 	      const farmers = mappedFarmers();
 
+	      if (monthSelect && !monthSelect.value) {
+	        farmerList.textContent = "Select Month to load target farmers.";
+	        if (farmerSelectAll) farmerSelectAll.checked = false;
+	        updateFarmerCount();
+	        return;
+	      }
+
 	      if (!villageSelect.value) {
 	        farmerList.textContent = "Select Village Name to load target farmers.";
 	        if (farmerSelectAll) farmerSelectAll.checked = false;
@@ -1224,9 +1478,20 @@ document.addEventListener("turbo:load", () => {
 	        return;
 	      }
 
-	      if (!farmers.length) {
-	        farmerList.textContent = "No target farmers found for selected village.";
-	        if (farmerSelectAll) farmerSelectAll.checked = false;
+      if (!mainActivitySelect?.value) {
+        farmerList.textContent = "Select Main Activity to load target farmers.";
+        if (farmerSelectAll) farmerSelectAll.checked = false;
+        updateFarmerCount();
+        return;
+      }
+
+      if (mainActivitySelect?.value && !subActivitySelect?.value) {
+        farmerList.textContent = "Select Sub Activity to narrow the target farmers.";
+      }
+
+      if (!farmers.length) {
+        farmerList.textContent = "No pending target farmers found for selected activity.";
+        if (farmerSelectAll) farmerSelectAll.checked = false;
 	        updateFarmerCount();
 	        return;
 	      }
@@ -1289,11 +1554,11 @@ document.addEventListener("turbo:load", () => {
 	      updateFarmerCount();
 	    });
 
+	    if (monthSelect) fillTrainingSelect(monthSelect, mappedMonthOptions(), "Select Month");
 	    fillTrainingSelect(icsSelect, mappedIcsOptions(), "Select ICS Name");
 	    fillTrainingSelect(villageSelect, mappedVillageOptions(), "Select Village Name");
-	    if (departmentSelect) fillTrainingSelect(departmentSelect, mappedDepartmentOptions(), "Select Department");
-	    if (trainingTopicSelect) fillTrainingSelect(trainingTopicSelect, mappedTrainingTopicOptions(), "Select Training Topic");
-	    if (trainingSubjectSelect) fillTrainingSelect(trainingSubjectSelect, mappedTrainingSubjectOptions(), "Select Training Subject");
+	    if (mainActivitySelect) fillTrainingSelect(mainActivitySelect, mappedMainActivityOptions(), "Select Main Activity");
+	    if (subActivitySelect) fillTrainingSelect(subActivitySelect, mappedSubActivityOptions(), "Select Sub Activity");
 	    renderTrainingFarmers();
 
 	    if (geoLatitudeInput && geoLongitudeInput && navigator.geolocation) {
@@ -1303,25 +1568,58 @@ document.addEventListener("turbo:load", () => {
 	      });
 	    }
 
+	    const resetTrainingTargetAfterMonth = () => {
+	      icsSelect.dataset.selectedValue = "";
+	      villageSelect.dataset.selectedValue = "";
+	      icsSelect.value = "";
+	      villageSelect.value = "";
+	      if (mainActivitySelect) mainActivitySelect.dataset.selectedValue = "";
+	      if (subActivitySelect) subActivitySelect.dataset.selectedValue = "";
+	      if (mainActivitySelect) mainActivitySelect.value = "";
+	      if (subActivitySelect) subActivitySelect.value = "";
+	      fillTrainingSelect(icsSelect, mappedIcsOptions(), "Select ICS Name");
+	      fillTrainingSelect(villageSelect, mappedVillageOptions(), "Select Village Name");
+	      if (mainActivitySelect) fillTrainingSelect(mainActivitySelect, mappedMainActivityOptions(), "Select Main Activity");
+	      if (subActivitySelect) fillTrainingSelect(subActivitySelect, mappedSubActivityOptions(), "Select Sub Activity");
+	      selectedFarmerIds.clear();
+	      renderTrainingFarmers();
+	    };
+
+	    monthSelect?.addEventListener("change", resetTrainingTargetAfterMonth);
+
 	    icsSelect.addEventListener("change", () => {
 	      villageSelect.dataset.selectedValue = "";
+	      villageSelect.value = "";
+	      if (mainActivitySelect) mainActivitySelect.dataset.selectedValue = "";
+	      if (subActivitySelect) subActivitySelect.dataset.selectedValue = "";
+	      if (mainActivitySelect) mainActivitySelect.value = "";
+	      if (subActivitySelect) subActivitySelect.value = "";
 	      fillTrainingSelect(villageSelect, mappedVillageOptions(), "Select Village Name");
+	      if (mainActivitySelect) fillTrainingSelect(mainActivitySelect, mappedMainActivityOptions(), "Select Main Activity");
+	      if (subActivitySelect) fillTrainingSelect(subActivitySelect, mappedSubActivityOptions(), "Select Sub Activity");
 	      selectedFarmerIds.clear();
 	      renderTrainingFarmers();
 	    });
 	    villageSelect.addEventListener("change", () => {
+	      if (mainActivitySelect) mainActivitySelect.dataset.selectedValue = "";
+	      if (subActivitySelect) subActivitySelect.dataset.selectedValue = "";
+	      if (mainActivitySelect) mainActivitySelect.value = "";
+	      if (subActivitySelect) subActivitySelect.value = "";
+	      if (mainActivitySelect) fillTrainingSelect(mainActivitySelect, mappedMainActivityOptions(), "Select Main Activity");
+	      if (subActivitySelect) fillTrainingSelect(subActivitySelect, mappedSubActivityOptions(), "Select Sub Activity");
 	      selectedFarmerIds.clear();
 	      renderTrainingFarmers();
 	    });
-	    departmentSelect?.addEventListener("change", () => {
-	      if (trainingTopicSelect) trainingTopicSelect.dataset.selectedValue = "";
-	      if (trainingSubjectSelect) trainingSubjectSelect.dataset.selectedValue = "";
-	      if (trainingTopicSelect) fillTrainingSelect(trainingTopicSelect, mappedTrainingTopicOptions(), "Select Training Topic");
-	      if (trainingSubjectSelect) fillTrainingSelect(trainingSubjectSelect, mappedTrainingSubjectOptions(), "Select Training Subject");
+	    mainActivitySelect?.addEventListener("change", () => {
+	      if (subActivitySelect) subActivitySelect.dataset.selectedValue = "";
+	      if (subActivitySelect) subActivitySelect.value = "";
+	      if (subActivitySelect) fillTrainingSelect(subActivitySelect, mappedSubActivityOptions(), "Select Sub Activity");
+	      selectedFarmerIds.clear();
+	      renderTrainingFarmers();
 	    });
-	    trainingTopicSelect?.addEventListener("change", () => {
-	      if (trainingSubjectSelect) trainingSubjectSelect.dataset.selectedValue = "";
-	      if (trainingSubjectSelect) fillTrainingSelect(trainingSubjectSelect, mappedTrainingSubjectOptions(), "Select Training Subject");
+	    subActivitySelect?.addEventListener("change", () => {
+	      selectedFarmerIds.clear();
+	      renderTrainingFarmers();
 	    });
 	  });
 
@@ -1535,6 +1833,8 @@ document.addEventListener("turbo:load", () => {
     const icsSelect = shell.querySelector("[data-target-ics]");
     const villageSelect = shell.querySelector("[data-target-village]");
     const monthSelect = shell.querySelector("select[name='target_mapping[month_name]']");
+    const mainActivitySelect = shell.querySelector("select[name='target_mapping[main_activity_name]']");
+    const subActivitySelect = shell.querySelector("select[name='target_mapping[activity_name]']");
     const targetInput = shell.querySelector("[data-target-quantity-input]");
     const registeredCountInput = shell.querySelector("[data-target-registered-count]");
     const farmerPanel = shell.querySelector("[data-target-farmer-panel]");
@@ -1543,10 +1843,16 @@ document.addEventListener("turbo:load", () => {
     const farmerSelectAll = shell.querySelector("[data-target-farmer-select-all]");
     const form = shell.querySelector("form");
     let editTarget = {};
+    let targetSubActivityRows = [];
     try {
       editTarget = JSON.parse(shell.dataset.editTarget || "{}");
     } catch (_error) {
       editTarget = {};
+    }
+    try {
+      targetSubActivityRows = JSON.parse(shell.dataset.targetSubActivityMap || "[]");
+    } catch (_error) {
+      targetSubActivityRows = [];
     }
 
     const escapeHtml = (value) => String(value || "")
@@ -1587,6 +1893,34 @@ document.addEventListener("turbo:load", () => {
         select.appendChild(option);
       });
       select.disabled = options.length === 0;
+    };
+
+    const targetSubActivityOptionsForMain = () => {
+      const selectedMainActivity = normalizeOption(mainActivitySelect?.value);
+      if (!selectedMainActivity) return [];
+
+      return uniqueOptions(
+        targetSubActivityRows
+          .filter((row) => normalizeOption(row.main_activity) === selectedMainActivity)
+          .map((row) => makeOption(row.sub_activity, row.sub_activity))
+      );
+    };
+
+    const refreshTargetSubActivities = (resetSelection = false) => {
+      if (!subActivitySelect) return;
+
+      if (resetSelection) {
+        subActivitySelect.dataset.selectedValue = "";
+        subActivitySelect.value = "";
+      }
+
+      if (!mainActivitySelect?.value) {
+        subActivitySelect.innerHTML = '<option value="">Select Main Activity first</option>';
+        subActivitySelect.disabled = true;
+        return;
+      }
+
+      fillTargetSelect(subActivitySelect, targetSubActivityOptionsForMain(), "Select Sub Activity");
     };
 
     const updateTargetFarmerCount = () => {
@@ -1655,6 +1989,8 @@ document.addEventListener("turbo:load", () => {
       if (icsValue) url.searchParams.set("ics_id", icsValue);
       if (villageValue) url.searchParams.set("village_id", villageValue);
       if (monthSelect?.value) url.searchParams.set("month_name", monthSelect.value);
+      if (mainActivitySelect?.value) url.searchParams.set("main_activity_name", mainActivitySelect.value);
+      if (subActivitySelect?.value) url.searchParams.set("activity_name", subActivitySelect.value);
       if (editTarget.id) url.searchParams.set("edit_id", editTarget.id);
 
       try {
@@ -1719,7 +2055,13 @@ document.addEventListener("turbo:load", () => {
     });
     vrpSelect?.addEventListener("change", loadTargetData);
     monthSelect?.addEventListener("change", loadTargetData);
+    mainActivitySelect?.addEventListener("change", () => {
+      refreshTargetSubActivities(true);
+      loadTargetData();
+    });
+    subActivitySelect?.addEventListener("change", loadTargetData);
 
+    refreshTargetSubActivities(false);
     loadTargetData();
   });
 
@@ -1895,12 +2237,62 @@ document.addEventListener("turbo:load", () => {
 
   document.addEventListener("click", () => closeColumnFilters());
 
-  document.querySelectorAll("[data-paginated-table]").forEach((table) => {
+  const ensureTableSearch = (table, index) => {
+    if (!table.id) table.id = `auto_paginated_table_${index + 1}`;
+    if (document.querySelector(`[data-table-search='${table.id}']`)) return;
+
+    const shell = table.closest(".table-shell") || table;
+    const controls = document.createElement("div");
+    controls.className = "list-controls auto-list-controls";
+    controls.innerHTML = `
+      <div class="list-search">
+        <span>⌕</span>
+        <input type="search" placeholder="Search records" data-table-search="${table.id}">
+      </div>
+    `;
+    shell.insertAdjacentElement("beforebegin", controls);
+  };
+
+  const ensureTablePagination = (table) => {
+    if (!table.id || document.querySelector(`[data-pagination-for='${table.id}']`)) return;
+
+    const pagination = document.createElement("div");
+    pagination.className = "table-pagination";
+    pagination.dataset.paginationFor = table.id;
+    (table.closest(".table-shell") || table).insertAdjacentElement("afterend", pagination);
+  };
+
+  const sortTableRowsAlphabetically = (table) => {
+    if (table.dataset.alphaSorted === "true") return;
+
+    const tbody = table.tBodies[0];
+    if (!tbody) return;
+
+    const rows = Array.from(tbody.rows);
+    const dataRows = rows.filter((row) => !row.dataset.emptyRow);
+    const emptyRows = rows.filter((row) => row.dataset.emptyRow);
+    const meaningfulText = (row) => {
+      const cells = Array.from(row.cells).filter((cell) => !cell.querySelector("input[type='checkbox']"));
+      const cell = cells.find((candidate) => candidate.innerText.trim()) || cells[0];
+      return (cell?.innerText || "").trim();
+    };
+
+    dataRows
+      .sort((left, right) => meaningfulText(left).localeCompare(meaningfulText(right), undefined, { sensitivity: "base", numeric: true }))
+      .forEach((row) => tbody.appendChild(row));
+    emptyRows.forEach((row) => tbody.appendChild(row));
+    table.dataset.alphaSorted = "true";
+  };
+
+  document.querySelectorAll("[data-paginated-table]").forEach((table, index) => {
     table.querySelectorAll("tbody tr").forEach((row) => {
       if (row.children.length === 1 || row.innerText.toLowerCase().includes("no records")) {
         row.dataset.emptyRow = "true";
       }
     });
+    ensureTableSearch(table, index);
+    ensureTablePagination(table);
+    sortTableRowsAlphabetically(table);
     setupColumnFilters(table);
     paginateTable(table, 1);
   });
@@ -2286,11 +2678,15 @@ document.addEventListener("turbo:load", () => {
 
       const action = button.dataset.approvalAction || "approve";
       approvalModalForm.action = button.dataset.approvalUrl;
-      if (approvalModalTitle) approvalModalTitle.textContent = action === "reject" ? "Rejection Remarks" : "Approval Remarks";
+      const isReturn = action === "return";
+      const isReject = action === "reject";
+      if (approvalModalTitle) {
+        approvalModalTitle.textContent = isReturn ? "Return Remarks" : (isReject ? "Rejection Remarks" : "Approval Remarks");
+      }
       if (approvalModalSubmit) {
-        approvalModalSubmit.textContent = action === "reject" ? "Reject" : "Approve";
-        approvalModalSubmit.classList.toggle("deactive", action === "reject");
-        approvalModalSubmit.classList.toggle("active", action !== "reject");
+        approvalModalSubmit.textContent = isReturn ? "Return" : (isReject ? "Reject" : "Approve");
+        approvalModalSubmit.classList.toggle("deactive", isReject || isReturn);
+        approvalModalSubmit.classList.toggle("active", !(isReject || isReturn));
       }
       if (approvalRemarks) approvalRemarks.value = "";
 
@@ -2312,6 +2708,190 @@ document.addEventListener("turbo:load", () => {
         approvalModal.removeAttribute("open");
       }
     });
+  });
+
+  document.querySelectorAll("[data-jeevika-jankar-bill]").forEach((billForm) => {
+    const vrpSelect = billForm.querySelector("[data-jeevika-vrp-select]");
+    const monthSelect = billForm.querySelector("[data-jeevika-month-select]");
+    const rowsBody = billForm.querySelector("[data-jeevika-bill-rows]");
+    const totalTargetInput = billForm.querySelector("[data-jeevika-total-target]");
+    const totalAchievementInput = billForm.querySelector("[data-jeevika-total-achievement]");
+    const grandTotalInput = billForm.querySelector("[data-jeevika-grand-total]");
+    let billRows = [];
+    let savedItems = [];
+    let achievementSummary = {};
+
+    try {
+      billRows = JSON.parse(billForm.dataset.billRows || "[]");
+      savedItems = JSON.parse(billForm.dataset.savedItems || "[]");
+      achievementSummary = JSON.parse(billForm.dataset.achievementSummary || "{}");
+    } catch (_error) {
+      billRows = [];
+      savedItems = [];
+      achievementSummary = {};
+    }
+
+    const escapeHtml = (value) => String(value || "")
+      .replaceAll("&", "&amp;")
+      .replaceAll("<", "&lt;")
+      .replaceAll(">", "&gt;")
+      .replaceAll('"', "&quot;")
+      .replaceAll("'", "&#039;");
+
+    const numberValue = (value) => Number(String(value || "0").replaceAll(",", "")) || 0;
+    const savedItemFor = (row) => savedItems.find((item) => String(item.target_mapping_id || "") === String(row.target_mapping_id || "")) || {};
+    const rowInputs = () => Array.from(rowsBody?.querySelectorAll("tr[data-bill-row]") || []);
+    const selectedAchievementTotal = () => {
+      const selectedVrp = String(vrpSelect?.value || "");
+      if (!selectedVrp) return null;
+
+      const total = achievementSummary?.[selectedVrp]?.__all;
+      return total === undefined || total === null ? null : numberValue(total);
+    };
+
+    const farmerDetailsHtml = (farmers) => {
+      if (!farmers?.length) return "<div class=\"jeevika-farmer-empty\">No target farmer list saved for this target.</div>";
+
+      const rows = farmers.map((farmer) => `
+        <tr>
+          <td>${escapeHtml(farmer.name)}</td>
+          <td>${escapeHtml(farmer.father_name || "-")}</td>
+          <td>${escapeHtml(farmer.mobile_no || "-")}</td>
+          <td>${escapeHtml(farmer.department || "-")}</td>
+          <td>${escapeHtml(farmer.training_topic || "-")}</td>
+          <td>${escapeHtml(farmer.training_subject || "-")}</td>
+          <td>${escapeHtml(farmer.training_date || "-")}</td>
+        </tr>
+      `).join("");
+
+      return `
+        <div class="jeevika-farmer-detail">
+          <table class="module-table">
+            <thead>
+              <tr>
+                <th>Farmer</th>
+                <th>Father</th>
+                <th>Mobile</th>
+                <th>Department</th>
+                <th>Training Topic</th>
+                <th>Training Subject</th>
+                <th>Date</th>
+              </tr>
+            </thead>
+            <tbody>${rows}</tbody>
+          </table>
+        </div>
+      `;
+    };
+
+    const hiddenInput = (name, value) => `<input type="hidden" name="${name}" value="${escapeHtml(value)}">`;
+
+    const recalculateJeevikaBill = () => {
+      let totalTarget = 0;
+      let totalAchievement = 0;
+      let grandTotal = 0;
+
+      rowInputs().forEach((row) => {
+        const target = numberValue(row.dataset.targetQuantity);
+        const achievement = numberValue(row.dataset.achievementCount);
+        const rate = numberValue(row.querySelector("[data-jeevika-rate]")?.value);
+        const amount = achievement * rate;
+        const amountInput = row.querySelector("[data-jeevika-amount]");
+
+        totalTarget += target;
+        totalAchievement += achievement;
+        grandTotal += amount;
+        if (amountInput) amountInput.value = amount.toFixed(2);
+      });
+
+      if (totalTargetInput) totalTargetInput.value = String(totalTarget);
+      const summaryAchievement = selectedAchievementTotal();
+      if (summaryAchievement !== null) totalAchievement = summaryAchievement;
+      if (totalAchievementInput) totalAchievementInput.value = String(totalAchievement);
+      if (grandTotalInput) grandTotalInput.value = grandTotal.toFixed(2);
+    };
+
+    const renderJeevikaBillRows = () => {
+      if (!rowsBody) return;
+
+      const selectedVrp = String(vrpSelect?.value || "");
+      const rows = billRows.filter((row) => String(row.vrp_id || "") === selectedVrp);
+
+      if (!selectedVrp) {
+        rowsBody.innerHTML = `<tr data-empty-bill-row><td colspan="9">Select Jeevika Jankar Name to load target achievement list.</td></tr>`;
+        recalculateJeevikaBill();
+        return;
+      }
+
+      if (!rows.length) {
+        rowsBody.innerHTML = `<tr data-empty-bill-row><td colspan="9">No target mapping found for selected Jeevika Jankar.</td></tr>`;
+        recalculateJeevikaBill();
+        return;
+      }
+
+      rowsBody.innerHTML = rows.map((row, index) => {
+        const savedItem = savedItemFor(row);
+        const rate = savedItem.rate || "0.00";
+        const farmerDetails = JSON.stringify(row.farmer_details || []);
+        const inputPrefix = `module_record[bill_items][${index}]`;
+
+        return `
+          <tr data-bill-row data-target-quantity="${escapeHtml(row.target_quantity)}" data-achievement-count="${escapeHtml(row.achievement_count)}">
+            <td>
+              ${hiddenInput(`${inputPrefix}[target_mapping_id]`, row.target_mapping_id)}
+              ${hiddenInput(`${inputPrefix}[vrp_id]`, row.vrp_id)}
+              ${hiddenInput(`${inputPrefix}[vrp_name]`, row.vrp_name)}
+              ${hiddenInput(`${inputPrefix}[month_name]`, row.month_name)}
+              ${hiddenInput(`${inputPrefix}[fco]`, row.fco)}
+              ${hiddenInput(`${inputPrefix}[ics]`, row.ics)}
+              ${hiddenInput(`${inputPrefix}[village]`, row.village)}
+              ${hiddenInput(`${inputPrefix}[main_activity]`, row.main_activity)}
+              ${hiddenInput(`${inputPrefix}[activity]`, row.activity)}
+              ${hiddenInput(`${inputPrefix}[target_quantity]`, row.target_quantity)}
+              ${hiddenInput(`${inputPrefix}[assigned_count]`, row.assigned_count)}
+              ${hiddenInput(`${inputPrefix}[achievement_count]`, row.achievement_count)}
+              ${hiddenInput(`${inputPrefix}[pending_count]`, row.pending_count)}
+              ${hiddenInput(`${inputPrefix}[same_activity_count]`, row.same_activity_count)}
+              ${hiddenInput(`${inputPrefix}[other_activity_count]`, row.other_activity_count)}
+              ${hiddenInput(`${inputPrefix}[timesheet_dates]`, row.timesheet_dates)}
+              ${hiddenInput(`${inputPrefix}[farmer_details]`, farmerDetails)}
+              ${escapeHtml(row.ics || "-")}
+            </td>
+            <td>${escapeHtml(row.village || "-")}</td>
+            <td>${escapeHtml(row.main_activity || "-")}</td>
+            <td>${escapeHtml(row.activity || "-")}</td>
+            <td>${escapeHtml(row.target_quantity || 0)}</td>
+            <td>${escapeHtml(row.achievement_count || 0)}</td>
+            <td>${escapeHtml(row.pending_count || 0)}</td>
+            <td><input type="number" min="0" step="0.01" name="${inputPrefix}[rate]" value="${escapeHtml(rate)}" data-jeevika-rate></td>
+            <td><input type="number" min="0" step="0.01" name="${inputPrefix}[amount]" value="${escapeHtml(savedItem.amount || "0.00")}" data-jeevika-amount readonly></td>
+          </tr>
+          <tr class="jeevika-farmer-row">
+            <td colspan="9">
+              <details class="jeevika-farmer-details">
+                <summary>Farmer List ${escapeHtml(row.achievement_count || 0)} / ${escapeHtml(row.assigned_count || 0)}</summary>
+                ${farmerDetailsHtml(row.farmer_details || [])}
+              </details>
+            </td>
+          </tr>
+        `;
+      }).join("");
+
+      recalculateJeevikaBill();
+    };
+
+    rowsBody?.addEventListener("input", (event) => {
+      if (event.target.matches("[data-jeevika-rate]")) recalculateJeevikaBill();
+    });
+    billForm.querySelector("form")?.addEventListener("submit", (event) => {
+      if (rowInputs().length > 0) return;
+
+      event.preventDefault();
+      window.alert("Please select Jeevika Jankar Name and Bill Month with target mapping.");
+    });
+    vrpSelect?.addEventListener("change", renderJeevikaBillRows);
+    monthSelect?.addEventListener("change", renderJeevikaBillRows);
+    renderJeevikaBillRows();
   });
 
   document.querySelectorAll("[data-vrp-bill-form]").forEach((billForm) => {
@@ -2998,6 +3578,57 @@ document.addEventListener("turbo:load", () => {
 	      or: odiaTranslations
 	    };
 
+    const googleLanguageCodes = { en: "en", hi: "hi", mr: "mr", or: "or" };
+    const setGoogleTranslateCookie = (language) => {
+      const value = `/en/${googleLanguageCodes[language] || "en"}`;
+      document.cookie = `googtrans=${value};path=/`;
+      document.cookie = `googtrans=${value};path=/;domain=${window.location.hostname}`;
+    };
+    const loadGoogleTranslate = () => {
+      if (window.google?.translate?.TranslateElement) return Promise.resolve();
+      if (window.__vrpGoogleTranslateLoading) return window.__vrpGoogleTranslateLoading;
+
+      window.__vrpGoogleTranslateLoading = new Promise((resolve) => {
+        window.googleTranslateElementInit = () => {
+          if (window.google?.translate?.TranslateElement) {
+            new window.google.translate.TranslateElement({
+              pageLanguage: "en",
+              includedLanguages: "en,hi,mr,or",
+              autoDisplay: false
+            }, "google_translate_element");
+          }
+          resolve();
+        };
+
+        const script = document.createElement("script");
+        script.src = "https://translate.google.com/translate_a/element.js?cb=googleTranslateElementInit";
+        script.async = true;
+        script.onerror = () => resolve();
+        document.head.appendChild(script);
+      });
+
+      return window.__vrpGoogleTranslateLoading;
+    };
+    const applyGoogleLanguage = (language) => {
+      setGoogleTranslateCookie(language);
+      if (language === "en") {
+        const combo = document.querySelector(".goog-te-combo");
+        if (combo) {
+          combo.value = "";
+          combo.dispatchEvent(new Event("change"));
+        }
+        return;
+      }
+
+      loadGoogleTranslate().then(() => {
+        const combo = document.querySelector(".goog-te-combo");
+        if (!combo) return;
+
+        combo.value = googleLanguageCodes[language] || "en";
+        combo.dispatchEvent(new Event("change"));
+      });
+    };
+
     const preserveSpacing = (original, replacement) => {
       const leading = original.match(/^\s*/)?.[0] || "";
       const trailing = original.match(/\s*$/)?.[0] || "";
@@ -3066,7 +3697,10 @@ document.addEventListener("turbo:load", () => {
       }
     };
 
+    let languageMutationTimer = null;
+    let languageApplying = false;
 	    const applyLanguage = (language) => {
+      languageApplying = true;
 	      document.documentElement.lang = language;
       document.title = replaceVrpUiText(document.title);
       languageButtons.forEach((button) => {
@@ -3079,11 +3713,13 @@ document.addEventListener("turbo:load", () => {
           if (node.nodeType === Node.TEXT_NODE) translateTextNode(node, language);
         });
       });
-    };
+      languageApplying = false;
+	    };
 
 	    const setLanguage = (language) => {
 	      const nextLanguage = ["en", "hi", "mr", "or"].includes(language) ? language : "en";
       localStorage.setItem("vrp_language", nextLanguage);
+      applyGoogleLanguage(nextLanguage);
       applyLanguage(nextLanguage);
     };
 
@@ -3094,6 +3730,15 @@ document.addEventListener("turbo:load", () => {
     }
 
     setLanguage(localStorage.getItem("vrp_language") || "en");
+    const languageObserver = new MutationObserver(() => {
+      if (languageApplying) return;
+
+      clearTimeout(languageMutationTimer);
+      languageMutationTimer = setTimeout(() => {
+        applyLanguage(localStorage.getItem("vrp_language") || "en");
+      }, 120);
+    });
+    languageObserver.observe(document.body, { childList: true, subtree: true });
   };
 
   initializeLanguageSwitcher();

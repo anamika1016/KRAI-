@@ -6,8 +6,19 @@ class ModulesController < ApplicationController
   helper_method :module_field_options, :module_select_field?, :static_field_options, :role_management_mappings,
                 :access_control_role_mappings, :access_control_field_options,
                 :location_hierarchy_mappings, :office_category_mappings, :training_target_mappings,
+                :training_target_month_options,
                 :training_activity_mappings, :approval_user_mappings, :approval_user_options,
-                :parent_office_mappings, :user_hierarchy_list_rows, :jeevika_jankar_cluster_rows
+                :parent_office_mappings, :user_hierarchy_list_rows, :jeevika_jankar_cluster_rows,
+                :jeevika_bill_status_label, :jeevika_bill_status_class, :jeevika_bill_rows,
+                :jeevika_bill_detail_rows, :jeevika_bill_current_approval_step,
+                :jeevika_bill_approval_history, :jeevika_bill_current_approver?,
+                :jeevika_bill_approval_steps, :jeevika_bill_summary,
+                :jeevika_bill_attachment_rows, :jeevika_jankar_display_name,
+                :jeevika_jankar_vrp_label, :jeevika_bill_time_slot_rows,
+                :jeevika_bill_description_rows, :jeevika_bill_bank_rows,
+                :jeevika_bill_prepared_by, :jeevika_bill_approved_by_rows,
+                :jeevika_bill_vrp, :bill_display_date, :bill_display_datetime,
+                :approval_sequence_from_level, :module_record_field_value
 
   APPROVAL_REGISTRATION_MODULES = ["Farmer Registration", "VRP Registration", "Jeevika Jankar Registration"].freeze
 
@@ -82,6 +93,7 @@ class ModulesController < ApplicationController
       group: "Farmer Training",
       purpose: "Farmer training details save karne ke liye.",
       fields: [
+        "Month",
         "ICS / Block",
         "Gram Name",
         "Trainee Department",
@@ -89,9 +101,8 @@ class ModulesController < ApplicationController
         "Trainer Contact",
         "Training Date",
         "Training Location",
-        "Department",
-        "Training Topic",
-        "Training Subject",
+        "Main Activity",
+        "Sub Activity",
         "Training Description",
         "Farmer Count",
         "Male Count",
@@ -106,12 +117,14 @@ class ModulesController < ApplicationController
       group: "Farmer Training",
       purpose: "Saved farmer training records dekhne ke liye.",
       fields: [
+        "Month",
         "ICS / Block",
         "Gram Name",
         "Trainer Name",
         "Training Date",
         "Training Location",
-        "Training Topic",
+        "Main Activity",
+        "Sub Activity",
         "Farmer Count",
         "Selected Farmers",
         "Male Count",
@@ -252,6 +265,18 @@ class ModulesController < ApplicationController
       purpose: "Bills aur payment status track karne ke liye.",
       fields: ["Select VRP", "Select Financial Year", "Select Bill Month", "Select ICS", "Select Main Activity", "Grand Total", "Status"]
     },
+    "jeevika-jankar-bill-process" => {
+      title: "Jeevika Jankar Bill Process",
+      group: "Jeevika Jankar Bill",
+      purpose: "Approved VRP ke target, achievement, farmer training aur invoice wise timesheet generate karne ke liye.",
+      fields: ["Jeevika Jankar Name", "Bill Month", "Total Target", "Total Achievement"]
+    },
+    "jeevika-jankar-bill-list" => {
+      title: "Jeevika Jankar Bill List",
+      group: "Jeevika Jankar Bill",
+      purpose: "Saved Jeevika Jankar bill aur invoice records dekhne ke liye.",
+      fields: ["Jeevika Jankar Name", "Bill Month", "Total Target", "Total Achievement"]
+    },
     "weekly-target-add" => {
       title: "Add Weekly Target",
       group: "Weekly Target Allocation",
@@ -369,6 +394,7 @@ class ModulesController < ApplicationController
     "approval-list" => "approval-master",
     "access-control-list" => "access-control",
     "vrp-bill-list" => "vrp-bill-add",
+    "jeevika-jankar-bill-list" => "jeevika-jankar-bill-process",
     "training-form-list" => "training-form",
     "user-hierarchy-list" => "user-hierarchy-mapping",
     "all-user" => "new-user"
@@ -380,8 +406,19 @@ class ModulesController < ApplicationController
       return
     end
 
+    targets = dashboard_target_mappings
+    selected_month = dashboard_selected_training_month_name
+    selected_sub_activity = dashboard_selected_training_sub_activity_name
+    month_targets = dashboard_targets_for_month(targets, selected_month)
+    training_targets = dashboard_targets_for_filters(targets, selected_month, selected_sub_activity)
     @dashboard_title = admin_dashboard_user? ? "Admin Dashboard" : dashboard_current_user_title
     @dashboard_caption = admin_dashboard_user? ? "Live complete system summary." : "Live summary for your mapped records."
+    @training_selected_month = selected_month
+    @training_selected_sub_activity = selected_sub_activity
+    @training_month_options = dashboard_month_options_for_targets(targets)
+    @training_sub_activity_options = dashboard_sub_activity_options_for_targets(month_targets, selected_month)
+    @training_participation = training_participation_summary(training_targets, month_name: selected_month)
+    @farmer_training_dashboard_rows = farmer_training_dashboard_rows(training_targets, month_name: selected_month)
     @dashboard_cards = dashboard_cards
     @dashboard_reports = dashboard_reports
     @dashboard_generated_at = Time.current
@@ -395,6 +432,8 @@ class ModulesController < ApplicationController
     @records = module_records
     prepare_lg_directory_data if @slug == "lg-directory-list"
     prepare_vrp_bill_data if @slug == "vrp-bill-add"
+    prepare_jeevika_jankar_bill_data if @slug == "jeevika-jankar-bill-process"
+    prepare_jeevika_jankar_bill_list if @slug == "jeevika-jankar-bill-list"
   end
 
   def edit
@@ -403,6 +442,7 @@ class ModulesController < ApplicationController
     @records = module_records
     prepare_approval_channel_form(@record) if record_source_slug == "approval-master"
     prepare_vrp_bill_data if @slug == "vrp-bill-add"
+    prepare_jeevika_jankar_bill_data if @slug == "jeevika-jankar-bill-process"
     render :show
   end
 
@@ -421,6 +461,7 @@ class ModulesController < ApplicationController
 
     unless valid_module_data?(record.data)
       @records = module_records
+      prepare_jeevika_jankar_bill_data if @slug == "jeevika-jankar-bill-process"
       flash.now[:alert] = "Password and Confirmed Password must match."
       render :show, status: :unprocessable_entity
       return
@@ -428,6 +469,7 @@ class ModulesController < ApplicationController
 
     if duplicate_access_control_record?(record.data)
       @records = module_records
+      prepare_jeevika_jankar_bill_data if @slug == "jeevika-jankar-bill-process"
       flash.now[:alert] = "Access control for this stakeholder and role already exists."
       render :show, status: :unprocessable_entity
       return
@@ -438,6 +480,7 @@ class ModulesController < ApplicationController
       redirect_to module_path(module_redirect_slug), notice: "#{@module[:title]} saved successfully."
     else
       @records = module_records
+      prepare_jeevika_jankar_bill_data if @slug == "jeevika-jankar-bill-process"
       flash.now[:alert] = record.errors.full_messages.to_sentence
       render :show, status: :unprocessable_entity
     end
@@ -459,6 +502,7 @@ class ModulesController < ApplicationController
     unless valid_module_data?(next_data)
       @record = record
       @records = module_records
+      prepare_jeevika_jankar_bill_data if @slug == "jeevika-jankar-bill-process"
       flash.now[:alert] = "Password and Confirmed Password must match."
       render :show, status: :unprocessable_entity
       return
@@ -467,6 +511,7 @@ class ModulesController < ApplicationController
     if duplicate_access_control_record?(next_data, except_id: record.id)
       @record = record
       @records = module_records
+      prepare_jeevika_jankar_bill_data if @slug == "jeevika-jankar-bill-process"
       flash.now[:alert] = "Access control for this stakeholder and role already exists."
       render :show, status: :unprocessable_entity
       return
@@ -479,6 +524,7 @@ class ModulesController < ApplicationController
     else
       @record = record
       @records = module_records
+      prepare_jeevika_jankar_bill_data if @slug == "jeevika-jankar-bill-process"
       flash.now[:alert] = record.errors.full_messages.to_sentence
       render :show, status: :unprocessable_entity
     end
@@ -578,12 +624,57 @@ class ModulesController < ApplicationController
     end
   end
 
+  def send_bill_for_approval
+    load_module!
+    record = ModuleRecord.find(params[:id])
+    unless ["jeevika-jankar-bill-process", "jeevika-jankar-bill-list"].include?(record.module_slug) || record_source_slug == "jeevika-jankar-bill-process"
+      redirect_to module_path(@slug), alert: "Send for approval is available only for Jeevika Jankar bills." and return
+    end
+
+    step = jeevika_bill_approval_steps(record).first
+    redirect_to module_path("jeevika-jankar-bill-list"), alert: "Please create Jeevika Jankar Bill approval channel first." and return unless step
+
+    update_bill_status!(record, "Pending at #{step.data["approver_approved_by"]}", current_sequence: approval_sequence_from_level(step.data["approval_level"]))
+    create_bill_approval_history(record, "Sent for Approval", step)
+    redirect_to module_path("jeevika-jankar-bill-list"), notice: "Jeevika Jankar bill sent for approval."
+  end
+
+  def set_bill_state
+    load_module!
+    record = ModuleRecord.find(params[:id])
+    state = params[:state].presence_in(["Active", "Inactive"]) || "Active"
+    record.update!(data: record.data.merge("record_state" => state))
+    redirect_to module_path("jeevika-jankar-bill-list"), notice: "Bill marked #{state}."
+  end
+
+  def approve_bill
+    update_bill_approval("Approved")
+  end
+
+  def reject_bill
+    update_bill_approval("Rejected")
+  end
+
+  def return_bill
+    update_bill_approval("Returned")
+  end
+
+  def download_bill
+    load_module!
+    @record = ModuleRecord.find(params[:id])
+    @bill_print_mode = true
+    @records = []
+    render :show, layout: "bill_print"
+  end
+
   private
 
   def prepare_vrp_dashboard
     @vrp_dashboard = true
     @dashboard_generated_at = Time.current
     @vrp = current_vrp_record
+    selected_month = dashboard_selected_training_month_name
+    selected_sub_activity = dashboard_selected_training_sub_activity_name
 
     unless @vrp
       @dashboard_cards = []
@@ -595,15 +686,23 @@ class ModulesController < ApplicationController
 
     mappings = vrp_dashboard_mappings(@vrp)
     targets = vrp_dashboard_targets(@vrp)
+    filtered_targets = dashboard_targets_for_month(targets, selected_month)
+    training_targets = dashboard_targets_for_filters(targets, selected_month, selected_sub_activity)
     bills = vrp_dashboard_bills(@vrp)
-    targeted_farmer_ids = vrp_targeted_farmer_ids(targets)
+    targeted_farmer_ids = vrp_targeted_farmer_ids(filtered_targets)
     farmer_followup = targeted_farmer_ids.any? ? vrp_farmer_followup_for_ids(targeted_farmer_ids) : vrp_farmer_followup(mappings)
     mapped_farmer_count = targeted_farmer_ids.any? ? targeted_farmer_ids.size : vrp_mapped_farmer_count(mappings)
-    main_activity_count = targets.map { |target| normalize_dashboard_text(target.main_activity_name) }.reject(&:blank?).uniq.size
-    sub_activity_count = targets.map { |target| normalize_dashboard_text(target.activity_name) }.reject(&:blank?).uniq.size
-    target_total = targets.sum { |target| target.target_quantity.to_f }
-    completed_total = targets.sum { |target| vrp_target_completed_quantity(target, bills) }
-    @vrp_village_rows = vrp_dashboard_village_rows(@vrp, mappings, targets)
+    main_activity_count = filtered_targets.map { |target| normalize_dashboard_text(target.main_activity_name) }.reject(&:blank?).uniq.size
+    sub_activity_count = filtered_targets.map { |target| normalize_dashboard_text(target.activity_name) }.reject(&:blank?).uniq.size
+    target_total = filtered_targets.sum { |target| target.target_quantity.to_f }
+    completed_total = filtered_targets.sum { |target| vrp_target_completed_quantity(target, bills) }
+    @vrp_village_rows = vrp_dashboard_village_rows(@vrp, mappings, filtered_targets)
+    @training_selected_month = selected_month
+    @training_selected_sub_activity = selected_sub_activity
+    @training_month_options = dashboard_month_options_for_targets(targets)
+    @training_sub_activity_options = dashboard_sub_activity_options_for_targets(filtered_targets, selected_month)
+    @training_participation = training_participation_summary(training_targets, month_name: selected_month)
+    @farmer_training_dashboard_rows = farmer_training_dashboard_rows(training_targets, month_name: selected_month)
     village_count = @vrp_village_rows.map { |row| normalize_dashboard_text(row[:village]) }.reject(&:blank?).uniq.size
 
     @dashboard_cards = [
@@ -925,6 +1024,296 @@ class ModulesController < ApplicationController
       caption: caption,
       path: path.presence || dashboard_path
     }
+  end
+
+  def training_participation_summary(targets, month_name: nil)
+    targets = Array(targets)
+    attendance_counts = training_attendance_counts_for_targets(targets, month_name: month_name)
+    ics_memberships = Hash.new { |hash, key| hash[key] = { label: "", farmer_ids: [] } }
+    village_memberships = Hash.new { |hash, key| hash[key] = { ics: "", village: "", farmer_ids: [] } }
+
+    targets.each do |target|
+      farmer_ids = Array(target.respond_to?(:afl_ids) ? target.afl_ids : []).map(&:to_s).reject(&:blank?).uniq
+      next if farmer_ids.blank?
+
+      ics = target_ics_label(target)
+      village = target_village_label(target)
+      ics_key = normalize_dashboard_text(ics)
+      village_key = [ics_key, normalize_dashboard_text(village)].join("|")
+
+      ics_memberships[ics_key][:label] = ics
+      ics_memberships[ics_key][:farmer_ids].concat(farmer_ids)
+      village_memberships[village_key][:ics] = ics
+      village_memberships[village_key][:village] = village
+      village_memberships[village_key][:farmer_ids].concat(farmer_ids)
+    end
+
+    ics_rows = ics_memberships.values.map do |row|
+      counts = training_status_counts(row[:farmer_ids].uniq, attendance_counts)
+      row.merge(counts)
+    end.sort_by { |row| row[:label].to_s }
+
+    village_rows = village_memberships.values.map do |row|
+      counts = training_status_counts(row[:farmer_ids].uniq, attendance_counts)
+      row.merge(counts)
+    end.sort_by { |row| [row[:ics].to_s, row[:village].to_s] }
+
+    {
+      totals: training_status_counts(ics_memberships.values.flat_map { |row| row[:farmer_ids] }.uniq, attendance_counts).merge(
+        cumulative_participants: attendance_counts.values.sum,
+        monthly_unique: attendance_counts.keys.size
+      ),
+      ics_rows: ics_rows,
+      village_rows: village_rows
+    }
+  end
+
+  def training_attendance_counts_for_targets(targets, month_name: nil)
+    return {} unless model_ready?(:ModuleRecord)
+
+    target_farmer_ids = targets.flat_map { |target| Array(target.respond_to?(:afl_ids) ? target.afl_ids : []).map(&:to_s) }.reject(&:blank?).uniq
+    return {} if target_farmer_ids.blank?
+
+    ModuleRecord
+      .where(module_slug: "training-form")
+      .order(created_at: :desc)
+      .select { |record| active_module_record?(record) }
+      .select { |record| month_name.blank? || normalize_dashboard_text(training_record_month_name(record)) == normalize_dashboard_text(month_name) }
+      .each_with_object(Hash.new(0)) do |record, counts|
+        farmer_ids = Array(record.data["selected_farmer_ids"]).map(&:to_s).reject(&:blank?).uniq & target_farmer_ids
+        farmer_ids.each { |farmer_id| counts[farmer_id] += 1 }
+      end
+  end
+
+  def training_status_counts(farmer_ids, attendance_counts)
+    counts = { green: 0, yellow: 0, red: 0, total: farmer_ids.size }
+
+    farmer_ids.each do |farmer_id|
+      attended = attendance_counts[farmer_id].to_i
+      if attended >= 3
+        counts[:green] += 1
+      elsif attended.positive?
+        counts[:yellow] += 1
+      else
+        counts[:red] += 1
+      end
+    end
+
+    counts
+  end
+
+  def farmer_training_dashboard_rows(targets, month_name: nil)
+    targets = Array(targets)
+    return [] if targets.blank? || !model_ready?(:ModuleRecord)
+
+    attendance_counts = training_attendance_counts_for_targets(targets, month_name: month_name)
+    training_records = ModuleRecord
+      .where(module_slug: "training-form")
+      .order(created_at: :desc)
+      .select { |record| active_module_record?(record) }
+      .select { |record| month_name.blank? || normalize_dashboard_text(training_record_month_name(record)) == normalize_dashboard_text(month_name) }
+
+    grouped_targets = targets.each_with_object({}) do |target, groups|
+      farmer_ids = target_farmer_ids(target)
+      next if farmer_ids.blank?
+
+      key = [
+        normalize_dashboard_text(target.month_name),
+        normalize_dashboard_text(target_ics_label(target)),
+        normalize_dashboard_text(target_village_label(target)),
+        normalize_dashboard_text(target.main_activity_name),
+        normalize_dashboard_text(target.activity_name)
+      ]
+      groups[key] ||= {
+        month: target.month_name.presence || "-",
+        ics: target_ics_label(target),
+        village: target_village_label(target),
+        activity: target.main_activity_name.presence || "Farmer Training",
+        sub_activity: target.activity_name.presence || "-",
+        farmer_ids: [],
+        target_quantity: 0.0,
+        targets: []
+      }
+      groups[key][:farmer_ids] |= farmer_ids
+      groups[key][:target_quantity] += target.target_quantity.to_f
+      groups[key][:targets] << target
+    end
+
+    grouped_targets.values.map do |group|
+      farmer_ids = group[:farmer_ids].uniq
+      matching_records = training_records.select do |record|
+        group[:targets].any? { |target| training_record_matches_dashboard_target?(record, target, farmer_ids) }
+      end.uniq(&:id)
+      session_participants = matching_records.flat_map { |record| training_record_selected_farmer_ids(record) & farmer_ids }
+      unique_participants = session_participants.uniq
+      target_quantity = group[:target_quantity].to_f
+      status_counts = training_status_counts(farmer_ids, attendance_counts)
+      farmer_rows = farmer_rows_for_training_group(group[:targets])
+
+      group.merge(
+        sessions: matching_records.size,
+        training_photo_count: matching_records.count { |record| module_upload_present?(record.data["training_photo_upload_with_geo_tag"]) },
+        register_count: matching_records.count { |record| module_upload_present?(record.data["training_register_upload"]) },
+        male_count: matching_records.sum { |record| dashboard_numeric(record.data["male_count"]) },
+        female_count: matching_records.sum { |record| dashboard_numeric(record.data["female_count"]) },
+        cumulative_participants: session_participants.size,
+        unique_monthly: unique_participants.size,
+        target_quantity: target_quantity,
+        achievement_percent: farmer_rows[:progress_percent],
+        training_dates: matching_records.filter_map { |record| bill_display_date(record.data["training_date"]) if record.data["training_date"].present? }.uniq,
+        green: status_counts[:green],
+        yellow: status_counts[:yellow],
+        red: status_counts[:red],
+        total: status_counts[:total],
+        target_rows: group[:targets].map { |target| training_target_detail_row(target) },
+        completed_farmers: farmer_rows[:completed_farmers],
+        pending_farmers: farmer_rows[:pending_farmers],
+        completed_quantity: farmer_rows[:completed_quantity],
+        pending_quantity: farmer_rows[:pending_quantity],
+        progress_percent: farmer_rows[:progress_percent]
+      )
+    end.sort_by do |row|
+      [dashboard_month_index(row[:month]), row[:ics].to_s, row[:village].to_s, row[:activity].to_s, row[:sub_activity].to_s]
+    end
+  end
+
+  def training_target_detail_row(target)
+    farmer_ids = target_farmer_ids(target)
+    completed_farmer_ids = completed_training_farmer_ids_for(target, farmer_ids)
+    pending_farmer_ids = farmer_ids - completed_farmer_ids
+    target_quantity = target.target_quantity.to_f
+    completed_quantity = completed_farmer_ids.size.to_f
+    pending_quantity = [target_quantity - completed_quantity, 0].max
+
+    {
+      target_mapping_id: target.id.to_s,
+      month: target.month_name.presence || "-",
+      vrp: target.vrp&.name.presence || "VRP ##{target.vrp_id}",
+      ics: target.ics_name.presence || target.ics_id.presence || "-",
+      village: target.village_name.presence || target.village_id.presence || "-",
+      main_activity: target.main_activity_name.presence || "Farmer Training",
+      sub_activity: target.activity_name.presence || "-",
+      target_quantity: target_quantity,
+      completed_quantity: completed_quantity,
+      pending_quantity: pending_quantity,
+      status_label: completed_quantity.positive? ? (completed_quantity >= target_quantity ? "Completed" : "Partial") : "Pending",
+      status_class: completed_quantity.positive? ? (completed_quantity >= target_quantity ? "green" : "yellow") : "red",
+      completed_farmers: training_farmers_for_ids(completed_farmer_ids),
+      pending_farmers: training_farmers_for_ids(pending_farmer_ids)
+    }
+  end
+
+  def farmer_rows_for_training_group(targets)
+    target_rows = Array(targets)
+    return {
+      completed_farmers: [],
+      pending_farmers: [],
+      completed_quantity: 0,
+      pending_quantity: 0,
+      progress_percent: 0
+    } if target_rows.blank?
+
+    completed_farmer_ids = target_rows.flat_map do |target|
+      completed_training_farmer_ids_for(target, target_farmer_ids(target))
+    end.uniq
+    target_farmer_ids = target_rows.flat_map { |target| target_farmer_ids(target) }.uniq
+    pending_farmer_ids = target_farmer_ids - completed_farmer_ids
+    completed_quantity = completed_farmer_ids.size
+    pending_quantity = pending_farmer_ids.size
+    total_quantity = target_farmer_ids.size
+    progress_percent = total_quantity.positive? ? ((completed_quantity.to_f / total_quantity) * 100).round : 0
+
+    {
+      completed_farmers: training_farmers_for_ids(completed_farmer_ids).map { |farmer| farmer.merge(status_label: "Completed", status_class: "green") },
+      pending_farmers: training_farmers_for_ids(pending_farmer_ids).map { |farmer| farmer.merge(status_label: "Pending", status_class: "red") },
+      completed_quantity: completed_quantity,
+      pending_quantity: pending_quantity,
+      progress_percent: progress_percent
+    }
+  end
+
+  def target_farmer_ids(target)
+    Array(target.respond_to?(:afl_ids) ? target.afl_ids : []).map(&:to_s).reject(&:blank?).uniq
+  end
+
+  def dashboard_selected_training_month_name
+    params[:training_month].presence || params[:dashboard_month].presence
+  end
+
+  def dashboard_selected_training_sub_activity_name
+    params[:training_sub_activity].presence
+  end
+
+  def dashboard_targets_for_filters(targets, month_name, sub_activity_name)
+    return [] if month_name.blank? || sub_activity_name.blank?
+
+    month_targets = dashboard_targets_for_month(targets, month_name)
+    month_targets.select { |target| normalize_dashboard_text(target.activity_name) == normalize_dashboard_text(sub_activity_name) }
+  end
+
+  def dashboard_targets_for_month(targets, month_name)
+    targets = Array(targets)
+    return targets if month_name.blank?
+
+    targets.select { |target| normalize_dashboard_text(target.month_name) == normalize_dashboard_text(month_name) }
+  end
+
+  def dashboard_sub_activity_options_for_targets(targets, month_name)
+    return [] if month_name.blank?
+
+    Array(targets)
+      .map { |target| target.activity_name.to_s.strip }
+      .reject(&:blank?)
+      .uniq
+      .sort_by { |sub_activity| sub_activity.downcase }
+  end
+
+  def dashboard_month_options_for_targets(targets)
+    Array(targets)
+      .map { |target| target.month_name.to_s.strip }
+      .reject(&:blank?)
+      .uniq
+      .sort_by { |month| [dashboard_month_index(month), month] }
+  end
+
+  def training_record_selected_farmer_ids(record)
+    Array(record.data["selected_farmer_ids"]).map(&:to_s).reject(&:blank?).uniq
+  end
+
+  def training_record_matches_dashboard_target?(record, target, target_farmer_ids)
+    selected_farmer_ids = training_record_selected_farmer_ids(record)
+    return false if (selected_farmer_ids & target_farmer_ids).blank?
+    return false unless training_record_matches_month?(record, target.month_name)
+
+    summary = training_summary(record)
+    topic = normalize_dashboard_text(summary[:training_topic])
+    subject = normalize_dashboard_text(summary[:training_subject])
+    target_topic = normalize_dashboard_text(target.main_activity_name)
+    target_subject = normalize_dashboard_text(target.activity_name)
+
+    topic_matches = topic.blank? || target_topic.blank? || topic == target_topic
+    subject_matches = subject.blank? || target_subject.blank? || subject == target_subject
+    topic_matches && subject_matches
+  end
+
+  def module_upload_present?(value)
+    case value
+    when Array then value.any? { |item| module_upload_present?(item) }
+    when Hash then value.values.any? { |item| module_upload_present?(item) }
+    else value.to_s.strip.present?
+    end
+  end
+
+  def dashboard_month_index(month_name)
+    Date::MONTHNAMES.index(month_name.to_s.capitalize) || 13
+  end
+
+  def target_ics_label(target)
+    target.ics_name.presence || module_record_label_for_dashboard("ics-master", target.ics_id, "ics_name").presence || target.ics_id.presence || "-"
+  end
+
+  def target_village_label(target)
+    target.village_name.presence || module_record_label_for_dashboard("village-master", target.village_id, "village_name").presence || target.village_id.presence || "-"
   end
 
   def user_hierarchy_dashboard_report(summary)
@@ -1471,7 +1860,9 @@ class ModulesController < ApplicationController
   def module_records
     return [] unless ModuleRecord.table_exists?
 
-    ModuleRecord.where(module_slug: record_source_slug).to_a.sort_by { |record| module_record_sort_value(record) }
+    records = ModuleRecord.where(module_slug: record_source_slug).to_a
+    records = records.select { |record| jeevika_jankar_bill_record_visible?(record) } if record_source_slug == "jeevika-jankar-bill-process"
+    records.sort_by { |record| module_record_sort_value(record) }
   end
 
   def prepare_lg_directory_data
@@ -1778,6 +2169,449 @@ class ModulesController < ApplicationController
     @bill_tci_map = bill_tci_map
   end
 
+  def prepare_jeevika_jankar_bill_data
+    month_master_rows = active_month_master_rows
+    @jeevika_jankar_vrp_options = approved_vrp_id_options
+    @jeevika_jankar_month_options = month_master_rows.filter_map { |record| record.data["month_name"].presence }.uniq
+    @jeevika_jankar_financial_year_options = month_master_rows.filter_map { |record| record.data["financial_year"].presence }.uniq
+    @jeevika_jankar_invoice_no = @record&.data&.[]("invoice_no").presence || generated_jeevika_jankar_invoice_no
+    @jeevika_jankar_invoice_date = @record&.data&.[]("invoice_date").presence || Date.current.to_s
+    @jeevika_jankar_bill_rows = jeevika_jankar_bill_rows
+    @jeevika_jankar_achievement_summary = jeevika_jankar_achievement_summary(@jeevika_jankar_bill_rows)
+    @jeevika_jankar_saved_items = jeevika_jankar_saved_items
+  end
+
+  def prepare_jeevika_jankar_bill_list
+    @bill_detail_record = ModuleRecord.find_by(id: params[:view_id]) if params[:view_id].present?
+  end
+
+  def jeevika_bill_rows(records)
+    Array(records).map do |record|
+      data = record.data
+      summary = jeevika_bill_summary(record)
+      {
+        id: record.id,
+        edit_path: edit_module_record_path("jeevika-jankar-bill-process", record),
+        view_path: module_path("jeevika-jankar-bill-list", view_id: record.id),
+        download_path: download_bill_module_record_path("jeevika-jankar-bill-list", record),
+        send_path: send_for_approval_module_record_path("jeevika-jankar-bill-list", record),
+        active_path: set_bill_state_module_record_path("jeevika-jankar-bill-list", record, state: "Active"),
+        inactive_path: set_bill_state_module_record_path("jeevika-jankar-bill-list", record, state: "Inactive"),
+        delete_path: module_record_path("jeevika-jankar-bill-list", record),
+        status: jeevika_bill_status_label(record),
+        status_class: jeevika_bill_status_class(record),
+        record_state: data["record_state"].presence || "Active",
+        bill_id: record.id,
+        vrp_id: data["select_vrp"],
+        name: jeevika_jankar_display_name(data["select_vrp_name"].presence || jeevika_jankar_vrp_label(data["select_vrp"])),
+        financial_year: data["financial_year"].presence || "-",
+        bill_month: data["bill_month"].presence || "-",
+        activity_groups: summary[:activity_groups].presence || "-",
+        activity_names: summary[:activity_names].presence || "-",
+        target: data["total_target"].presence || "0",
+        achievement: data["total_achievement"].presence || "0",
+        amount: data["grand_total"].presence || "0.00"
+      }
+    end
+  end
+
+  def jeevika_bill_detail_rows(record)
+    raw_items = record&.data&.[]("bill_items")
+    raw_items = raw_items.values if raw_items.is_a?(Hash)
+    Array(raw_items).select { |item| item.respond_to?(:[]) }
+  end
+
+  def jeevika_bill_summary(record)
+    data = record&.data || {}
+    items = jeevika_bill_detail_rows(record)
+    amount = data["grand_total"].presence || items.sum { |item| item["amount"].to_f }
+    deduction = data["deduction_amount"].presence || data["deduction"].presence
+    payable = amount.to_f - deduction.to_f
+
+    {
+      to: first_present_data(data, "to", "to_name", "to_office").presence || first_present_from_items(items, "to", "to_name", "to_office"),
+      fco: first_present_data(data, "fco", "fco_name").presence || first_present_from_items(items, "fco", "fco_name"),
+      projects: first_present_data(data, "projects", "project", "select_project").presence || first_present_from_items(items, "project", "projects"),
+      activity_groups: items.filter_map { |item| item["main_activity"].presence }.uniq.join(", "),
+      activity_names: items.filter_map { |item| item["activity"].presence }.uniq.join(", "),
+      total_amount: amount,
+      deduction_amount: deduction,
+      total_payable: payable
+    }
+  end
+
+  def jeevika_bill_attachment_rows(record)
+    vrp = jeevika_bill_vrp(record)
+    [
+      ["VRP Photo", vrp&.photo],
+      ["VRP Aadhaar Card", vrp&.aadhar_upload],
+      ["VRP Bank Passbook", vrp&.bank_passbook_upload]
+    ]
+  end
+
+  def jeevika_bill_time_slot_rows(record)
+    jeevika_bill_detail_rows(record).flat_map do |item|
+      dates = item["timesheet_dates"].to_s.split(",").map(&:strip).reject(&:blank?)
+      dates = Array(item["farmer_details"]).filter_map { |farmer| farmer["training_date"].presence }.uniq if dates.blank?
+      dates = ["-"] if dates.blank?
+
+      dates.map do |date|
+        {
+          working_date: bill_display_date(date),
+          village: item["village"].presence || "-",
+          activity: item["main_activity"].presence || "-",
+          tci: item["activity"].presence || "-",
+          number: item["achievement_count"].presence || item["assigned_count"].presence || "0"
+        }
+      end
+    end
+  end
+
+  def jeevika_bill_description_rows(record)
+    jeevika_bill_detail_rows(record)
+      .group_by { |item| item["main_activity"].presence || item["activity"].presence || "Activity" }
+      .map.with_index do |(description, rows), index|
+        {
+          index: index + 1,
+          description: description,
+          rate: rows.find { |item| item["rate"].present? }&.[]("rate").presence || "0.00",
+          number: dashboard_quantity(rows.sum { |item| item["achievement_count"].to_f }),
+          total: rows.sum { |item| item["amount"].to_f }
+        }
+      end
+  end
+
+  def jeevika_bill_bank_rows(record)
+    vrp = jeevika_bill_vrp(record)
+    return [] unless vrp
+
+    [
+      {
+        bank_name: vrp.bank_name.presence || (vrp.vrp_bank_master&.name).presence || "-",
+        account_number: vrp.account_no.presence || "-",
+        ifsc_code: vrp.ifsc_code.presence || "-",
+        address: vrp.address.presence || vrp.branch.presence || "-"
+      }
+    ]
+  end
+
+  def jeevika_bill_prepared_by(record)
+    sent_history = jeevika_bill_approval_history(record).find { |history| history.data["action"].to_s == "Sent for Approval" }
+    {
+      name: sent_history&.data&.[]("action_by").presence || "-",
+      at: bill_display_datetime(sent_history&.data&.[]("action_at").presence || record.created_at)
+    }
+  end
+
+  def jeevika_bill_approved_by_rows(record)
+    jeevika_bill_approval_history(record)
+      .select { |history| history.data["action"].to_s == "Approved" }
+      .map do |history|
+        [
+          history.data["approval_level"].presence || "Approval",
+          history.data["approver"].presence || history.data["action_by"].presence || "-",
+          bill_display_datetime(history.data["action_at"]),
+          history.data["action_by"].presence
+        ]
+      end
+  end
+
+  def jeevika_bill_status_label(record)
+    record.data["status"].presence || "Submitted (Not sent for approval)"
+  end
+
+  def jeevika_bill_status_class(record)
+    status = jeevika_bill_status_label(record).downcase
+    return "approved" if status.include?("final approved")
+    return "returned" if status.include?("returned")
+    return "rejected" if status.include?("rejected")
+    return "pending" if status.include?("pending")
+
+    "submitted"
+  end
+
+  def jeevika_bill_approval_steps(record)
+    return [] unless model_ready?(:ModuleRecord)
+
+    ModuleRecord
+      .where(module_slug: "approval-master")
+      .order(created_at: :asc)
+      .select { |step| active_module_record?(step) }
+      .select { |step| ["Jeevika Jankar Bill", "VRP Bill"].any? { |name| dashboard_value_matches?(step.data["module_name"], name) } }
+      .sort_by { |step| approval_sequence_from_level(step.data["approval_level"]) }
+  end
+
+  def jeevika_bill_approval_history(record)
+    return [] unless model_ready?(:ModuleRecord)
+
+    ModuleRecord
+      .where(module_slug: "jeevika-jankar-bill-approval-history")
+      .order(created_at: :asc)
+      .select { |history| history.data["bill_id"].to_s == record.id.to_s }
+  end
+
+  def jeevika_bill_current_approval_step(record)
+    sequence = record.data["approval_current_sequence"].to_i
+    sequence = 1 if sequence.zero?
+    jeevika_bill_approval_steps(record).find { |step| approval_sequence_from_level(step.data["approval_level"]) == sequence }
+  end
+
+  def jeevika_bill_current_approver?(record)
+    step = jeevika_bill_current_approval_step(record)
+    return false unless step
+
+    current_labels = [
+      current_app_user&.dig("username"),
+      current_app_user&.dig("user_name"),
+      current_app_user&.dig("name")
+    ].map { |value| normalize_approval_label(value) }.reject(&:blank?)
+    current_labels.include?(normalize_approval_label(step.data["approver_approved_by"]))
+  end
+
+  def update_bill_approval(action)
+    load_module!
+    record = ModuleRecord.find(params[:id])
+    step = jeevika_bill_current_approval_step(record)
+    redirect_to module_path("jeevika-jankar-bill-list", view_id: record.id), alert: "Approval channel not found." and return unless step
+    redirect_to module_path("jeevika-jankar-bill-list", view_id: record.id), alert: "Please enter remarks." and return if params[:remarks].to_s.strip.blank?
+
+    if ["Rejected", "Returned"].include?(action)
+      create_bill_approval_history(record, action, step)
+      update_bill_status!(record, action, current_sequence: approval_sequence_from_level(step.data["approval_level"]))
+      redirect_to module_path("jeevika-jankar-bill-list", view_id: record.id), notice: "Bill #{action.downcase}."
+      return
+    end
+
+    create_bill_approval_history(record, action, step)
+    next_step = jeevika_bill_approval_steps(record).find { |candidate| approval_sequence_from_level(candidate.data["approval_level"]) > approval_sequence_from_level(step.data["approval_level"]) }
+
+    if next_step
+      update_bill_status!(record, "Pending at #{next_step.data["approver_approved_by"]}", current_sequence: approval_sequence_from_level(next_step.data["approval_level"]))
+    else
+      update_bill_status!(record, "Final Approved", current_sequence: approval_sequence_from_level(step.data["approval_level"]))
+    end
+
+    redirect_to module_path("jeevika-jankar-bill-list", view_id: record.id), notice: "Bill approved."
+  end
+
+  def update_bill_status!(record, status, current_sequence:)
+    record.update!(data: record.data.merge("status" => status, "approval_current_sequence" => current_sequence.to_s))
+  end
+
+  def create_bill_approval_history(record, action, step)
+    ModuleRecord.create!(
+      module_slug: "jeevika-jankar-bill-approval-history",
+      data: {
+        "bill_id" => record.id.to_s,
+        "action" => action,
+        "approval_level" => step.data["approval_level"],
+        "approver" => step.data["approver_approved_by"],
+        "remarks" => params[:remarks].to_s,
+        "action_by" => current_app_user&.dig("name").presence || current_app_user&.dig("username").to_s,
+        "action_at" => Time.current.iso8601
+      }
+    )
+  end
+
+  def approved_vrp_id_options
+    return [] unless model_ready?(:Vrp)
+
+    scope = Vrp.where(status: 55)
+    scope = scope.where(is_active: true) if Vrp.column_names.include?("is_active")
+    scope = scope.where(id: current_vrp_record.id) if vrp_login_user? && current_vrp_record.present?
+
+    scope.order(:name).map do |vrp|
+      label = vrp.name.presence || vrp.user_name.presence
+      [label.presence || "VRP ##{vrp.id}", vrp.id.to_s]
+    end
+  end
+
+  def generated_jeevika_jankar_invoice_no
+    "JJB-#{Time.current.strftime("%Y%m%d%H%M")}"
+  end
+
+  def jeevika_jankar_achievement_summary(rows)
+    Array(rows).each_with_object({}) do |row, summary|
+      vrp_id = row[:vrp_id].to_s
+      month_key = normalize_dashboard_text(row[:month_name])
+      next if vrp_id.blank?
+
+      summary[vrp_id] ||= {}
+      summary[vrp_id]["__all"] = summary[vrp_id].fetch("__all", 0) + row[:achievement_count].to_i
+      summary[vrp_id][month_key] = summary[vrp_id].fetch(month_key, 0) + row[:achievement_count].to_i if month_key.present?
+    end
+  end
+
+  def jeevika_jankar_saved_items
+    raw_items = @record&.data&.[]("bill_items")
+    raw_items = raw_items.values if raw_items.is_a?(Hash)
+    Array(raw_items).select { |item| item.respond_to?(:[]) }
+  end
+
+  def jeevika_jankar_bill_rows
+    return [] unless model_ready?(:TargetMapping)
+
+    targets = TargetMapping.includes(:vrp)
+    targets = targets.where(vrp_id: current_vrp_record.id) if vrp_login_user? && current_vrp_record.present?
+    targets = targets.order(:month_name, :vrp_id, :village_name, :main_activity_name, :activity_name, :id)
+    farmers_by_id = jeevika_jankar_farmers_by_id(targets)
+    training_index = jeevika_jankar_training_index(targets)
+
+    targets.map do |target|
+      farmer_ids = Array(target.afl_ids).map(&:to_s).reject(&:blank?).uniq
+      target_quantity = target.target_quantity.to_f
+      assigned_count = farmer_ids.any? ? farmer_ids.size : target.farmer_count.to_i
+      farmer_rows = farmer_ids.map do |farmer_id|
+        farmer = farmers_by_id[farmer_id]
+        training_rows = Array(training_index[[target.vrp_id.to_s, target.month_name.to_s, farmer_id]])
+        best_training = best_training_for_target(target, training_rows)
+        same_activity = training_matches_target_activity?(target, best_training)
+
+        {
+          id: farmer_id,
+          name: farmer&.farmer_name.presence || "Farmer ##{farmer_id}",
+          father_name: farmer&.father_name,
+          mobile_no: farmer&.mobile_no,
+          tracenet_no: farmer&.tracenet_no,
+          department: best_training&.dig(:department),
+          training_topic: best_training&.dig(:training_topic),
+          training_subject: best_training&.dig(:training_subject),
+          training_date: best_training&.dig(:training_date),
+          status: best_training.blank? ? "Pending" : (same_activity ? "Trained in Same Activity" : "Trained in Other Activity")
+        }
+      end
+
+      trained_rows = farmer_rows.reject { |row| row[:status] == "Pending" }
+      same_count = farmer_rows.count { |row| row[:status] == "Trained in Same Activity" }
+      other_count = farmer_rows.count { |row| row[:status] == "Trained in Other Activity" }
+      achievement_count = trained_rows.size
+
+      {
+        target_mapping_id: target.id.to_s,
+        vrp_id: target.vrp_id.to_s,
+        vrp_name: target.vrp&.name.presence || "VRP ##{target.vrp_id}",
+        month_name: target.month_name,
+        fco: target.fco_name.presence || target.fco_id,
+        ics: target.ics_name.presence || target.ics_id,
+        village: target.village_name.presence || target.village_id,
+        main_activity: target.main_activity_name,
+        activity: target.activity_name,
+        target_quantity: target_quantity,
+        assigned_count: assigned_count,
+        achievement_count: achievement_count,
+        same_activity_count: same_count,
+        other_activity_count: other_count,
+        pending_count: [assigned_count - achievement_count, 0].max,
+        timesheet_dates: trained_rows.filter_map { |row| row[:training_date].presence }.uniq.join(", "),
+        farmer_details: farmer_rows
+      }
+    end
+  end
+
+  def jeevika_jankar_farmers_by_id(targets)
+    return {} unless model_ready?(:Afl)
+
+    farmer_ids = targets.flat_map { |target| Array(target.afl_ids).map(&:to_s) }.reject(&:blank?).uniq
+    return {} if farmer_ids.blank?
+
+    Afl.where(id: farmer_ids).index_by { |farmer| farmer.id.to_s }
+  end
+
+  def jeevika_jankar_training_index(targets)
+    return {} unless model_ready?(:ModuleRecord)
+
+    vrps = targets.map(&:vrp).compact.uniq(&:id)
+    target_farmer_ids = targets.flat_map { |target| Array(target.afl_ids).map(&:to_s) }.reject(&:blank?).uniq
+    target_farmer_ids_by_vrp = targets.each_with_object(Hash.new { |hash, key| hash[key] = [] }) do |target, result|
+      result[target.vrp_id.to_s] |= Array(target.afl_ids).map(&:to_s).reject(&:blank?)
+    end
+    target_months = targets.map { |target| target.month_name.to_s }.reject(&:blank?).uniq
+    records = ModuleRecord.where(module_slug: "training-form").order(created_at: :desc).select { |record| active_module_record?(record) }
+
+    records.each_with_object(Hash.new { |hash, key| hash[key] = [] }) do |record, index|
+      farmer_ids = Array(record.data["selected_farmer_ids"]).map(&:to_s).reject(&:blank?) & target_farmer_ids
+      next if farmer_ids.blank?
+
+      matching_vrps = vrps.select { |vrp| training_record_matches_vrp?(record, vrp) }
+      if matching_vrps.blank?
+        matching_vrps = vrps.select { |vrp| (target_farmer_ids_by_vrp[vrp.id.to_s] & farmer_ids).any? }
+      end
+      next if matching_vrps.blank?
+
+      target_months.each do |month_name|
+        matching_vrps.each do |vrp|
+          vrp_farmer_ids = farmer_ids & target_farmer_ids_by_vrp[vrp.id.to_s]
+          vrp_farmer_ids.each do |farmer_id|
+            index[[vrp.id.to_s, month_name.to_s, farmer_id]] << training_summary(record)
+          end
+        end
+      end
+    end
+  end
+
+  def training_record_matches_vrp?(record, vrp)
+    values = [
+      record.data["trainer_contact"],
+      record.data["trainer_name"],
+      record.data["select_vrp"],
+      record.data["vrp_name"]
+    ].map { |value| normalize_dashboard_text(value) }.reject(&:blank?)
+
+    labels = [
+      vrp.id,
+      vrp.name,
+      vrp.mobile_no,
+      vrp.user_name,
+      [vrp.name, vrp.mobile_no.presence].compact_blank.join(" - ")
+    ].map { |value| normalize_dashboard_text(value) }.reject(&:blank?)
+
+    (values & labels).any?
+  end
+
+  def training_record_matches_month?(record, month_name)
+    return true if month_name.blank?
+
+    record_month = record.data["month"].presence
+    return normalize_dashboard_text(record_month) == normalize_dashboard_text(month_name) if record_month.present?
+
+    training_date = parse_module_date(record.data["training_date"])
+    return true if training_date.blank?
+
+    normalize_dashboard_text(training_date.strftime("%B")) == normalize_dashboard_text(month_name)
+  end
+
+  def parse_module_date(value)
+    Date.parse(value.to_s)
+  rescue ArgumentError
+    nil
+  end
+
+  def training_summary(record)
+    {
+      department: record.data["department"].presence || record.data["trainee_department"],
+      month: record.data["month"].presence || parse_module_date(record.data["training_date"])&.strftime("%B"),
+      training_topic: record.data["main_activity"].presence || record.data["training_topic"],
+      training_subject: record.data["sub_activity"].presence || record.data["training_subject"],
+      training_date: record.data["training_date"]
+    }
+  end
+
+  def training_record_month_name(record)
+    training_summary(record)[:month]
+  end
+
+  def best_training_for_target(target, training_rows)
+    Array(training_rows).find { |row| training_matches_target_activity?(target, row) } || Array(training_rows).first
+  end
+
+  def training_matches_target_activity?(target, training_row)
+    return false if training_row.blank?
+
+    topic_matches = normalize_dashboard_text(training_row[:training_topic]) == normalize_dashboard_text(target.main_activity_name)
+    subject_matches = normalize_dashboard_text(training_row[:training_subject]) == normalize_dashboard_text(target.activity_name)
+    topic_matches && subject_matches
+  end
+
   def approved_vrp_options
     return [] unless model_ready?(:Vrp)
 
@@ -1852,7 +2686,9 @@ class ModulesController < ApplicationController
   end
 
   def first_present_data(record, *keys)
-    keys.filter_map { |key| record.data[key].presence }.first
+    data = record.respond_to?(:data) ? record.data : record
+    data ||= {}
+    keys.filter_map { |key| data[key].presence }.first
   end
 
   def record_source_slug
@@ -1863,7 +2699,8 @@ class ModulesController < ApplicationController
   def module_redirect_slug
     {
       "training-form" => "training-form-list",
-      "vrp-bill-add" => "vrp-bill-list"
+      "vrp-bill-add" => "vrp-bill-list",
+      "jeevika-jankar-bill-process" => "jeevika-jankar-bill-list"
     }.fetch(record_source_slug, @slug)
   end
 
@@ -1872,8 +2709,38 @@ class ModulesController < ApplicationController
     sort_field = visible_fields.reject { |field| field == "Status" }.first
     sort_key = sort_field&.parameterize(separator: "_")
 
-    record.data[sort_key].presence ||
+    module_record_field_value(record, sort_field).presence ||
+      record.data[sort_key].presence ||
       record.data.values.find(&:present?).to_s
+  end
+
+  def module_record_field_value(record, field)
+    return nil if field.blank?
+
+    keys = [
+      field.parameterize(separator: "_"),
+      *module_field_aliases(field)
+    ].compact.uniq
+    first_present_data(record, *keys)
+  end
+
+  def module_field_aliases(field)
+    {
+      "GP Code" => ["gp_code", "gram_code"],
+      "Gram Code" => ["gp_code", "gram_code"],
+      "Gram Panchayat Name" => ["gram_panchayat_name", "gram_panchayat", "gram_name"],
+      "Gram Panchayat" => ["gram_panchayat", "gram_panchayat_name", "gram_name"],
+      "Village Name" => ["village_name", "village", "name"],
+      "Village Code" => ["village_code"],
+      "Block Name" => ["block_name", "block", "cd_block_name"],
+      "Block Code" => ["block_code", "cd_block_code"],
+      "District Name" => ["district_name", "district"],
+      "District Code" => ["district_code"],
+      "Main Activity" => ["main_activity", "training_topic", "activity_group", "activity_group_name"],
+      "Sub Activity" => ["sub_activity", "training_subject", "activity_name", "vrp_activity_name"],
+      "State Name" => ["state_name", "state"],
+      "State Code" => ["state_code"]
+    }.fetch(field.to_s, [])
   end
 
   def module_record_params
@@ -1913,21 +2780,154 @@ class ModulesController < ApplicationController
     end
 
     data = normalize_training_form_data(data) if record_source_slug == "training-form"
+    data = normalize_jeevika_jankar_bill_data(data) if record_source_slug == "jeevika-jankar-bill-process"
 
     data
+  end
+
+  def normalize_jeevika_jankar_bill_data(data)
+    bill_items = data["bill_items"]
+    bill_items = bill_items.values if bill_items.is_a?(Hash)
+    bill_items = Array(bill_items).filter_map do |item|
+      next unless item.respond_to?(:to_h)
+
+      item = item.to_h
+      item["farmer_details"] = parse_bill_farmer_details(item["farmer_details"])
+      item["achievement_count"] = numeric_string(item["achievement_count"])
+      item["target_quantity"] = numeric_string(item["target_quantity"])
+      item["assigned_count"] = numeric_string(item["assigned_count"])
+      item["pending_count"] = numeric_string(item["pending_count"])
+      item["same_activity_count"] = numeric_string(item["same_activity_count"])
+      item["other_activity_count"] = numeric_string(item["other_activity_count"])
+      item["rate"] = decimal_string(item["rate"])
+      item["amount"] = decimal_string(item["amount"])
+      item
+    end
+
+    total_target = bill_items.sum { |item| item["target_quantity"].to_f }
+    total_achievement = bill_items.sum { |item| item["achievement_count"].to_f }
+    grand_total = bill_items.sum { |item| item["amount"].to_f }
+
+    data["invoice_no"] = data["invoice_no"].presence || generated_jeevika_jankar_invoice_no
+    data["invoice_date"] = data["invoice_date"].presence || Date.current.to_s
+    data["select_vrp_name"] = jeevika_jankar_vrp_label(data["select_vrp"])
+    data["bill_items"] = bill_items
+    data["total_target"] = dashboard_quantity(total_target)
+    data["total_achievement"] = dashboard_quantity(total_achievement)
+    data["grand_total"] = format("%.2f", grand_total)
+    data["status"] = data["status"].presence || "Submitted (Not sent for approval)"
+    data["record_state"] = data["record_state"].presence || "Active"
+    data
+  end
+
+  def jeevika_jankar_vrp_label(vrp_id)
+    return "" if vrp_id.blank? || !model_ready?(:Vrp)
+
+    vrp = Vrp.find_by(id: vrp_id)
+    return "" unless vrp
+
+    vrp&.name.presence || vrp&.user_name.presence || "Jeevika Jankar ##{vrp.id}"
+  end
+
+  def jeevika_jankar_display_name(value)
+    value.to_s.strip.sub(/\s*-\s*\d{6,}\z/, "")
+  end
+
+  def bill_display_date(value)
+    parse_module_date(value)&.strftime("%d/%m/%Y") || value.to_s.presence || "-"
+  end
+
+  def bill_display_datetime(value)
+    Time.zone.parse(value.to_s)&.strftime("%d-%b-%Y %I:%M %p")
+  rescue ArgumentError, TypeError
+    value.respond_to?(:strftime) ? value.strftime("%d-%b-%Y %I:%M %p") : "-"
+  end
+
+  def jeevika_bill_vrp(record)
+    return nil unless model_ready?(:Vrp)
+
+    Vrp.find_by(id: record&.data&.[]("select_vrp"))
+  end
+
+  def first_present_from_items(items, *keys)
+    items.each do |item|
+      keys.each do |key|
+        value = item[key].presence
+        return value if value.present?
+      end
+    end
+
+    nil
+  end
+
+  def jeevika_jankar_bill_record_visible?(record)
+    return true unless vrp_login_user?
+    return false unless current_vrp_record.present?
+
+    record.data["select_vrp"].to_s == current_vrp_record.id.to_s
+  end
+
+  def parse_bill_farmer_details(value)
+    return value if value.is_a?(Array)
+
+    JSON.parse(value.to_s)
+  rescue JSON::ParserError
+    []
+  end
+
+  def numeric_string(value)
+    number = value.to_s.gsub(",", "").to_f
+    number == number.to_i ? number.to_i.to_s : number.to_s
+  end
+
+  def decimal_string(value)
+    format("%.2f", value.to_s.gsub(",", "").to_f)
   end
 
   def normalize_training_form_data(data)
     trainer_name, trainer_contact = training_trainer_defaults
     data["trainer_name"] = trainer_name if trainer_name.present?
     data["trainer_contact"] = trainer_contact if trainer_contact.present?
+    data["main_activity"] = data["main_activity"].presence || data["training_topic"].presence
+    data["sub_activity"] = data["sub_activity"].presence || data["training_subject"].presence
+    data["training_topic"] = data["main_activity"] if data["main_activity"].present?
+    data["training_subject"] = data["sub_activity"] if data["sub_activity"].present?
 
     selected_farmer_ids = Array(data["selected_farmer_ids"]).map(&:to_s).reject(&:blank?).uniq
+    if training_form_activity_scope_present?(data)
+      pending_farmer_ids = pending_training_farmer_ids_for(data)
+      selected_farmer_ids &= pending_farmer_ids unless pending_farmer_ids.nil?
+    end
     data["selected_farmer_ids"] = selected_farmer_ids
     data["selected_farmer_names"] = training_farmer_names(selected_farmer_ids)
     data["farmer_count"] = selected_farmer_ids.size.to_s if selected_farmer_ids.any?
     data.delete("status")
     data
+  end
+
+  def training_form_activity_scope_present?(data)
+    data["month"].present? && data["gram_name"].present? && data["main_activity"].present? && data["sub_activity"].present?
+  end
+
+  def pending_training_farmer_ids_for(data)
+    return nil unless model_ready?(:TargetMapping)
+
+    selected_month = normalize_dashboard_text(data["month"])
+    selected_ics = normalize_dashboard_text(data["ics_block"])
+    selected_village = normalize_dashboard_text(data["gram_name"])
+    selected_main_activity = normalize_dashboard_text(data["main_activity"])
+    selected_sub_activity = normalize_dashboard_text(data["sub_activity"])
+
+    training_target_scope.each_with_object([]) do |target, ids|
+      next if normalize_dashboard_text(target.month_name) != selected_month
+      next if selected_ics.present? && normalize_dashboard_text(target.ics_name.presence || target.ics_id) != selected_ics
+      next if normalize_dashboard_text(target.village_name.presence || target.village_id) != selected_village
+      next if normalize_dashboard_text(target.main_activity_name) != selected_main_activity
+      next if normalize_dashboard_text(target.activity_name) != selected_sub_activity
+
+      farmer_ids = Array(target.afl_ids).map(&:to_s).reject(&:blank?).uniq
+      ids.concat(farmer_ids - completed_training_farmer_ids_for(target, farmer_ids))
+    end.uniq
   end
 
   def training_trainer_defaults
@@ -2249,15 +3249,17 @@ class ModulesController < ApplicationController
   end
 
   def training_target_field?(field)
-    record_source_slug == "training-form" && ["ICS / Block", "Gram Name"].include?(field)
+    record_source_slug == "training-form" && ["Month", "ICS / Block", "Gram Name"].include?(field)
   end
 
   def training_activity_field?(field)
-    record_source_slug == "training-form" && ["Department", "Training Topic", "Training Subject"].include?(field)
+    record_source_slug == "training-form" && ["Main Activity", "Sub Activity"].include?(field)
   end
 
   def training_target_field_options(field)
     case field
+    when "Month"
+      training_target_month_options
     when "ICS / Block"
       training_target_mappings.filter_map { |mapping| mapping[:ics].presence }.uniq
     when "Gram Name"
@@ -2269,12 +3271,10 @@ class ModulesController < ApplicationController
 
   def training_activity_field_options(field)
     case field
-    when "Department"
-      training_activity_mappings.filter_map { |mapping| mapping[:department].presence }.uniq
-    when "Training Topic"
-      training_activity_mappings.filter_map { |mapping| mapping[:training_topic].presence }.uniq
-    when "Training Subject"
-      training_activity_mappings.filter_map { |mapping| mapping[:training_subject].presence }.uniq
+    when "Main Activity"
+      training_target_mappings.filter_map { |mapping| mapping[:main_activity].presence }.uniq
+    when "Sub Activity"
+      training_target_mappings.filter_map { |mapping| mapping[:sub_activity].presence }.uniq
     else
       []
     end
@@ -2301,20 +3301,89 @@ class ModulesController < ApplicationController
   def training_target_mappings
     return [] unless model_ready?(:TargetMapping)
 
-    scope = TargetMapping.all
-    scope = scope.where(vrp_id: current_vrp_record.id) if vrp_login_user? && current_vrp_record.present?
-
-    scope
+    training_target_scope
       .order(:ics_name, :ics_id, :village_name, :village_id, :id)
       .map do |target|
+        farmer_ids = Array(target.afl_ids).map(&:to_s).reject(&:blank?).uniq
         {
+          target_mapping_id: target.id.to_s,
+          month: target.month_name.to_s.strip,
           ics: target.ics_name.presence || target.ics_id,
           village: target.village_name.presence || target.village_id,
-          farmers: training_farmers_for_ids(target.afl_ids)
+          main_activity: target.main_activity_name.to_s.strip,
+          sub_activity: target.activity_name.to_s.strip,
+          completed_farmer_ids: completed_training_farmer_ids_for(target, farmer_ids),
+          farmers: training_farmers_for_ids(farmer_ids)
         }
       end
       .reject { |mapping| mapping[:ics].blank? && mapping[:village].blank? }
       .uniq
+  end
+
+  def training_target_month_options
+    target_months = if model_ready?(:TargetMapping)
+      training_target_scope
+        .where.not(month_name: [nil, ""])
+        .distinct
+        .pluck(:month_name)
+    else
+      []
+    end
+
+    master_months = active_month_master_rows.filter_map { |record| record.data["month_name"].presence }
+
+    (master_months + target_months)
+      .map(&:to_s)
+      .map(&:strip)
+      .reject(&:blank?)
+      .uniq
+      .sort_by { |month| [dashboard_month_index(month), month] }
+  end
+
+  def training_target_scope
+    scope = TargetMapping.all
+    scope = scope.where(vrp_id: current_vrp_record.id) if vrp_login_user? && current_vrp_record.present?
+    scope
+  end
+
+  def completed_training_farmer_ids_for(target, farmer_ids)
+    farmer_ids = Array(farmer_ids).map(&:to_s).reject(&:blank?).uniq
+    return [] if farmer_ids.blank?
+
+    key = training_activity_key(target.month_name, target.main_activity_name, target.activity_name)
+    Array(training_completion_index[key]) & farmer_ids
+  end
+
+  def training_completion_index
+    return @training_completion_index if defined?(@training_completion_index)
+
+    @training_completion_index = Hash.new { |hash, key| hash[key] = [] }
+    return @training_completion_index unless model_ready?(:ModuleRecord)
+
+    records = ModuleRecord
+      .where(module_slug: "training-form")
+      .order(created_at: :desc)
+      .select { |record| active_module_record?(record) }
+
+    records.each do |record|
+      next if @record&.id.present? && record.id == @record.id
+
+      summary = training_summary(record)
+      key = training_activity_key(summary[:month], summary[:training_topic], summary[:training_subject])
+      next if key.all?(&:blank?)
+
+      @training_completion_index[key] |= training_record_selected_farmer_ids(record)
+    end
+
+    @training_completion_index
+  end
+
+  def training_activity_key(month, main_activity, sub_activity = nil)
+    [
+      normalize_dashboard_text(month),
+      normalize_dashboard_text(main_activity),
+      normalize_dashboard_text(sub_activity)
+    ]
   end
 
   def training_farmers_for_ids(farmer_ids)
@@ -2663,7 +3732,7 @@ class ModulesController < ApplicationController
       "Select Mandatory" => ["Yes", "No"],
       "Office Level" => ["State", "District", "Block", "Gram Panchayat", "Village"],
       "Parent Office Type" => ["Parent Office", "Sub Parent Office"],
-      "Module Name" => ["Jeevika Jankar Registration", "VRP Registration", "VRP Bill"],
+      "Module Name" => ["Jeevika Jankar Registration", "Jeevika Jankar Bill"],
       "VRP Name" => vrp_name_options,
       "Sub Module Name" => sidebar_submodule_names
     }[field] || []

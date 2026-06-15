@@ -8,10 +8,11 @@ class TargetMappingsController < ApplicationController
     @vrps = target_vrps
     @month_options = module_options("month-master", "month_name")
     @main_activity_options = module_options("add-activity-group", "main_activity_name", "activity_group_name")
-    @sub_activity_options = module_options("add-vrp-activity", "sub_activity_name", "activity_name", "vrp_activity_name")
+    @target_sub_activity_map = target_sub_activity_map
     @target_mappings = visible_target_mappings.includes(:vrp, :vrp_ics_mapping).order(updated_at: :desc).limit(100)
     @edit_target = visible_target_mappings.find_by(id: params[:edit_id]) if params[:edit_id].present? && @admin_mapping_actions
     @edit_payload = edit_payload(@edit_target)
+    @sub_activity_options = target_sub_activity_options(@edit_target&.main_activity_name)
   end
 
   def create
@@ -45,6 +46,8 @@ class TargetMappingsController < ApplicationController
         ics_id: params[:ics_id],
         village_id: params[:village_id],
         month_name: params[:month_name],
+        main_activity_name: params[:main_activity_name],
+        activity_name: params[:activity_name],
         edit_target: edit_target_for_json
       )
     }
@@ -65,6 +68,7 @@ class TargetMappingsController < ApplicationController
       :ics_id,
       :village_id,
       :month_name,
+      :completion_date,
       :main_activity_name,
       :activity_name,
       :target_quantity,
@@ -160,7 +164,7 @@ class TargetMappingsController < ApplicationController
     nil
   end
 
-  def target_farmers_for(vrp_id:, fco_id:, ics_id:, village_id:, month_name:, edit_target: nil)
+  def target_farmers_for(vrp_id:, fco_id:, ics_id:, village_id:, month_name:, main_activity_name:, activity_name:, edit_target: nil)
     return [] if vrp_id.blank? || fco_id.blank? || ics_id.blank? || village_id.blank?
     return [] unless defined?(Afl) && Afl.table_exists?
 
@@ -169,7 +173,9 @@ class TargetMappingsController < ApplicationController
       fco_id: fco_id,
       ics_id: ics_id,
       village_id: village_id,
-      month_name: nil,
+      month_name: month_name,
+      main_activity_name: main_activity_name,
+      activity_name: activity_name,
       edit_target: edit_target
     )
     selected_ids = normalized_afl_ids(edit_target&.afl_ids)
@@ -208,12 +214,16 @@ class TargetMappingsController < ApplicationController
       fco_id: encoded_location_value(target_mapping.fco_id, target_mapping.fco_name),
       ics_id: encoded_location_value(target_mapping.ics_id, target_mapping.ics_name),
       village_id: encoded_location_value(target_mapping.village_id, target_mapping.village_name),
-      month_name: nil,
+      month_name: target_mapping.month_name,
+      main_activity_name: target_mapping.main_activity_name,
+      activity_name: target_mapping.activity_name,
       edit_target: target_mapping
     )
   end
 
-  def assigned_farmer_ids_for_location(vrp_id:, fco_id:, ics_id:, village_id:, month_name:, edit_target: nil)
+  def assigned_farmer_ids_for_location(vrp_id:, fco_id:, ics_id:, village_id:, month_name:, main_activity_name: nil, activity_name: nil, edit_target: nil)
+    return [] if month_name.blank? || main_activity_name.blank?
+
     parsed_fco_id, parsed_fco_name = parse_location_value(fco_id)
     parsed_ics_id, parsed_ics_name = parse_location_value(ics_id)
     parsed_village_id, parsed_village_name = parse_location_value(village_id)
@@ -223,6 +233,7 @@ class TargetMappingsController < ApplicationController
     scope = scope.where(ics_name: parsed_ics_name) if parsed_ics_name.present?
     scope = scope.where(village_name: parsed_village_name) if parsed_village_name.present?
     scope = scope.where(month_name: month_name) if month_name.present?
+    scope = scope.where(main_activity_name: main_activity_name)
     scope = scope.where.not(id: edit_target.id) if edit_target&.persisted?
     scope.pluck(:afl_ids).flat_map { |ids| normalized_afl_ids(ids) }.uniq
   end
@@ -329,6 +340,38 @@ class TargetMappingsController < ApplicationController
       .uniq
   end
 
+  def first_present_data(record, *keys)
+    data = record.respond_to?(:data) ? record.data : record
+    data ||= {}
+    keys.filter_map { |key| data[key].presence }.first
+  end
+
+  def target_sub_activity_map
+    return [] unless defined?(ModuleRecord) && ModuleRecord.table_exists?
+
+    ModuleRecord.where(module_slug: "add-vrp-activity")
+      .order(created_at: :desc)
+      .select { |record| record.data["status"].blank? || record.data["status"] == "Active" }
+      .filter_map do |record|
+        main_activity = first_present_data(record, "main_activity", "activity_group", "activity_group_name", "main_activity_name").to_s.strip
+        sub_activity = first_present_data(record, "sub_activity_name", "activity_name", "vrp_activity_name").to_s.strip
+        next if main_activity.blank? || sub_activity.blank?
+
+        { main_activity: main_activity, sub_activity: sub_activity }
+      end
+      .uniq
+  end
+
+  def target_sub_activity_options(main_activity)
+    selected_main_activity = main_activity.to_s.strip.downcase
+    return [] if selected_main_activity.blank?
+
+    target_sub_activity_map
+      .select { |row| row[:main_activity].to_s.strip.downcase == selected_main_activity }
+      .filter_map { |row| row[:sub_activity].presence }
+      .uniq
+  end
+
   def visible_target_mappings
     return TargetMapping.all if admin_login?
     return TargetMapping.where(vrp_id: current_app_user["id"]) if non_admin_vrp_login?
@@ -372,6 +415,7 @@ class TargetMappingsController < ApplicationController
       ics_id: encoded_location_value(target.ics_id, target.ics_name),
       village_id: encoded_location_value(target.village_id, target.village_name),
       month_name: target.month_name.to_s,
+      completion_date: target.completion_date&.strftime("%Y-%m-%d"),
       target_quantity: target.target_quantity.to_s,
       afl_ids: Array(target.afl_ids).map(&:to_s)
     }

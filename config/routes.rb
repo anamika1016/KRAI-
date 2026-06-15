@@ -45,6 +45,12 @@ Rails.application.routes.draw do
     resources :records, controller: :modules, only: [:edit, :update, :destroy] do
       patch :toggle, action: :toggle_status, on: :member
       patch :set_status, action: :set_status, on: :member
+      patch :send_for_approval, action: :send_bill_for_approval, on: :member
+      patch :set_bill_state, action: :set_bill_state, on: :member
+      patch :approve_bill, action: :approve_bill, on: :member
+      patch :reject_bill, action: :reject_bill, on: :member
+      patch :return_bill, action: :return_bill, on: :member
+      get :download_bill, action: :download_bill, on: :member
     end
   end
 

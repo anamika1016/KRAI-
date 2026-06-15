@@ -34,6 +34,10 @@
       <% end %>
     </div>
 
+    <% participation = @training_participation || { totals: { green: 0, yellow: 0, red: 0, total: 0 }, ics_rows: [], village_rows: [] } %>
+    <% training_rows = @farmer_training_dashboard_rows || [] %>
+    <%= render "farmer_training_dashboard", training_rows: training_rows, participation: participation %>
+
     <section class="module-card" id="vrp_target_progress">
       <div class="module-card-header">
         <h2>Assigned Target Progress</h2>
@@ -219,6 +223,10 @@
       <% end %>
     <% end %>
   </div>
+
+  <% participation = @training_participation || { totals: { green: 0, yellow: 0, red: 0, total: 0 }, ics_rows: [], village_rows: [] } %>
+  <% training_rows = @farmer_training_dashboard_rows || [] %>
+  <%= render "farmer_training_dashboard", training_rows: training_rows, participation: participation %>
 
   <section class="module-card">
     <div class="module-card-header">

@@ -13,6 +13,7 @@
       <section class="module-card target-mapping-card"
         data-target-mapping
         data-edit-target="<%= json_escape(@edit_payload.to_json) %>"
+        data-target-sub-activity-map="<%= json_escape(@target_sub_activity_map.to_json) %>"
         data-mappings-url="<%= vrp_mappings_target_mappings_path %>">
         <%= form_with url: target_mappings_path, method: :post, local: true, html: { class: "module-entry-form" } do %>
           <% if @edit_target %>
@@ -58,6 +59,11 @@
                   <option value="<%= option %>" <%= "selected" if @edit_target&.month_name.to_s == option.to_s %>><%= option %></option>
                 <% end %>
               </select>
+            </label>
+
+            <label>
+              <span>Completion Date <em>*</em></span>
+              <input type="date" name="target_mapping[completion_date]" value="<%= @edit_target&.completion_date&.strftime("%Y-%m-%d") %>" required>
             </label>
 
             <label>
@@ -132,12 +138,11 @@
             <tr>
               <th>VRP</th>
               <th>FCO</th>
-              <% unless @vrp_target_view %>
-                <th>ICS</th>
-              <% end %>
+              <th>ICS</th>
               <th>Village</th>
               <th>Farmers</th>
               <th>Month</th>
+              <th>Completion Date</th>
               <th>Main Activity</th>
               <th>Sub Activity</th>
               <th>Target</th>
@@ -152,12 +157,11 @@
                 <tr>
                   <td><%= target.vrp&.name %></td>
                   <td><%= target.fco_name.presence || target.fco_id %></td>
-                  <% unless @vrp_target_view %>
-                    <td><%= target.ics_name.presence || target.ics_id %></td>
-                  <% end %>
+                  <td><%= target.ics_name.presence || target.ics_id %></td>
                   <td><%= target.village_name.presence || target.village_id %></td>
                   <td><%= target.farmer_count %></td>
                   <td><%= target.month_name %></td>
+                  <td><%= target.completion_date&.strftime("%d-%m-%Y") || "-" %></td>
                   <td><%= target.main_activity_name %></td>
                   <td><%= target.activity_name %></td>
                   <td><%= target.target_quantity %></td>
@@ -177,7 +181,7 @@
               <% end %>
             <% else %>
               <tr>
-	                <td colspan="<%= show_mapping_actions ? 10 : (@vrp_target_view ? 8 : 9) %>">No target mapping saved yet.</td>
+	                <td colspan="<%= show_mapping_actions ? 11 : 10 %>">No target mapping saved yet.</td>
               </tr>
             <% end %>
           </tbody>

@@ -58,6 +58,7 @@ class VrpDashboardTest < ActionDispatch::IntegrationTest
       village_name: mapping.village_name,
       farmer_count: 4,
       month_name: "June",
+      completion_date: Date.new(2026, 6, 30),
       main_activity_name: "Farmer Visit",
       activity_name: "Farm Visit",
       target_quantity: 10,
@@ -93,6 +94,18 @@ class VrpDashboardTest < ActionDispatch::IntegrationTest
     assert_includes response.body, "Assigned Target"
     assert_includes response.body, "Completed"
     assert_includes response.body, "Farmer Month Follow-up"
+    assert_includes response.body, "Farmer Training Dashboard"
+    assert_includes response.body, "Select Month"
+    assert_includes response.body, "Select Sub Activity"
+    assert_includes response.body, "Select Month and Sub Activity to load training data."
+    refute_includes response.body, "Farmer Training Participation Status"
+    refute_includes response.body, "Sessions"
+    refute_includes response.body, "Photos"
+    refute_includes response.body, "Registers"
+    refute_includes response.body, "Male"
+    refute_includes response.body, "Female"
+    refute_includes response.body, "Dates"
+    refute_includes response.body, "Cumulative"
     assert_includes response.body, "Repeat Farmers"
     assert_includes response.body, "New Farmers"
     assert_includes response.body, "Pending Target Farmers"
@@ -104,11 +117,22 @@ class VrpDashboardTest < ActionDispatch::IntegrationTest
     assert_equal 1, response.body.scan("VRP Dashboard").size
     assert_includes response.body, "VRP Targets"
 
+    get dashboard_path, params: { training_month: "June", training_sub_activity: "Farm Visit" }
+
+    assert_response :success
+    assert_includes response.body, "June"
+    assert_includes response.body, "Farm Visit"
+    assert_includes response.body, "Completed Farmers"
+    assert_includes response.body, "Pending Farmers"
+    refute_includes response.body, "Select Month and Sub Activity to load training data."
+
     get target_mappings_path
 
     assert_response :success
     assert_includes response.body, "VRP Targets"
     assert_includes response.body, "Village One"
+    assert_includes response.body, "Completion Date"
+    assert_includes response.body, "30-06-2026"
     assert_includes response.body, "Farm Visit"
     refute_includes response.body, "Save Target"
     refute_includes response.body, "Delete this target mapping?"
@@ -146,6 +170,7 @@ class VrpDashboardTest < ActionDispatch::IntegrationTest
       village_name: mapping.village_name,
       farmer_count: 1,
       month_name: "July",
+      completion_date: Date.new(2026, 7, 31),
       main_activity_name: "Admin Activity",
       activity_name: "Admin Sub Activity",
       target_quantity: 7,
@@ -217,6 +242,7 @@ class VrpDashboardTest < ActionDispatch::IntegrationTest
       village_name: mapping.village_name,
       farmer_count: 2,
       month_name: "July",
+      completion_date: Date.new(2026, 7, 31),
       main_activity_name: "Farmer Visit",
       activity_name: "Farm Visit",
       target_quantity: 2,
@@ -332,6 +358,7 @@ class VrpDashboardTest < ActionDispatch::IntegrationTest
       ics_id: mapping.ics_id,
       village_id: mapping.village_id,
       month_name: month,
+      completion_date: Date.new(2026, 7, 31),
       main_activity_name: "Farmer Visit",
       activity_name: "Farm Visit",
       target_quantity: target_quantity,
