@@ -2,7 +2,11 @@ require "test_helper"
 
 class SessionsControllerTest < ActionDispatch::IntegrationTest
   test "vrp must accept agreement on first login" do
-    vrp = create_vrp(user_name: "first_vrp", password: "secret")
+    village = ModuleRecord.create!(
+      module_slug: "village-master",
+      data: { "village_name" => "Test Village", "status" => "Active" }
+    )
+    vrp = create_vrp(user_name: "first_vrp", password: "secret", village_ids: [village.id.to_s])
 
     post login_path, params: { login: "first_vrp", password: "secret" }
 
@@ -11,12 +15,22 @@ class SessionsControllerTest < ActionDispatch::IntegrationTest
 
     get vrp_agreement_path
     assert_response :success
-    assert_includes response.body, "कृषि जानकार"
+    assert_includes response.body, "Name"
+    assert_includes response.body, "Test Village"
+    assert_includes response.body, "Mobile Number"
+    assert_includes response.body, "Digital Signature"
 
     post vrp_agreement_path, params: { decision: "agree" }
 
+    assert_response :unprocessable_entity
+    assert_includes response.body, "Please sign before accepting the declaration."
+    assert_nil vrp.reload.agreement_accepted_at
+
+    post vrp_agreement_path, params: { decision: "agree", signature_data: "data:image/png;base64,signature" }
+
     assert_redirected_to dashboard_path
     assert vrp.reload.agreement_accepted_at.present?
+    assert vrp.reload.agreement_signature_data.present?
   end
 
   test "vrp login remains blocked when agreement is declined" do

@@ -3593,7 +3593,7 @@ document.addEventListener("turbo:load", () => {
 	      or: odiaTranslations
 	    };
 
-    const googleLanguageCodes = { en: "en", hi: "hi", mr: "mr", or: "or" };
+    const googleLanguageCodes = { en: "en", hi: "hi", mr: "mr", or: "or", gu: "gu" };
     const setGoogleTranslateCookie = (language) => {
       const value = `/en/${googleLanguageCodes[language] || "en"}`;
       document.cookie = `googtrans=${value};path=/`;
@@ -3608,7 +3608,7 @@ document.addEventListener("turbo:load", () => {
           if (window.google?.translate?.TranslateElement) {
             new window.google.translate.TranslateElement({
               pageLanguage: "en",
-              includedLanguages: "en,hi,mr,or",
+              includedLanguages: "en,hi,mr,or,gu",
               autoDisplay: false
             }, "google_translate_element");
           }
@@ -3732,7 +3732,7 @@ document.addEventListener("turbo:load", () => {
 	    };
 
 	    const setLanguage = (language) => {
-	      const nextLanguage = ["en", "hi", "mr", "or"].includes(language) ? language : "en";
+      const nextLanguage = ["en", "hi", "mr", "or", "gu"].includes(language) ? language : "en";
       localStorage.setItem("vrp_language", nextLanguage);
       applyGoogleLanguage(nextLanguage);
       applyLanguage(nextLanguage);
@@ -3743,6 +3743,111 @@ document.addEventListener("turbo:load", () => {
         button.addEventListener("click", () => setLanguage(button.dataset.languageOption));
       });
     }
+
+    document.querySelectorAll("[data-agreement-signature-shell]").forEach((shell) => {
+      const canvas = shell.querySelector("[data-agreement-signature-pad]");
+      const input = document.querySelector("[data-agreement-signature-input]");
+      const clearButton = shell.querySelector("[data-agreement-signature-clear]");
+      const form = document.querySelector("[data-agreement-form]");
+      const acceptButton = document.querySelector("[data-agreement-accept]");
+      if (!canvas || !input || !form) return;
+
+      const context = canvas.getContext("2d");
+      if (!context) return;
+
+      canvas.style.touchAction = "none";
+
+      let drawing = false;
+      let lastPoint = null;
+      let signatureDrawn = false;
+
+      const applyPenStyle = () => {
+        context.lineWidth = 2.4;
+        context.lineCap = "round";
+        context.lineJoin = "round";
+        context.strokeStyle = "#1f4d3a";
+      };
+
+      const resizeCanvas = () => {
+        const { width, height } = canvas.getBoundingClientRect();
+        if (!width || !height) return;
+
+        canvas.width = Math.floor(width);
+        canvas.height = Math.floor(height);
+        context.clearRect(0, 0, canvas.width, canvas.height);
+        input.value = "";
+        signatureDrawn = false;
+        if (acceptButton) acceptButton.disabled = true;
+        applyPenStyle();
+      };
+
+      const pointerPoint = (event) => {
+        const rect = canvas.getBoundingClientRect();
+        return {
+          x: event.clientX - rect.left,
+          y: event.clientY - rect.top
+        };
+      };
+
+      const syncSignature = () => {
+        if (!signatureDrawn) {
+          input.value = "";
+          if (acceptButton) acceptButton.disabled = true;
+          return;
+        }
+
+        input.value = canvas.toDataURL("image/png");
+        if (acceptButton) acceptButton.disabled = !input.value;
+      };
+
+      const stopDrawing = () => {
+        if (!drawing) return;
+        drawing = false;
+        lastPoint = null;
+        syncSignature();
+      };
+
+      resizeCanvas();
+      window.addEventListener("resize", resizeCanvas);
+
+      canvas.addEventListener("pointerdown", (event) => {
+        event.preventDefault();
+        drawing = true;
+        canvas.setPointerCapture(event.pointerId);
+        lastPoint = pointerPoint(event);
+        context.beginPath();
+        context.moveTo(lastPoint.x, lastPoint.y);
+      });
+
+      canvas.addEventListener("pointermove", (event) => {
+        if (!drawing || !lastPoint) return;
+        event.preventDefault();
+        const point = pointerPoint(event);
+        context.lineTo(point.x, point.y);
+        context.stroke();
+        lastPoint = point;
+        signatureDrawn = true;
+      });
+
+      canvas.addEventListener("pointerup", stopDrawing);
+      canvas.addEventListener("pointercancel", stopDrawing);
+      canvas.addEventListener("pointerleave", stopDrawing);
+
+      clearButton?.addEventListener("click", () => {
+        context.clearRect(0, 0, canvas.width, canvas.height);
+        input.value = "";
+        signatureDrawn = false;
+        if (acceptButton) acceptButton.disabled = true;
+      });
+
+      form.addEventListener("submit", (event) => {
+        const decision = event.submitter?.value || "";
+        if (decision === "agree" && !input.value) {
+          event.preventDefault();
+          window.alert("Please sign before accepting the declaration.");
+        }
+      });
+    });
 
     setLanguage(localStorage.getItem("vrp_language") || "en");
     const languageObserver = new MutationObserver(() => {

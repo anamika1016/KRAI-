@@ -2,6 +2,7 @@ require "securerandom"
 
 class SessionsController < ApplicationController
   skip_before_action :require_app_login
+  helper_method :agreement_details
   FORGOT_PASSWORD_OTP_TTL = 10.minutes
 
   def new
@@ -32,7 +33,10 @@ class SessionsController < ApplicationController
 
     unless @vrp
       redirect_to login_path, alert: "Please login again to continue."
+      return
     end
+
+    @agreement_details = agreement_details(@vrp)
   end
 
   def complete_agreement
@@ -44,7 +48,15 @@ class SessionsController < ApplicationController
     end
 
     if params[:decision] == "agree"
-      @vrp.update!(agreement_accepted_at: Time.current)
+      signature_data = params[:signature_data].to_s.strip
+      if signature_data.blank?
+        @agreement_details = agreement_details(@vrp)
+        flash.now[:alert] = "Please sign before accepting the declaration."
+        render :agreement, status: :unprocessable_entity
+        return
+      end
+
+      @vrp.update!(agreement_accepted_at: Time.current, agreement_signature_data: signature_data)
       reset_session
       refresh_app_user_session!(@vrp)
       redirect_to dashboard_path, notice: "Logged in successfully."
@@ -148,6 +160,31 @@ class SessionsController < ApplicationController
     user.is_a?(Vrp) &&
       Vrp.column_names.include?("agreement_accepted_at") &&
       !user.agreement_accepted?
+  end
+
+  def agreement_details(vrp)
+    return {} unless vrp
+
+    {
+      name: vrp.name.presence || vrp.user_name.presence || "-",
+      village: agreement_village_name(vrp),
+      mobile_no: vrp.mobile_no.presence || "-",
+      date: Time.zone.today.strftime("%d/%m/%Y")
+    }
+  end
+
+  def agreement_village_name(vrp)
+    village_ids = Array(vrp.village_ids).map(&:to_s).reject(&:blank?)
+    return "-" if village_ids.blank?
+
+    if defined?(ModuleRecord) && ModuleRecord.table_exists?
+      names = ModuleRecord.where(module_slug: "village-master", id: village_ids).order(created_at: :asc).filter_map do |record|
+        record.data["village_name"].presence || record.data["village"].presence || record.data["name"].presence
+      end
+      return names.join(", ") if names.any?
+    end
+
+    village_ids.join(", ")
   end
 
   def find_app_user

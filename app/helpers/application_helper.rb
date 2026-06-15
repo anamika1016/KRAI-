@@ -78,7 +78,8 @@ module ApplicationHelper
         ["VRP List", :route, :vrps_path],
         ["VRP Approval Queue", :route, :approvals_vrps_path],
         ["VRP Approval Form", :module, "approval-master"],
-        ["VRP Approval List", :module, "approval-list"]
+        ["VRP Approval List", :module, "approval-list"],
+        ["Accepted Agreement by Jeevika Jankar", :route, :vrp_agreements_path]
       ]
     },
     # {

@@ -3615,23 +3615,13 @@ class ModulesController < ApplicationController
   def mapping_labels_for_option(value, attribute)
     return [] if value.blank?
 
-    registered_names = registered_names_for_option(attribute, value)
-    return [value] if registered_names.blank?
-
-    registered_names.map { |registered_name| "#{value} (#{registered_name})" }
+    [value]
   end
 
   def joined_type_labels(role, user_management_role, person_type)
     base = [role, user_management_role, person_type].compact_blank.join("-")
     return [] if base.blank?
-
-    registered_names =
-      registered_names_for_option(:person_type, person_type).presence ||
-      registered_names_for_option(:user_management_role, user_management_role).presence ||
-      registered_names_for_option(:role, role)
-    return [base] if registered_names.blank?
-
-    registered_names.map { |registered_name| "#{base} (#{registered_name})" }
+    [base]
   end
 
   def registered_names_for_option(attribute, value)

@@ -1164,10 +1164,7 @@ class VrpsController < ApplicationController
   def mapping_labels_for_option(value, attribute)
     return [] if value.blank?
 
-    registered_names = registered_names_for_option(attribute, value)
-    return [value] if registered_names.blank?
-
-    registered_names.map { |registered_name| "#{value} (#{registered_name})" }
+    [value]
   end
 
   def registered_names_for_option(attribute, value)
