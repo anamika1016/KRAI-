@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2026_06_15_133000) do
+ActiveRecord::Schema[8.1].define(version: 2026_06_15_174000) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "pg_catalog.plpgsql"
 
@@ -120,6 +120,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_06_15_133000) do
     t.bigint "vrp_ics_mapping_id"
     t.bigint "vrp_id", null: false
     t.index ["created_by_type", "created_by_id"], name: "index_target_mappings_on_creator"
+    t.index ["fco_id", "ics_id", "village_id", "main_activity_name", "activity_name"], name: "index_target_mappings_on_activity_scope"
     t.index ["vrp_ics_mapping_id"], name: "index_target_mappings_on_vrp_ics_mapping_id"
     t.index ["vrp_id", "vrp_ics_mapping_id", "month_name", "activity_name"], name: "index_target_mappings_on_scope"
     t.index ["vrp_id"], name: "index_target_mappings_on_vrp_id"
@@ -253,8 +254,12 @@ ActiveRecord::Schema[8.1].define(version: 2026_06_15_133000) do
     t.bigint "vrp_bank_master_id"
     t.text "vrp_type_ids"
     t.index ["aadhar_no"], name: "index_vrps_on_aadhar_no"
+    t.index ["agreement_accepted_at"], name: "index_vrps_on_agreement_accepted_at"
+    t.index ["created_by_id"], name: "index_vrps_on_created_by_id"
     t.index ["email"], name: "index_vrps_on_email"
     t.index ["mobile_no"], name: "index_vrps_on_mobile_no"
+    t.index ["user_id"], name: "index_vrps_on_user_id"
+    t.index ["user_name"], name: "index_vrps_on_user_name"
     t.index ["vrp_bank_master_id"], name: "index_vrps_on_vrp_bank_master_id"
   end
 

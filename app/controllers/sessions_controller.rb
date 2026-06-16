@@ -238,53 +238,67 @@ class SessionsController < ApplicationController
     login = params[:login].presence || params[:email].presence
     password = params[:password].to_s
     return if login.blank? || password.blank?
+    login_key = login.to_s.strip.downcase
 
     if "User".safe_constantize&.table_exists?
-      user = User.where.not(status: "Inactive").find do |candidate|
-        [candidate.user_name, candidate.email, candidate.mobile_no].compact.include?(login) &&
-          candidate.password.to_s == password
-      end
+      user = User.where.not(status: "Inactive")
+        .where(
+          "LOWER(user_name) = :login OR LOWER(email) = :login OR mobile_no = :raw_login",
+          login: login_key,
+          raw_login: login.to_s.strip
+        )
+        .find_by(password: password)
       return user if user
     end
 
     if "Vrp".safe_constantize&.table_exists? && Vrp.column_names.include?("user_name") && Vrp.column_names.include?("password")
-      vrp = Vrp.where(is_active: true, is_deleted: false).find do |candidate|
-        [candidate.user_name, candidate.email, candidate.mobile_no].compact.include?(login) &&
-          candidate.password.to_s == password
-      end
+      vrp = Vrp.where(is_active: true, is_deleted: false)
+        .where(
+          "LOWER(user_name) = :login OR LOWER(email) = :login OR mobile_no = :raw_login",
+          login: login_key,
+          raw_login: login.to_s.strip
+        )
+        .find_by(password: password)
       return vrp if vrp
     end
 
     return unless defined?(ModuleRecord) && ModuleRecord.table_exists?
 
-    ModuleRecord.where(module_slug: "new-user").order(created_at: :desc).detect do |record|
-      next false if record.data["status"] == "Inactive"
-
-      [record.data["user_name"], record.data["email"], record.data["mobile_no"]].compact.include?(login) &&
-        record.data["password"].to_s == password
-    end
+    ModuleRecord.where(module_slug: "new-user")
+      .where("COALESCE(LOWER(data->>'status'), '') <> 'inactive'")
+      .where(
+        "LOWER(COALESCE(data->>'user_name', '')) = :login OR LOWER(COALESCE(data->>'email', '')) = :login OR COALESCE(data->>'mobile_no', '') = :raw_login",
+        login: login_key,
+        raw_login: login.to_s.strip
+      )
+      .where("COALESCE(data->>'password', '') = ?", password)
+      .first
   end
 
   def find_password_reset_account(username)
     return if username.blank?
+    username_key = username.to_s.strip.downcase
 
     if "User".safe_constantize&.table_exists?
-      user = User.where.not(status: "Inactive").find { |candidate| candidate.user_name.to_s == username }
+      user = User.where.not(status: "Inactive")
+        .where("LOWER(user_name) = ?", username_key)
+        .first
       return user if user
     end
 
     if "Vrp".safe_constantize&.table_exists? && Vrp.column_names.include?("user_name")
-      vrp = Vrp.where(is_active: true, is_deleted: false).find { |candidate| candidate.user_name.to_s == username }
+      vrp = Vrp.where(is_active: true, is_deleted: false)
+        .where("LOWER(user_name) = ?", username_key)
+        .first
       return vrp if vrp
     end
 
     return unless defined?(ModuleRecord) && ModuleRecord.table_exists?
 
-    ModuleRecord.where(module_slug: "new-user").order(created_at: :desc).detect do |record|
-      next false if record.data["status"] == "Inactive"
-
-      record.data["user_name"].to_s == username
-    end
+    ModuleRecord.where(module_slug: "new-user")
+      .where("COALESCE(LOWER(data->>'status'), '') <> 'inactive'")
+      .where("LOWER(COALESCE(data->>'user_name', '')) = ?", username_key)
+      .first
   end
 
   def reset_account_type(account)

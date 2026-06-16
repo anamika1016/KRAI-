@@ -20,7 +20,9 @@ class VrpAgreementsController < ApplicationController
   def accepted_agreement_rows
     return [] unless vrp_agreement_enabled?
 
-    Vrp.where.not(agreement_accepted_at: nil)
+    Vrp.includes(:vrp_profile)
+      .select(:id, :name, :user_name, :mobile_no, :agreement_accepted_at, :agreement_signature_data, :village_ids)
+      .where.not(agreement_accepted_at: nil)
       .where.not(agreement_signature_data: [nil, ""])
       .order(agreement_accepted_at: :desc)
       .map do |vrp|
@@ -71,7 +73,11 @@ class VrpAgreementsController < ApplicationController
   end
 
   def agreement_village_label(village_id)
-    [
+    @agreement_village_label_cache ||= {}
+    cached_label = @agreement_village_label_cache[village_id.to_s]
+    return cached_label if @agreement_village_label_cache.key?(village_id.to_s)
+
+    @agreement_village_label_cache[village_id.to_s] = [
       agreement_village_name_from_module_records(village_id),
       agreement_village_name_from_target_mapping(village_id),
       agreement_village_name_from_vrp_ics_mapping(village_id),

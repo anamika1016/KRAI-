@@ -140,9 +140,10 @@ class TargetMappingsController < ApplicationController
       return false
     end
 
-    blocked_ids = selected_ids & assigned_farmer_ids_for(target_mapping)
+    already_selected_ids = normalized_afl_ids(edit_target&.afl_ids)
+    blocked_ids = (selected_ids - already_selected_ids) & assigned_farmer_ids_for(target_mapping)
     if blocked_ids.any?
-      target_mapping.errors.add(:afl_ids, "#{blocked_ids.size} farmer already assigned in this village")
+      target_mapping.errors.add(:afl_ids, "#{blocked_ids.size} farmer already assigned for this activity")
       return false
     end
 
@@ -222,18 +223,16 @@ class TargetMappingsController < ApplicationController
   end
 
   def assigned_farmer_ids_for_location(vrp_id:, fco_id:, ics_id:, village_id:, month_name:, main_activity_name: nil, activity_name: nil, edit_target: nil)
-    return [] if month_name.blank? || main_activity_name.blank?
+    return [] if main_activity_name.blank?
 
     parsed_fco_id, parsed_fco_name = parse_location_value(fco_id)
     parsed_ics_id, parsed_ics_name = parse_location_value(ics_id)
     parsed_village_id, parsed_village_name = parse_location_value(village_id)
 
-    scope = TargetMapping.where(vrp_id: vrp_id, fco_id: parsed_fco_id, ics_id: parsed_ics_id, village_id: parsed_village_id)
-    scope = scope.where(fco_name: parsed_fco_name) if parsed_fco_name.present?
-    scope = scope.where(ics_name: parsed_ics_name) if parsed_ics_name.present?
-    scope = scope.where(village_name: parsed_village_name) if parsed_village_name.present?
-    scope = scope.where(month_name: month_name) if month_name.present?
-    scope = scope.where(main_activity_name: main_activity_name)
+    scope = TargetMapping.where(fco_id: parsed_fco_id, ics_id: parsed_ics_id, village_id: parsed_village_id)
+    scope = scope.where("LOWER(TRIM(month_name)) = ?", month_name.to_s.strip.downcase) if month_name.present?
+    scope = scope.where("LOWER(TRIM(main_activity_name)) = ?", main_activity_name.to_s.strip.downcase)
+    scope = scope.where("LOWER(TRIM(activity_name)) = ?", activity_name.to_s.strip.downcase) if activity_name.present?
     scope = scope.where.not(id: edit_target.id) if edit_target&.persisted?
     scope.pluck(:afl_ids).flat_map { |ids| normalized_afl_ids(ids) }.uniq
   end

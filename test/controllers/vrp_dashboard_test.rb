@@ -381,7 +381,9 @@ class VrpDashboardTest < ActionDispatch::IntegrationTest
       fco_id: mapping.fco_id,
       ics_id: mapping.ics_id,
       village_id: mapping.village_id,
-      month_name: "July"
+      month_name: "July",
+      main_activity_name: "Farmer Visit",
+      activity_name: "Farm Visit"
     }
 
     farmer_rows = JSON.parse(response.body).fetch("farmers")
@@ -395,11 +397,51 @@ class VrpDashboardTest < ActionDispatch::IntegrationTest
       fco_id: mapping.fco_id,
       ics_id: mapping.ics_id,
       village_id: mapping.village_id,
-      month_name: "August"
+      month_name: "August",
+      main_activity_name: "Farmer Visit",
+      activity_name: "Farm Visit"
     }
     august_rows = JSON.parse(response.body).fetch("farmers")
     assert_equal farmers.first(2).map { |farmer| farmer.id.to_s }.sort,
       august_rows.select { |farmer| farmer["assigned_to_other"] }.map { |farmer| farmer["id"] }.sort
+
+    other_vrp = create_vrp(
+      user_name: "second_target_vrp",
+      password: "secret",
+      agreement_accepted_at: Time.current
+    )
+    other_mapping = VrpIcsMapping.create!(
+      vrp: other_vrp,
+      fco_id: mapping.fco_id,
+      fco_name: mapping.fco_name,
+      ics_id: mapping.ics_id,
+      ics_name: mapping.ics_name,
+      village_id: mapping.village_id,
+      village_name: mapping.village_name,
+      afl_ids: farmers.map(&:id),
+      created_by_type: "User",
+      created_by_id: 1
+    )
+
+    assert_no_difference("TargetMapping.count") do
+      post target_mappings_path, params: {
+        target_mapping: target_params(other_vrp, other_mapping, "July", 2, farmers.first(2).map(&:id))
+      }
+    end
+
+    get vrp_mappings_target_mappings_path, params: {
+      vrp_id: other_vrp.id,
+      fco_id: other_mapping.fco_id,
+      ics_id: other_mapping.ics_id,
+      village_id: other_mapping.village_id,
+      month_name: "July",
+      main_activity_name: "Farmer Visit",
+      activity_name: "Farm Visit"
+    }
+
+    cross_vrp_rows = JSON.parse(response.body).fetch("farmers")
+    assert_equal farmers.first(2).map { |farmer| farmer.id.to_s }.sort,
+      cross_vrp_rows.select { |farmer| farmer["assigned_to_other"] }.map { |farmer| farmer["id"] }.sort
 
     assert_no_difference("TargetMapping.count") do
       post target_mappings_path, params: {

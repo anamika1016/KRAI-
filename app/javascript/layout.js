@@ -1959,15 +1959,16 @@ document.addEventListener("turbo:load", () => {
           farmer.mobile_no ? `Mobile: ${farmer.mobile_no}` : "",
           farmer.khasara_no ? `Khasara: ${farmer.khasara_no}` : ""
         ].filter(Boolean).join(" | ");
-        const disabled = farmer.assigned_to_other ? " disabled" : "";
+        const blocked = farmer.assigned_to_other && !farmer.selected;
+        const disabled = blocked ? " disabled" : "";
         const checked = farmer.selected ? " checked" : "";
 
         return `
-          <label class="vrp-ics-farmer-item${farmer.assigned_to_other ? " disabled" : ""}">
+          <label class="vrp-ics-farmer-item${blocked ? " disabled" : ""}">
             <input type="checkbox" name="target_mapping[afl_ids][]" value="${escapeHtml(farmer.id)}" data-target-farmer-checkbox${disabled}${checked}>
             <span>
               <strong>${escapeHtml(farmer.farmer_name || `Farmer #${farmer.id}`)}</strong>
-              <small>${escapeHtml(meta)}${farmer.assigned_to_other ? " | Already assigned" : ""}</small>
+              <small>${escapeHtml(meta)}${blocked ? " | Already assigned" : ""}</small>
             </span>
           </label>
         `;

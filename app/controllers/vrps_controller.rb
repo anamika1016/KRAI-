@@ -337,24 +337,29 @@ class VrpsController < ApplicationController
   end
 
   def registered_by_user(vrp)
+    @registered_by_user_cache ||= {}
+    cache_key = vrp.id
+    return @registered_by_user_cache[cache_key] if @registered_by_user_cache.key?(cache_key)
+
     if vrp.created_by_id.present?
       user = User.find_by(id: vrp.created_by_id) if model_ready?(:User)
-      return user if user
+      return @registered_by_user_cache[cache_key] = user if user
 
       record = ModuleRecord.find_by(id: vrp.created_by_id) if model_ready?(:ModuleRecord)
-      return record if record
+      return @registered_by_user_cache[cache_key] = record if record
     end
 
     if model_ready?(:User)
       user = User.find_by("LOWER(email) = ?", vrp.email.to_s.strip.downcase)
-      return user if user
+      return @registered_by_user_cache[cache_key] = user if user
     end
 
     return unless model_ready?(:ModuleRecord)
 
-    ModuleRecord.where(module_slug: "new-user").order(created_at: :desc).detect do |record|
-      record.data["email"].to_s.strip.casecmp(vrp.email.to_s.strip).zero?
-    end
+    @registered_by_user_cache[cache_key] = ModuleRecord.where(module_slug: "new-user")
+      .where("LOWER(COALESCE(data->>'email', '')) = ?", vrp.email.to_s.strip.downcase)
+      .order(created_at: :desc)
+      .first
   end
 
   def visible_vrps
@@ -436,8 +441,12 @@ class VrpsController < ApplicationController
   def approval_steps_for(vrp)
     return [] unless model_ready?(:ModuleRecord)
 
+    @approval_steps_for_cache ||= {}
+    cache_key = vrp.id
+    return @approval_steps_for_cache[cache_key] if @approval_steps_for_cache.key?(cache_key)
+
     creator_identities = vrp_creator_identities(vrp)
-    return [] if creator_identities.blank?
+    return @approval_steps_for_cache[cache_key] = [] if creator_identities.blank?
 
     matching_records = ModuleRecord
       .where(module_slug: "approval-master")
@@ -460,6 +469,8 @@ class VrpsController < ApplicationController
       .values
       .map { |records| records.max_by { |record| approval_record_priority(record) } }
       .sort_by { |record| approval_sequence(record) }
+
+    @approval_steps_for_cache[cache_key] = matching_records
   end
 
   def approval_sequence(record)
@@ -760,7 +771,11 @@ class VrpsController < ApplicationController
   def approval_history_for(vrp)
     return [] unless model_ready?(:ModuleRecord)
 
-    ModuleRecord
+    @approval_history_for_cache ||= {}
+    cache_key = vrp.id
+    return @approval_history_for_cache[cache_key] if @approval_history_for_cache.key?(cache_key)
+
+    @approval_history_for_cache[cache_key] = ModuleRecord
       .where(module_slug: "vrp-approval-history")
       .order(created_at: :asc)
       .select { |record| record.data["vrp_id"].to_i == vrp.id }

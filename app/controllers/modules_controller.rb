@@ -759,11 +759,15 @@ class ModulesController < ApplicationController
   def module_record_label_for_dashboard(module_slug, id, field_key)
     return "" if id.blank? || !model_ready?(:ModuleRecord)
 
+    @module_record_label_cache ||= {}
+    cache_key = [module_slug.to_s, id.to_s, field_key.to_s]
+    return @module_record_label_cache[cache_key] if @module_record_label_cache.key?(cache_key)
+
     record = ModuleRecord.find_by(module_slug: module_slug, id: id)
     label = module_record_display_label_for_dashboard(module_slug, record, field_key)
-    return label if label.present?
+    label = id.to_s.match?(/\A\d+\z/) ? "" : id.to_s if label.blank?
 
-    id.to_s.match?(/\A\d+\z/) ? "" : id.to_s
+    @module_record_label_cache[cache_key] = label
   end
 
   def module_record_labels_for_dashboard(module_slug, ids, field_key)
@@ -798,8 +802,10 @@ class ModulesController < ApplicationController
   end
 
   def vrp_dashboard_village_rows(vrp, mappings, targets)
+    targets_by_village = targets.group_by { |target| target.village_id.to_s }
+
     mapping_rows = mappings.map do |mapping|
-      village_targets = targets.select { |target| target.village_id.to_s == mapping.village_id.to_s }
+      village_targets = targets_by_village[mapping.village_id.to_s] || []
       target_farmer_ids = village_targets.flat_map { |target| target.respond_to?(:afl_ids) ? Array(target.afl_ids).map(&:to_s) : [] }.reject(&:blank?).uniq
       village = mapping.village_name.presence || module_record_label_for_dashboard("village-master", mapping.village_id, "village_name")
 
@@ -814,7 +820,7 @@ class ModulesController < ApplicationController
     end
 
     registration_rows = Array(vrp.village_ids).reject(&:blank?).map do |village_id|
-      village_targets = targets.select { |target| target.village_id.to_s == village_id.to_s }
+      village_targets = targets_by_village[village_id.to_s] || []
       {
         fco: "-",
         gram_panchayat: gram_panchayat_label_for_village(village_id).presence || module_record_labels_for_dashboard("gram-panchayat-master", vrp.gram_panchayat_ids, "gram_panchayat_name"),
@@ -1535,7 +1541,7 @@ class ModulesController < ApplicationController
   def dashboard_approval_related_vrps
     return [] unless model_ready?(:Vrp)
 
-    Vrp.all.select do |vrp|
+    @dashboard_approval_related_vrps ||= Vrp.all.select do |vrp|
       vrp_approval_sent?(vrp) && dashboard_current_user_in_approval_channel?(vrp)
     end
   end
@@ -1553,11 +1559,15 @@ class ModulesController < ApplicationController
   def dashboard_approval_steps_for_visibility(vrp)
     return [] unless model_ready?(:ModuleRecord)
 
+    @dashboard_approval_steps_for_visibility_cache ||= {}
+    cache_key = vrp.id
+    return @dashboard_approval_steps_for_visibility_cache[cache_key] if @dashboard_approval_steps_for_visibility_cache.key?(cache_key)
+
     identities = vrp_creator_identities_for_dashboard(vrp)
-    return [] if identities.blank?
+    return @dashboard_approval_steps_for_visibility_cache[cache_key] = [] if identities.blank?
 
     @dashboard_approval_visibility_steps ||= ModuleRecord.where(module_slug: "approval-master").order(created_at: :asc).to_a
-    @dashboard_approval_visibility_steps
+    @dashboard_approval_steps_for_visibility_cache[cache_key] = @dashboard_approval_visibility_steps
       .select do |record|
         record.data["status"].to_s != "Inactive" &&
           approval_registration_module?(record.data["module_name"]) &&
@@ -1580,37 +1590,44 @@ class ModulesController < ApplicationController
   end
 
   def dashboard_current_app_user_ids
-    ([current_app_user&.dig("id")] + dashboard_legacy_current_app_user_ids).compact.uniq
+    @dashboard_current_app_user_ids ||= ([current_app_user&.dig("id")] + dashboard_legacy_current_app_user_ids).compact.uniq
   end
 
   def dashboard_legacy_current_app_user_ids
     return [] unless model_ready?(:ModuleRecord)
 
-    username = current_app_user&.dig("username").to_s
-    emails = dashboard_current_app_user_emails
-    return [] if username.blank? && emails.blank?
-
-    ModuleRecord.where(module_slug: "new-user").select do |record|
-      record.data["user_name"].to_s == username ||
-        emails.include?(record.data["email"].to_s.strip.downcase)
-    end.map(&:id)
+    @dashboard_legacy_current_app_user_ids ||= begin
+      username = current_app_user&.dig("username").to_s
+      emails = dashboard_current_app_user_emails
+      if username.blank? && emails.blank?
+        []
+      else
+        ModuleRecord.where(module_slug: "new-user").select do |record|
+          record.data["user_name"].to_s == username ||
+            emails.include?(record.data["email"].to_s.strip.downcase)
+        end.map(&:id)
+      end
+    end
   end
 
   def dashboard_current_app_user_emails
-    emails = [current_app_user&.dig("email")]
+    @dashboard_current_app_user_emails ||= begin
+      emails = [current_app_user&.dig("email")]
 
-    if model_ready?(:User)
-      user = User.find_by(user_name: current_app_user&.dig("username")) || User.find_by(id: current_app_user&.dig("id"))
-      emails << user&.email
+      if model_ready?(:User)
+        user = User.find_by(user_name: current_app_user&.dig("username")) || User.find_by(id: current_app_user&.dig("id"))
+        emails << user&.email
+      end
+
+      emails.compact_blank.map { |email| email.to_s.strip.downcase }.uniq
     end
-
-    emails.compact_blank.map { |email| email.to_s.strip.downcase }.uniq
   end
 
   def module_records_for_dashboard(slug)
     return [] unless model_ready?(:ModuleRecord)
 
-    ModuleRecord.where(module_slug: slug).order(created_at: :desc).to_a
+    @module_records_for_dashboard_cache ||= {}
+    @module_records_for_dashboard_cache[slug.to_s] ||= ModuleRecord.where(module_slug: slug).order(created_at: :desc).to_a
   end
 
   def grouped_rows(records, group_key, amount_key, default_key: "Not Set")
