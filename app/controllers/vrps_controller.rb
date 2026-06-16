@@ -174,7 +174,7 @@ class VrpsController < ApplicationController
       "VRP final approved."
     end
 
-    redirect_to vrp_path(vrp), notice: message
+    redirect_to vrps_path, notice: message
   end
 
   def reject
@@ -188,7 +188,7 @@ class VrpsController < ApplicationController
     step = current_approval_step(vrp)
     update_vrp_status!(vrp, 99)
     log_approval_history(vrp, step, "Rejected", params[:remarks])
-    redirect_to vrp_path(vrp), notice: "VRP rejected."
+    redirect_to vrps_path, notice: "VRP rejected."
   end
 
   private
