@@ -140,7 +140,7 @@ class TargetMappingsController < ApplicationController
       return false
     end
 
-    already_selected_ids = normalized_afl_ids(edit_target&.afl_ids)
+    already_selected_ids = normalized_afl_ids(target_mapping.afl_ids)
     blocked_ids = (selected_ids - already_selected_ids) & assigned_farmer_ids_for(target_mapping)
     if blocked_ids.any?
       target_mapping.errors.add(:afl_ids, "#{blocked_ids.size} farmer already assigned for this activity")

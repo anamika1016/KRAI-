@@ -1078,8 +1078,11 @@ class ModulesController < ApplicationController
   def training_attendance_counts_for_targets(targets, month_name: nil)
     return {} unless model_ready?(:ModuleRecord)
 
-    target_farmer_ids = targets.flat_map { |target| Array(target.respond_to?(:afl_ids) ? target.afl_ids : []).map(&:to_s) }.reject(&:blank?).uniq
-    return {} if target_farmer_ids.blank?
+    target_sets = Array(targets).filter_map do |target|
+      farmer_ids = target_farmer_ids(target)
+      farmer_ids.blank? ? nil : [target, farmer_ids]
+    end
+    return {} if target_sets.blank?
 
     ModuleRecord
       .where(module_slug: "training-form")
@@ -1087,8 +1090,13 @@ class ModulesController < ApplicationController
       .select { |record| active_module_record?(record) }
       .select { |record| month_name.blank? || normalize_dashboard_text(training_record_month_name(record)) == normalize_dashboard_text(month_name) }
       .each_with_object(Hash.new(0)) do |record, counts|
-        farmer_ids = Array(record.data["selected_farmer_ids"]).map(&:to_s).reject(&:blank?).uniq & target_farmer_ids
-        farmer_ids.each { |farmer_id| counts[farmer_id] += 1 }
+        matching_farmer_ids = target_sets.each_with_object([]) do |(target, farmer_ids), ids|
+          next unless training_record_matches_dashboard_target?(record, target, farmer_ids)
+
+          ids.concat(training_record_selected_farmer_ids(record) & farmer_ids)
+        end.uniq
+
+        matching_farmer_ids.each { |farmer_id| counts[farmer_id] += 1 }
       end
   end
 
@@ -1113,7 +1121,6 @@ class ModulesController < ApplicationController
     targets = Array(targets)
     return [] if targets.blank? || !model_ready?(:ModuleRecord)
 
-    attendance_counts = training_attendance_counts_for_targets(targets, month_name: month_name)
     training_records = ModuleRecord
       .where(module_slug: "training-form")
       .order(created_at: :desc)
@@ -1154,7 +1161,7 @@ class ModulesController < ApplicationController
       session_participants = matching_records.flat_map { |record| training_record_selected_farmer_ids(record) & farmer_ids }
       unique_participants = session_participants.uniq
       target_quantity = group[:target_quantity].to_f
-      status_counts = training_status_counts(farmer_ids, attendance_counts)
+      status_counts = training_status_counts(farmer_ids, training_attendance_counts_for_targets(group[:targets], month_name: month_name))
       farmer_rows = farmer_rows_for_training_group(group[:targets])
 
       group.merge(

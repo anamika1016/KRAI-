@@ -30,7 +30,7 @@
             <select name="training_sub_activity" data-dashboard-training-filter-select data-dashboard-training-sub-activity-select <%= "disabled" if selected_month.blank? %>>
               <option value="">Select Sub Activity</option>
               <% sub_activity_options.each do |option| %>
-              Improving communication skills requires a mix of active listening, clear verbal articulation, and emotional intelligence. To get better, practice speaking concisely, pay attention to your body language, and record yourself to identify areas for improvement.   <option value="<%= option %>" <%= "selected" if selected_sub_activity == option.to_s %>><%= option %></option>
+                <option value="<%= option %>" <%= "selected" if selected_sub_activity == option.to_s %>><%= option %></option>
               <% end %>
             </select>
           </label>

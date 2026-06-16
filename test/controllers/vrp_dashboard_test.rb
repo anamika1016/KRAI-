@@ -82,6 +82,54 @@ class VrpDashboardTest < ActionDispatch::IntegrationTest
         "grand_units" => "4"
       }
     )
+    ModuleRecord.create!(
+      module_slug: "training-form",
+      data: {
+        "month" => "June",
+        "training_date" => "2026-06-05",
+        "main_activity" => "Farmer Visit",
+        "sub_activity" => "Farm Visit",
+        "training_topic" => "Farmer Visit",
+        "training_subject" => "Farm Visit",
+        "selected_farmer_ids" => [repeat_previous.id.to_s, repeat_current.id.to_s]
+      }
+    )
+    ModuleRecord.create!(
+      module_slug: "training-form",
+      data: {
+        "month" => "June",
+        "training_date" => "2026-06-12",
+        "main_activity" => "Farmer Visit",
+        "sub_activity" => "Farm Visit",
+        "training_topic" => "Farmer Visit",
+        "training_subject" => "Farm Visit",
+        "selected_farmer_ids" => [repeat_previous.id.to_s, new_current.id.to_s]
+      }
+    )
+    ModuleRecord.create!(
+      module_slug: "training-form",
+      data: {
+        "month" => "June",
+        "training_date" => "2026-06-20",
+        "main_activity" => "Farmer Visit",
+        "sub_activity" => "Farm Visit",
+        "training_topic" => "Farmer Visit",
+        "training_subject" => "Farm Visit",
+        "selected_farmer_ids" => [repeat_previous.id.to_s, repeat_current.id.to_s]
+      }
+    )
+    ModuleRecord.create!(
+      module_slug: "training-form",
+      data: {
+        "month" => "June",
+        "training_date" => "2026-06-22",
+        "main_activity" => "Other Activity",
+        "sub_activity" => "Other Sub Activity",
+        "training_topic" => "Other Activity",
+        "training_subject" => "Other Sub Activity",
+        "selected_farmer_ids" => [pending_farmer.id.to_s]
+      }
+    )
 
     post login_path, params: { login: "dashboard_vrp", password: "secret" }
     follow_redirect!
@@ -122,6 +170,9 @@ class VrpDashboardTest < ActionDispatch::IntegrationTest
     assert_response :success
     assert_includes response.body, "June"
     assert_includes response.body, "Farm Visit"
+    assert_match(/<span class="training-status-pill green">1<\/span>/, response.body)
+    assert_match(/<span class="training-status-pill yellow">2<\/span>/, response.body)
+    assert_match(/<span class="training-status-pill red">1<\/span>/, response.body)
     assert_includes response.body, "Completed Farmers"
     assert_includes response.body, "Pending Farmers"
     refute_includes response.body, "Select Month and Sub Activity to load training data."
