@@ -114,10 +114,10 @@ class VrpsController < ApplicationController
 
   def approvals
     @approval_rows = approval_queue.map do |vrp|
-      step = current_approval_step(vrp)
+      step = approval_display_step(vrp)
       {
         vrp: vrp,
-        approval_level: step&.data&.[]("approval_level").presence || "Approval #{current_approval_sequence(vrp)}",
+        approval_level: step&.data&.[]("approval_level").presence || "Approval",
         approver: step&.data&.[]("approver_approved_by").presence || "-",
         status_label: vrp_status_label(vrp),
         can_act: current_user_can_approve?(vrp)
@@ -373,32 +373,34 @@ class VrpsController < ApplicationController
   end
 
   def approval_queue
-    scope = Vrp.all.reject do |vrp|
-      [55, 99].include?(vrp.status.to_i) ||
-        approval_complete?(vrp) ||
-        approval_rejected?(vrp) ||
-        vrp.status.to_i < 25 ||
-        (vrp.status.to_i == 25 && !approval_sent?(vrp))
-    end
+    scope = Vrp.all.select { |vrp| approval_visible_after_sent?(vrp) }
     return scope if admin_user?
 
-    scope.select { |vrp| current_user_can_approve?(vrp) }
+    scope.select { |vrp| current_user_in_approval_channel?(vrp) }
   end
 
   def approvable_vrps
-    Vrp.all.reject do |vrp|
-      [55, 99].include?(vrp.status.to_i) ||
-        approval_complete?(vrp) ||
-        approval_rejected?(vrp) ||
-        vrp.status.to_i < 25 ||
-        (vrp.status.to_i == 25 && !approval_sent?(vrp))
-    end.select { |vrp| current_user_can_approve?(vrp) }
+    Vrp.all.select { |vrp| approval_pending_for_action?(vrp) && current_user_can_approve?(vrp) }
   end
 
   def approval_related_vrps
     Vrp.all.select do |vrp|
-      approval_sent?(vrp) && current_user_can_approve?(vrp)
+      approval_visible_after_sent?(vrp) && current_user_in_approval_channel?(vrp)
     end
+  end
+
+  def approval_visible_after_sent?(vrp)
+    approval_sent?(vrp) || vrp.status.to_i >= 25 || [55, 99].include?(vrp.status.to_i)
+  end
+
+  def approval_pending_for_action?(vrp)
+    !(
+      [55, 99].include?(vrp.status.to_i) ||
+        approval_complete?(vrp) ||
+        approval_rejected?(vrp) ||
+        vrp.status.to_i < 25 ||
+        (vrp.status.to_i == 25 && !approval_sent?(vrp))
+    )
   end
 
   def current_user_can_approve?(vrp)
@@ -411,7 +413,24 @@ class VrpsController < ApplicationController
   end
 
   def current_user_in_approval_channel?(vrp)
-    current_user_can_approve?(vrp)
+    approval_steps_for(vrp).any? { |step| approval_step_matches_current_user?(step) } ||
+      approval_history_for(vrp).any? { |record| approval_history_matches_current_user?(record) }
+  end
+
+  def approval_step_matches_current_user?(step)
+    approver_matches_current_user?(step.data["approver_approved_by"].to_s) ||
+      approver_matches_current_user?(approval_approver_name(step))
+  end
+
+  def approval_history_matches_current_user?(record)
+    approver_matches_current_user?(record.data["approver"].to_s) ||
+      approver_matches_current_user?(record.data["action_by"].to_s)
+  end
+
+  def approval_display_step(vrp)
+    current_approval_step(vrp) ||
+      approval_steps_for(vrp).reverse.find { |step| approval_step_closed?(vrp, step) } ||
+      approval_steps_for(vrp).last
   end
 
   def current_approval_step(vrp)
@@ -555,6 +574,8 @@ class VrpsController < ApplicationController
   end
 
   def approver_matches_current_user?(approver)
+    return false if approver.to_s.strip.blank?
+
     normalized_approver = normalize_approver_label(approver)
 
     approver_labels.any? do |label|
