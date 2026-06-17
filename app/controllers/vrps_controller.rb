@@ -28,6 +28,7 @@ class VrpsController < ApplicationController
         fcoc: vrp.fcoc,
         to_name: vrp.to_name,
         registered_by: registered_by_name(vrp),
+        mapped_cluster_name: vrp.cluster_incharge.presence || "-",
         status_label: vrp_status_label(vrp)
       }
     end

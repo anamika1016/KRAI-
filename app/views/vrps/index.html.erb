@@ -56,6 +56,7 @@
               <th>FCO Name</th>
               <th>TO Name</th>
               <th>Registered By</th>
+              <th>Mapped Cluster Name</th>
             </tr>
           </thead>
           <tbody>
@@ -87,11 +88,12 @@
                   <td><%= vrp[:fcoc].presence || "-" %></td>
                   <td><%= vrp[:to_name].presence || "-" %></td>
                   <td><%= vrp[:registered_by] %></td>
+                  <td><%= vrp[:mapped_cluster_name] %></td>
                 </tr>
               <% end %>
             <% else %>
               <tr>
-                <td colspan="20">No VRP records saved yet.</td>
+                <td colspan="21">No VRP records saved yet.</td>
               </tr>
             <% end %>
           </tbody>
