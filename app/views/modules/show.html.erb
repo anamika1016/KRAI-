@@ -769,10 +769,10 @@
             </thead>
             <tbody>
               <% ApplicationHelper::SIDEBAR_SECTIONS.each do |section| %>
-                <tr>
+                <tr data-access-control-row>
                   <td>
                     <label class="access-menu-check">
-                      <input type="checkbox" name="module_record[module_names][]" value="<%= section[:title] %>" <%= "checked" if selected_modules.include?(section[:title]) %>>
+                      <input type="checkbox" name="module_record[module_names][]" value="<%= section[:title] %>" data-access-menu-checkbox <%= "checked" if selected_modules.include?(section[:title]) %>>
                       <strong><%= section[:title] %></strong>
                     </label>
                   </td>
@@ -781,7 +781,7 @@
                       <% section[:links].each do |link| %>
                         <% label = link.first %>
                         <label class="access-check">
-                          <input type="checkbox" name="module_record[sub_module_names][]" value="<%= label %>" <%= "checked" if selected_submodules.include?(label) %>>
+                          <input type="checkbox" name="module_record[sub_module_names][]" value="<%= label %>" data-access-submenu-checkbox <%= "checked" if selected_submodules.include?(label) %>>
                           <%= label %>
                         </label>
                       <% end %>
@@ -1504,13 +1504,16 @@
   <div class="module-grid">
     <% location_fields = ["State", "District", "Block", "Gram Panchayat", "Village"] %>
     <% has_location_fields = (@module[:fields] & location_fields).any? %>
-    <section class="module-card" id="module-form" <% if ["role-management", "role-name", "user-management-role", "person-type"].include?(@slug) %>data-user-role-form data-role-map="<%= json_escape(role_management_mappings.to_json) %>"<% end %> <% if @slug == "parent-office-add" %>data-parent-office-form data-parent-office-map="<%= json_escape(parent_office_mappings.to_json) %>"<% end %> <% if has_location_fields %>data-location-form data-location-map="<%= json_escape(location_hierarchy_mappings.to_json) %>"<% end %> <% if @slug == "training-form" %>data-training-target-form data-training-target-map="<%= json_escape(training_target_mappings.to_json) %>" data-training-month-options="<%= json_escape(training_target_month_options.to_json) %>"<% end %>>
+    <section class="module-card" id="module-form" <% if ["role-management", "role-name", "user-management-role", "person-type"].include?(@slug) %>data-user-role-form data-role-map="<%= json_escape(role_management_mappings.to_json) %>"<% end %> <% if @slug == "parent-office-add" %>data-parent-office-form data-parent-office-map="<%= json_escape(parent_office_mappings.to_json) %>"<% end %> <% if has_location_fields %>data-location-form data-location-map="<%= json_escape(location_hierarchy_mappings.to_json) %>"<% end %> <% if @slug == "training-form" %>data-training-target-form data-training-target-map="<%= json_escape(training_target_mappings.to_json) %>" data-training-activity-map="<%= json_escape(training_activity_setup_mappings.to_json) %>" data-training-month-options="<%= json_escape(training_target_month_options.to_json) %>"<% end %>>
       <div class="module-card-header">
         <h2><%= @slug == "new-user" ? "Registration" : (@record.present? ? "Edit Record" : "Fields") %></h2>
       </div>
       <% form_url = @record.present? ? module_record_path(@slug, @record) : records_module_path(@slug) %>
       <% form_method = @record.present? ? :patch : :post %>
       <%= form_with url: form_url, method: form_method, html: { class: "module-entry-form", multipart: true } do %>
+        <% if @slug == "training-form" %>
+          <input type="hidden" name="module_record[main_activity_type]" value="Training" data-training-main-activity-type>
+        <% end %>
         <% selected_training_farmer_ids = Array(@record&.data&.[]("selected_farmer_ids")).map(&:to_s) if @slug == "training-form" %>
         <div class="module-form-grid <%= "user-registration-grid" if @slug == "new-user" || (@slug == "all-user" && @record.present?) %>">
           <% @module[:fields].each do |field| %>
@@ -1519,6 +1522,9 @@
             <% field_value = module_record_field_value(@record, field).to_s if @record.present? && field_value.blank? %>
             <% field_value = @record&.data&.[]("role_name").to_s if field == "Role" && field_value.blank? %>
             <% field_value = (@record&.data&.[]("category_name").presence || @record&.data&.[]("office")).to_s if field == "Office Name" && field_value.blank? %>
+            <% field_value = "Training" if @slug == "add-activity-group" && field == "Main Activity Type" && field_value.blank? %>
+            <% field_value = "Training" if @slug == "training-form" && field == "Main Activity Type" && field_value.blank? %>
+            <% field_value = "Auto Fill" if @slug == "add-activity-group" && field == "Achievement Fill" && field_value.blank? %>
             <% if @slug == "parent-office-add" && field == "Parent Office Type" && field_value.blank? %>
               <% field_value = @record&.data&.[]("parent_office").present? ? "Sub Parent Office" : "Parent Office" if @record.present? %>
             <% end %>
@@ -1572,6 +1578,8 @@
                     "data-training-target-ics data-selected-value=\"#{ERB::Util.html_escape(field_value)}\""
                   when "Gram Name"
                     "data-training-target-village data-selected-value=\"#{ERB::Util.html_escape(field_value)}\""
+                  when "Main Activity Type"
+                    "data-training-main-activity-type data-selected-value=\"#{ERB::Util.html_escape(field_value)}\""
                   when "Main Activity"
                     "data-training-main-activity data-selected-value=\"#{ERB::Util.html_escape(field_value)}\""
                   when "Sub Activity"

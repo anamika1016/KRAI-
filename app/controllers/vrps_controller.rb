@@ -25,6 +25,8 @@ class VrpsController < ApplicationController
         address: vrp.address,
         mobile_no: vrp.mobile_no,
         email: vrp.email,
+        fcoc: vrp.fcoc,
+        to_name: vrp.to_name,
         registered_by: registered_by_name(vrp),
         status_label: vrp_status_label(vrp)
       }

@@ -335,15 +335,30 @@ document.addEventListener("turbo:load", () => {
 
   const vrpSendButton = document.querySelector("[data-vrp-send-selected]");
   if (vrpSendButton) {
-    vrpSendButton.addEventListener("click", () => {
+    vrpSendButton.addEventListener("click", async () => {
       const selected = Array.from(document.querySelectorAll("[data-vrp-row-select]:checked"));
 
-      if (selected.length !== 1) {
-        window.alert(replaceVrpUiText("Please select one VRP only"));
+      if (selected.length === 0) {
+        window.alert(replaceVrpUiText("Please select at least one VRP"));
         return;
       }
 
-      submitPatch(`/vrps/${selected[0].value}/send_for_approval`);
+      const responses = await Promise.all(selected.map((checkbox) => {
+        return fetch(`/vrps/${checkbox.value}/send_for_approval`, {
+          method: "PATCH",
+          headers: {
+            "X-CSRF-Token": csrfToken,
+            "Accept": "text/vnd.turbo-stream.html, text/html, application/xhtml+xml"
+          }
+        });
+      }));
+
+      if (responses.some((response) => !response.ok)) {
+        window.alert(replaceVrpUiText("Some selected VRP record(s) could not be sent for approval."));
+        return;
+      }
+
+      window.location.reload();
     });
   }
 
@@ -384,6 +399,31 @@ document.addEventListener("turbo:load", () => {
       });
     });
   }
+
+  document.querySelectorAll("[data-access-control-row]").forEach((row) => {
+    const menuCheckbox = row.querySelector("[data-access-menu-checkbox]");
+    const submenuCheckboxes = Array.from(row.querySelectorAll("[data-access-submenu-checkbox]"));
+    if (!menuCheckbox || submenuCheckboxes.length === 0) return;
+
+    const syncMenuCheckbox = () => {
+      const checkedCount = submenuCheckboxes.filter((checkbox) => checkbox.checked).length;
+      menuCheckbox.checked = checkedCount === submenuCheckboxes.length;
+      menuCheckbox.indeterminate = checkedCount > 0 && checkedCount < submenuCheckboxes.length;
+    };
+
+    menuCheckbox.addEventListener("change", () => {
+      submenuCheckboxes.forEach((checkbox) => {
+        checkbox.checked = menuCheckbox.checked;
+      });
+      menuCheckbox.indeterminate = false;
+    });
+
+    submenuCheckboxes.forEach((checkbox) => {
+      checkbox.addEventListener("change", syncMenuCheckbox);
+    });
+
+    syncMenuCheckbox();
+  });
 
   const moduleRowPaths = (checkbox) => {
     if (!checkbox.dataset.moduleRowPaths) return [checkbox.value];
@@ -1315,11 +1355,17 @@ document.addEventListener("turbo:load", () => {
 
   document.querySelectorAll("[data-training-target-form]").forEach((formShell) => {
     let mappings = [];
+    let activityMappings = [];
     let monthOptions = [];
     try {
       mappings = JSON.parse(formShell.dataset.trainingTargetMap || "[]");
     } catch (_error) {
       mappings = [];
+    }
+    try {
+      activityMappings = JSON.parse(formShell.dataset.trainingActivityMap || "[]");
+    } catch (_error) {
+      activityMappings = [];
     }
     try {
       monthOptions = JSON.parse(formShell.dataset.trainingMonthOptions || "[]");
@@ -1330,6 +1376,7 @@ document.addEventListener("turbo:load", () => {
 	    const monthSelect = formShell.querySelector("[data-training-target-month]");
 	    const icsSelect = formShell.querySelector("[data-training-target-ics]");
 	    const villageSelect = formShell.querySelector("[data-training-target-village]");
+	    const mainActivityTypeSelect = formShell.querySelector("[data-training-main-activity-type]");
 	    const mainActivitySelect = formShell.querySelector("[data-training-main-activity]");
 	    const subActivitySelect = formShell.querySelector("[data-training-sub-activity]");
 	    const farmerPanel = formShell.querySelector("[data-training-farmer-panel]");
@@ -1349,6 +1396,11 @@ document.addEventListener("turbo:load", () => {
 	      .replaceAll(">", "&gt;")
 	      .replaceAll('"', "&quot;")
 	      .replaceAll("'", "&#039;");
+
+    const selectedTrainingActivityType = () => normalizeOption(mainActivityTypeSelect?.value || "Training");
+    const trainingActivityTypeMatches = (mapping) => {
+      return normalizeOption(mapping.main_activity_type || "Training") === selectedTrainingActivityType();
+    };
 
     const selectOption = (select, option, selected) => {
       const value = optionValue(option);
@@ -1386,6 +1438,7 @@ document.addEventListener("turbo:load", () => {
       const selectedMonth = normalizeOption(monthSelect?.value);
       const selectedIcs = normalizeOption(icsSelect.value);
       const selectedVillage = normalizeOption(villageSelect.value);
+      const selectedMainActivityType = selectedTrainingActivityType();
       const selectedMainActivity = includeMainActivity ? normalizeOption(mainActivitySelect?.value) : "";
       const selectedSubActivity = includeSubActivity ? normalizeOption(subActivitySelect?.value) : "";
 
@@ -1398,9 +1451,10 @@ document.addEventListener("turbo:load", () => {
         const monthMatches = !selectedMonth || normalizeOption(mapping.month) === selectedMonth;
         const icsMatches = !selectedIcs || normalizeOption(mapping.ics) === selectedIcs;
         const villageMatches = !selectedVillage || normalizeOption(mapping.village) === selectedVillage;
+        const mainActivityTypeMatches = normalizeOption(mapping.main_activity_type || "Training") === selectedMainActivityType;
         const mainActivityMatches = !selectedMainActivity || normalizeOption(mapping.main_activity) === selectedMainActivity;
         const subActivityMatches = !selectedSubActivity || normalizeOption(mapping.sub_activity) === selectedSubActivity;
-        return monthMatches && icsMatches && villageMatches && mainActivityMatches && subActivityMatches;
+        return monthMatches && icsMatches && villageMatches && mainActivityTypeMatches && mainActivityMatches && subActivityMatches;
       });
     };
 
@@ -1409,10 +1463,27 @@ document.addEventListener("turbo:load", () => {
     ).map(optionValue);
     const mappedIcsOptions = () => uniqueOptions(targetRowsForSelection({ requireMonth: true }).map((mapping) => makeOption(mapping.ics, mapping.ics))).map(optionValue);
     const mappedMainActivityOptions = () => uniqueOptions(
-      targetRowsForSelection({ requireMonth: true, includeMainActivity: false, includeSubActivity: false }).map((mapping) => makeOption(mapping.main_activity, mapping.main_activity))
+      activityMappings
+        .filter(trainingActivityTypeMatches)
+        .map((mapping) => makeOption(mapping.main_activity, mapping.main_activity))
+        .concat(
+          mappings
+            .filter(trainingActivityTypeMatches)
+            .map((mapping) => makeOption(mapping.main_activity, mapping.main_activity))
+        )
     ).map(optionValue);
     const mappedSubActivityOptions = () => uniqueOptions(
-      targetRowsForSelection({ requireMonth: true, requireMainActivity: true, includeSubActivity: false }).map((mapping) => makeOption(mapping.sub_activity, mapping.sub_activity))
+      activityMappings
+        .filter(trainingActivityTypeMatches)
+        .filter((mapping) => !mainActivitySelect?.value || normalizeOption(mapping.main_activity) === normalizeOption(mainActivitySelect.value))
+        .flatMap((mapping) => mapping.sub_activities || [])
+        .map((subActivity) => makeOption(subActivity, subActivity))
+        .concat(
+          mappings
+            .filter(trainingActivityTypeMatches)
+            .filter((mapping) => !mainActivitySelect?.value || normalizeOption(mapping.main_activity) === normalizeOption(mainActivitySelect.value))
+            .map((mapping) => makeOption(mapping.sub_activity, mapping.sub_activity))
+        )
     ).map(optionValue);
 	    const mappedVillageOptions = () => {
 	      const rows = targetRowsForSelection({ requireMonth: true });
@@ -1477,6 +1548,13 @@ document.addEventListener("turbo:load", () => {
 	        updateFarmerCount();
 	        return;
 	      }
+
+      if (mainActivityTypeSelect && !mainActivityTypeSelect.value) {
+        farmerList.textContent = "Select Main Activity Type to load target farmers.";
+        if (farmerSelectAll) farmerSelectAll.checked = false;
+        updateFarmerCount();
+        return;
+      }
 
       if (!mainActivitySelect?.value) {
         farmerList.textContent = "Select Main Activity to load target farmers.";
@@ -1601,6 +1679,16 @@ document.addEventListener("turbo:load", () => {
 	      renderTrainingFarmers();
 	    });
 	    villageSelect.addEventListener("change", () => {
+	      if (mainActivitySelect) mainActivitySelect.dataset.selectedValue = "";
+	      if (subActivitySelect) subActivitySelect.dataset.selectedValue = "";
+	      if (mainActivitySelect) mainActivitySelect.value = "";
+	      if (subActivitySelect) subActivitySelect.value = "";
+	      if (mainActivitySelect) fillTrainingSelect(mainActivitySelect, mappedMainActivityOptions(), "Select Main Activity");
+	      if (subActivitySelect) fillTrainingSelect(subActivitySelect, mappedSubActivityOptions(), "Select Sub Activity");
+	      selectedFarmerIds.clear();
+	      renderTrainingFarmers();
+	    });
+	    mainActivityTypeSelect?.addEventListener("change", () => {
 	      if (mainActivitySelect) mainActivitySelect.dataset.selectedValue = "";
 	      if (subActivitySelect) subActivitySelect.dataset.selectedValue = "";
 	      if (mainActivitySelect) mainActivitySelect.value = "";
@@ -1892,6 +1980,7 @@ document.addEventListener("turbo:load", () => {
         option.selected = targetOptionMatches(option.value, selected);
         select.appendChild(option);
       });
+
       select.disabled = options.length === 0;
     };
 
@@ -2747,7 +2836,7 @@ document.addEventListener("turbo:load", () => {
       achievementSummary = {};
     }
 
-    const escapeHtml = (value) => String(value || "")
+    const escapeHtml = (value) => String(value ?? "")
       .replaceAll("&", "&amp;")
       .replaceAll("<", "&lt;")
       .replaceAll(">", "&gt;")
@@ -2757,6 +2846,12 @@ document.addEventListener("turbo:load", () => {
     const numberValue = (value) => Number(String(value || "0").replaceAll(",", "")) || 0;
     const savedItemFor = (row) => savedItems.find((item) => String(item.target_mapping_id || "") === String(row.target_mapping_id || "")) || {};
     const rowInputs = () => Array.from(rowsBody?.querySelectorAll("tr[data-bill-row]") || []);
+    const normalizedChoice = (value) => String(value || "").trim().toLowerCase().replaceAll(" ", "_");
+    const rowAchievementMode = (row) => normalizedChoice(row.achievement_entry_mode) === "self" ? "self" : "auto_fill";
+    const rowMainActivityType = (row) => normalizedChoice(row.main_activity_type) === "other" ? "other" : "training";
+    const automaticAchievementFor = (row, mainActivityType = rowMainActivityType(row)) => {
+      return mainActivityType === "other" ? (row.other_activity_count ?? 0) : (row.achievement_count ?? 0);
+    };
     const selectedAchievementTotal = () => {
       const selectedVrp = String(vrpSelect?.value || "");
       if (!selectedVrp) return null;
@@ -2806,22 +2901,35 @@ document.addEventListener("turbo:load", () => {
       let totalTarget = 0;
       let totalAchievement = 0;
       let grandTotal = 0;
-
       rowInputs().forEach((row) => {
         const target = numberValue(row.dataset.targetQuantity);
-        const achievement = numberValue(row.dataset.achievementCount);
+        const assigned = numberValue(row.dataset.assignedCount);
+        const achievementInput = row.querySelector("[data-jeevika-achievement]");
+        const manualAchievement = row.dataset.achievementEntryMode === "self";
+        const achievement = manualAchievement ? numberValue(achievementInput?.value) : numberValue(row.dataset.achievementCount);
+        const pending = Math.max(assigned - achievement, 0);
         const rate = numberValue(row.querySelector("[data-jeevika-rate]")?.value);
         const amount = achievement * rate;
         const amountInput = row.querySelector("[data-jeevika-amount]");
+        const achievementDisplay = row.querySelector("[data-jeevika-achievement-display]");
+        const pendingDisplay = row.querySelector("[data-jeevika-pending-display]");
+        const pendingInput = row.querySelector("[data-jeevika-pending-input]");
+        const farmerSummaryCount = row.nextElementSibling?.querySelector("[data-jeevika-farmer-achievement]");
 
         totalTarget += target;
         totalAchievement += achievement;
         grandTotal += amount;
+        row.dataset.currentAchievement = String(achievement);
+        if (achievementDisplay) achievementDisplay.textContent = String(achievement);
+        if (pendingDisplay) pendingDisplay.textContent = String(pending);
+        if (pendingInput) pendingInput.value = String(pending);
+        if (farmerSummaryCount) farmerSummaryCount.textContent = String(achievement);
         if (amountInput) amountInput.value = amount.toFixed(2);
       });
 
       if (totalTargetInput) totalTargetInput.value = String(totalTarget);
-      const summaryAchievement = selectedAchievementTotal();
+      const currentRows = rowInputs();
+      const summaryAchievement = currentRows.length && currentRows.every((row) => row.dataset.mainActivityType === "training" && row.dataset.achievementEntryMode !== "self") ? selectedAchievementTotal() : null;
       if (summaryAchievement !== null) totalAchievement = summaryAchievement;
       if (totalAchievementInput) totalAchievementInput.value = String(totalAchievement);
       if (grandTotalInput) grandTotalInput.value = grandTotal.toFixed(2);
@@ -2850,9 +2958,16 @@ document.addEventListener("turbo:load", () => {
         const rate = savedItem.rate || "0.00";
         const farmerDetails = JSON.stringify(row.farmer_details || []);
         const inputPrefix = `module_record[bill_items][${index}]`;
+        const mainActivityType = rowMainActivityType(row);
+        const achievementEntryMode = rowAchievementMode(row);
+        const manualAchievement = achievementEntryMode === "self";
+        const autoAchievementCount = automaticAchievementFor(row, mainActivityType);
+        const achievementCount = manualAchievement ? (savedItem.achievement_count ?? autoAchievementCount) : autoAchievementCount;
+        const assignedCount = row.assigned_count ?? 0;
+        const pendingCount = Math.max(numberValue(assignedCount) - numberValue(achievementCount), 0);
 
         return `
-          <tr data-bill-row data-target-quantity="${escapeHtml(row.target_quantity)}" data-achievement-count="${escapeHtml(row.achievement_count)}">
+          <tr data-bill-row data-row-index="${index}" data-target-quantity="${escapeHtml(row.target_quantity)}" data-assigned-count="${escapeHtml(assignedCount)}" data-achievement-count="${escapeHtml(autoAchievementCount)}" data-current-achievement="${escapeHtml(achievementCount)}" data-main-activity-type="${escapeHtml(mainActivityType)}" data-achievement-entry-mode="${escapeHtml(achievementEntryMode)}">
             <td>
               ${hiddenInput(`${inputPrefix}[target_mapping_id]`, row.target_mapping_id)}
               ${hiddenInput(`${inputPrefix}[vrp_id]`, row.vrp_id)}
@@ -2863,10 +2978,12 @@ document.addEventListener("turbo:load", () => {
               ${hiddenInput(`${inputPrefix}[village]`, row.village)}
               ${hiddenInput(`${inputPrefix}[main_activity]`, row.main_activity)}
               ${hiddenInput(`${inputPrefix}[activity]`, row.activity)}
+              ${hiddenInput(`${inputPrefix}[main_activity_type]`, row.main_activity_type || mainActivityType)}
+              ${hiddenInput(`${inputPrefix}[achievement_entry_mode]`, row.achievement_entry_mode || achievementEntryMode)}
               ${hiddenInput(`${inputPrefix}[target_quantity]`, row.target_quantity)}
-              ${hiddenInput(`${inputPrefix}[assigned_count]`, row.assigned_count)}
-              ${hiddenInput(`${inputPrefix}[achievement_count]`, row.achievement_count)}
-              ${hiddenInput(`${inputPrefix}[pending_count]`, row.pending_count)}
+              ${hiddenInput(`${inputPrefix}[assigned_count]`, assignedCount)}
+              ${manualAchievement ? "" : hiddenInput(`${inputPrefix}[achievement_count]`, achievementCount)}
+              <input type="hidden" name="${inputPrefix}[pending_count]" value="${escapeHtml(pendingCount)}" data-jeevika-pending-input>
               ${hiddenInput(`${inputPrefix}[same_activity_count]`, row.same_activity_count)}
               ${hiddenInput(`${inputPrefix}[other_activity_count]`, row.other_activity_count)}
               ${hiddenInput(`${inputPrefix}[timesheet_dates]`, row.timesheet_dates)}
@@ -2877,15 +2994,19 @@ document.addEventListener("turbo:load", () => {
             <td>${escapeHtml(row.main_activity || "-")}</td>
             <td>${escapeHtml(row.activity || "-")}</td>
             <td>${escapeHtml(row.target_quantity || 0)}</td>
-            <td>${escapeHtml(row.achievement_count || 0)}</td>
-            <td>${escapeHtml(row.pending_count || 0)}</td>
+            <td>
+              ${manualAchievement
+                ? `<input type="number" min="0" step="1" name="${inputPrefix}[achievement_count]" value="${escapeHtml(achievementCount)}" data-jeevika-achievement>`
+                : `<span data-jeevika-achievement-display>${escapeHtml(achievementCount)}</span>`}
+            </td>
+            <td><span data-jeevika-pending-display>${escapeHtml(pendingCount)}</span></td>
             <td><input type="number" min="0" step="0.01" name="${inputPrefix}[rate]" value="${escapeHtml(rate)}" data-jeevika-rate></td>
             <td><input type="number" min="0" step="0.01" name="${inputPrefix}[amount]" value="${escapeHtml(savedItem.amount || "0.00")}" data-jeevika-amount readonly></td>
           </tr>
           <tr class="jeevika-farmer-row">
             <td colspan="9">
               <details class="jeevika-farmer-details">
-                <summary>Farmer List ${escapeHtml(row.achievement_count || 0)} / ${escapeHtml(row.assigned_count || 0)}</summary>
+                <summary data-jeevika-farmer-summary="${index}">Farmer List <span data-jeevika-farmer-achievement>${escapeHtml(achievementCount)}</span> / ${escapeHtml(assignedCount)}</summary>
                 ${farmerDetailsHtml(row.farmer_details || [])}
               </details>
             </td>
@@ -2897,7 +3018,7 @@ document.addEventListener("turbo:load", () => {
     };
 
     rowsBody?.addEventListener("input", (event) => {
-      if (event.target.matches("[data-jeevika-rate]")) recalculateJeevikaBill();
+      if (event.target.matches("[data-jeevika-rate], [data-jeevika-achievement]")) recalculateJeevikaBill();
     });
     billForm.querySelector("form")?.addEventListener("submit", (event) => {
       if (rowInputs().length > 0) return;

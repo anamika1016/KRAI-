@@ -6,7 +6,7 @@ class ModulesController < ApplicationController
   helper_method :module_field_options, :module_select_field?, :static_field_options, :role_management_mappings,
                 :access_control_role_mappings, :access_control_field_options,
                 :location_hierarchy_mappings, :office_category_mappings, :training_target_mappings,
-                :training_target_month_options,
+                :training_activity_setup_mappings, :training_target_month_options,
                 :training_activity_mappings, :approval_user_mappings, :approval_user_options,
                 :parent_office_mappings, :user_hierarchy_list_rows, :jeevika_jankar_cluster_rows,
                 :jeevika_bill_status_label, :jeevika_bill_status_class, :jeevika_bill_rows,
@@ -191,13 +191,13 @@ class ModulesController < ApplicationController
       title: "Main Activity",
       group: "Activity Setup",
       purpose: "Main activity add karne ke liye.",
-      fields: ["Main Activity Name", "Status"]
+      fields: ["Main Activity Name", "Main Activity Type", "Achievement Fill", "Status"]
     },
     "activity-group-list" => {
       title: "Main Activity List",
       group: "Activity Setup",
       purpose: "Saved main activities dekhne ke liye.",
-      fields: ["Main Activity Name", "Status"]
+      fields: ["Main Activity Name", "Main Activity Type", "Achievement Fill", "Status"]
     },
     "add-vrp-activity" => {
       title: "Sub Activity",
@@ -2506,8 +2506,13 @@ class ModulesController < ApplicationController
     targets = targets.order(:month_name, :vrp_id, :village_name, :main_activity_name, :activity_name, :id)
     farmers_by_id = jeevika_jankar_farmers_by_id(targets)
     training_index = jeevika_jankar_training_index(targets)
+    activity_settings = jeevika_jankar_main_activity_settings
+    sub_activity_settings = jeevika_jankar_sub_activity_settings(activity_settings)
 
     targets.map do |target|
+      activity_setting = jeevika_jankar_activity_setting_for(target, activity_settings, sub_activity_settings)
+      main_activity_type = activity_setting&.dig(:main_activity_type).presence || "Training"
+      achievement_entry_mode = activity_setting&.dig(:achievement_entry_mode).presence || "Auto Fill"
       farmer_ids = Array(target.afl_ids).map(&:to_s).reject(&:blank?).uniq
       target_quantity = target.target_quantity.to_f
       assigned_count = farmer_ids.any? ? farmer_ids.size : target.farmer_count.to_i
@@ -2545,10 +2550,12 @@ class ModulesController < ApplicationController
         ics: target.ics_name.presence || target.ics_id,
         village: target.village_name.presence || target.village_id,
         main_activity: target.main_activity_name,
+        main_activity_type: main_activity_type,
         activity: target.activity_name,
         target_quantity: target_quantity,
         assigned_count: assigned_count,
         achievement_count: achievement_count,
+        achievement_entry_mode: achievement_entry_mode,
         same_activity_count: same_count,
         other_activity_count: other_count,
         pending_count: [assigned_count - achievement_count, 0].max,
@@ -2556,6 +2563,68 @@ class ModulesController < ApplicationController
         farmer_details: farmer_rows
       }
     end
+  end
+
+  def jeevika_jankar_main_activity_settings
+    return {} unless model_ready?(:ModuleRecord)
+
+    ModuleRecord
+      .where(module_slug: "add-activity-group")
+      .order(created_at: :desc)
+      .select { |record| active_module_record?(record) }
+      .each_with_object({}) do |record, settings|
+        name = normalize_dashboard_text(record.data["main_activity_name"].presence || record.data["activity_group_name"])
+        next if name.blank? || settings.key?(name)
+
+        settings[name] = {
+          main_activity_name: record.data["main_activity_name"].presence || record.data["activity_group_name"],
+          main_activity_type: record.data["main_activity_type"].presence || "Training",
+          achievement_entry_mode: record.data["achievement_fill"].presence || record.data["achievement_entry_mode"].presence || "Auto Fill"
+        }
+      end
+  end
+
+  def training_setup_sub_activities_by_main
+    return {} unless model_ready?(:ModuleRecord)
+
+    ModuleRecord
+      .where(module_slug: "add-vrp-activity")
+      .order(created_at: :desc)
+      .select { |record| active_module_record?(record) }
+      .each_with_object(Hash.new { |hash, key| hash[key] = [] }) do |record, result|
+        main_activity = first_present_data(record, "main_activity", "activity_group", "activity_group_name", "group_name").to_s.strip
+        sub_activity = first_present_data(record, "sub_activity_name", "activity_name", "vrp_activity_name", "activity").to_s.strip
+        next if main_activity.blank? || sub_activity.blank?
+
+        result[normalize_dashboard_text(main_activity)] |= [sub_activity]
+      end
+  end
+
+  def jeevika_jankar_sub_activity_settings(activity_settings)
+    return {} unless model_ready?(:ModuleRecord)
+
+    ModuleRecord
+      .where(module_slug: "add-vrp-activity")
+      .order(created_at: :desc)
+      .select { |record| active_module_record?(record) }
+      .each_with_object({}) do |record, settings|
+        main_activity_key = normalize_dashboard_text(first_present_data(record, "main_activity", "activity_group", "activity_group_name", "group_name"))
+        sub_activity_key = normalize_dashboard_text(first_present_data(record, "sub_activity_name", "activity_name", "vrp_activity_name", "activity"))
+        next if main_activity_key.blank? || sub_activity_key.blank? || settings.key?(sub_activity_key)
+
+        main_setting = activity_settings[main_activity_key]
+        settings[sub_activity_key] = main_setting if main_setting.present?
+      end
+  end
+
+  def jeevika_jankar_activity_setting_for(target, activity_settings, sub_activity_settings)
+    main_key = normalize_dashboard_text(target.main_activity_name)
+    sub_key = normalize_dashboard_text(target.activity_name)
+
+    activity_settings[main_key] ||
+      activity_settings[sub_key] ||
+      sub_activity_settings[sub_key] ||
+      sub_activity_settings[main_key]
   end
 
   def jeevika_jankar_farmers_by_id(targets)
@@ -2849,11 +2918,13 @@ class ModulesController < ApplicationController
       item["achievement_count"] = numeric_string(item["achievement_count"])
       item["target_quantity"] = numeric_string(item["target_quantity"])
       item["assigned_count"] = numeric_string(item["assigned_count"])
-      item["pending_count"] = numeric_string(item["pending_count"])
       item["same_activity_count"] = numeric_string(item["same_activity_count"])
       item["other_activity_count"] = numeric_string(item["other_activity_count"])
+      item["main_activity_type"] = item["main_activity_type"].presence || data["main_activity_type"].presence || "Training"
+      item["achievement_entry_mode"] = item["achievement_entry_mode"].presence || data["achievement_entry_mode"].presence || "Auto Fill"
+      item["pending_count"] = dashboard_quantity([item["assigned_count"].to_f - item["achievement_count"].to_f, 0].max)
       item["rate"] = decimal_string(item["rate"])
-      item["amount"] = decimal_string(item["amount"])
+      item["amount"] = decimal_string(item["achievement_count"].to_f * item["rate"].to_f)
       item
     end
 
@@ -2864,6 +2935,8 @@ class ModulesController < ApplicationController
     data["invoice_no"] = data["invoice_no"].presence || generated_jeevika_jankar_invoice_no
     data["invoice_date"] = data["invoice_date"].presence || Date.current.to_s
     data["select_vrp_name"] = jeevika_jankar_vrp_label(data["select_vrp"])
+    data["main_activity_type"] = data["main_activity_type"].presence || "Training"
+    data["achievement_entry_mode"] = data["achievement_entry_mode"].presence || "Auto Fill"
     data["bill_items"] = bill_items
     data["total_target"] = dashboard_quantity(total_target)
     data["total_achievement"] = dashboard_quantity(total_achievement)
@@ -2941,6 +3014,7 @@ class ModulesController < ApplicationController
     trainer_name, trainer_contact = training_trainer_defaults
     data["trainer_name"] = trainer_name if trainer_name.present?
     data["trainer_contact"] = trainer_contact if trainer_contact.present?
+    data["main_activity_type"] = data["main_activity_type"].presence || "Training"
     data["main_activity"] = data["main_activity"].presence || data["training_topic"].presence
     data["sub_activity"] = data["sub_activity"].presence || data["training_subject"].presence
     data["training_topic"] = data["main_activity"] if data["main_activity"].present?
@@ -2968,13 +3042,20 @@ class ModulesController < ApplicationController
     selected_month = normalize_dashboard_text(data["month"])
     selected_ics = normalize_dashboard_text(data["ics_block"])
     selected_village = normalize_dashboard_text(data["gram_name"])
+    selected_main_activity_type = normalize_dashboard_text(data["main_activity_type"])
     selected_main_activity = normalize_dashboard_text(data["main_activity"])
     selected_sub_activity = normalize_dashboard_text(data["sub_activity"])
+    activity_settings = jeevika_jankar_main_activity_settings
 
     training_target_scope.each_with_object([]) do |target, ids|
+      activity_setting = activity_settings[normalize_dashboard_text(target.main_activity_name)]
+      next if activity_setting.blank? || !training_main_activity_type?(activity_setting[:main_activity_type])
+
+      target_main_activity_type = normalize_dashboard_text(activity_setting[:main_activity_type].presence || "Training")
       next if normalize_dashboard_text(target.month_name) != selected_month
       next if selected_ics.present? && normalize_dashboard_text(target.ics_name.presence || target.ics_id) != selected_ics
       next if normalize_dashboard_text(target.village_name.presence || target.village_id) != selected_village
+      next if selected_main_activity_type.present? && target_main_activity_type != selected_main_activity_type
       next if normalize_dashboard_text(target.main_activity_name) != selected_main_activity
       next if normalize_dashboard_text(target.activity_name) != selected_sub_activity
 
@@ -3351,18 +3432,40 @@ class ModulesController < ApplicationController
       .uniq
   end
 
+  def training_activity_setup_mappings
+    activity_settings = jeevika_jankar_main_activity_settings
+    sub_activities_by_main = training_setup_sub_activities_by_main
+
+    activity_settings.filter_map do |normalized_name, setting|
+      next unless training_main_activity_type?(setting[:main_activity_type])
+
+      main_activity = setting[:main_activity_name].presence || normalized_name
+      {
+        main_activity: main_activity,
+        main_activity_type: "Training",
+        sub_activities: sub_activities_by_main[normalized_name] || []
+      }
+    end
+  end
+
   def training_target_mappings
     return [] unless model_ready?(:TargetMapping)
 
+    activity_settings = jeevika_jankar_main_activity_settings
+
     training_target_scope
       .order(:ics_name, :ics_id, :village_name, :village_id, :id)
-      .map do |target|
+      .filter_map do |target|
+        activity_setting = activity_settings[normalize_dashboard_text(target.main_activity_name)]
+        next if activity_setting.blank? || !training_main_activity_type?(activity_setting[:main_activity_type])
+
         farmer_ids = Array(target.afl_ids).map(&:to_s).reject(&:blank?).uniq
         {
           target_mapping_id: target.id.to_s,
           month: target.month_name.to_s.strip,
           ics: target.ics_name.presence || target.ics_id,
           village: target.village_name.presence || target.village_id,
+          main_activity_type: "Training",
           main_activity: target.main_activity_name.to_s.strip,
           sub_activity: target.activity_name.to_s.strip,
           completed_farmer_ids: completed_training_farmer_ids_for(target, farmer_ids),
@@ -3371,6 +3474,10 @@ class ModulesController < ApplicationController
       end
       .reject { |mapping| mapping[:ics].blank? && mapping[:village].blank? }
       .uniq
+  end
+
+  def training_main_activity_type?(value)
+    normalize_dashboard_text(value.presence || "Training") == normalize_dashboard_text("Training")
   end
 
   def training_target_month_options
@@ -3773,6 +3880,8 @@ class ModulesController < ApplicationController
       "Can Edit" => ["Yes", "No"],
       "Can Delete" => ["Yes", "No"],
       "Select Mandatory" => ["Yes", "No"],
+      "Main Activity Type" => ["Training", "Other"],
+      "Achievement Fill" => ["Auto Fill", "Self"],
       "Office Level" => ["State", "District", "Block", "Gram Panchayat", "Village"],
       "Parent Office Type" => ["Parent Office", "Sub Parent Office"],
       "Module Name" => ["Jeevika Jankar Registration", "Jeevika Jankar Bill"],

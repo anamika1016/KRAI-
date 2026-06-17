@@ -53,6 +53,8 @@
               <th>Address</th>
               <th>Mobile No</th>
               <th>Email</th>
+              <th>FCO Name</th>
+              <th>TO Name</th>
               <th>Registered By</th>
             </tr>
           </thead>
@@ -82,12 +84,14 @@
                   <td><%= vrp[:address] %></td>
                   <td><%= vrp[:mobile_no] %></td>
                   <td><%= vrp[:email] %></td>
+                  <td><%= vrp[:fcoc].presence || "-" %></td>
+                  <td><%= vrp[:to_name].presence || "-" %></td>
                   <td><%= vrp[:registered_by] %></td>
                 </tr>
               <% end %>
             <% else %>
               <tr>
-                <td colspan="18">No VRP records saved yet.</td>
+                <td colspan="20">No VRP records saved yet.</td>
               </tr>
             <% end %>
           </tbody>

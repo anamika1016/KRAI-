@@ -239,28 +239,18 @@ class SessionsController < ApplicationController
     password = params[:password].to_s
     return if login.blank? || password.blank?
     login_key = login.to_s.strip.downcase
+    raw_login = login.to_s.strip
 
-    if "User".safe_constantize&.table_exists?
-      user = User.where.not(status: "Inactive")
-        .where(
-          "LOWER(user_name) = :login OR LOWER(email) = :login OR mobile_no = :raw_login",
-          login: login_key,
-          raw_login: login.to_s.strip
-        )
-        .find_by(password: password)
-      return user if user
+    user = find_model_user_by_login(User, login_key, raw_login, password) do |scope|
+      User.column_names.include?("status") ? scope.where.not(status: "Inactive") : scope
     end
+    return user if user
 
-    if "Vrp".safe_constantize&.table_exists? && Vrp.column_names.include?("user_name") && Vrp.column_names.include?("password")
-      vrp = Vrp.where(is_active: true, is_deleted: false)
-        .where(
-          "LOWER(user_name) = :login OR LOWER(email) = :login OR mobile_no = :raw_login",
-          login: login_key,
-          raw_login: login.to_s.strip
-        )
-        .find_by(password: password)
-      return vrp if vrp
+    vrp = find_model_user_by_login(Vrp, login_key, raw_login, password) do |scope|
+      scope = Vrp.column_names.include?("is_active") ? scope.where(is_active: true) : scope
+      Vrp.column_names.include?("is_deleted") ? scope.where(is_deleted: false) : scope
     end
+    return vrp if vrp
 
     return unless defined?(ModuleRecord) && ModuleRecord.table_exists?
 
@@ -273,6 +263,25 @@ class SessionsController < ApplicationController
       )
       .where("COALESCE(data->>'password', '') = ?", password)
       .first
+  end
+
+  def find_model_user_by_login(model_class, login_key, raw_login, password)
+    return unless model_class&.table_exists?
+    return unless model_class.column_names.include?("password")
+
+    match_clauses = []
+    match_clauses << "LOWER(user_name) = :login" if model_class.column_names.include?("user_name")
+    match_clauses << "LOWER(email) = :login" if model_class.column_names.include?("email")
+    match_clauses << "mobile_no = :raw_login" if model_class.column_names.include?("mobile_no")
+    return if match_clauses.empty?
+
+    scope = model_class.all
+    scope = yield(scope) if block_given?
+    scope
+      .where(match_clauses.join(" OR "), login: login_key, raw_login: raw_login)
+      .find_by(password: password)
+  rescue ActiveRecord::StatementInvalid
+    nil
   end
 
   def find_password_reset_account(username)

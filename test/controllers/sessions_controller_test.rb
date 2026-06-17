@@ -51,6 +51,17 @@ class SessionsControllerTest < ActionDispatch::IntegrationTest
     assert_redirected_to dashboard_path
   end
 
+  test "invalid credentials redirect back to login with friendly error" do
+    create_vrp(user_name: "wrong_password_vrp", password: "secret", agreement_accepted_at: Time.current)
+
+    post login_path, params: { login: "wrong_password_vrp", password: "bad-secret" }
+
+    assert_redirected_to login_path
+    follow_redirect!
+    assert_response :success
+    assert_includes response.body, "Invalid username or password."
+  end
+
   test "forgot password otp api returns json success" do
     create_vrp(user_name: "otp_vrp", password: "secret", agreement_accepted_at: Time.current)
     sender = Minitest::Mock.new
