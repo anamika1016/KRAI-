@@ -1201,6 +1201,13 @@ document.addEventListener("turbo:load", () => {
     "gram-panchayat": ["state", "district", "block"],
     "village": ["state", "district", "block", "gram-panchayat"]
   };
+  const locationAliasKeys = {
+    state: ["state", "state_id", "state_code"],
+    district: ["district", "district_id", "district_code"],
+    block: ["block", "block_id", "block_code"],
+    gram_panchayat: ["gram_panchayat", "gram_panchayat_id", "gram_panchayat_code", "gp_code", "gram_code", "gp_name", "gram_name"],
+    village: ["village", "village_id", "village_code"]
+  };
 
   const locationSelectedValuesFromDataset = (select) => {
     if (!select) return [];
@@ -1226,6 +1233,10 @@ document.addEventListener("turbo:load", () => {
     return uniquePresent(selectedOptions.flatMap((option) => [option.value, option.textContent]));
   };
 
+  const locationRowValues = (row, key) => {
+    return uniquePresent((locationAliasKeys[key] || [key]).map((alias) => row[alias]));
+  };
+
   const locationRowMatchesParents = (row, selects, level) => {
     const parents = locationParents[level] || [];
     const immediateParent = parents[parents.length - 1];
@@ -1234,15 +1245,19 @@ document.addEventListener("turbo:load", () => {
       if (parentValues.length === 0) return false;
 
       const parentKey = locationKeys[parentLevel];
-      if (!row[parentKey]) return parentLevel !== immediateParent;
+      const rowValues = locationRowValues(row, parentKey);
+      if (rowValues.length === 0) return parentLevel !== immediateParent;
 
-      return parentValues.some((value) => normalizeOption(row[parentKey]) === normalizeOption(value));
+      return parentValues.some((value) => {
+        const normalizedValue = normalizeOption(value);
+        return rowValues.some((rowValue) => normalizeOption(rowValue) === normalizedValue);
+      });
     });
   };
 
   const optionMatchesLocationRow = (option, row, level) => {
     const key = locationKeys[level];
-    return [row.id, row[key]].some((value) => {
+    return [row.id].concat(locationRowValues(row, key)).some((value) => {
       return normalizeOption(value) === normalizeOption(option.value) ||
         normalizeOption(value) === normalizeOption(option.textContent);
     });

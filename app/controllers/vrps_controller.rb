@@ -952,9 +952,9 @@ class VrpsController < ApplicationController
     @state_options = module_record_options("state-master", "state_name")
     @district_options = module_record_options("district-master", "district_name")
     @block_options = module_record_options("block-master", "block_name")
-    @gram_panchayat_options = module_record_options("gram-panchayat-master", ["gram_panchayat_name", "gram_panchayat", "gp_name", "gram_name", "name"])
-    @village_options = module_record_options("village-master", "village_name")
     @location_hierarchy_mappings = location_hierarchy_mappings
+    @gram_panchayat_options = location_gram_panchayat_options
+    @village_options = module_record_options("village-master", "village_name")
   end
 
   def vrp_type_options
@@ -1472,8 +1472,43 @@ class VrpsController < ApplicationController
     row
   end
 
+  def location_gram_panchayat_options
+    return [] unless model_ready?(:ModuleRecord)
+
+    active_records_for_location(["gram-panchayat-master", "lg-directory-list", "village-master"])
+      .filter_map do |record|
+        label = gram_panchayat_name_from_record(record)
+        next if label.blank? || code_like_location_value?(label)
+
+        [label, record.id]
+      end
+      .uniq { |label, _value| label.to_s.downcase }
+      .sort_by { |label, _value| label.to_s.downcase }
+  end
+
   def gram_panchayat_name_from_record(record)
-    first_non_code_data(record, "gram_panchayat_name", "gram_panchayat", "gram_panchayat_id", "gp_name", "gram_name", "name", "gp_code", "gram_code")
+    direct_name = first_non_code_data(record, "gram_panchayat_name", "gram_panchayat", "gp_name", "gram_name", "name")
+    return direct_name if direct_name.present? && !code_like_location_value?(direct_name)
+
+    code = first_present_data(record, "gp_code", "gram_code", "gram_panchayat_code", "gram_panchayat_id", "gram_panchayat", "gram_panchayat_name", "gp_name", "gram_name")
+    return direct_name.presence || code if code.blank?
+
+    gram_panchayat_name_lookup[code.to_s.strip.downcase].presence ||
+      (direct_name.present? && !code_like_location_value?(direct_name) ? direct_name : nil) ||
+      code
+  end
+
+  def gram_panchayat_name_lookup
+    @gram_panchayat_name_lookup ||= active_records_for_location(["gram-panchayat-master", "lg-directory-list", "village-master"])
+      .each_with_object({}) do |record, lookup|
+        label = first_non_code_data(record, "gram_panchayat_name", "gram_panchayat", "gp_name", "gram_name", "name")
+        next if label.blank? || code_like_location_value?(label)
+
+        %w[gp_code gram_code gram_panchayat_code gram_panchayat_id gram_panchayat gram_panchayat_name gp_name gram_name name].each do |key|
+          value = record.data[key].to_s.strip
+          lookup[value.downcase] = label if value.present? && code_like_location_value?(value)
+        end
+      end
   end
 
   def location_name_from_record(record, *keys)
