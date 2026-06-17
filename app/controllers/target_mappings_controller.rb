@@ -44,7 +44,7 @@ class TargetMappingsController < ApplicationController
         vrp_id: params[:vrp_id],
         fco_id: params[:fco_id],
         ics_id: params[:ics_id],
-        village_id: params[:village_id],
+        village_id: target_village_param,
         month_name: params[:month_name],
         main_activity_name: params[:main_activity_name],
         activity_name: params[:activity_name],
@@ -74,6 +74,10 @@ class TargetMappingsController < ApplicationController
       :target_quantity,
       afl_ids: []
     )
+  end
+
+  def target_village_param
+    params[:village_ids].presence || params[:village_id]
   end
 
   def editable_target
@@ -164,7 +168,7 @@ class TargetMappingsController < ApplicationController
 
     invalid_ids = selected_ids - mapped_farmer_ids
     if invalid_ids.any?
-      target_mapping.errors.add(:afl_ids, "include farmers outside selected village")
+      target_mapping.errors.add(:afl_ids, "include farmers outside selected villages")
       return false
     end
 
@@ -211,15 +215,16 @@ class TargetMappingsController < ApplicationController
 
     parsed_fco_id, parsed_fco_name = parse_location_value(fco_id)
     parsed_ics_id, parsed_ics_name = parse_location_value(ics_id)
-    parsed_village_id, parsed_village_name = parse_location_value(village_id)
+    parsed_village_values = parse_location_values(village_id)
+    return [] if parsed_village_values.blank?
 
     afl_scope_for_location(
       parsed_fco_id,
       parsed_ics_id,
-      parsed_village_id,
+      parsed_village_values.map(&:first),
       parsed_fco_name,
       parsed_ics_name,
-      parsed_village_name
+      parsed_village_values.map(&:last)
     )
       .select(:id, :farmer_name, :father_name, :tracenet_no, :mobile_no, :khasara_no)
       .order(:farmer_name, :id)
@@ -242,7 +247,7 @@ class TargetMappingsController < ApplicationController
       vrp_id: target_mapping.vrp_id,
       fco_id: encoded_location_value(target_mapping.fco_id, target_mapping.fco_name),
       ics_id: encoded_location_value(target_mapping.ics_id, target_mapping.ics_name),
-      village_id: encoded_location_value(target_mapping.village_id, target_mapping.village_name),
+      village_id: target_mapping.village_id,
       month_name: target_mapping.month_name,
       main_activity_name: target_mapping.main_activity_name,
       activity_name: target_mapping.activity_name,
@@ -255,14 +260,19 @@ class TargetMappingsController < ApplicationController
 
     parsed_fco_id, parsed_fco_name = parse_location_value(fco_id)
     parsed_ics_id, parsed_ics_name = parse_location_value(ics_id)
-    parsed_village_id, parsed_village_name = parse_location_value(village_id)
+    parsed_village_ids = parse_location_values(village_id).map(&:first)
+    return [] if parsed_village_ids.blank?
 
-    scope = TargetMapping.where(fco_id: parsed_fco_id, ics_id: parsed_ics_id, village_id: parsed_village_id)
+    scope = TargetMapping.where(fco_id: parsed_fco_id, ics_id: parsed_ics_id)
     scope = scope.where("LOWER(TRIM(month_name)) = ?", month_name.to_s.strip.downcase) if month_name.present?
     scope = scope.where("LOWER(TRIM(main_activity_name)) = ?", main_activity_name.to_s.strip.downcase)
     scope = scope.where("LOWER(TRIM(activity_name)) = ?", activity_name.to_s.strip.downcase) if activity_name.present?
     scope = scope.where.not(id: edit_target.id) if edit_target&.persisted?
-    scope.pluck(:afl_ids).flat_map { |ids| normalized_afl_ids(ids) }.uniq
+
+    scope.to_a
+      .select { |mapping| (village_ids_for(mapping) & parsed_village_ids).any? }
+      .flat_map { |mapping| normalized_afl_ids(mapping.afl_ids) }
+      .uniq
   end
 
   def afl_ids_for_location(fco_id, ics_id, village_id, fco_name = nil, ics_name = nil, village_name = nil)
@@ -319,21 +329,30 @@ class TargetMappingsController < ApplicationController
   def normalize_location_values(target_mapping)
     fco_id, fco_name = parse_location_value(target_mapping.fco_id)
     ics_id, ics_name = parse_location_value(target_mapping.ics_id)
-    village_id, village_name = parse_location_value(target_mapping.village_id)
+    village_values = parse_location_values(target_mapping.village_id)
+    village_ids = village_values.map(&:first).reject(&:blank?).uniq
+    village_names = village_values.map(&:last).reject(&:blank?).uniq
 
     target_mapping.fco_id = fco_id
     target_mapping.fco_name = fco_name
     target_mapping.ics_id = ics_id
     target_mapping.ics_name = ics_name
-    target_mapping.village_id = village_id
-    target_mapping.village_name = village_name
+    target_mapping.village_id = if village_ids.blank?
+      nil
+    else
+      village_ids.one? ? village_ids.first : village_ids.to_json
+    end
+    target_mapping.village_name = village_names.join(", ").presence
   end
 
   def afl_scope_for_location(fco_id, ics_id, village_id, fco_name = nil, ics_name = nil, village_name = nil)
-    scope = Afl.where(fco_id: fco_id, ics_id: ics_id, village_id: village_id)
+    village_ids = Array(village_id).flat_map { |value| parse_location_values(value).map(&:first) }.reject(&:blank?).uniq
+    village_names = Array(village_name).flat_map { |value| label_value_list(value) }.map(&:to_s).reject(&:blank?).uniq
+
+    scope = Afl.where(fco_id: fco_id, ics_id: ics_id, village_id: village_ids)
     scope = scope.where(fco: fco_name) if fco_name.present?
     scope = scope.where(ics_name: ics_name) if ics_name.present?
-    scope = scope.where(village_name: village_name) if village_name.present?
+    scope = scope.where(village_name: village_names) if village_names.any?
     scope
   end
 
@@ -348,6 +367,42 @@ class TargetMappingsController < ApplicationController
   def parse_location_value(value)
     id, label = value.to_s.split("||", 2)
     [id.to_s, label.to_s.presence]
+  end
+
+  def parse_location_values(value)
+    location_value_list(value)
+      .map { |item| parse_location_value(item) }
+      .reject { |id, _label| id.blank? }
+      .uniq { |id, label| [id, label] }
+  end
+
+  def location_value_list(value)
+    case value
+    when Array
+      value.flat_map { |item| location_value_list(item) }
+    when String
+      stripped = value.strip
+      return [] if stripped.blank?
+
+      if stripped.start_with?("[")
+        parsed = JSON.parse(stripped)
+        return location_value_list(parsed)
+      end
+
+      [stripped]
+    else
+      Array(value).flat_map { |item| location_value_list(item) }
+    end
+  rescue JSON::ParserError
+    [value.to_s]
+  end
+
+  def village_ids_for(target_mapping)
+    parse_location_values(target_mapping.village_id).map(&:first)
+  end
+
+  def label_value_list(value)
+    location_value_list(value).flat_map { |item| item.to_s.split(",").map(&:strip) }
   end
 
   def normalized_afl_ids(ids)
@@ -473,10 +528,20 @@ class TargetMappingsController < ApplicationController
       fco_id: encoded_location_value(target.fco_id, target.fco_name),
       ics_id: encoded_location_value(target.ics_id, target.ics_name),
       village_id: encoded_location_value(target.village_id, target.village_name),
+      village_ids: encoded_location_values(target.village_id, target.village_name),
       month_name: target.month_name.to_s,
       completion_date: target.completion_date&.strftime("%Y-%m-%d"),
       target_quantity: target.target_quantity.to_s,
       afl_ids: Array(target.afl_ids).map(&:to_s)
     }
+  end
+
+  def encoded_location_values(values, labels)
+    ids = location_value_list(values)
+    label_values = labels.to_s.split(",").map(&:strip)
+
+    ids.map.with_index do |id, index|
+      encoded_location_value(id, label_values[index])
+    end
   end
 end

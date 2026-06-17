@@ -2324,7 +2324,7 @@ body {
 
 .chip-multi-dropdown {
   position: absolute;
-  z-index: 20;
+  z-index: 2000;
   top: calc(100% + 4px);
   left: 0;
   right: 0;
@@ -2335,6 +2335,13 @@ body {
   border-radius: 6px;
   background: #fff;
   box-shadow: 0 12px 28px rgba(16, 28, 35, 0.16);
+}
+
+.target-mapping-card,
+.target-mapping-card .module-entry-form,
+.target-mapping-card .module-form-grid,
+.target-mapping-card .module-form-grid label {
+  overflow: visible;
 }
 
 .chip-multi-control.open .chip-multi-dropdown {
@@ -2460,6 +2467,14 @@ body {
 }
 
 .module-form-grid label {
+  display: grid;
+  gap: 7px;
+  color: #2b373d;
+  font-size: 0.86rem;
+  font-weight: 800;
+}
+
+.module-form-grid .target-village-field {
   display: grid;
   gap: 7px;
   color: #2b373d;

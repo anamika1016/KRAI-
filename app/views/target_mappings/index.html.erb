@@ -44,12 +44,16 @@
               </select>
             </label>
 
-            <label>
-              <span>Village <em>*</em></span>
-              <select name="target_mapping[village_id]" data-target-village data-selected-value="<%= [@edit_target&.village_id, @edit_target&.village_name].compact_blank.join("||") %>" required disabled>
+            <div class="target-village-field">
+              <span class="location-multi-label">
+                <span>Village <em>*</em></span>
+                <span class="location-select-all"><input type="checkbox" data-chip-select-all-for="target-village"> Select all</span>
+              </span>
+              <input type="hidden" name="target_mapping[village_id]" value="" data-target-village-hidden>
+              <select data-target-village data-selected-values="<%= json_escape(Array(@edit_payload[:village_ids]).to_json) %>" multiple required disabled data-chip-multiselect data-chip-select-all-key="target-village" data-placeholder="Select Village">
                 <option value="">Select Village</option>
               </select>
-            </label>
+            </div>
 
             <label>
               <span>Month <em>*</em></span>

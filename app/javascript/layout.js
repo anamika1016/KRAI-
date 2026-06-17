@@ -1918,6 +1918,7 @@ document.addEventListener("turbo:load", () => {
     const fcoSelect = shell.querySelector("[data-target-fco]");
     const icsSelect = shell.querySelector("[data-target-ics]");
     const villageSelect = shell.querySelector("[data-target-village]");
+    const villageHidden = shell.querySelector("[data-target-village-hidden]");
     const monthSelect = shell.querySelector("select[name='target_mapping[month_name]']");
     const mainActivitySelect = shell.querySelector("select[name='target_mapping[main_activity_name]']");
     const subActivitySelect = shell.querySelector("select[name='target_mapping[activity_name]']");
@@ -1930,6 +1931,7 @@ document.addEventListener("turbo:load", () => {
     const form = shell.querySelector("form");
     let editTarget = {};
     let targetSubActivityRows = [];
+    let targetLoadRequestId = 0;
     try {
       editTarget = JSON.parse(shell.dataset.editTarget || "{}");
     } catch (_error) {
@@ -1959,11 +1961,38 @@ document.addEventListener("turbo:load", () => {
 
       return normalizeOption(optionParts[0]) === normalizeOption(selectedParts[0]);
     };
+    const targetSelectedValuesFromDataset = (select) => {
+      if (!select) return [];
+
+      if (select.dataset.selectedValues) {
+        try {
+          const values = JSON.parse(select.dataset.selectedValues);
+          if (Array.isArray(values)) return values.map((value) => String(value)).filter(Boolean);
+        } catch (_error) {
+          return select.dataset.selectedValues.split(",").map((value) => value.trim()).filter(Boolean);
+        }
+      }
+
+      return select.dataset.selectedValue ? [select.dataset.selectedValue] : [];
+    };
+    const targetSelectedValues = (select) => {
+      if (!select) return [];
+
+      const selected = Array.from(select.selectedOptions || []).map((option) => option.value).filter(Boolean);
+      if (select.dataset.selectionDirty === "true") return selected;
+
+      return selected.length ? selected : targetSelectedValuesFromDataset(select);
+    };
+    const syncTargetVillageHidden = () => {
+      if (!villageHidden || !villageSelect) return;
+
+      villageHidden.value = JSON.stringify(targetSelectedValues(villageSelect));
+    };
 
     const fillTargetSelect = (select, options, placeholder) => {
       if (!select) return;
 
-      const selected = select.dataset.selectedValue || select.value;
+      const selectedValues = targetSelectedValues(select);
       select.innerHTML = "";
 
       const blank = document.createElement("option");
@@ -1975,11 +2004,23 @@ document.addEventListener("turbo:load", () => {
         const option = document.createElement("option");
         option.value = optionValue(optionData);
         option.textContent = optionLabel(optionData);
-        option.selected = targetOptionMatches(option.value, selected);
+        option.selected = selectedValues.some((selected) => targetOptionMatches(option.value, selected));
         select.appendChild(option);
       });
 
+      delete select.dataset.selectedValue;
+      delete select.dataset.selectedValues;
       select.disabled = options.length === 0;
+      select.dispatchEvent(new Event("chip:refresh"));
+    };
+    const clearTargetVillageSelection = () => {
+      if (!villageSelect) return;
+
+      Array.from(villageSelect.options || []).forEach((option) => {
+        option.selected = false;
+      });
+      villageSelect.dataset.selectionDirty = "true";
+      villageSelect.dispatchEvent(new Event("chip:refresh"));
     };
 
     const targetSubActivityOptionsForMain = () => {
@@ -2068,14 +2109,15 @@ document.addEventListener("turbo:load", () => {
     };
 
     const loadTargetData = async () => {
+      const requestId = ++targetLoadRequestId;
       const url = new URL(shell.dataset.mappingsUrl, window.location.origin);
       if (vrpSelect?.value) url.searchParams.set("vrp_id", vrpSelect.value);
       const fcoValue = fcoSelect?.value || fcoSelect?.dataset.selectedValue;
       const icsValue = icsSelect?.value || icsSelect?.dataset.selectedValue;
-      const villageValue = villageSelect?.value || villageSelect?.dataset.selectedValue;
+      const villageValues = targetSelectedValues(villageSelect);
       if (fcoValue) url.searchParams.set("fco_id", fcoValue);
       if (icsValue) url.searchParams.set("ics_id", icsValue);
-      if (villageValue) url.searchParams.set("village_id", villageValue);
+      if (villageValues.length) url.searchParams.set("village_ids", JSON.stringify(villageValues));
       if (monthSelect?.value) url.searchParams.set("month_name", monthSelect.value);
       if (mainActivitySelect?.value) url.searchParams.set("main_activity_name", mainActivitySelect.value);
       if (subActivitySelect?.value) url.searchParams.set("activity_name", subActivitySelect.value);
@@ -2085,16 +2127,21 @@ document.addEventListener("turbo:load", () => {
         const response = await fetch(url, { headers: { Accept: "application/json" } });
         if (!response.ok) throw new Error("Request failed");
         const data = await response.json();
+        if (requestId !== targetLoadRequestId) return;
+
         fillTargetSelect(fcoSelect, data.fco_options || [], "Select FCO Name");
         fillTargetSelect(icsSelect, data.ics_options || [], "Select ICS");
         fillTargetSelect(villageSelect, data.village_options || [], "Select Village");
+        syncTargetVillageHidden();
 
-        if (villageSelect?.value || villageSelect?.dataset.selectedValue) {
+        if (targetSelectedValues(villageSelect).length) {
           renderTargetFarmers(data.farmers || []);
         } else {
           clearTargetFarmers();
         }
       } catch (_error) {
+        if (requestId !== targetLoadRequestId) return;
+
         clearTargetFarmers("Farmers load nahi ho paye.");
       }
     };
@@ -2107,6 +2154,7 @@ document.addEventListener("turbo:load", () => {
     });
 
     form?.addEventListener("submit", (event) => {
+      syncTargetVillageHidden();
       const selectedCount = selectedTargetBoxes().length;
       const targetCount = Number(targetInput.value || 0);
       if (!selectedCount) {
@@ -2124,20 +2172,24 @@ document.addEventListener("turbo:load", () => {
       fcoSelect.dataset.selectedValue = "";
       if (icsSelect) icsSelect.dataset.selectedValue = "";
       if (villageSelect) villageSelect.dataset.selectedValue = "";
+      if (villageSelect) villageSelect.dataset.selectedValues = "[]";
       if (icsSelect) icsSelect.value = "";
-      if (villageSelect) villageSelect.value = "";
+      clearTargetVillageSelection();
+      syncTargetVillageHidden();
       clearTargetFarmers();
       loadTargetData();
     });
     icsSelect?.addEventListener("change", () => {
       icsSelect.dataset.selectedValue = "";
       if (villageSelect) villageSelect.dataset.selectedValue = "";
-      if (villageSelect) villageSelect.value = "";
+      if (villageSelect) villageSelect.dataset.selectedValues = "[]";
+      clearTargetVillageSelection();
+      syncTargetVillageHidden();
       clearTargetFarmers();
       loadTargetData();
     });
     villageSelect?.addEventListener("change", () => {
-      villageSelect.dataset.selectedValue = "";
+      syncTargetVillageHidden();
       clearTargetFarmers();
       loadTargetData();
     });
@@ -2150,6 +2202,7 @@ document.addEventListener("turbo:load", () => {
     subActivitySelect?.addEventListener("change", loadTargetData);
 
     refreshTargetSubActivities(false);
+    syncTargetVillageHidden();
     loadTargetData();
   });
 
@@ -2423,8 +2476,10 @@ document.addEventListener("turbo:load", () => {
     const dropdown = document.createElement("div");
     const arrow = document.createElement("span");
     const placeholder = select.dataset.placeholder || "Select";
-    const selectAllCheckbox = select.dataset.locationLevel
-      ? select.closest("[data-location-form]")?.querySelector(`[data-chip-select-all-for="${select.dataset.locationLevel}"]`)
+    const selectAllKey = select.dataset.chipSelectAllKey || select.dataset.locationLevel;
+    const selectAllScope = select.closest("[data-target-mapping]") || select.closest("[data-location-form]") || select.form;
+    const selectAllCheckbox = selectAllKey
+      ? selectAllScope?.querySelector(`[data-chip-select-all-for="${selectAllKey}"]`)
       : null;
     let chipSearchTerm = "";
 
@@ -2480,6 +2535,7 @@ document.addEventListener("turbo:load", () => {
           event.stopPropagation();
           if (select.disabled) return;
           option.selected = false;
+          select.dataset.selectionDirty = "true";
           select.dispatchEvent(new Event("change", { bubbles: true }));
           render();
         });
@@ -2531,6 +2587,7 @@ document.addEventListener("turbo:load", () => {
           event.stopPropagation();
           if (select.disabled) return;
           option.selected = !option.selected;
+          select.dataset.selectionDirty = "true";
           select.dispatchEvent(new Event("change", { bubbles: true }));
           render();
         });
@@ -2551,6 +2608,7 @@ document.addEventListener("turbo:load", () => {
       selectableOptions().forEach((option) => {
         option.selected = selectAllCheckbox.checked;
       });
+      select.dataset.selectionDirty = "true";
       select.dispatchEvent(new Event("change", { bubbles: true }));
       render();
     });
@@ -2562,6 +2620,12 @@ document.addEventListener("turbo:load", () => {
         if (openControl !== control) openControl.classList.remove("open");
       });
       control.classList.toggle("open");
+    });
+
+    control.addEventListener("focus", () => {
+      if (select.disabled) return;
+
+      control.classList.add("open");
     });
 
     control.addEventListener("keydown", (event) => {
