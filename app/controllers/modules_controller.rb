@@ -2933,25 +2933,54 @@ class ModulesController < ApplicationController
     direct_name = first_non_code_data(record, "gram_panchayat_name", "gp_name", "gram_name", "gram_panchayat")
     return direct_name if direct_name.present? && !code_like_location_value?(direct_name)
 
-    code = first_present_data(record, "gp_code", "gram_code", "gram_panchayat_code", "gram_panchayat_id", "gram_panchayat")
+    code = first_present_data(record, "gp_code", "gram_code", "gram_panchayat_code", "gram_panchayat_id", "gram_panchayat", "gram_panchayat_name", "gp_name", "gram_name")
     return direct_name.presence || code if code.blank?
 
-    gram_panchayat_name_lookup[code.to_s.strip.downcase].presence || direct_name.presence || code
+    gram_panchayat_name_lookup[code.to_s.strip.downcase].presence ||
+      gram_panchayat_name_by_location(record, code).presence ||
+      (direct_name.present? && !code_like_location_value?(direct_name) ? direct_name : nil) ||
+      (code_like_location_value?(code) ? "-" : code)
   end
 
   def gram_panchayat_name_lookup
     @gram_panchayat_name_lookup ||= ModuleRecord
-      .where(module_slug: ["gram-panchayat-master", "lg-directory-list"])
+      .where(module_slug: ["gram-panchayat-master", "lg-directory-list", "village-master"])
       .select { |record| active_module_record?(record) }
       .each_with_object({}) do |record, lookup|
         label = gram_panchayat_name_from_record(record)
         next if label.blank? || code_like_location_value?(label)
 
-        %w[gp_code gram_code gram_panchayat_code gram_panchayat_id gram_panchayat].each do |key|
+        %w[gp_code gram_code gram_panchayat_code gram_panchayat_id gram_panchayat gram_panchayat_name gp_name gram_name name].each do |key|
           value = record.data[key].to_s.strip
           lookup[value.downcase] = label if value.present? && code_like_location_value?(value)
         end
       end
+  end
+
+  def gram_panchayat_name_by_location(record, code)
+    normalized_code = normalize_dashboard_text(code)
+    return "" if normalized_code.blank?
+
+    state = normalize_dashboard_text(first_present_data(record, "state", "state_name"))
+    district = normalize_dashboard_text(first_present_data(record, "district", "district_name"))
+    block = normalize_dashboard_text(first_present_data(record, "block", "block_name", "cd_block_name"))
+    return "" if state.blank? || district.blank? || block.blank?
+
+    ModuleRecord
+      .where(module_slug: ["gram-panchayat-master", "lg-directory-list"])
+      .select { |candidate| active_module_record?(candidate) }
+      .find do |candidate|
+        code_matches = %w[gp_code gram_code gram_panchayat_code gram_panchayat_id gram_panchayat gram_panchayat_name gp_name gram_name name].any? do |key|
+          normalize_dashboard_text(candidate.data[key]) == normalized_code
+        end
+
+        code_matches &&
+        normalize_dashboard_text(first_present_data(candidate, "state", "state_name")) == state &&
+          normalize_dashboard_text(first_present_data(candidate, "district", "district_name")) == district &&
+          normalize_dashboard_text(first_present_data(candidate, "block", "block_name", "cd_block_name")) == block &&
+          !code_like_location_value?(gram_panchayat_name_from_record(candidate))
+      end
+      &.then { |candidate| gram_panchayat_name_from_record(candidate) }
   end
 
   def module_field_aliases(field)
