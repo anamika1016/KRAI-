@@ -1497,6 +1497,7 @@ class ModulesController < ApplicationController
   def dashboard_vrps
     return [] unless model_ready?(:Vrp)
     return Vrp.all.to_a if current_app_user.blank? || current_app_user["user_type"].to_s.casecmp("admin").zero?
+    return module_cluster_visible_vrps if module_cluster_incharge_login?
 
     (dashboard_own_vrps.to_a + dashboard_approval_related_vrps).uniq
   end
@@ -2501,12 +2502,16 @@ class ModulesController < ApplicationController
   end
 
   def module_cluster_visible_vrp_ids
+    module_cluster_visible_vrps.map(&:id)
+  end
+
+  def module_cluster_visible_vrps
     return [] unless model_ready?(:Vrp)
 
-    @module_cluster_visible_vrp_ids ||= Vrp
+    @module_cluster_visible_vrps ||= Vrp
       .where.not(cluster_incharge: [nil, ""])
+      .order(:name, :id)
       .select { |vrp| module_cluster_vrp_visible?(vrp) }
-      .map(&:id)
   end
 
   def current_cluster_incharge_labels
@@ -2912,6 +2917,7 @@ class ModulesController < ApplicationController
 
   def module_record_field_value(record, field)
     return nil if field.blank?
+    return village_master_gram_panchayat_name(record) if record.module_slug == "village-master" && field == "Gram Panchayat"
 
     keys = [
       field.parameterize(separator: "_"),
@@ -2921,6 +2927,31 @@ class ModulesController < ApplicationController
     return approval_level_display_label(value) if field == "Approval Level"
 
     value
+  end
+
+  def village_master_gram_panchayat_name(record)
+    direct_name = first_non_code_data(record, "gram_panchayat_name", "gp_name", "gram_name", "gram_panchayat")
+    return direct_name if direct_name.present? && !code_like_location_value?(direct_name)
+
+    code = first_present_data(record, "gp_code", "gram_code", "gram_panchayat_code", "gram_panchayat_id", "gram_panchayat")
+    return direct_name.presence || code if code.blank?
+
+    gram_panchayat_name_lookup[code.to_s.strip.downcase].presence || direct_name.presence || code
+  end
+
+  def gram_panchayat_name_lookup
+    @gram_panchayat_name_lookup ||= ModuleRecord
+      .where(module_slug: ["gram-panchayat-master", "lg-directory-list"])
+      .select { |record| active_module_record?(record) }
+      .each_with_object({}) do |record, lookup|
+        label = gram_panchayat_name_from_record(record)
+        next if label.blank? || code_like_location_value?(label)
+
+        %w[gp_code gram_code gram_panchayat_code gram_panchayat_id gram_panchayat].each do |key|
+          value = record.data[key].to_s.strip
+          lookup[value.downcase] = label if value.present? && code_like_location_value?(value)
+        end
+      end
   end
 
   def module_field_aliases(field)
