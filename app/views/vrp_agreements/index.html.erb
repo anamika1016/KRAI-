@@ -8,6 +8,7 @@
       <p>Accepted and signed declarations are listed here. Open any row to view the signed page.</p>
     </div>
     <div class="dashboard-actions">
+      <%= link_to "Export Excel", export_vrp_agreements_path, class: "list-btn active" %>
       <%= link_to "Back to Dashboard", dashboard_path, class: "list-btn" %>
     </div>
   </div>

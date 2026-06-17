@@ -1225,12 +1225,14 @@ document.addEventListener("turbo:load", () => {
   };
 
   const locationRowMatchesParents = (row, selects, level) => {
-    return (locationParents[level] || []).every((parentLevel) => {
+    const parents = locationParents[level] || [];
+    const immediateParent = parents[parents.length - 1];
+    return parents.every((parentLevel) => {
       const parentValues = selectedLocationValues(selects[parentLevel]);
       if (parentValues.length === 0) return false;
 
       const parentKey = locationKeys[parentLevel];
-      if (!row[parentKey]) return true;
+      if (!row[parentKey]) return parentLevel !== immediateParent;
 
       return parentValues.some((value) => normalizeOption(row[parentKey]) === normalizeOption(value));
     });
@@ -1259,15 +1261,9 @@ document.addEventListener("turbo:load", () => {
     });
     const hasParents = (locationParents[level] || []).length > 0;
     const fallbackOptions = originalOptions.filter((option) => option.value !== "");
-    const mergedOptions = [...filteredOptions];
-    fallbackOptions.forEach((option) => {
-      if (!mergedOptions.some((existing) => normalizeOption(existing.value) === normalizeOption(option.value))) {
-        mergedOptions.push(option);
-      }
-    });
     const finalOptions = hasParents && !parentSelected
       ? []
-      : (hasParents ? mergedOptions : fallbackOptions);
+      : (hasParents ? filteredOptions : fallbackOptions);
     finalOptions.sort((left, right) => left.label.localeCompare(right.label, undefined, { sensitivity: "base" }));
     select.innerHTML = "";
 

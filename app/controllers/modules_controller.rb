@@ -90,9 +90,9 @@ class ModulesController < ApplicationController
       fields: ["Stakeholder Name", "Profile Name", "CIN", "Phone Number", "Email", "Website", "Full Address", "Logo Upload", "Status"]
     },
     "training-form" => {
-      title: "Farmer Training Form",
-      group: "Farmer Training",
-      purpose: "Farmer training details save karne ke liye.",
+      title: "Farmer Target Form",
+      group: "Farmer Target",
+      purpose: "Farmer target details save karne ke liye.",
       fields: [
         "Month",
         "ICS / Block",
@@ -114,9 +114,9 @@ class ModulesController < ApplicationController
       ]
     },
     "training-form-list" => {
-      title: "Farmer Training Form List",
-      group: "Farmer Training",
-      purpose: "Saved farmer training records dekhne ke liye.",
+      title: "Farmer Target Form List",
+      group: "Farmer Target",
+      purpose: "Saved farmer target records dekhne ke liye.",
       fields: [
         "Month",
         "ICS / Block",
@@ -182,10 +182,10 @@ class ModulesController < ApplicationController
       fields: ["Stakeholder Category", "Parent Category", "Office Name", "Sub Office Name", "Office Level", "Status"]
     },
     "add-vrp-type" => {
-      title: "Add VRP Type",
-      group: "Activity Setup",
-      purpose: "VRP type add karne ke liye.",
-      fields: ["VRP Type Name", "Status"]
+      title: "Add Jeevika Jankar Type",
+      group: "Stakeholder",
+      purpose: "Jeevika Jankar type add karne ke liye.",
+      fields: ["Jeevika Jankar Type Name", "Status"]
     },
     "add-activity-group" => {
       title: "Main Activity",
@@ -378,13 +378,13 @@ class ModulesController < ApplicationController
       title: "Access Control",
       group: "Resource Person Type",
       purpose: "Role wise module access dene ke liye.",
-      fields: ["Stakeholder", "Stakeholder Role", "Role Name", "Module Name", "Sub Module Name", "Can View", "Can Create", "Can Edit", "Can Delete", "Status"]
+      fields: ["Stakeholder", "Stakeholder Role", "Role Name", "Jeevika Jankar Type", "Module Name", "Sub Module Name", "Can View", "Can Create", "Can Edit", "Can Delete", "Status"]
     },
     "access-control-list" => {
       title: "Access Control List",
       group: "Resource Person Type",
       purpose: "Saved access control records dekhne ke liye.",
-      fields: ["Stakeholder", "Stakeholder Role", "Role Name", "Module Name", "Sub Module Name", "Status"]
+      fields: ["Stakeholder", "Stakeholder Role", "Role Name", "Jeevika Jankar Type", "Module Name", "Sub Module Name", "Status"]
     }
   }.freeze
 
@@ -2858,6 +2858,8 @@ class ModulesController < ApplicationController
       "Block Code" => ["block_code", "cd_block_code"],
       "District Name" => ["district_name", "district"],
       "District Code" => ["district_code"],
+      "Jeevika Jankar Type" => ["jeevika_jankar_type", "vrp_type", "select_vrp_type"],
+      "Jeevika Jankar Type Name" => ["jeevika_jankar_type_name", "vrp_type_name", "position_type_name"],
       "Main Activity" => ["main_activity", "training_topic", "activity_group", "activity_group_name"],
       "Sub Activity" => ["sub_activity", "training_subject", "activity_name", "vrp_activity_name"],
       "State Name" => ["state_name", "state"],
@@ -2882,6 +2884,8 @@ class ModulesController < ApplicationController
       data["module_names"] ||= []
       data["sub_module_names"] ||= []
       data["stakeholder"] = data["stakeholder_name"] if data["stakeholder_name"].present?
+      data["vrp_type"] = data["jeevika_jankar_type"] if data["jeevika_jankar_type"].present?
+      data["jeevika_jankar_type"] = data["vrp_type"].presence || data["select_vrp_type"] if data["jeevika_jankar_type"].blank?
     end
 
     if record_source_slug == "user-hierarchy-mapping"
@@ -3121,6 +3125,7 @@ class ModulesController < ApplicationController
     role_name = normalized_access_value(data["role"].present? ? data["role_name"] : nil)
     user_management_role = normalized_access_value(data["user_management_role"].presence || data["user_management_person_type"])
     person_type = normalized_access_value(data["person_type"])
+    vrp_type = normalized_access_value(data["jeevika_jankar_type"].presence || data["vrp_type"].presence || data["select_vrp_type"])
     return false if stakeholder.blank?
 
     ModuleRecord
@@ -3133,6 +3138,7 @@ class ModulesController < ApplicationController
           normalized_access_value(record.data["role"].present? ? record.data["role_name"] : nil) == role_name &&
           normalized_access_value(record.data["user_management_role"].presence || record.data["user_management_person_type"]) == user_management_role &&
           normalized_access_value(record.data["person_type"]) == person_type &&
+          normalized_access_value(record.data["jeevika_jankar_type"].presence || record.data["vrp_type"].presence || record.data["select_vrp_type"]) == vrp_type &&
           normalized_access_value(record.data["status"].presence || "Active") == "active"
       end
   end
@@ -3678,6 +3684,8 @@ class ModulesController < ApplicationController
       :stakeholder_role
     when "Role Name", "Role"
       :role
+    when "Jeevika Jankar Type"
+      return (module_field_options("Jeevika Jankar Type") + [selected_value]).compact_blank.uniq
     end
     return [] unless key
 
@@ -3909,6 +3917,8 @@ class ModulesController < ApplicationController
       "Village" => { module: "village-master", field: "village_name" },
       "VRP Type" => { module: "add-vrp-type", field: "vrp_type_name" },
       "Select VRP Type" => { module: "add-vrp-type", field: "vrp_type_name" },
+      "Jeevika Jankar Type" => { module: "add-vrp-type", field: "jeevika_jankar_type_name" },
+      "Jeevika Jankar Type Name" => { module: "add-vrp-type", field: "jeevika_jankar_type_name" },
       "Activity Group" => { module: "add-activity-group", field: "activity_group_name" },
       "Main Activity" => { module: "add-activity-group", field: "main_activity_name" },
       "Select Main Activity" => { module: "add-activity-group", field: "main_activity_name" },
@@ -4170,6 +4180,8 @@ class ModulesController < ApplicationController
     field_keys << "vrp_activity_name" if module_slug == "add-vrp-activity" && field_key == "activity_name"
     field_keys.concat(["activity_name", "vrp_activity_name"]) if module_slug == "add-vrp-activity" && field_key == "sub_activity_name"
     field_keys << "category_name" if module_slug == "office-category-add" && field_key == "office_name"
+    field_keys << "vrp_type_name" if module_slug == "add-vrp-type" && field_key == "jeevika_jankar_type_name"
+    field_keys << "jeevika_jankar_type_name" if module_slug == "add-vrp-type" && field_key == "vrp_type_name"
 
     ModuleRecord
       .where(module_slug: module_slug)
@@ -4249,7 +4261,7 @@ class ModulesController < ApplicationController
     klass = "VrpType".safe_constantize
     return unless klass&.table_exists?
 
-    type_name = (record.data["position_type_name"].presence || record.data["vrp_type_name"]).to_s.strip
+    type_name = (record.data["position_type_name"].presence || record.data["jeevika_jankar_type_name"].presence || record.data["vrp_type_name"]).to_s.strip
     return if type_name.blank?
 
     vrp_type = klass.find_or_initialize_by(type_name: type_name)

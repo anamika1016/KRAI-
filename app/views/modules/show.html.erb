@@ -725,11 +725,12 @@
     <section class="module-card access-control-card">
       <%= form_with url: form_url, method: form_method, html: { class: "module-entry-form", data: { user_role_form: true, role_map: json_escape(access_control_role_mappings.to_json) } } do %>
         <div class="access-top-grid">
-          <% ["Stakeholder", "Stakeholder Role", "Role Name"].each do |field| %>
+          <% ["Stakeholder", "Stakeholder Role", "Role Name", "Jeevika Jankar Type"].each do |field| %>
             <% field_key = field.parameterize(separator: "_") %>
             <% field_value = @record&.data&.[](field_key).to_s %>
             <% field_value = @record&.data&.[]("stakeholder_name").to_s if field == "Stakeholder" && field_value.blank? %>
             <% field_value = @record&.data&.[]("role").to_s if field == "Role Name" && field_value.blank? %>
+            <% field_value = @record&.data&.[]("vrp_type").presence || @record&.data&.[]("select_vrp_type").to_s if field == "Jeevika Jankar Type" && field_value.blank? %>
             <% options = access_control_field_options(field, field_value) %>
             <% role_dependency_attr =
               case field
@@ -1409,7 +1410,7 @@
     <% table_id = "#{@slug.tr("-", "_")}_table" %>
     <section class="module-card list-only-card">
       <div class="module-card-header list-title-header">
-        <h2><%= { "activity-group-list" => "All Main Activities", "vrp-activity-list" => "All Sub Activities", "task-completion-indicator-list" => "All Task Completion Indicators", "approval-list" => "All Approvals", "access-control-list" => "All Access Control", "vrp-bill-list" => "All VRP Bills", "jeevika-jankar-bill-list" => "All Jeevika Jankar Bills", "training-form-list" => "All Farmer Training Records" }[@slug] %></h2>
+        <h2><%= { "activity-group-list" => "All Main Activities", "vrp-activity-list" => "All Sub Activities", "task-completion-indicator-list" => "All Task Completion Indicators", "approval-list" => "All Approvals", "access-control-list" => "All Access Control", "vrp-bill-list" => "All VRP Bills", "jeevika-jankar-bill-list" => "All Jeevika Jankar Bills", "training-form-list" => "All Farmer Target Records" }[@slug] %></h2>
       </div>
 
       <div class="vrp-list-toolbar compact">

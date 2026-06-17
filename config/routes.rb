@@ -9,6 +9,7 @@ Rails.application.routes.draw do
   get    "vrp-agreement", to: "sessions#agreement", as: :vrp_agreement
   post   "vrp-agreement", to: "sessions#complete_agreement"
   get    "vrp-agreements", to: "vrp_agreements#index", as: :vrp_agreements
+  get    "vrp-agreements/export", to: "vrp_agreements#export", as: :export_vrp_agreements
   get    "vrp-agreements/:id", to: "vrp_agreements#show", as: :vrp_agreement_record
   get    "logout", to: "sessions#destroy", as: nil
   delete "logout", to: "sessions#destroy", as: :logout

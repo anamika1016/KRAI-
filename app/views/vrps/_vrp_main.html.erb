@@ -11,8 +11,8 @@
   <%= f.hidden_field :user_id %>
 
   <div class="col-md-3 mb-3">
-  <label class="form-label required">VRP Type</label>
-  <%= select_tag "vrp[vrp_type_ids][]", options_for_select(@vrp_type_options || [], Array(f&.object&.vrp_type_ids).first), prompt: 'Select Vrp Type', class: 'form-select select2', required: true %>
+  <label class="form-label required">Jeevika Jankar Type</label>
+  <%= select_tag "vrp[vrp_type_ids][]", options_for_select(@vrp_type_options || [], Array(f&.object&.vrp_type_ids).first), prompt: 'Select Jeevika Jankar Type', class: 'form-select select2', required: true %>
   </div>
 
   <div class="col-md-3 mb-3">
@@ -128,7 +128,7 @@
 
   <div class="col-md-3 mb-3">
     <label class="form-label">TO</label>
-    <% to_value = f.object.to_name.presence || (((@to_options || []).one?) ? @to_options.first.last : nil) %>
+    <% to_value = f.object.to_name.presence || @current_user_office_name.presence || (((@to_options || []).one?) ? @to_options.first.last : nil) %>
     <%= f.select :to_name, options_for_select(@to_options || [], to_value), { prompt: "Select TO" }, class: "form-select", data: { vrp_office_name: true, selected_value: to_value } %>
   </div>
 

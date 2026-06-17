@@ -23,7 +23,7 @@ class TargetMappingsController < ApplicationController
     assign_afl_location_names(target_mapping)
     assign_creator(target_mapping) if target_mapping.new_record?
 
-    if assign_target_farmers(target_mapping) && target_mapping.save
+    if target_vrp_allowed?(target_mapping) && assign_target_farmers(target_mapping) && target_mapping.save
       redirect_to target_mappings_path, notice: "Target mapping saved successfully."
     else
       redirect_to target_mappings_path, alert: target_mapping.errors.full_messages.to_sentence
@@ -88,7 +88,35 @@ class TargetMappingsController < ApplicationController
     scope = Vrp.all
     scope = scope.where(status: 55) if Vrp.column_names.include?("status")
     scope = scope.where(is_active: true) if Vrp.column_names.include?("is_active")
+    scope = scope.merge(own_registered_vrps) unless admin_login?
     scope.order(:name, :id)
+  end
+
+  def target_vrp_allowed?(target_mapping)
+    return true if target_vrps.where(id: target_mapping.vrp_id).exists?
+
+    target_mapping.errors.add(:vrp_id, "is not registered by you")
+    false
+  end
+
+  def own_registered_vrps
+    ids = current_app_user_ids
+    emails = current_app_user_emails
+    return Vrp.none if ids.blank? && emails.blank?
+
+    scope = Vrp.none
+    if ids.any?
+      scope = scope.or(Vrp.where(created_by_id: ids))
+      scope = scope.or(Vrp.where(user_id: ids)) if Vrp.column_names.include?("user_id")
+    end
+
+    if emails.any?
+      unassigned_scope = Vrp.where(created_by_id: nil).where("LOWER(email) IN (?)", emails)
+      unassigned_scope = unassigned_scope.where(user_id: nil) if Vrp.column_names.include?("user_id")
+      scope = scope.or(unassigned_scope)
+    end
+
+    scope
   end
 
   def assign_afl_location_names(target_mapping)
@@ -383,6 +411,38 @@ class TargetMappingsController < ApplicationController
     return VrpIcsMapping.where(vrp_id: current_app_user["id"]) if non_admin_vrp_login?
 
     VrpIcsMapping.where(created_by_type: current_app_user["record_type"], created_by_id: current_app_user["id"])
+  end
+
+  def current_app_user_id
+    current_app_user&.dig("id")
+  end
+
+  def current_app_user_ids
+    ([current_app_user_id] + legacy_current_app_user_ids).compact.uniq
+  end
+
+  def legacy_current_app_user_ids
+    return [] unless defined?(ModuleRecord) && ModuleRecord.table_exists?
+
+    username = current_app_user&.dig("username").to_s
+    emails = current_app_user_emails
+    return [] if username.blank? && emails.blank?
+
+    ModuleRecord.where(module_slug: "new-user").select do |record|
+      record.data["user_name"].to_s == username ||
+        emails.include?(record.data["email"].to_s.strip.downcase)
+    end.map(&:id)
+  end
+
+  def current_app_user_emails
+    emails = [current_app_user&.dig("email")]
+
+    if defined?(User) && User.table_exists?
+      user = User.find_by(user_name: current_app_user&.dig("username")) || User.find_by(id: current_app_user_id)
+      emails << user&.email
+    end
+
+    emails.compact_blank.map { |email| email.to_s.strip.downcase }.uniq
   end
 
   def assign_creator(record)

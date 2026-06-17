@@ -1,8 +1,30 @@
+require "csv"
+
 class VrpAgreementsController < ApplicationController
   layout :agreement_layout
 
   def index
     @accepted_agreements = accepted_agreement_rows
+  end
+
+  def export
+    rows = accepted_agreement_rows
+    csv = CSV.generate(headers: true) do |sheet|
+      sheet << ["Name", "Village", "Mobile Number", "Accepted At", "Signature"]
+      rows.each do |agreement|
+        sheet << [
+          agreement[:name],
+          agreement[:village],
+          agreement[:mobile_no],
+          agreement[:accepted_at].presence || "-",
+          agreement[:signature_present] ? "Signed" : "Pending"
+        ]
+      end
+    end
+
+    send_data csv,
+      filename: "accepted-agreements-jeevika-jankar-#{Time.zone.today}.csv",
+      type: "text/csv; charset=utf-8"
   end
 
   def show

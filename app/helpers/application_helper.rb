@@ -73,7 +73,7 @@ module ApplicationHelper
       title: "VRP Registration",
       icon: "▥",
       links: [
-        ["VRP Type", :module, "add-vrp-type"],
+        ["Add Jeevika Jankar Type", :module, "add-vrp-type"],
         ["VRP Registration", :route, :new_vrp_path],
         ["VRP List", :route, :vrps_path],
         ["VRP Approval Queue", :route, :approvals_vrps_path],
@@ -109,12 +109,12 @@ module ApplicationHelper
       ]
     },
     {
-      title: "Farmer Training",
+      title: "Farmer Target",
       icon: "▥",
       links: [
         # ["Farmer Training Topic Mapping", :module, "training-topic-mapping"],
-        ["Farmer Training Form", :module, "training-form"],
-        ["Farmer Training Form List", :module, "training-form-list"]
+        ["Farmer Target Form", :module, "training-form"],
+        ["Farmer Target Form List", :module, "training-form-list"]
       ]
     },
     {
@@ -128,7 +128,7 @@ module ApplicationHelper
   ].freeze
 
   def sidebar_sections
-    return vrp_sidebar_sections if vrp_login_user?
+    return visible_vrp_sidebar_sections if vrp_login_user?
 
     allowed_keys = allowed_sidebar_keys
     return SIDEBAR_SECTIONS if allowed_keys.nil?
@@ -177,6 +177,11 @@ module ApplicationHelper
       "Sub Office Name" => "Sub Office Name",
       "ICS / Block" => "ICS Name",
       "Gram Name" => "Village Name",
+      "VRP Type" => "Jeevika Jankar Type",
+      "Select VRP Type" => "Select Jeevika Jankar Type",
+      "VRP Type Name" => "Jeevika Jankar Type Name",
+      "Jeevika Jankar Type" => "Jeevika Jankar Type",
+      "Jeevika Jankar Type Name" => "Jeevika Jankar Type Name",
       "Activity Group" => "Main Activity",
       "Activity Group Name" => "Main Activity Name",
       "Activity Name" => "Sub Activity Name",
@@ -206,9 +211,11 @@ module ApplicationHelper
         user_management_role_match = access_value_matches?(record_user_management_role, current_app_user["user_management_role"])
         record_person_type = record.data["person_type"]
         person_type_match = access_value_matches?(record_person_type, current_app_user["person_type"])
-        record_vrp_type = record.data["vrp_type"].presence || record.data["select_vrp_type"]
+        record_vrp_type = record.data["jeevika_jankar_type"].presence || record.data["vrp_type"].presence || record.data["select_vrp_type"]
         vrp_type_match = access_value_matches_any?(record_vrp_type, current_app_user["vrp_types"])
         can_view = record.data["can_view"].blank? || record.data["can_view"].to_s.casecmp("Yes").zero?
+        next can_view && record_vrp_type.present? && vrp_type_match if vrp_login_user?
+
         stakeholder_match && stakeholder_role_match && role_match && role_name_match && user_management_role_match && person_type_match && vrp_type_match && can_view
       end
 
@@ -222,6 +229,18 @@ module ApplicationHelper
     keys = [name.presence&.parameterize].compact
     keys << "vrp-approval-queue" if name.to_s.strip == "VRP Approval"
     keys << "vrp-approval" if name.to_s.strip == "VRP Approval Queue"
+    if ["VRP Type", "Add Jeevika Jankar Type", "Jeevika Jankar Type"].include?(name.to_s.strip)
+      keys.concat(["vrp-type", "add-jeevika-jankar-type", "jeevika-jankar-type"])
+    end
+    if ["Farmer Training", "Farmer Target"].include?(name.to_s.strip)
+      keys.concat(["farmer-training", "farmer-target"])
+    end
+    if ["Farmer Training Form", "Farmer Target Form"].include?(name.to_s.strip)
+      keys.concat(["farmer-training-form", "farmer-target-form"])
+    end
+    if ["Farmer Training Form List", "Farmer Target Form List"].include?(name.to_s.strip)
+      keys.concat(["farmer-training-form-list", "farmer-target-form-list"])
+    end
     if ["Target Mapping Master", "Target Mapping", "VRP Targets"].include?(name.to_s.strip)
       keys.concat(["target-mapping-master", "target-mapping", "vrp-targets"])
     end
@@ -278,11 +297,11 @@ module ApplicationHelper
         ]
       },
       {
-        title: "Farmer Training",
+        title: "Farmer Target",
         icon: "▥",
         links: [
-          ["Farmer Training Form", :module, "training-form"],
-          ["Farmer Training Form List", :module, "training-form-list"]
+          ["Farmer Target Form", :module, "training-form"],
+          ["Farmer Target Form List", :module, "training-form-list"]
         ]
       },
       {
@@ -294,6 +313,16 @@ module ApplicationHelper
         ]
       }
     ]
+  end
+
+  def visible_vrp_sidebar_sections
+    allowed_keys = allowed_sidebar_keys
+    return [] if allowed_keys.blank?
+
+    SIDEBAR_SECTIONS.filter_map do |section|
+      allowed_links = section[:links].select { |link| allowed_keys.include?(sidebar_access_key(link)) }
+      section.merge(links: allowed_links) if allowed_links.any?
+    end
   end
 
   def current_stakeholder

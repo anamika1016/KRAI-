@@ -91,7 +91,7 @@ class VrpsController < ApplicationController
   end
 
   def destroy
-    @vrp = find_visible_vrp(params[:id])
+    @vrp = find_manageable_vrp(params[:id])
 
     if @vrp
       @vrp.update_columns(is_deleted: true, updated_at: Time.current)
@@ -102,7 +102,7 @@ class VrpsController < ApplicationController
   end
 
   def set_active
-    @vrp = find_visible_vrp(params[:id])
+    @vrp = find_manageable_vrp(params[:id])
 
     unless @vrp
       redirect_to vrps_path, alert: "VRP record not found."
@@ -201,7 +201,7 @@ class VrpsController < ApplicationController
 
   def set_edit_dependencies
     set_form_dependencies
-    @vrp = find_visible_vrp(params[:id])
+    @vrp = find_manageable_vrp(params[:id])
     redirect_to vrps_path, alert: "VRP record not found." unless @vrp
   end
 
@@ -367,11 +367,62 @@ class VrpsController < ApplicationController
   def visible_vrps
     return Vrp.all if current_app_user.blank? || admin_user?
 
-    (own_vrps.to_a + approval_related_vrps).uniq
+    (own_vrps.to_a + cluster_mapped_vrps).uniq
   end
 
   def find_visible_vrp(id)
     visible_vrps.to_a.find { |vrp| vrp.id == id.to_i }
+  end
+
+  def find_manageable_vrp(id)
+    own_vrps.find_by(id: id)
+  end
+
+  def cluster_mapped_vrps
+    labels = current_cluster_incharge_labels
+    return Vrp.none if labels.blank?
+
+    normalized_labels = labels.map { |label| normalize_approver_label(label) }.reject(&:blank?).uniq
+    Vrp.where.not(cluster_incharge: [nil, ""]).select do |vrp|
+      normalized_labels.include?(normalize_approver_label(vrp.cluster_incharge))
+    end
+  end
+
+  def current_cluster_incharge_labels
+    labels = [
+      current_app_user&.dig("name"),
+      current_app_user&.dig("username"),
+      current_app_user&.dig("user_name")
+    ]
+
+    labels.concat(user_model_cluster_labels)
+    labels.concat(legacy_user_cluster_labels)
+    labels.compact_blank.uniq
+  end
+
+  def user_model_cluster_labels
+    return [] unless model_ready?(:User)
+
+    user = User.find_by(user_name: current_app_user&.dig("username")) || User.find_by(id: current_app_user_id)
+    return [] unless user
+
+    [user.full_name, user.user_name]
+  end
+
+  def legacy_user_cluster_labels
+    return [] unless model_ready?(:ModuleRecord)
+
+    username = current_app_user&.dig("username").to_s
+    return [] if username.blank?
+
+    record = ModuleRecord
+      .where(module_slug: "new-user")
+      .order(created_at: :desc)
+      .detect { |row| row.data["user_name"].to_s == username }
+    return [] unless record
+
+    full_name = [record.data["first_name"], record.data["last_name"]].compact_blank.join(" ").presence
+    [full_name, record.data["user_name"], record.data["name"]]
   end
 
   def approval_queue
@@ -881,6 +932,7 @@ class VrpsController < ApplicationController
     @office_management_mappings = office_management_mappings
     @fcoc_options = fcoc_options
     @to_options = to_options
+    @current_user_office_name = current_user_office_name
     @cluster_incharge_user_mappings = cluster_incharge_user_mappings
     @cluster_incharge_options = cluster_incharge_options
     @state_options = module_record_options("state-master", "state_name")
@@ -892,13 +944,15 @@ class VrpsController < ApplicationController
   end
 
   def vrp_type_options
+    module_options = module_record_options("add-vrp-type", ["jeevika_jankar_type_name", "vrp_type_name"])
+    return module_options if module_options.any?
+
     if model_ready?(:VrpType)
       options = VrpType.where(is_active: true, is_deleted: false).order(:type_name).pluck(:type_name, :id)
       return options if options.any?
     end
 
-    module_record_options("add-vrp-type", "vrp_type_name").presence ||
-      module_record_options("position-type", "position_type_name")
+    module_record_options("position-type", "position_type_name")
   end
 
   def project_master_options
@@ -1059,6 +1113,8 @@ class VrpsController < ApplicationController
         next if name.blank?
 
         role = user.role_name.presence || user.role
+        next unless role.to_s.strip.casecmp("Cluster Incharge").zero?
+
         label = role.present? ? "#{name}(#{role})" : name
         {
           label: label,
@@ -1367,7 +1423,7 @@ class VrpsController < ApplicationController
       return labels.join(", ") if labels.any?
     end
 
-    module_record_labels("add-vrp-type", ids, "vrp_type_name")
+    module_record_labels("add-vrp-type", ids, ["jeevika_jankar_type_name", "vrp_type_name"])
   end
 
   def module_record_display_label(module_slug, record, field_key)
@@ -1411,7 +1467,7 @@ class VrpsController < ApplicationController
   def sync_vrp_type(record)
     return unless model_ready?(:VrpType)
 
-    type_name = (record.data["position_type_name"].presence || record.data["vrp_type_name"]).to_s.strip
+    type_name = (record.data["position_type_name"].presence || record.data["jeevika_jankar_type_name"].presence || record.data["vrp_type_name"]).to_s.strip
     return if type_name.blank?
 
     vrp_type = VrpType.find_or_initialize_by(type_name: type_name)
