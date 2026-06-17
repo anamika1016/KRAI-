@@ -1164,9 +1164,52 @@ class VrpsController < ApplicationController
       .where(module_slug: "user-hierarchy-mapping")
       .order(created_at: :desc)
       .select { |record| active_module_record?(record) }
+      .select { |record| admin_user? || hierarchy_level_1_matches_current_user?(record.data["level_1_user"]) }
       .flat_map { |record| hierarchy_cluster_incharge_labels_for_record(record) }
       .compact_blank
       .uniq
+  end
+
+  def hierarchy_level_1_matches_current_user?(level_1_user)
+    stored_labels = hierarchy_label_match_values(level_1_user)
+    return false if stored_labels.blank?
+
+    current_hierarchy_user_labels.any? do |label|
+      (stored_labels & hierarchy_label_match_values(label)).any?
+    end
+  end
+
+  def current_hierarchy_user_labels
+    role = current_app_user&.dig("role").presence || current_app_user&.dig("role_name")
+    name = current_app_user&.dig("name").to_s.strip
+    username = current_app_user&.dig("username").to_s.strip
+    labels = [
+      name,
+      username,
+      role.present? && name.present? ? "#{name} (#{role})" : nil,
+      role.present? && username.present? ? "#{username} (#{role})" : nil
+    ]
+
+    user = current_user_model
+    if user
+      user_role = (user.respond_to?(:role) ? user.role : nil).presence || (user.respond_to?(:role_name) ? user.role_name : nil)
+      full_name = user.respond_to?(:full_name) ? user.full_name.to_s.strip : ""
+      user_name = user.respond_to?(:user_name) ? user.user_name.to_s.strip : ""
+      labels.concat([
+        full_name,
+        user_name,
+        user_role.present? && full_name.present? ? "#{full_name} (#{user_role})" : nil,
+        user_role.present? && user_name.present? ? "#{user_name} (#{user_role})" : nil
+      ])
+    end
+
+    labels.compact_blank.uniq
+  end
+
+  def hierarchy_label_match_values(label)
+    value = label.to_s.strip
+    base = value.sub(/\s*\([^)]*\)\s*\z/, "").strip
+    [value, base].map { |item| normalize_approver_label(item) }.reject(&:blank?).uniq
   end
 
   def hierarchy_cluster_incharge_labels_for_record(record)

@@ -525,9 +525,9 @@
             </label>
 
             <label>
-              <span>Level 1 User</span>
+              <span>Head</span>
               <select name="module_record[level_1_user]">
-                <option value=""><%= user_options.any? ? "Select Level 1 User" : "No user saved yet" %></option>
+                <option value=""><%= user_options.any? ? "Select Head" : "No user saved yet" %></option>
                 <% user_options.each do |option| %>
                   <option value="<%= option %>" <%= "selected" if option == selected_level_1 %>><%= option %></option>
                 <% end %>
@@ -546,12 +546,12 @@
 
           <div class="approval-levels user-hierarchy-levels" data-user-hierarchy-levels data-next-user-row="<%= selected_level_2_users.size + 1 %>">
             <div class="approval-level-toolbar">
-              <h2>Level 2 Users</h2>
-              <button type="button" class="add-level-btn" data-add-user-row>Add Level 2</button>
+              <h2>Subordinates</h2>
+              <button type="button" class="add-level-btn" data-add-user-row>Add Subordinates</button>
             </div>
             <div class="approval-level-table user-hierarchy-table" data-user-hierarchy-table>
               <div class="approval-level-head">Level</div>
-              <div class="approval-level-head">Level 2 User</div>
+              <div class="approval-level-head">Subordinates</div>
               <div class="approval-level-head">Action</div>
 
               <% selected_level_2_users.each_with_index do |selected_level_2_user, index| %>
@@ -562,7 +562,7 @@
                 </div>
                 <div class="approval-level-cell" data-user-row="<%= row_number %>">
                   <select name="module_record[level_2_mappings][<%= row_number %>][level_2_user]">
-                    <option value=""><%= user_options.any? ? "Select Level 2 User" : "No user saved yet" %></option>
+                    <option value=""><%= user_options.any? ? "Select Subordinates" : "No user saved yet" %></option>
                     <% user_options.each do |option| %>
                       <option value="<%= option %>" <%= "selected" if option == selected_level_2_user %>><%= option %></option>
                     <% end %>
@@ -592,8 +592,8 @@
             <thead>
               <tr>
                 <th>Stakeholder Category</th>
-                <th>Level 1 User</th>
-                <th>Level 2 User</th>
+                <th>Head</th>
+                <th>Subordinates</th>
                 <th>Saved At</th>
                 <th>Status</th>
                 <th>Action</th>
@@ -1150,8 +1150,8 @@
             <tr>
               <th><input type="checkbox" data-module-select-all></th>
               <th>Stakeholder Category</th>
-              <th>Level 1 User</th>
-              <th>Level 2 User</th>
+              <th>Head</th>
+              <th>Subordinates</th>
               <th>Status</th>
             </tr>
           </thead>

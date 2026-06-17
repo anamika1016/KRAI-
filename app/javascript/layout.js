@@ -2769,7 +2769,7 @@ document.addEventListener("turbo:load", () => {
     const firstSelect = table?.querySelector("[data-user-row] select");
     const userOptions = firstSelect
       ? Array.from(firstSelect.options).map((option) => ({ value: option.value, label: option.textContent }))
-      : [{ value: "", label: "Select Level 2 User" }];
+      : [{ value: "", label: "Select Subordinates" }];
 
     const rowCount = () => new Set(Array.from(table?.querySelectorAll("[data-user-row]") || []).map((cell) => cell.dataset.userRow)).size;
 
@@ -2805,7 +2805,7 @@ document.addEventListener("turbo:load", () => {
       const userCell = document.createElement("div");
       userCell.className = "approval-level-cell";
       userCell.dataset.userRow = String(rowIndex);
-      userCell.appendChild(buildUserSelect(`module_record[level_2_mappings][${rowIndex}][level_2_user]`, "Select Level 2 User"));
+      userCell.appendChild(buildUserSelect(`module_record[level_2_mappings][${rowIndex}][level_2_user]`, "Select Subordinates"));
 
       const actionCell = document.createElement("div");
       actionCell.className = "approval-level-cell";
@@ -3444,7 +3444,7 @@ document.addEventListener("turbo:load", () => {
       "Cancel": "रद्द करें",
       "Cancel Edit": "एडिट रद्द करें",
       "Add More": "और जोड़ें",
-      "Add Level 2": "लेवल 2 जोड़ें",
+      "Add Subordinates": "अधीनस्थ जोड़ें",
       "Apply": "लागू करें",
 	      "Remove": "हटाएं",
 	      "Remove this VRP ICS mapping?": "यह वीआरपी आईसीएस मैपिंग हटाएं?",
