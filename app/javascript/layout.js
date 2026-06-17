@@ -621,6 +621,8 @@ document.addEventListener("turbo:load", () => {
       select.appendChild(option);
     });
 
+    if (select.dataset.strictOptions === "true") return;
+
     if (selected && !valueList.some((value) => normalizeOption(value) === normalizedSelected)) {
       const option = document.createElement("option");
       option.value = stripDisplayName(selected);

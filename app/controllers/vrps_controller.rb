@@ -1,6 +1,6 @@
 class VrpsController < ApplicationController
   helper_method :blank_display, :module_record_label, :module_record_labels, :vrp_type_labels,
-                :approval_step_closed?, :closing_approval_history
+                :approval_step_closed?, :closing_approval_history, :mapped_office_name?
 
   APPROVAL_REGISTRATION_MODULES = ["Farmer Registration", "VRP Registration", "Jeevika Jankar Registration"].freeze
 
@@ -960,7 +960,7 @@ class VrpsController < ApplicationController
   end
 
   def office_management_mappings
-    registered_user_office_mappings + office_category_master_mappings
+    office_mapping_master_mappings
   end
 
   def current_user_office_category
@@ -1013,8 +1013,16 @@ class VrpsController < ApplicationController
       .select { |mapping| selected_category.blank? || mapping[:office_category].to_s.casecmp(selected_category).zero? }
       .filter_map { |mapping| mapping[:office_name].presence }
 
-    offices << current_user_office_name
     offices.compact_blank.uniq.map { |office_name| [office_name, office_name] }
+  end
+
+  def mapped_office_name?(office_name)
+    normalized_office_name = office_name.to_s.strip.downcase
+    return false if normalized_office_name.blank?
+
+    @office_management_mappings.any? do |mapping|
+      mapping[:office_name].to_s.strip.downcase == normalized_office_name
+    end
   end
 
   def registered_user_office_mappings
@@ -1086,6 +1094,10 @@ class VrpsController < ApplicationController
       end
       .reject { |mapping| mapping[:office_category].blank? }
       .uniq
+  end
+
+  def office_mapping_master_mappings
+    office_category_master_mappings.select { |mapping| mapping[:office_name].present? }
   end
 
   def user_office_category(user)
