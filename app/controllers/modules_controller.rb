@@ -3287,10 +3287,12 @@ class ModulesController < ApplicationController
       mappings = normalized_user_hierarchy_list_mappings(record)
       if mappings.blank?
         users = collapsed_hierarchy_users(record.data["level_2_users"].presence || record.data["level_2_user"], record.data["level_3_users"].presence || record.data["level_3_user"])
-        users = ["-"] if users.blank?
+        users = users.select { |level_2_user| cluster_incharge_user_label?(level_2_user) }
         users.map { |level_2_user| base.merge(level_2_user: level_2_user) }
       else
-        mappings.map { |mapping| base.merge(level_2_user: mapping["level_2_user"].presence || "-") }
+        mappings
+          .select { |mapping| cluster_incharge_user_label?(mapping["level_2_user"]) }
+          .map { |mapping| base.merge(level_2_user: mapping["level_2_user"].presence || "-") }
       end
     end
   end
@@ -3318,10 +3320,32 @@ class ModulesController < ApplicationController
     end.map(&:strip).compact_blank.uniq
   end
 
+  def cluster_incharge_user_label?(label)
+    role_text = label.to_s[/\(([^)]*)\)\s*\z/, 1].to_s
+    role_text.downcase.include?("cluster")
+  end
+
+  def hierarchy_cluster_incharge_labels
+    return [] unless model_ready?(:ModuleRecord)
+
+    ModuleRecord
+      .where(module_slug: "user-hierarchy-mapping")
+      .order(created_at: :desc)
+      .select { |record| active_module_record?(record) }
+      .flat_map { |record| user_hierarchy_list_rows([record]).map { |row| row[:level_2_user] } }
+      .select { |label| cluster_incharge_user_label?(label) }
+      .compact_blank
+      .uniq
+  end
+
   def jeevika_jankar_cluster_rows
     return [] unless model_ready?(:Vrp)
 
-    Vrp.order(updated_at: :desc, id: :desc).map do |vrp|
+    mapped_cluster_labels = hierarchy_cluster_incharge_labels.map { |label| normalize_dashboard_text(label.to_s.sub(/\s*\([^)]*\)\s*\z/, "")) }
+
+    Vrp.where.not(cluster_incharge: [nil, ""]).order(updated_at: :desc, id: :desc).filter_map do |vrp|
+      next if mapped_cluster_labels.any? && !mapped_cluster_labels.include?(normalize_dashboard_text(vrp.cluster_incharge))
+
       {
         id: vrp.id,
         name: vrp.name.presence || vrp.user_name.presence || "Jeevika Jankar ##{vrp.id}",

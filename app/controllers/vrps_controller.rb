@@ -366,6 +366,7 @@ class VrpsController < ApplicationController
 
   def visible_vrps
     return Vrp.all if current_app_user.blank? || admin_user?
+    return cluster_mapped_vrps if cluster_incharge_login?
 
     (own_vrps.to_a + cluster_mapped_vrps).uniq
   end
@@ -398,6 +399,18 @@ class VrpsController < ApplicationController
     labels.concat(user_model_cluster_labels)
     labels.concat(legacy_user_cluster_labels)
     labels.compact_blank.uniq
+  end
+
+  def cluster_incharge_login?
+    current_role = [
+      current_app_user&.dig("role"),
+      current_app_user&.dig("role_name")
+    ].compact_blank.join(" ")
+    return true if current_role.downcase.include?("cluster")
+
+    mapped_labels = hierarchy_cluster_incharge_labels.map { |label| normalize_approver_label(label) }
+    current_labels = current_cluster_incharge_labels.map { |label| normalize_approver_label(label) }
+    (mapped_labels & current_labels).any?
   end
 
   def user_model_cluster_labels
@@ -1118,6 +1131,9 @@ class VrpsController < ApplicationController
   def cluster_incharge_user_mappings
     return [] unless model_ready?(:User)
 
+    mapped_labels = hierarchy_cluster_incharge_labels.map { |label| normalize_approver_label(label) }.reject(&:blank?).uniq
+    return [] if mapped_labels.blank?
+
     User.order(:first_name, :last_name, :user_name)
       .select { |user| user.status.blank? || user.status.to_s.casecmp("Active").zero? }
       .filter_map do |user|
@@ -1126,6 +1142,8 @@ class VrpsController < ApplicationController
 
         role = user.role_name.presence || user.role
         next unless role.to_s.strip.casecmp("Cluster Incharge").zero?
+        next unless mapped_labels.include?(normalize_approver_label(name)) ||
+          mapped_labels.include?(normalize_approver_label(user.user_name))
 
         label = role.present? ? "#{name}(#{role})" : name
         {
@@ -1137,6 +1155,46 @@ class VrpsController < ApplicationController
         }
       end
       .uniq { |mapping| mapping[:value] }
+  end
+
+  def hierarchy_cluster_incharge_labels
+    return [] unless model_ready?(:ModuleRecord)
+
+    ModuleRecord
+      .where(module_slug: "user-hierarchy-mapping")
+      .order(created_at: :desc)
+      .select { |record| active_module_record?(record) }
+      .flat_map { |record| hierarchy_cluster_incharge_labels_for_record(record) }
+      .compact_blank
+      .uniq
+  end
+
+  def hierarchy_cluster_incharge_labels_for_record(record)
+    mappings = record.data["level_2_mappings"]
+    mappings = mappings.values if mappings.is_a?(Hash)
+
+    labels = Array(mappings).flat_map do |mapping|
+      next [] unless mapping.respond_to?(:[])
+
+      collapsed_hierarchy_user_labels(mapping["level_2_user"], mapping["level_3_users"])
+    end
+
+    labels = collapsed_hierarchy_user_labels(record.data["level_2_users"].presence || record.data["level_2_user"], record.data["level_3_users"].presence || record.data["level_3_user"]) if labels.blank?
+    labels.select { |label| cluster_incharge_user_label?(label) }
+  end
+
+  def collapsed_hierarchy_user_labels(*values)
+    values.flatten.flat_map do |value|
+      value.to_s.split(";").flat_map do |segment|
+        user_segment = segment.include?("->") ? segment.split("->", 2).last : segment
+        user_segment.to_s.split(",")
+      end
+    end.map(&:strip).compact_blank.uniq
+  end
+
+  def cluster_incharge_user_label?(label)
+    role_text = label.to_s[/\(([^)]*)\)\s*\z/, 1].to_s
+    role_text.downcase.include?("cluster")
   end
 
   def ics_options
