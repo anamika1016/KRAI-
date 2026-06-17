@@ -2470,10 +2470,86 @@ class ModulesController < ApplicationController
     scope = scope.where(is_active: true) if Vrp.column_names.include?("is_active")
     scope = scope.where(id: current_vrp_record.id) if vrp_login_user? && current_vrp_record.present?
 
-    scope.order(:name).map do |vrp|
+    vrps = scope.order(:name).to_a
+    vrps = vrps.select { |vrp| module_cluster_vrp_visible?(vrp) } if module_cluster_incharge_login?
+
+    vrps.map do |vrp|
       label = vrp.name.presence || vrp.user_name.presence
       [label.presence || "VRP ##{vrp.id}", vrp.id.to_s]
     end
+  end
+
+  def module_cluster_incharge_login?
+    return false if admin_dashboard_user? || vrp_login_user?
+
+    current_role = [
+      current_app_user&.dig("role"),
+      current_app_user&.dig("role_name")
+    ].compact_blank.join(" ")
+    return true if current_role.downcase.include?("cluster")
+
+    mapped_labels = hierarchy_cluster_incharge_labels.map { |label| normalize_cluster_label(label) }
+    current_labels = current_cluster_incharge_labels.map { |label| normalize_cluster_label(label) }
+    (mapped_labels & current_labels).any?
+  end
+
+  def module_cluster_vrp_visible?(vrp)
+    labels = current_cluster_incharge_labels.map { |label| normalize_cluster_label(label) }.reject(&:blank?).uniq
+    return false if labels.blank?
+
+    labels.include?(normalize_cluster_label(vrp.cluster_incharge))
+  end
+
+  def module_cluster_visible_vrp_ids
+    return [] unless model_ready?(:Vrp)
+
+    @module_cluster_visible_vrp_ids ||= Vrp
+      .where.not(cluster_incharge: [nil, ""])
+      .select { |vrp| module_cluster_vrp_visible?(vrp) }
+      .map(&:id)
+  end
+
+  def current_cluster_incharge_labels
+    labels = [
+      current_app_user&.dig("name"),
+      current_app_user&.dig("username"),
+      current_app_user&.dig("user_name")
+    ]
+
+    labels.concat(user_model_cluster_labels)
+    labels.concat(legacy_user_cluster_labels)
+    labels.compact_blank.uniq
+  end
+
+  def user_model_cluster_labels
+    return [] unless model_ready?(:User)
+
+    user = User.find_by(user_name: current_app_user&.dig("username")) || User.find_by(id: current_app_user&.dig("id"))
+    return [] unless user
+
+    full_name = user.respond_to?(:full_name) ? user.full_name : nil
+    user_name = user.respond_to?(:user_name) ? user.user_name : nil
+    [full_name, user_name]
+  end
+
+  def legacy_user_cluster_labels
+    return [] unless model_ready?(:ModuleRecord)
+
+    username = current_app_user&.dig("username").to_s
+    return [] if username.blank?
+
+    record = ModuleRecord
+      .where(module_slug: "new-user")
+      .order(created_at: :desc)
+      .detect { |row| row.data["user_name"].to_s == username }
+    return [] unless record
+
+    full_name = [record.data["first_name"], record.data["last_name"]].compact_blank.join(" ").presence
+    [full_name, record.data["user_name"], record.data["name"]]
+  end
+
+  def normalize_cluster_label(label)
+    normalize_dashboard_text(label.to_s.sub(/\s*\([^)]*\)\s*\z/, ""))
   end
 
   def generated_jeevika_jankar_invoice_no
@@ -2503,6 +2579,7 @@ class ModulesController < ApplicationController
 
     targets = TargetMapping.includes(:vrp)
     targets = targets.where(vrp_id: current_vrp_record.id) if vrp_login_user? && current_vrp_record.present?
+    targets = targets.where(vrp_id: module_cluster_visible_vrp_ids) if module_cluster_incharge_login?
     targets = targets.order(:month_name, :vrp_id, :village_name, :main_activity_name, :activity_name, :id)
     farmers_by_id = jeevika_jankar_farmers_by_id(targets)
     training_index = jeevika_jankar_training_index(targets)
@@ -2991,6 +3068,10 @@ class ModulesController < ApplicationController
   end
 
   def jeevika_jankar_bill_record_visible?(record)
+    if module_cluster_incharge_login?
+      return module_cluster_visible_vrp_ids.map(&:to_s).include?(record.data["select_vrp"].to_s)
+    end
+
     return true unless vrp_login_user?
     return false unless current_vrp_record.present?
 
