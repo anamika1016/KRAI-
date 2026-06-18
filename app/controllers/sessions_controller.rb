@@ -252,21 +252,11 @@ class SessionsController < ApplicationController
     end
     return vrp if vrp
 
-    return unless defined?(ModuleRecord) && ModuleRecord.table_exists?
-
-    ModuleRecord.where(module_slug: "new-user")
-      .where("COALESCE(LOWER(data->>'status'), '') <> 'inactive'")
-      .where(
-        "LOWER(COALESCE(data->>'user_name', '')) = :login OR LOWER(COALESCE(data->>'email', '')) = :login OR COALESCE(data->>'mobile_no', '') = :raw_login",
-        login: login_key,
-        raw_login: login.to_s.strip
-      )
-      .where("COALESCE(data->>'password', '') = ?", password)
-      .first
+    find_module_record_user_by_login(login_key, raw_login, password)
   end
 
   def find_model_user_by_login(model_class, login_key, raw_login, password)
-    return unless model_class&.table_exists?
+    return unless authentication_model_ready?(model_class)
     return unless model_class.column_names.include?("password")
 
     match_clauses = []
@@ -280,8 +270,53 @@ class SessionsController < ApplicationController
     scope
       .where(match_clauses.join(" OR "), login: login_key, raw_login: raw_login)
       .find_by(password: password)
-  rescue ActiveRecord::StatementInvalid
+  rescue StandardError => e
+    Rails.logger.warn("Login lookup failed for #{model_class}: #{e.class} - #{e.message}")
     nil
+  end
+
+  def find_module_record_user_by_login(login_key, raw_login, password)
+    return unless authentication_model_ready?(ModuleRecord)
+
+    ModuleRecord.where(module_slug: "new-user").find_each do |record|
+      next unless module_record_active_for_login?(record)
+      next unless module_record_login_matches?(record, login_key, raw_login)
+
+      return record if module_record_value(record, "password").to_s == password
+    end
+
+    nil
+  rescue StandardError => e
+    Rails.logger.warn("ModuleRecord login lookup failed: #{e.class} - #{e.message}")
+    nil
+  end
+
+  def module_record_login_matches?(record, login_key, raw_login)
+    [
+      module_record_value(record, "user_name").to_s.downcase == login_key,
+      module_record_value(record, "email").to_s.downcase == login_key,
+      module_record_value(record, "mobile_no").to_s == raw_login
+    ].any?
+  end
+
+  def module_record_active_for_login?(record)
+    module_record_value(record, "status").to_s.downcase != "inactive"
+  end
+
+  def module_record_value(record, key)
+    data = record.respond_to?(:data) ? record.data : {}
+    data = JSON.parse(data) if data.is_a?(String)
+    return unless data.respond_to?(:[])
+
+    data[key] || data[key.to_sym]
+  rescue JSON::ParserError
+    nil
+  end
+
+  def authentication_model_ready?(model_class)
+    model_class.present? && model_class.respond_to?(:table_exists?) && model_class.table_exists?
+  rescue StandardError
+    false
   end
 
   def find_password_reset_account(username)
@@ -302,12 +337,18 @@ class SessionsController < ApplicationController
       return vrp if vrp
     end
 
-    return unless defined?(ModuleRecord) && ModuleRecord.table_exists?
+    return unless authentication_model_ready?(ModuleRecord)
 
-    ModuleRecord.where(module_slug: "new-user")
-      .where("COALESCE(LOWER(data->>'status'), '') <> 'inactive'")
-      .where("LOWER(COALESCE(data->>'user_name', '')) = ?", username_key)
-      .first
+    ModuleRecord.where(module_slug: "new-user").find_each do |record|
+      next unless module_record_active_for_login?(record)
+
+      return record if module_record_value(record, "user_name").to_s.downcase == username_key
+    end
+
+    nil
+  rescue StandardError => e
+    Rails.logger.warn("Password reset lookup failed: #{e.class} - #{e.message}")
+    nil
   end
 
   def reset_account_type(account)
