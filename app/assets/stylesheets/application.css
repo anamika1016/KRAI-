@@ -1051,22 +1051,40 @@ body {
 
 .training-dashboard-summary {
   display: grid;
-  grid-template-columns: repeat(4, minmax(120px, 1fr));
-  gap: 10px;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
 }
 
 .training-summary-pill {
   display: grid;
-  gap: 6px;
+  gap: 8px;
+  min-height: 94px;
   border: 1px solid var(--vrp-line);
   border-radius: 8px;
-  padding: 12px;
+  padding: 16px;
   background: #fff;
+}
+
+.training-summary-link {
+  color: inherit;
+  text-decoration: none;
+  transition: transform 160ms ease, box-shadow 160ms ease;
+}
+
+.training-summary-link:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 12px 26px rgba(23, 33, 38, 0.10);
 }
 
 .training-summary-pill strong {
   font-size: 1.55rem;
   line-height: 1;
+}
+
+.training-summary-pill small {
+  color: var(--vrp-muted);
+  font-weight: 700;
+  line-height: 1.35;
 }
 
 .training-summary-pill.green {
@@ -1391,6 +1409,99 @@ body {
   gap: 12px;
 }
 
+.training-participation-status-card {
+  display: grid;
+  gap: 14px;
+}
+
+.training-participation-status-header {
+  align-items: start;
+}
+
+.training-participation-status-header p {
+  margin: 6px 0 0;
+  color: var(--vrp-muted);
+  font-weight: 650;
+}
+
+.training-participation-boxes {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(180px, 1fr));
+  gap: 12px;
+}
+
+.training-participation-boxes.compact {
+  grid-template-columns: repeat(3, minmax(160px, 1fr));
+}
+
+.training-participation-box {
+  display: grid;
+  gap: 8px;
+  min-height: 138px;
+  border: 1px solid var(--vrp-line);
+  border-radius: 8px;
+  padding: 16px;
+  color: inherit;
+  text-decoration: none;
+  transition: transform 160ms ease, box-shadow 160ms ease, border-color 160ms ease;
+}
+
+.training-participation-box:hover,
+.training-participation-box.is-active {
+  transform: translateY(-2px);
+  box-shadow: 0 12px 26px rgba(23, 33, 38, 0.10);
+}
+
+.training-participation-box span {
+  color: currentColor;
+  font-weight: 850;
+  text-transform: uppercase;
+  font-size: 0.78rem;
+}
+
+.training-participation-box strong {
+  font-size: 2.25rem;
+  line-height: 1;
+}
+
+.training-participation-box small {
+  color: var(--vrp-muted);
+  font-weight: 700;
+  line-height: 1.35;
+}
+
+.training-participation-box b {
+  justify-self: start;
+  font-size: 0.82rem;
+  font-weight: 850;
+}
+
+.training-participation-box.green {
+  border-color: rgba(56, 142, 60, 0.26);
+  background: rgba(56, 142, 60, 0.10);
+  color: #1b5e20;
+}
+
+.training-participation-box.yellow {
+  border-color: rgba(245, 168, 0, 0.32);
+  background: rgba(245, 168, 0, 0.14);
+  color: #7a4b00;
+}
+
+.training-participation-box.red {
+  border-color: rgba(211, 47, 47, 0.26);
+  background: rgba(211, 47, 47, 0.10);
+  color: #9b1c1c;
+}
+
+.training-participation-table {
+  min-width: 1640px;
+}
+
+.training-target-status-table {
+  min-width: 1420px;
+}
+
 @media (max-width: 1180px) {
   .training-row-panels {
     grid-template-columns: 1fr;
@@ -1401,7 +1512,9 @@ body {
   .training-dashboard-header,
   .training-row-heading,
   .training-row-meta,
-  .training-dashboard-summary {
+  .training-dashboard-summary,
+  .training-participation-boxes,
+  .training-participation-boxes.compact {
     grid-template-columns: 1fr;
   }
 

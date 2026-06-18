@@ -19,7 +19,9 @@ class ModulesController < ApplicationController
                 :jeevika_bill_prepared_by, :jeevika_bill_approved_by_rows,
                 :jeevika_bill_vrp, :bill_display_date, :bill_display_datetime,
                 :approval_sequence_from_level, :module_record_field_value,
-                :approval_level_display_label, :approval_level_label_for_sequence
+                :approval_level_display_label, :approval_level_label_for_sequence,
+                :training_participation_status_label, :training_participation_status_caption,
+                :training_target_status_label, :training_target_status_caption
 
   APPROVAL_REGISTRATION_MODULES = ["Farmer Registration", "VRP Registration", "Jeevika Jankar Registration"].freeze
 
@@ -418,11 +420,81 @@ class ModulesController < ApplicationController
     @training_selected_sub_activity = selected_sub_activity
     @training_month_options = dashboard_month_options_for_targets(targets)
     @training_sub_activity_options = dashboard_sub_activity_options_for_targets(month_targets, selected_month)
+    @training_participation_status_cards = training_participation_status_cards(targets)
+    @training_target_status_cards = training_target_status_cards(training_targets, month_name: selected_month, sub_activity_name: selected_sub_activity)
     @training_participation = training_participation_summary(training_targets, month_name: selected_month)
     @farmer_training_dashboard_rows = farmer_training_dashboard_rows(training_targets, month_name: selected_month)
     @dashboard_cards = dashboard_cards
     @dashboard_reports = dashboard_reports
     @dashboard_generated_at = Time.current
+  end
+
+  def farmer_training_participation
+    targets = dashboard_participation_targets
+    selected_month = params[:training_month].presence
+    selected_sub_activity = params[:training_sub_activity].presence
+    selected_status = normalize_training_participation_status(params[:status]) || "green"
+    filtered_targets = if selected_month.present? && selected_sub_activity.present?
+      dashboard_targets_for_filters(targets, selected_month, selected_sub_activity)
+    elsif selected_month.present?
+      dashboard_targets_for_month(targets, selected_month)
+    else
+      targets
+    end
+
+    @training_participation_status = selected_status
+    @training_participation_title = training_participation_status_label(selected_status)
+    @training_participation_caption = training_participation_status_caption(selected_status)
+    @training_participation_rows = training_participation_farmer_rows(filtered_targets, month_name: selected_month)
+      .select { |row| row[:status] == selected_status }
+    @training_participation_totals = training_participation_status_counts(filtered_targets, month_name: selected_month)
+    @training_selected_month = selected_month
+    @training_selected_sub_activity = selected_sub_activity
+
+    respond_to do |format|
+      format.html
+      format.csv do
+        send_data(
+          training_participation_rows_csv(@training_participation_rows),
+          filename: "farmer-training-#{selected_status}-#{Time.current.strftime("%Y%m%d%H%M")}.csv",
+          type: "text/csv"
+        )
+      end
+    end
+  end
+
+  def farmer_training_target_status
+    targets = dashboard_participation_targets
+    selected_month = params[:training_month].presence
+    selected_sub_activity = params[:training_sub_activity].presence
+    selected_status = normalize_training_target_status(params[:status]) || "green"
+    filtered_targets = if selected_month.present? && selected_sub_activity.present?
+      dashboard_targets_for_filters(targets, selected_month, selected_sub_activity)
+    elsif selected_month.present?
+      dashboard_targets_for_month(targets, selected_month)
+    else
+      targets
+    end
+
+    @training_target_status = selected_status
+    @training_target_status_title = training_target_status_label(selected_status)
+    @training_target_status_caption = training_target_status_caption(selected_status)
+    @training_target_status_rows = training_target_status_rows(filtered_targets)
+      .select { |row| row[:status_class] == selected_status }
+    @training_target_status_totals = training_target_status_counts(filtered_targets)
+    @training_selected_month = selected_month
+    @training_selected_sub_activity = selected_sub_activity
+
+    respond_to do |format|
+      format.html
+      format.csv do
+        send_data(
+          training_target_status_rows_csv(@training_target_status_rows),
+          filename: "farmer-training-target-#{selected_status}-#{Time.current.strftime("%Y%m%d%H%M")}.csv",
+          type: "text/csv"
+        )
+      end
+    end
   end
 
   def show
@@ -702,6 +774,8 @@ class ModulesController < ApplicationController
     @training_selected_sub_activity = selected_sub_activity
     @training_month_options = dashboard_month_options_for_targets(targets)
     @training_sub_activity_options = dashboard_sub_activity_options_for_targets(filtered_targets, selected_month)
+    @training_participation_status_cards = training_participation_status_cards(targets)
+    @training_target_status_cards = training_target_status_cards(training_targets, month_name: selected_month, sub_activity_name: selected_sub_activity)
     @training_participation = training_participation_summary(training_targets, month_name: selected_month)
     @farmer_training_dashboard_rows = farmer_training_dashboard_rows(training_targets, month_name: selected_month)
     village_count = @vrp_village_rows.map { |row| normalize_dashboard_text(row[:village]) }.reject(&:blank?).uniq.size
@@ -1033,6 +1107,329 @@ class ModulesController < ApplicationController
     }
   end
 
+  def dashboard_participation_targets
+    if vrp_login_user?
+      current_vrp_record.present? ? vrp_dashboard_targets(current_vrp_record) : []
+    else
+      dashboard_target_mappings
+    end
+  end
+
+  def training_participation_status_cards(targets, month_name: nil)
+    counts = training_participation_status_counts(targets, month_name: month_name)
+
+    %w[green yellow red].map do |status|
+      path_params = { status: status }
+      path_params[:training_month] = month_name if month_name.present?
+
+      {
+        status: status,
+        title: training_participation_status_label(status),
+        value: counts[status.to_sym].to_i,
+        caption: training_participation_status_caption(status),
+        path: farmer_training_participation_path(path_params)
+      }
+    end
+  end
+
+  def training_participation_status_counts(targets, month_name: nil)
+    rows = training_participation_farmer_rows(targets, month_name: month_name)
+
+    {
+      green: rows.count { |row| row[:status] == "green" },
+      yellow: rows.count { |row| row[:status] == "yellow" },
+      red: rows.count { |row| row[:status] == "red" },
+      total: rows.size
+    }
+  end
+
+  def training_participation_farmer_rows(targets, month_name: nil)
+    targets = Array(targets)
+    return [] if targets.blank?
+
+    memberships = training_participation_target_memberships(targets)
+    return [] if memberships.blank?
+
+    attendance_details = training_attendance_details_for_targets(targets, month_name: month_name)
+    farmers_by_id = training_farmers_by_id(memberships.keys)
+
+    memberships.map do |farmer_id, membership|
+      farmer = farmers_by_id[farmer_id]
+      details = attendance_details[farmer_id] || { attendance_count: 0, training_dates: [] }
+      attendance_count = details[:attendance_count].to_i
+      status = training_participation_status_for_count(attendance_count)
+
+      {
+        farmer_id: farmer_id,
+        farmer_name: farmer&.farmer_name.presence || "Farmer ##{farmer_id}",
+        father_name: farmer&.father_name,
+        mobile_no: farmer&.mobile_no,
+        tracenet_no: farmer&.tracenet_no,
+        khasara_no: farmer&.khasara_no,
+        ics: membership[:ics].presence || farmer&.ics_name.presence || farmer&.ics_id.presence || "-",
+        village: membership[:village].presence || farmer&.village_name.presence || farmer&.village_id.presence || "-",
+        vrp: membership[:vrp].presence || "-",
+        months: membership[:months].presence || "-",
+        main_activities: membership[:main_activities].presence || "-",
+        sub_activities: membership[:sub_activities].presence || "-",
+        attendance_count: attendance_count,
+        status: status,
+        status_label: training_participation_status_label(status),
+        training_dates: details[:training_dates].presence || "-",
+        last_training_date: details[:last_training_date].presence || "-"
+      }
+    end.sort_by { |row| [row[:status], -row[:attendance_count], row[:farmer_name].to_s.downcase] }
+  end
+
+  def training_participation_target_memberships(targets)
+    Array(targets).each_with_object({}) do |target, memberships|
+      target_farmer_ids(target).each do |farmer_id|
+        memberships[farmer_id] ||= {
+          months: [],
+          ics: [],
+          village: [],
+          vrp: [],
+          main_activities: [],
+          sub_activities: []
+        }
+
+        memberships[farmer_id][:months] |= [target.month_name.to_s.strip].reject(&:blank?)
+        memberships[farmer_id][:ics] |= [target_ics_label(target).to_s.strip].reject(&:blank?)
+        memberships[farmer_id][:village] |= [target_village_label(target).to_s.strip].reject(&:blank?)
+        memberships[farmer_id][:vrp] |= [target.vrp&.name.to_s.strip].reject(&:blank?)
+        memberships[farmer_id][:main_activities] |= [target.main_activity_name.to_s.strip].reject(&:blank?)
+        memberships[farmer_id][:sub_activities] |= [target.activity_name.to_s.strip].reject(&:blank?)
+      end
+    end.transform_values do |membership|
+      membership.transform_values { |values| values.uniq.join(", ") }
+    end
+  end
+
+  def training_attendance_details_for_targets(targets, month_name: nil)
+    return {} unless model_ready?(:ModuleRecord)
+
+    target_sets = Array(targets).filter_map do |target|
+      farmer_ids = target_farmer_ids(target)
+      farmer_ids.blank? ? nil : [target, farmer_ids]
+    end
+    return {} if target_sets.blank?
+
+    ModuleRecord
+      .where(module_slug: "training-form")
+      .order(created_at: :desc)
+      .select { |record| active_module_record?(record) }
+      .select { |record| month_name.blank? || normalize_dashboard_text(training_record_month_name(record)) == normalize_dashboard_text(month_name) }
+      .each_with_object(Hash.new { |hash, key| hash[key] = { attendance_count: 0, training_dates: [] } }) do |record, details|
+        matching_farmer_ids = target_sets.each_with_object([]) do |(target, farmer_ids), ids|
+          next unless training_record_matches_dashboard_target?(record, target, farmer_ids)
+
+          ids.concat(training_record_selected_farmer_ids(record) & farmer_ids)
+        end.uniq
+        next if matching_farmer_ids.blank?
+
+        training_date = bill_display_date(training_summary(record)[:training_date]).presence || bill_display_date(record.created_at)
+        matching_farmer_ids.each do |farmer_id|
+          details[farmer_id][:attendance_count] += 1
+          details[farmer_id][:training_dates] |= [training_date].reject(&:blank?)
+        end
+      end.transform_values do |detail|
+        dates = detail[:training_dates].sort_by { |date| parse_module_date(date)&.to_time || Time.zone.local(1900, 1, 1) }
+        detail.merge(training_dates: dates.join(", "), last_training_date: dates.last)
+      end
+  end
+
+  def training_farmers_by_id(farmer_ids)
+    return {} unless model_ready?(:Afl)
+
+    ids = Array(farmer_ids).map(&:to_s).reject(&:blank?).uniq
+    return {} if ids.blank?
+
+    Afl.where(id: ids).index_by { |farmer| farmer.id.to_s }
+  end
+
+  def training_participation_status_for_count(count)
+    count = count.to_i
+    return "green" if count >= 3
+    return "yellow" if count.positive?
+
+    "red"
+  end
+
+  def normalize_training_participation_status(status)
+    value = status.to_s.strip.downcase
+    %w[green yellow red].include?(value) ? value : nil
+  end
+
+  def training_participation_status_label(status)
+    {
+      "green" => "Green",
+      "yellow" => "Yellow",
+      "red" => "Red"
+    }[status.to_s] || "Farmer"
+  end
+
+  def training_participation_status_caption(status)
+    {
+      "green" => "Farmer attended 3 or more trainings.",
+      "yellow" => "Farmer attended 1-2 trainings.",
+      "red" => "Farmer did not attend any training."
+    }[status.to_s] || "Farmer training participation status."
+  end
+
+  def training_participation_rows_csv(rows)
+    CSV.generate(headers: true) do |csv|
+      csv << [
+        "Farmer ID",
+        "Farmer",
+        "Father Name",
+        "Mobile",
+        "TraceNet No",
+        "ICS",
+        "Village",
+        "VRP",
+        "Target Months",
+        "Main Activities",
+        "Sub Activities",
+        "Training Count",
+        "Status",
+        "Training Dates",
+        "Last Training Date"
+      ]
+
+      Array(rows).each do |row|
+        csv << [
+          row[:farmer_id],
+          row[:farmer_name],
+          row[:father_name],
+          row[:mobile_no],
+          row[:tracenet_no],
+          row[:ics],
+          row[:village],
+          row[:vrp],
+          row[:months],
+          row[:main_activities],
+          row[:sub_activities],
+          row[:attendance_count],
+          row[:status_label],
+          row[:training_dates],
+          row[:last_training_date]
+        ]
+      end
+    end
+  end
+
+  def training_target_status_cards(targets, month_name: nil, sub_activity_name: nil)
+    counts = training_target_status_counts(targets)
+
+    %w[green yellow red].map do |status|
+      path_params = { status: status }
+      path_params[:training_month] = month_name if month_name.present?
+      path_params[:training_sub_activity] = sub_activity_name if sub_activity_name.present?
+
+      {
+        status: status,
+        title: training_target_status_label(status),
+        value: counts[status.to_sym].to_i,
+        caption: training_target_status_caption(status),
+        path: farmer_training_target_status_path(path_params)
+      }
+    end
+  end
+
+  def training_target_status_rows(targets)
+    Array(targets)
+      .map { |target| training_target_detail_row(target) }
+      .sort_by do |row|
+        [
+          dashboard_month_index(row[:month]),
+          row[:completion_date_sort].presence || Date.new(9999, 12, 31),
+          row[:vrp].to_s,
+          row[:ics].to_s,
+          row[:village].to_s,
+          row[:main_activity].to_s,
+          row[:sub_activity].to_s
+        ]
+      end
+  end
+
+  def training_target_status_counts(targets)
+    rows = training_target_status_rows(targets)
+
+    {
+      green: rows.count { |row| row[:status_class] == "green" },
+      yellow: rows.count { |row| row[:status_class] == "yellow" },
+      red: rows.count { |row| row[:status_class] == "red" },
+      total: rows.size
+    }
+  end
+
+  def training_target_status_label(status)
+    {
+      "green" => "Green",
+      "yellow" => "Yellow",
+      "red" => "Red"
+    }[status.to_s] || "Target"
+  end
+
+  def training_target_status_caption(status)
+    {
+      "green" => "Target 100% completed by Completion Date.",
+      "yellow" => "Target progress is 75% to 99%.",
+      "red" => "Target progress is below 75% or no training done."
+    }[status.to_s] || "Target completion status."
+  end
+
+  def normalize_training_target_status(status)
+    value = status.to_s.strip.downcase
+    %w[green yellow red].include?(value) ? value : nil
+  end
+
+  def training_target_status_for_percent(percent)
+    value = percent.to_f
+    return "green" if value >= 100
+    return "yellow" if value >= 75
+
+    "red"
+  end
+
+  def training_target_status_rows_csv(rows)
+    CSV.generate(headers: true) do |csv|
+      csv << [
+        "Target Mapping ID",
+        "VRP",
+        "Month",
+        "Completion Date",
+        "ICS",
+        "Village",
+        "Main Activity",
+        "Sub Activity",
+        "Target",
+        "Completed",
+        "Pending",
+        "Progress %",
+        "Status"
+      ]
+
+      Array(rows).each do |row|
+        csv << [
+          row[:target_mapping_id],
+          row[:vrp],
+          row[:month],
+          row[:completion_date],
+          row[:ics],
+          row[:village],
+          row[:main_activity],
+          row[:sub_activity],
+          dashboard_quantity(row[:target_quantity]),
+          dashboard_quantity(row[:completed_quantity]),
+          dashboard_quantity(row[:pending_quantity]),
+          row[:progress_percent],
+          row[:status_label]
+        ]
+      end
+    end
+  end
+
   def training_participation_summary(targets, month_name: nil)
     targets = Array(targets)
     attendance_counts = training_attendance_counts_for_targets(targets, month_name: month_name)
@@ -1161,7 +1558,8 @@ class ModulesController < ApplicationController
       session_participants = matching_records.flat_map { |record| training_record_selected_farmer_ids(record) & farmer_ids }
       unique_participants = session_participants.uniq
       target_quantity = group[:target_quantity].to_f
-      status_counts = training_status_counts(farmer_ids, training_attendance_counts_for_targets(group[:targets], month_name: month_name))
+      target_detail_rows = group[:targets].map { |target| training_target_detail_row(target) }
+      status_counts = training_target_status_counts_for_rows(target_detail_rows)
       farmer_rows = farmer_rows_for_training_group(group[:targets])
 
       group.merge(
@@ -1179,7 +1577,7 @@ class ModulesController < ApplicationController
         yellow: status_counts[:yellow],
         red: status_counts[:red],
         total: status_counts[:total],
-        target_rows: group[:targets].map { |target| training_target_detail_row(target) },
+        target_rows: target_detail_rows,
         completed_farmers: farmer_rows[:completed_farmers],
         pending_farmers: farmer_rows[:pending_farmers],
         completed_quantity: farmer_rows[:completed_quantity],
@@ -1193,11 +1591,13 @@ class ModulesController < ApplicationController
 
   def training_target_detail_row(target)
     farmer_ids = target_farmer_ids(target)
-    completed_farmer_ids = completed_training_farmer_ids_for(target, farmer_ids)
+    completed_farmer_ids = completed_training_farmer_ids_for_target_deadline(target, farmer_ids)
     pending_farmer_ids = farmer_ids - completed_farmer_ids
     target_quantity = target.target_quantity.to_f
     completed_quantity = completed_farmer_ids.size.to_f
     pending_quantity = [target_quantity - completed_quantity, 0].max
+    progress_percent = target_quantity.positive? ? ((completed_quantity / target_quantity) * 100).round : 0
+    status_class = training_target_status_for_percent(progress_percent)
 
     {
       target_mapping_id: target.id.to_s,
@@ -1207,13 +1607,27 @@ class ModulesController < ApplicationController
       village: target.village_name.presence || target.village_id.presence || "-",
       main_activity: target.main_activity_name.presence || "Farmer Training",
       sub_activity: target.activity_name.presence || "-",
+      completion_date: target.completion_date&.strftime("%d-%m-%Y") || "-",
+      completion_date_sort: target.completion_date,
       target_quantity: target_quantity,
       completed_quantity: completed_quantity,
       pending_quantity: pending_quantity,
-      status_label: completed_quantity.positive? ? (completed_quantity >= target_quantity ? "Completed" : "Partial") : "Pending",
-      status_class: completed_quantity.positive? ? (completed_quantity >= target_quantity ? "green" : "yellow") : "red",
-      completed_farmers: training_farmers_for_ids(completed_farmer_ids),
-      pending_farmers: training_farmers_for_ids(pending_farmer_ids)
+      progress_percent: progress_percent,
+      status_label: training_target_status_label(status_class),
+      status_class: status_class,
+      completed_farmers: training_farmers_for_ids(completed_farmer_ids).map { |farmer| farmer.merge(status_label: "Completed", status_class: "green") },
+      pending_farmers: training_farmers_for_ids(pending_farmer_ids).map { |farmer| farmer.merge(status_label: "Pending", status_class: "red") }
+    }
+  end
+
+  def training_target_status_counts_for_rows(rows)
+    rows = Array(rows)
+
+    {
+      green: rows.count { |row| row[:status_class] == "green" },
+      yellow: rows.count { |row| row[:status_class] == "yellow" },
+      red: rows.count { |row| row[:status_class] == "red" },
+      total: rows.size
     }
   end
 
@@ -1228,7 +1642,7 @@ class ModulesController < ApplicationController
     } if target_rows.blank?
 
     completed_farmer_ids = target_rows.flat_map do |target|
-      completed_training_farmer_ids_for(target, target_farmer_ids(target))
+      completed_training_farmer_ids_for_target_deadline(target, target_farmer_ids(target))
     end.uniq
     target_farmer_ids = target_rows.flat_map { |target| target_farmer_ids(target) }.uniq
     pending_farmer_ids = target_farmer_ids - completed_farmer_ids
@@ -3683,6 +4097,33 @@ class ModulesController < ApplicationController
 
     key = training_activity_key(target.month_name, target.main_activity_name, target.activity_name)
     Array(training_completion_index[key]) & farmer_ids
+  end
+
+  def completed_training_farmer_ids_for_target_deadline(target, farmer_ids)
+    farmer_ids = Array(farmer_ids).map(&:to_s).reject(&:blank?).uniq
+    return [] if farmer_ids.blank?
+    return completed_training_farmer_ids_for(target, farmer_ids) if target.completion_date.blank?
+    return [] unless model_ready?(:ModuleRecord)
+
+    ModuleRecord
+      .where(module_slug: "training-form")
+      .order(created_at: :desc)
+      .select { |record| active_module_record?(record) }
+      .select { |record| training_record_matches_dashboard_target?(record, target, farmer_ids) }
+      .select { |record| training_record_within_completion_date?(record, target.completion_date) }
+      .flat_map { |record| training_record_selected_farmer_ids(record) & farmer_ids }
+      .uniq
+  end
+
+  def training_record_within_completion_date?(record, completion_date)
+    deadline = parse_module_date(completion_date)
+    return true if deadline.blank?
+
+    record_date = parse_module_date(training_summary(record)[:training_date]) ||
+      (record.created_at.to_date if record.respond_to?(:created_at) && record.created_at.present?)
+    return false if record_date.blank?
+
+    record_date <= deadline
   end
 
   def training_completion_index
