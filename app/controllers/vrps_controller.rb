@@ -1130,32 +1130,56 @@ class VrpsController < ApplicationController
   end
 
   def cluster_incharge_user_mappings
-    return [] unless model_ready?(:User)
+    hierarchy_cluster_incharge_labels
+      .filter_map { |label| cluster_mapping_from_hierarchy_label(label) }
+      .map { |mapping| enrich_cluster_mapping_from_user(mapping) }
+      .uniq { |mapping| normalize_approver_label(mapping[:value]) }
+  end
 
-    mapped_labels = hierarchy_cluster_incharge_labels.map { |label| normalize_approver_label(label) }.reject(&:blank?).uniq
-    return [] if mapped_labels.blank?
+  def cluster_mapping_from_hierarchy_label(label)
+    label = label.to_s.strip
+    return if label.blank?
 
-    User.order(:first_name, :last_name, :user_name)
-      .select { |user| user.status.blank? || user.status.to_s.casecmp("Active").zero? }
-      .filter_map do |user|
-        name = user.full_name.presence || user.user_name
-        next if name.blank?
+    name = label.sub(/\s*\([^)]*\)\s*\z/, "").strip
+    return if name.blank?
 
-        role = user.role_name.presence || user.role
-        next unless role.to_s.strip.casecmp("Cluster Incharge").zero?
-        next unless mapped_labels.include?(normalize_approver_label(name)) ||
-          mapped_labels.include?(normalize_approver_label(user.user_name))
+    {
+      label: label,
+      value: name,
+      office_category: "",
+      office_name: "",
+      parent_office: ""
+    }
+  end
 
-        label = role.present? ? "#{name}(#{role})" : name
-        {
-          label: label,
-          value: name,
-          office_category: user_office_category(user),
-          office_name: user_office_name(user),
-          parent_office: user.respond_to?(:parent_office) ? user.parent_office.to_s.strip : ""
-        }
+  def enrich_cluster_mapping_from_user(mapping)
+    return mapping unless model_ready?(:User)
+
+    user = User
+      .order(:first_name, :last_name, :user_name)
+      .detect do |candidate|
+        candidate_status = candidate.respond_to?(:status) ? candidate.status : nil
+        next false unless candidate_status.blank? || candidate_status.to_s.casecmp("Active").zero?
+
+        candidate_name = (candidate.respond_to?(:full_name) ? candidate.full_name : nil).presence ||
+          (candidate.respond_to?(:user_name) ? candidate.user_name : nil)
+        normalize_approver_label(candidate_name) == normalize_approver_label(mapping[:value]) ||
+          normalize_approver_label(candidate.respond_to?(:user_name) ? candidate.user_name : nil) == normalize_approver_label(mapping[:value])
       end
-      .uniq { |mapping| mapping[:value] }
+    return mapping unless user
+
+    role = (user.respond_to?(:role_name) ? user.role_name : nil).presence ||
+      (user.respond_to?(:role) ? user.role : nil)
+    name = (user.respond_to?(:full_name) ? user.full_name : nil).presence ||
+      (user.respond_to?(:user_name) ? user.user_name : nil) ||
+      mapping[:value]
+    mapping.merge(
+      label: role.present? ? "#{name}(#{role})" : mapping[:label],
+      value: name,
+      office_category: user_office_category(user),
+      office_name: user_office_name(user),
+      parent_office: user.respond_to?(:parent_office) ? user.parent_office.to_s.strip : ""
+    )
   end
 
   def hierarchy_cluster_incharge_labels
