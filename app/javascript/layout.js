@@ -1136,8 +1136,11 @@ document.addEventListener("turbo:load", () => {
       return uniqueOptions(
         clusterUsers
           .filter((user) => {
-            const categoryMatches = !normalizedOfficeCategory || normalizeOption(user.office_category) === normalizedOfficeCategory;
-            const officeMatches = !normalizedOfficeName || normalizeOption(user.office_name || user.office) === normalizedOfficeName;
+            const userOfficeCategory = normalizeOption(user.office_category);
+            const userOfficeName = normalizeOption(user.office_name || user.office);
+            const hierarchyOnlyMapping = !userOfficeCategory && !userOfficeName;
+            const categoryMatches = hierarchyOnlyMapping || !normalizedOfficeCategory || userOfficeCategory === normalizedOfficeCategory;
+            const officeMatches = hierarchyOnlyMapping || !normalizedOfficeName || userOfficeName === normalizedOfficeName;
             return categoryMatches && officeMatches;
           })
           .map((user) => makeOption(user.value, user.label || user.value))
