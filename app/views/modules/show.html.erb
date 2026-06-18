@@ -1119,10 +1119,11 @@
     <% table_id = "user_hierarchy_list_table" %>
     <% cluster_table_id = "jeevika_jankar_cluster_list" %>
     <% hierarchy_rows = user_hierarchy_list_rows(@records) %>
+    <% hierarchy_groups = hierarchy_rows.group_by { |row| row[:id] } %>
     <% cluster_rows = jeevika_jankar_cluster_rows %>
     <section class="module-card list-only-card">
       <div class="module-card-header list-title-header">
-        <h2>Cluster Incharge Under Jeevika Jankar User</h2>
+        <h2>Mapped Cluster Incharges</h2>
       </div>
 
       <div class="vrp-list-toolbar compact">
@@ -1156,17 +1157,25 @@
             </tr>
           </thead>
           <tbody>
-            <% if hierarchy_rows.any? %>
-              <% hierarchy_rows.each_with_index do |row, index| %>
+            <% if hierarchy_groups.any? %>
+              <% hierarchy_groups.each_value do |rows| %>
+                <% row = rows.first %>
                 <tr>
                   <td>
-                    <% if index.zero? || hierarchy_rows[index - 1][:id] != row[:id] %>
-                      <input type="checkbox" value="<%= row[:edit_path] %>" data-module-row-select>
-                    <% end %>
+                    <input type="checkbox" value="<%= row[:edit_path] %>" data-module-row-select>
                   </td>
                   <td><%= row[:stakeholder] %></td>
                   <td><%= row[:level_1_user] %></td>
-                  <td><%= row[:level_2_user] %></td>
+                  <td>
+                    <div class="approval-level-stack">
+                      <% rows.each_with_index do |mapped_row, mapped_index| %>
+                        <div class="approval-level-item">
+                          <strong>Subordinate <%= mapped_index + 1 %></strong>
+                          <small><%= mapped_row[:level_2_user] %></small>
+                        </div>
+                      <% end %>
+                    </div>
+                  </td>
                   <td><span class="status-pill <%= row[:status] == "Inactive" ? "inactive" : "active" %>"><%= row[:status] %></span></td>
                 </tr>
               <% end %>
@@ -1183,7 +1192,7 @@
 
     <section class="module-card list-only-card">
       <div class="module-card-header list-title-header">
-        <h2>Cluster Incharge Under Jeevika Jankar User</h2>
+        <h2>Mapped Jeevika Jankar By Cluster</h2>
       </div>
       <div class="list-controls">
         <div class="list-search">

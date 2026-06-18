@@ -1185,12 +1185,33 @@ class VrpsController < ApplicationController
   def hierarchy_cluster_incharge_labels
     return [] unless model_ready?(:ModuleRecord)
 
-    ModuleRecord
+    labels = ModuleRecord
       .where(module_slug: "user-hierarchy-mapping")
-      .order(created_at: :desc)
+      .order(updated_at: :desc)
       .select { |record| active_module_record?(record) }
       .select { |record| admin_user? || hierarchy_level_1_matches_current_user?(record.data["level_1_user"]) }
       .flat_map { |record| hierarchy_cluster_incharge_labels_for_record(record) }
+      .compact_blank
+      .uniq
+
+    (labels + dashboard_visible_hierarchy_cluster_labels).compact_blank.uniq
+  end
+
+  def dashboard_visible_hierarchy_cluster_labels
+    return [] unless model_ready?(:ModuleRecord)
+
+    current_labels = current_hierarchy_user_labels
+    return [] if current_labels.blank?
+
+    ModuleRecord
+      .where(module_slug: "user-hierarchy-mapping")
+      .order(updated_at: :desc)
+      .select { |record| active_module_record?(record) }
+      .flat_map do |record|
+        next [] unless hierarchy_level_1_matches_current_user?(record.data["level_1_user"])
+
+        hierarchy_level_2_labels_for_record(record).select { |label| cluster_incharge_user_label?(label) || user_record_cluster_incharge_label?(label) }
+      end
       .compact_blank
       .uniq
   end
@@ -1234,10 +1255,19 @@ class VrpsController < ApplicationController
   def hierarchy_label_match_values(label)
     value = label.to_s.strip
     base = value.sub(/\s*\([^)]*\)\s*\z/, "").strip
-    [value, base].map { |item| normalize_approver_label(item) }.reject(&:blank?).uniq
+    [value, base].flat_map do |item|
+      [
+        normalize_approver_label(item),
+        normalize_hierarchy_label(item)
+      ]
+    end.reject { |item| item.blank? || item.length < 3 }.uniq
   end
 
   def hierarchy_cluster_incharge_labels_for_record(record)
+    hierarchy_level_2_labels_for_record(record).select { |label| cluster_incharge_user_label?(label) || user_record_cluster_incharge_label?(label) }
+  end
+
+  def hierarchy_level_2_labels_for_record(record)
     mappings = record.data["level_2_mappings"]
     mappings = mappings.values if mappings.is_a?(Hash)
 
@@ -1248,7 +1278,7 @@ class VrpsController < ApplicationController
     end
 
     labels = collapsed_hierarchy_user_labels(record.data["level_2_users"].presence || record.data["level_2_user"], record.data["level_3_users"].presence || record.data["level_3_user"]) if labels.blank?
-    labels.select { |label| cluster_incharge_user_label?(label) }
+    labels
   end
 
   def collapsed_hierarchy_user_labels(*values)
@@ -1262,7 +1292,27 @@ class VrpsController < ApplicationController
 
   def cluster_incharge_user_label?(label)
     role_text = label.to_s[/\(([^)]*)\)\s*\z/, 1].to_s
-    role_text.downcase.include?("cluster")
+    role_text.downcase.include?("cluster") || label.to_s.downcase.include?("cluster incharge")
+  end
+
+  def user_record_cluster_incharge_label?(label)
+    return false unless model_ready?(:User)
+
+    normalized_label = normalize_approver_label(label)
+    User.order(:first_name, :last_name, :user_name).any? do |user|
+      name = (user.respond_to?(:full_name) ? user.full_name : nil).presence ||
+        (user.respond_to?(:user_name) ? user.user_name : nil)
+      next false unless normalize_approver_label(name) == normalized_label ||
+        normalize_approver_label(user.respond_to?(:user_name) ? user.user_name : nil) == normalized_label
+
+      role = (user.respond_to?(:role_name) ? user.role_name : nil).presence ||
+        (user.respond_to?(:role) ? user.role : nil)
+      role.to_s.downcase.include?("cluster")
+    end
+  end
+
+  def normalize_hierarchy_label(label)
+    label.to_s.downcase.gsub(/[^a-z0-9]+/, " ").squish
   end
 
   def ics_options
