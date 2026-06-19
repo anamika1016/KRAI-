@@ -1426,12 +1426,12 @@ body {
 
 .training-participation-boxes {
   display: grid;
-  grid-template-columns: repeat(3, minmax(180px, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
   gap: 12px;
 }
 
 .training-participation-boxes.compact {
-  grid-template-columns: repeat(3, minmax(160px, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
 }
 
 .training-participation-box {
@@ -1476,6 +1476,12 @@ body {
   font-weight: 850;
 }
 
+.training-participation-box.total {
+  border-color: rgba(22, 99, 118, 0.24);
+  background: rgba(22, 99, 118, 0.08);
+  color: #164f5f;
+}
+
 .training-participation-box.green {
   border-color: rgba(56, 142, 60, 0.26);
   background: rgba(56, 142, 60, 0.10);
@@ -1492,6 +1498,12 @@ body {
   border-color: rgba(211, 47, 47, 0.26);
   background: rgba(211, 47, 47, 0.10);
   color: #9b1c1c;
+}
+
+.training-participation-box.pending {
+  border-color: rgba(46, 113, 135, 0.24);
+  background: rgba(46, 113, 135, 0.08);
+  color: #20586a;
 }
 
 .training-participation-table {
@@ -1569,6 +1581,13 @@ body {
   border-color: rgba(211, 47, 47, 0.28);
   background: rgba(211, 47, 47, 0.10);
   color: #9b1c1c;
+}
+
+.training-status-box.pending,
+.training-status-pill.pending {
+  border-color: rgba(46, 113, 135, 0.28);
+  background: rgba(46, 113, 135, 0.10);
+  color: #20586a;
 }
 
 .training-status-pill {

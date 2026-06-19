@@ -5,6 +5,10 @@
 <% selected_sub_activity = @training_selected_sub_activity.to_s %>
 <% filters_ready = selected_month.present? && selected_sub_activity.present? %>
 <% status_cards = Array(@training_participation_status_cards || []) %>
+<% status_total = status_cards.sum { |card| card[:value].to_i } %>
+<% total_status_path_params = { status: "total" } %>
+<% total_status_path_params[:training_month] = selected_month if selected_month.present? %>
+<% total_status_path_params[:training_sub_activity] = selected_sub_activity if selected_sub_activity.present? %>
 <% target_status_cards = Array(@training_target_status_cards || []) %>
 
 <section class="module-card training-participation-status-card">
@@ -17,9 +21,15 @@
 
   <div class="training-participation-boxes">
     <% if status_cards.any? %>
+      <%= link_to farmer_training_participation_path(total_status_path_params), class: "training-participation-box total", data: { dashboard_card: true } do %>
+        <span>Total Mapped Farmer</span>
+        <strong><%= status_total %></strong>
+        <small>Farmer Target Form ke selected farmers.</small>
+        <b>View List</b>
+      <% end %>
       <% status_cards.each do |card| %>
         <%= link_to card[:path], class: "training-participation-box #{card[:status]}", data: { dashboard_card: true } do %>
-          <span><%= card[:title] %></span>
+          <span><%= card[:status] == "pending" ? "Pending Farmer" : card[:title] %></span>
           <strong><%= card[:value].to_i %></strong>
           <small><%= card[:caption] %></small>
           <b>View List</b>
