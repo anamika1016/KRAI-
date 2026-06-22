@@ -61,6 +61,16 @@ document.addEventListener("turbo:load", () => {
     input.form?.addEventListener("submit", () => capitalizeFirstLetter(input));
   });
 
+  document.querySelectorAll("[data-gps-photo-form]").forEach((form) => {
+    if (!navigator.geolocation) return;
+
+    navigator.geolocation.getCurrentPosition((position) => {
+      form.querySelector("[data-gps-latitude]").value = position.coords.latitude || "";
+      form.querySelector("[data-gps-longitude]").value = position.coords.longitude || "";
+      form.querySelector("[data-gps-accuracy]").value = position.coords.accuracy || "";
+    });
+  });
+
   document.querySelectorAll(".side-module").forEach((module) => {
     module.addEventListener("toggle", () => {
       if (!module.open) return;

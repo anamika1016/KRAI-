@@ -118,6 +118,26 @@ module ApplicationHelper
       ]
     },
     {
+      title: "Farmer Farm Information",
+      icon: "▥",
+      links: [
+        ["Farmer Farm Information", :route, :farmer_farm_information_path],
+        ["All Land List", :route, :list_farmer_farm_information_path],
+        ["Farm Map (lat long gps)", :route, :farm_map_farmer_farm_information_path],
+        ["Crop Map Session Wise Farm Map (lat long gps)", :route, :crop_map_session_wise_farmer_farm_information_path],
+        ["Farm-Crop-Area Details", :route, :farm_crop_area_details_path],
+        ["Seed & Planting Material", :route, :seed_planting_materials_path],
+        ["Soil Conditioners & Fertility Input Records", :route, :soil_conditioner_fertility_input_records_path],
+        ["On Farm Input Records", :route, :on_farm_input_records_path],
+        ["Disease, Insects, Pests & Weed Management Record", :route, :disease_pest_weed_management_records_path],
+        ["Contamination Control Records", :route, :contamination_control_records_path],
+        ["Records of Production & Harvest Details", :route, :production_harvest_details_path],
+        ["Post Harvest, Handling & Storage Area", :route, :post_harvest_handling_storage_records_path],
+        ["Sale Record", :route, :sale_records_path],
+        ["Dispatch Record", :route, :dispatch_records_path]
+      ]
+    },
+    {
       title: "Jeevika Jankar Bill",
       icon: "▧",
       links: [
@@ -240,6 +260,36 @@ module ApplicationHelper
     end
     if ["Farmer Training Form List", "Farmer Target Form List"].include?(name.to_s.strip)
       keys.concat(["farmer-training-form-list", "farmer-target-form-list"])
+    end
+    if ["Farmer Farm Information", "Farmer FARM Information", "Farmer_FARM _Information"].include?(name.to_s.strip)
+      keys << "farmer-farm-information"
+    end
+    if ["All Land List", "Land List", "Farmer Farm Information List"].include?(name.to_s.strip)
+      keys.concat(["all-land-list", "land-list", "farmer-farm-information-list"])
+    end
+    if ["Farm Map", "Farm Map (lat long gps)", "FRAM MAP (lat long gps)"].include?(name.to_s.strip)
+      keys.concat(["farm-map", "farm-map-lat-long-gps", "fram-map-lat-long-gps"])
+    end
+    if ["Crop Map Session Wise Farm Map", "Crop Map Session Wise Farm Map (lat long gps)"].include?(name.to_s.strip)
+      keys << "crop-map-session-wise-farm-map-lat-long-gps"
+    end
+    if ["Farm-Crop-Area Details", "Farm Crop Area Details"].include?(name.to_s.strip)
+      keys << "farm-crop-area-details"
+    end
+    if ["Seed & Planting Material", "Seed Planting Material"].include?(name.to_s.strip)
+      keys << "seed-planting-material"
+    end
+    if ["Soil Conditioners & Fertility Input Records", "Soil Conditioner Fertility Input Records"].include?(name.to_s.strip)
+      keys << "soil-conditioners-fertility-input-records"
+    end
+    if ["On Farm Input Records", "Record of on farm input"].include?(name.to_s.strip)
+      keys << "on-farm-input-records"
+    end
+    if ["Disease, Insects, Pests & Weed Management Record", "Disease Insects Pests Weed Management Record"].include?(name.to_s.strip)
+      keys << "disease-insects-pests-weed-management-record"
+    end
+    if ["Contamination Control Records", "Contamination Control"].include?(name.to_s.strip)
+      keys << "contamination-control-records"
     end
     if ["Target Mapping Master", "Target Mapping", "VRP Targets"].include?(name.to_s.strip)
       keys.concat(["target-mapping-master", "target-mapping", "vrp-targets"])

@@ -41,6 +41,73 @@ Rails.application.routes.draw do
     get :vrp_mappings, on: :collection
   end
 
+  get "farmer-farm-information", to: "farmer_farm_information#index", as: :farmer_farm_information
+  post "farmer-farm-information", to: "farmer_farm_information#create"
+  post "farmer-farm-information/import", to: "farmer_farm_information#import", as: :import_farmer_farm_information
+  get "farmer-farm-information/export", to: "farmer_farm_information#export", as: :export_farmer_farm_information
+  get "farmer-farm-information/list", to: "farmer_farm_information#list", as: :list_farmer_farm_information
+  get "farmer-farm-information/farm-map", to: "farmer_farm_map_uploads#farm_map", as: :farm_map_farmer_farm_information
+  get "farmer-farm-information/crop-map-session-wise", to: "farmer_farm_map_uploads#crop_map_session_wise", as: :crop_map_session_wise_farmer_farm_information
+  post "farmer-farm-information/map-uploads", to: "farmer_farm_map_uploads#create", as: :farmer_farm_map_uploads
+  get "farmer-farm-information/map-uploads/:id/edit", to: "farmer_farm_map_uploads#edit", as: :edit_farmer_farm_map_upload
+  patch "farmer-farm-information/map-uploads/:id/set_status", to: "farmer_farm_map_uploads#set_status"
+  patch "farmer-farm-information/map-uploads/:id", to: "farmer_farm_map_uploads#update", as: :farmer_farm_map_upload
+  delete "farmer-farm-information/map-uploads/:id", to: "farmer_farm_map_uploads#destroy"
+  resources :farm_crop_area_details, path: "farmer-farm-information/farm-crop-area-details", only: [:index, :create, :edit, :update, :destroy] do
+    post :import, on: :collection
+    get :export, on: :collection
+    patch :set_status, on: :member
+  end
+  resources :seed_planting_materials, path: "farmer-farm-information/seed-planting-materials", only: [:index, :create, :edit, :update, :destroy] do
+    post :import, on: :collection
+    get :export, on: :collection
+    patch :set_status, on: :member
+  end
+  resources :soil_conditioner_fertility_input_records, path: "farmer-farm-information/soil-conditioner-fertility-input-records", only: [:index, :create, :edit, :update, :destroy] do
+    post :import, on: :collection
+    get :export, on: :collection
+    patch :set_status, on: :member
+  end
+  resources :on_farm_input_records, path: "farmer-farm-information/on-farm-input-records", only: [:index, :create, :edit, :update, :destroy] do
+    post :import, on: :collection
+    get :export, on: :collection
+    patch :set_status, on: :member
+  end
+  resources :disease_pest_weed_management_records, path: "farmer-farm-information/disease-pest-weed-management-records", only: [:index, :create, :edit, :update, :destroy] do
+    post :import, on: :collection
+    get :export, on: :collection
+    patch :set_status, on: :member
+  end
+  resources :contamination_control_records, path: "farmer-farm-information/contamination-control-records", only: [:index, :create, :edit, :update, :destroy] do
+    post :import, on: :collection
+    get :export, on: :collection
+    patch :set_status, on: :member
+  end
+  resources :production_harvest_details, path: "farmer-farm-information/production-harvest-details", only: [:index, :create, :edit, :update, :destroy] do
+    post :import, on: :collection
+    get :export, on: :collection
+    patch :set_status, on: :member
+  end
+  resources :post_harvest_handling_storage_records, path: "farmer-farm-information/post-harvest-handling-storage-records", only: [:index, :create, :edit, :update, :destroy] do
+    post :import, on: :collection
+    get :export, on: :collection
+    patch :set_status, on: :member
+  end
+  resources :sale_records, path: "farmer-farm-information/sale-records", only: [:index, :create, :edit, :update, :destroy] do
+    post :import, on: :collection
+    get :export, on: :collection
+    patch :set_status, on: :member
+  end
+  resources :dispatch_records, path: "farmer-farm-information/dispatch-records", only: [:index, :create, :edit, :update, :destroy] do
+    post :import, on: :collection
+    get :export, on: :collection
+    patch :set_status, on: :member
+  end
+  get "farmer-farm-information/:id/edit", to: "farmer_farm_information#edit", as: :edit_farmer_farm_information_record
+  patch "farmer-farm-information/:id/set_status", to: "farmer_farm_information#set_status"
+  patch "farmer-farm-information/:id", to: "farmer_farm_information#update", as: :farmer_farm_information_record
+  delete "farmer-farm-information/:id", to: "farmer_farm_information#destroy"
+
   resources :modules, param: :slug, only: [:show], controller: :modules do
     post :records, action: :create, on: :member
     post :import, action: :import, on: :member
