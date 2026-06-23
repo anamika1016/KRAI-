@@ -4863,10 +4863,12 @@ body {
     z-index: 80;
     width: min(318px, 86vw);
     height: auto;
+    max-height: 100svh;
     padding: 12px 14px 18px;
     border-right: 1px solid var(--vrp-line);
     border-bottom: 0;
     box-shadow: 18px 0 45px rgba(23, 33, 38, 0.22);
+    overflow: hidden;
     transform: translateX(-104%);
     transition: transform 180ms ease;
     will-change: transform;
@@ -4893,9 +4895,12 @@ body {
   .side-nav {
     display: grid;
     gap: 8px;
+    flex: 1 1 auto;
+    min-height: 0;
     margin-top: 12px;
-    overflow: visible;
-    padding: 0;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    padding: 0 4px 6px 0;
   }
 
   .side-nav > .side-link,
@@ -4909,13 +4914,14 @@ body {
   }
 
   .side-subnav {
-    max-height: 220px;
-    overflow-y: auto;
+    max-height: none;
+    overflow: visible;
   }
 
   .side-footer {
     display: grid;
     grid-template-columns: minmax(0, 1fr) auto;
+    flex: 0 0 auto;
     gap: 8px;
     align-items: stretch;
     margin-top: 10px;
