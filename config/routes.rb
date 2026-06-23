@@ -46,6 +46,12 @@ Rails.application.routes.draw do
   post "farmer-farm-information/import", to: "farmer_farm_information#import", as: :import_farmer_farm_information
   get "farmer-farm-information/export", to: "farmer_farm_information#export", as: :export_farmer_farm_information
   get "farmer-farm-information/list", to: "farmer_farm_information#list", as: :list_farmer_farm_information
+  get "farmer-farm-information/ics-exit-declaration", to: "farmer_farm_information#ics_exit_declaration", as: :ics_exit_declaration_farmer_farm_information
+  post "farmer-farm-information/ics-exit-declaration", to: "farmer_farm_information#create_ics_exit_declaration"
+  get "farmer-farm-information/ics-exit-declaration/:id/edit", to: "farmer_farm_information#edit_ics_exit_declaration", as: :edit_ics_exit_declaration_record
+  get "farmer-farm-information/ics-exit-declaration/:id", to: "farmer_farm_information#show_ics_exit_declaration", as: :ics_exit_declaration_record
+  patch "farmer-farm-information/ics-exit-declaration/:id", to: "farmer_farm_information#update_ics_exit_declaration"
+  delete "farmer-farm-information/ics-exit-declaration/:id", to: "farmer_farm_information#destroy_ics_exit_declaration"
   get "farmer-farm-information/farm-map", to: "farmer_farm_map_uploads#farm_map", as: :farm_map_farmer_farm_information
   get "farmer-farm-information/crop-map-session-wise", to: "farmer_farm_map_uploads#crop_map_session_wise", as: :crop_map_session_wise_farmer_farm_information
   post "farmer-farm-information/map-uploads", to: "farmer_farm_map_uploads#create", as: :farmer_farm_map_uploads

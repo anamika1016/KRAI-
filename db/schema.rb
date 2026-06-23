@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2026_06_19_111000) do
+ActiveRecord::Schema[8.1].define(version: 2026_06_23_062000) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "pg_catalog.plpgsql"
 
@@ -213,6 +213,31 @@ ActiveRecord::Schema[8.1].define(version: 2026_06_19_111000) do
     t.datetime "updated_at", null: false
     t.index ["created_at"], name: "index_farmer_farm_map_uploads_on_created_at"
     t.index ["map_type"], name: "index_farmer_farm_map_uploads_on_map_type"
+  end
+
+  create_table "ics_exit_declarations", force: :cascade do |t|
+    t.string "certification_status"
+    t.datetime "created_at", null: false
+    t.date "declaration_date"
+    t.text "exit_reason"
+    t.string "farm_id"
+    t.text "farmer_address"
+    t.string "farmer_contact_no"
+    t.bigint "farmer_farm_information_id"
+    t.string "farmer_name"
+    t.string "farmer_village"
+    t.string "grower_group_name"
+    t.string "ics_name"
+    t.string "id_number"
+    t.string "new_certification_body"
+    t.string "signature_of_farmer"
+    t.string "status", default: "Active", null: false
+    t.string "tracenet_no"
+    t.datetime "updated_at", null: false
+    t.index ["declaration_date"], name: "index_ics_exit_declarations_on_declaration_date"
+    t.index ["farm_id"], name: "index_ics_exit_declarations_on_farm_id"
+    t.index ["farmer_farm_information_id"], name: "index_ics_exit_declarations_on_farmer_farm_information_id"
+    t.index ["farmer_name"], name: "index_ics_exit_declarations_on_farmer_name"
   end
 
   create_table "module_records", force: :cascade do |t|
@@ -480,6 +505,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_06_19_111000) do
 
   add_foreign_key "active_storage_attachments", "active_storage_blobs", column: "blob_id"
   add_foreign_key "active_storage_variant_records", "active_storage_blobs", column: "blob_id"
+  add_foreign_key "ics_exit_declarations", "farmer_farm_information"
   add_foreign_key "target_mappings", "vrp_ics_mappings"
   add_foreign_key "target_mappings", "vrps"
   add_foreign_key "vrp_ics_mappings", "vrps"

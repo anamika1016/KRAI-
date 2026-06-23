@@ -122,7 +122,7 @@ module ApplicationHelper
       icon: "▥",
       links: [
         ["Farmer Farm Information", :route, :farmer_farm_information_path],
-        ["All Land List", :route, :list_farmer_farm_information_path],
+        ["All Basic Detail List", :route, :list_farmer_farm_information_path],
         ["Farm Map (lat long gps)", :route, :farm_map_farmer_farm_information_path],
         ["Crop Map Session Wise Farm Map (lat long gps)", :route, :crop_map_session_wise_farmer_farm_information_path],
         ["Farm-Crop-Area Details", :route, :farm_crop_area_details_path],
@@ -134,7 +134,8 @@ module ApplicationHelper
         ["Records of Production & Harvest Details", :route, :production_harvest_details_path],
         ["Post Harvest, Handling & Storage Area", :route, :post_harvest_handling_storage_records_path],
         ["Sale Record", :route, :sale_records_path],
-        ["Dispatch Record", :route, :dispatch_records_path]
+        ["Dispatch Record", :route, :dispatch_records_path],
+        ["Application Format for Exit of Farmer from ICS", :route, :ics_exit_declaration_farmer_farm_information_path]
       ]
     },
     {
@@ -172,6 +173,8 @@ module ApplicationHelper
     if type == :module
       request.path.include?(target)
     else
+      return request.path.start_with?(public_send(target)) if target == :ics_exit_declaration_farmer_farm_information_path
+
       request.path == public_send(target)
     end
   end
@@ -262,10 +265,10 @@ module ApplicationHelper
       keys.concat(["farmer-training-form-list", "farmer-target-form-list"])
     end
     if ["Farmer Farm Information", "Farmer FARM Information", "Farmer_FARM _Information"].include?(name.to_s.strip)
-      keys << "farmer-farm-information"
+      keys.concat(["farmer-farm-information", "application-format-for-exit-of-farmer-from-ics"])
     end
-    if ["All Land List", "Land List", "Farmer Farm Information List"].include?(name.to_s.strip)
-      keys.concat(["all-land-list", "land-list", "farmer-farm-information-list"])
+    if ["All Basic Detail List", "All Land List", "Land List", "Farmer Farm Information List"].include?(name.to_s.strip)
+      keys.concat(["all-basic-detail-list", "all-land-list", "land-list", "farmer-farm-information-list"])
     end
     if ["Farm Map", "Farm Map (lat long gps)", "FRAM MAP (lat long gps)"].include?(name.to_s.strip)
       keys.concat(["farm-map", "farm-map-lat-long-gps", "fram-map-lat-long-gps"])
