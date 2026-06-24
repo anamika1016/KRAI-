@@ -1467,6 +1467,8 @@ document.addEventListener("turbo:load", () => {
 	    const farmerSelectAllButton = formShell.querySelector("[data-training-farmer-select-all-button]");
 	    const farmerCount = formShell.querySelector("[data-training-farmer-count]");
 	    const farmerCountInput = formShell.querySelector("[data-training-farmer-count-input]");
+	    const maleCountInput = formShell.querySelector('input[name="module_record[male_count]"]');
+	    const femaleCountInput = formShell.querySelector('input[name="module_record[female_count]"]');
 	    const geoLatitudeInput = formShell.querySelector("[data-training-geo-latitude]");
 	    const geoLongitudeInput = formShell.querySelector("[data-training-geo-longitude]");
 	    if (!icsSelect || !villageSelect) return;
@@ -1484,10 +1486,10 @@ document.addEventListener("turbo:load", () => {
       return normalizeOption(mapping.main_activity_type || "Training") === selectedTrainingActivityType();
     };
 
-    const selectOption = (select, option, selected) => {
-      const value = optionValue(option);
-      const label = optionLabel(option);
-      select.selected = normalizeOption(value) === normalizeOption(selected) ||
+    const selectOption = (option, optionData, selected) => {
+      const value = optionValue(optionData);
+      const label = optionLabel(optionData);
+      option.selected = normalizeOption(value) === normalizeOption(selected) ||
         normalizeOption(label) === normalizeOption(selected);
     };
 
@@ -1545,27 +1547,12 @@ document.addEventListener("turbo:load", () => {
     ).map(optionValue);
     const mappedIcsOptions = () => uniqueOptions(targetRowsForSelection({ requireMonth: true }).map((mapping) => makeOption(mapping.ics, mapping.ics))).map(optionValue);
     const mappedMainActivityOptions = () => uniqueOptions(
-      activityMappings
-        .filter(trainingActivityTypeMatches)
+      targetRowsForSelection({ requireMonth: true, requireVillage: true, includeMainActivity: false })
         .map((mapping) => makeOption(mapping.main_activity, mapping.main_activity))
-        .concat(
-          mappings
-            .filter(trainingActivityTypeMatches)
-            .map((mapping) => makeOption(mapping.main_activity, mapping.main_activity))
-        )
     ).map(optionValue);
     const mappedSubActivityOptions = () => uniqueOptions(
-      activityMappings
-        .filter(trainingActivityTypeMatches)
-        .filter((mapping) => !mainActivitySelect?.value || normalizeOption(mapping.main_activity) === normalizeOption(mainActivitySelect.value))
-        .flatMap((mapping) => mapping.sub_activities || [])
-        .map((subActivity) => makeOption(subActivity, subActivity))
-        .concat(
-          mappings
-            .filter(trainingActivityTypeMatches)
-            .filter((mapping) => !mainActivitySelect?.value || normalizeOption(mapping.main_activity) === normalizeOption(mainActivitySelect.value))
-            .map((mapping) => makeOption(mapping.sub_activity, mapping.sub_activity))
-        )
+      targetRowsForSelection({ requireMonth: true, requireVillage: true, requireMainActivity: true, includeSubActivity: false })
+        .map((mapping) => makeOption(mapping.sub_activity, mapping.sub_activity))
     ).map(optionValue);
 	    const mappedVillageOptions = () => {
 	      const rows = targetRowsForSelection({ requireMonth: true });
@@ -1602,6 +1589,14 @@ document.addEventListener("turbo:load", () => {
 	      const boxes = farmerBoxes();
 	      if (farmerCount) farmerCount.textContent = `${count} farmer selected`;
 	      if (farmerCountInput) farmerCountInput.value = count ? String(count) : "";
+      [maleCountInput, femaleCountInput].forEach((input) => {
+        if (!input) return;
+        if (count > 0) {
+          input.max = String(count);
+        } else {
+          input.removeAttribute("max");
+        }
+      });
 	      if (farmerSelectAll) {
 	        farmerSelectAll.checked = boxes.length > 0 && count === boxes.length;
 	        farmerSelectAll.indeterminate = count > 0 && count < boxes.length;
@@ -1611,7 +1606,46 @@ document.addEventListener("turbo:load", () => {
 	        farmerSelectAllButton.disabled = boxes.length === 0;
 	        farmerSelectAllButton.textContent = boxes.length > 0 && count === boxes.length ? "Clear all" : "Select all";
 	      }
+      validateTrainingCountSplit(false);
 	    };
+
+    const validateTrainingCountSplit = (report = false) => {
+      [farmerCountInput, maleCountInput, femaleCountInput].forEach((input) => input?.setCustomValidity(""));
+
+      const farmerCountValue = Number(farmerCountInput?.value || 0);
+      const maleBlank = !maleCountInput?.value;
+      const femaleBlank = !femaleCountInput?.value;
+      const maleCountValue = Number(maleCountInput?.value || 0);
+      const femaleCountValue = Number(femaleCountInput?.value || 0);
+      let invalidInput = null;
+      let message = "";
+
+      if (farmerCountValue <= 0) {
+        invalidInput = farmerCountInput;
+        message = "Target Farmers select karein.";
+      } else if (maleBlank) {
+        invalidInput = maleCountInput;
+        message = "Male Count required hai.";
+      } else if (femaleBlank) {
+        invalidInput = femaleCountInput;
+        message = "Female Count required hai.";
+      } else if (maleCountValue < 0 || maleCountValue > farmerCountValue) {
+        invalidInput = maleCountInput;
+        message = `Male Count 0 se ${farmerCountValue} ke beech hona chahiye.`;
+      } else if (femaleCountValue < 0 || femaleCountValue > farmerCountValue) {
+        invalidInput = femaleCountInput;
+        message = `Female Count 0 se ${farmerCountValue} ke beech hona chahiye.`;
+      } else if (maleCountValue + femaleCountValue !== farmerCountValue) {
+        invalidInput = femaleCountInput;
+        message = `Male Count aur Female Count ka total Farmer Count (${farmerCountValue}) ke equal hona chahiye.`;
+      }
+
+      if (!invalidInput) return true;
+
+      invalidInput?.setCustomValidity(message);
+      if (report) invalidInput?.reportValidity();
+      return false;
+    };
 
 	    const renderTrainingFarmers = () => {
 	      if (!farmerList) return;
@@ -1791,7 +1825,262 @@ document.addEventListener("turbo:load", () => {
 	      selectedFarmerIds.clear();
 	      renderTrainingFarmers();
 	    });
+
+    [maleCountInput, femaleCountInput].forEach((input) => {
+      input?.addEventListener("input", () => validateTrainingCountSplit(false));
+      input?.addEventListener("change", () => validateTrainingCountSplit(false));
+    });
+
+    formShell.querySelector("form")?.addEventListener("submit", (event) => {
+      if (validateTrainingCountSplit(true)) return;
+
+      event.preventDefault();
+    });
 	  });
+
+  document.querySelectorAll("[data-seed-target-form]").forEach((formShell) => {
+    let mappings = [];
+    let monthOptions = [];
+    try {
+      mappings = JSON.parse(formShell.dataset.seedTargetMap || "[]");
+    } catch (_error) {
+      mappings = [];
+    }
+    try {
+      monthOptions = JSON.parse(formShell.dataset.seedMonthOptions || "[]");
+    } catch (_error) {
+      monthOptions = [];
+    }
+
+    const vrpSelect = formShell.querySelector("[data-seed-target-vrp]");
+    const monthSelect = formShell.querySelector("[data-seed-target-month]");
+    const icsSelect = formShell.querySelector("[data-seed-target-ics]");
+    const villageSelect = formShell.querySelector("[data-seed-target-village]");
+    const topicSelect = formShell.querySelector("[data-seed-target-topic]");
+    const subjectSelect = formShell.querySelector("[data-seed-target-subject]");
+    const targetInput = formShell.querySelector("[data-seed-target-quantity]");
+    const targetIdInput = formShell.querySelector("[data-seed-target-id]");
+    const vrpIdInput = formShell.querySelector("[data-seed-vrp-id]");
+    const contactInput = formShell.querySelector("[data-seed-vrp-contact]");
+    const departmentInput = formShell.querySelector("[data-seed-vrp-department]");
+    const achievementInput = formShell.querySelector("[data-seed-achievement]");
+    if (!vrpSelect || !monthSelect || !icsSelect || !villageSelect || !topicSelect || !subjectSelect) return;
+
+    const selectOption = (option, optionData, selected) => {
+      const value = optionValue(optionData);
+      const label = optionLabel(optionData);
+      option.selected = normalizeOption(value) === normalizeOption(selected) ||
+        normalizeOption(label) === normalizeOption(selected);
+    };
+
+    const fillSeedSelect = (select, options, placeholder) => {
+      const selected = select.dataset.selectedValue || select.value;
+      select.innerHTML = "";
+
+      const blank = document.createElement("option");
+      blank.value = "";
+      blank.textContent = options.length ? placeholder : `No ${placeholder.replace(/^Select\s+/i, "")} saved yet`;
+      select.appendChild(blank);
+
+      options.forEach((optionData) => {
+        const option = document.createElement("option");
+        option.value = optionValue(optionData);
+        option.textContent = optionLabel(optionData);
+        selectOption(option, optionData, selected);
+        select.appendChild(option);
+      });
+    };
+
+    const rowsForSelection = ({
+      requireMonth = false,
+      requireIcs = false,
+      requireVillage = false,
+      requireTopic = false,
+      includeVrp = true,
+      includeSubject = true
+    } = {}) => {
+      const selectedVrp = includeVrp ? normalizeOption(vrpSelect.value) : "";
+      const selectedMonth = normalizeOption(monthSelect.value);
+      const selectedIcs = normalizeOption(icsSelect.value);
+      const selectedVillage = normalizeOption(villageSelect.value);
+      const selectedTopic = normalizeOption(topicSelect.value);
+      const selectedSubject = includeSubject ? normalizeOption(subjectSelect.value) : "";
+
+      if (requireMonth && !selectedMonth) return [];
+      if (requireIcs && !selectedIcs) return [];
+      if (requireVillage && !selectedVillage) return [];
+      if (requireTopic && !selectedTopic) return [];
+
+      return mappings.filter((mapping) => {
+        const vrpMatches = !selectedVrp ||
+          normalizeOption(mapping.vrp_id) === selectedVrp ||
+          normalizeOption(mapping.jeevika_jankar_name) === selectedVrp;
+        const monthMatches = !selectedMonth || normalizeOption(mapping.month) === selectedMonth;
+        const icsMatches = !selectedIcs || normalizeOption(mapping.ics) === selectedIcs;
+        const villageMatches = !selectedVillage || normalizeOption(mapping.village) === selectedVillage;
+        const topicMatches = !selectedTopic || normalizeOption(mapping.training_topic) === selectedTopic;
+        const subjectMatches = !selectedSubject || normalizeOption(mapping.training_subject) === selectedSubject;
+        return vrpMatches && monthMatches && icsMatches && villageMatches && topicMatches && subjectMatches;
+      });
+    };
+
+    const vrpValues = () => uniqueOptions(
+      mappings.map((mapping) => ({
+        value: mapping.vrp_id || mapping.jeevika_jankar_name,
+        label: mapping.jeevika_jankar_name || mapping.vrp_id
+      }))
+    );
+    const monthValues = () => uniqueOptions(
+      monthOptions.concat(rowsForSelection({ includeVrp: true }).map((mapping) => mapping.month)).map((month) => makeOption(month, month))
+    ).map(optionValue);
+    const icsValues = () => uniqueOptions(rowsForSelection({ requireMonth: true }).map((mapping) => makeOption(mapping.ics, mapping.ics))).map(optionValue);
+    const villageValues = () => uniqueOptions(rowsForSelection({ requireMonth: true, requireIcs: true }).map((mapping) => makeOption(mapping.village, mapping.village))).map(optionValue);
+    const topicValues = () => uniqueOptions(rowsForSelection({ requireMonth: true, requireIcs: true, requireVillage: true }).map((mapping) => makeOption(mapping.training_topic, mapping.training_topic))).map(optionValue);
+    const subjectValues = () => uniqueOptions(rowsForSelection({ requireMonth: true, requireIcs: true, requireVillage: true, requireTopic: true, includeSubject: false }).map((mapping) => makeOption(mapping.training_subject, mapping.training_subject))).map(optionValue);
+
+    const selectedSeedMapping = () => rowsForSelection({
+      requireMonth: true,
+      requireIcs: true,
+      requireVillage: true,
+      requireTopic: true
+    }).find((mapping) => normalizeOption(mapping.training_subject) === normalizeOption(subjectSelect.value));
+
+    const selectedVrpMapping = () => rowsForSelection({}).find((mapping) => {
+      const selectedVrp = normalizeOption(vrpSelect.value);
+      return selectedVrp && (
+        normalizeOption(mapping.vrp_id) === selectedVrp ||
+        normalizeOption(mapping.jeevika_jankar_name) === selectedVrp
+      );
+    }) || mappings.find((mapping) => {
+      const selectedVrp = normalizeOption(vrpSelect.value);
+      return selectedVrp && (
+        normalizeOption(mapping.vrp_id) === selectedVrp ||
+        normalizeOption(mapping.jeevika_jankar_name) === selectedVrp
+      );
+    });
+
+    const refreshVrpDetails = () => {
+      const mapping = selectedSeedMapping() || selectedVrpMapping();
+      if (contactInput) contactInput.value = String(mapping?.contact_number || "").replace(/\D/g, "").slice(-10);
+      if (departmentInput) departmentInput.value = mapping?.department || "";
+      if (vrpIdInput) vrpIdInput.value = mapping?.vrp_id || vrpSelect.value || "";
+    };
+
+    const refreshTarget = () => {
+      const mapping = selectedSeedMapping();
+      if (targetInput) targetInput.value = mapping?.target || "";
+      if (targetIdInput) targetIdInput.value = mapping?.target_mapping_id || "";
+      refreshVrpDetails();
+      if (achievementInput && targetInput?.value) {
+        achievementInput.max = targetInput.value;
+      } else if (achievementInput) {
+        achievementInput.removeAttribute("max");
+      }
+    };
+
+    const resetAfter = (selects) => {
+      selects.forEach((select) => {
+        select.dataset.selectedValue = "";
+        select.value = "";
+      });
+      refreshTarget();
+    };
+
+    fillSeedSelect(vrpSelect, vrpValues(), "Select Jeevika Jankar Name");
+    if (!vrpSelect.value && vrpSelect.options.length === 2) {
+      vrpSelect.selectedIndex = 1;
+      vrpSelect.dataset.selectedValue = vrpSelect.value;
+    }
+    fillSeedSelect(monthSelect, monthValues(), "Select Month");
+    fillSeedSelect(icsSelect, icsValues(), "Select ICS");
+    fillSeedSelect(villageSelect, villageValues(), "Select Village");
+    fillSeedSelect(topicSelect, topicValues(), "Select Main Activity");
+    fillSeedSelect(subjectSelect, subjectValues(), "Select Sub Activity");
+    refreshTarget();
+
+    vrpSelect.addEventListener("change", () => {
+      resetAfter([monthSelect, icsSelect, villageSelect, topicSelect, subjectSelect]);
+      refreshVrpDetails();
+      fillSeedSelect(monthSelect, monthValues(), "Select Month");
+      fillSeedSelect(icsSelect, icsValues(), "Select ICS");
+      fillSeedSelect(villageSelect, villageValues(), "Select Village");
+      fillSeedSelect(topicSelect, topicValues(), "Select Main Activity");
+      fillSeedSelect(subjectSelect, subjectValues(), "Select Sub Activity");
+    });
+    monthSelect.addEventListener("change", () => {
+      resetAfter([icsSelect, villageSelect, topicSelect, subjectSelect]);
+      fillSeedSelect(icsSelect, icsValues(), "Select ICS");
+      fillSeedSelect(villageSelect, villageValues(), "Select Village");
+      fillSeedSelect(topicSelect, topicValues(), "Select Main Activity");
+      fillSeedSelect(subjectSelect, subjectValues(), "Select Sub Activity");
+    });
+    icsSelect.addEventListener("change", () => {
+      resetAfter([villageSelect, topicSelect, subjectSelect]);
+      fillSeedSelect(villageSelect, villageValues(), "Select Village");
+      fillSeedSelect(topicSelect, topicValues(), "Select Main Activity");
+      fillSeedSelect(subjectSelect, subjectValues(), "Select Sub Activity");
+    });
+    villageSelect.addEventListener("change", () => {
+      resetAfter([topicSelect, subjectSelect]);
+      fillSeedSelect(topicSelect, topicValues(), "Select Main Activity");
+      fillSeedSelect(subjectSelect, subjectValues(), "Select Sub Activity");
+    });
+    topicSelect.addEventListener("change", () => {
+      resetAfter([subjectSelect]);
+      fillSeedSelect(subjectSelect, subjectValues(), "Select Sub Activity");
+    });
+    subjectSelect.addEventListener("change", refreshTarget);
+
+    const validateSeedTargetForm = (report = false) => {
+      [vrpSelect, monthSelect, icsSelect, villageSelect, topicSelect, subjectSelect, contactInput, departmentInput, targetInput, achievementInput].forEach((input) => {
+        input?.setCustomValidity("");
+      });
+
+      const mapping = selectedSeedMapping();
+      const contactDigits = String(contactInput?.value || "").replace(/\D/g, "");
+      const targetValue = Number(targetInput?.value || 0);
+      const achievementValue = Number(achievementInput?.value || 0);
+      let invalidInput = null;
+      let message = "";
+
+      if (!mapping) {
+        invalidInput = subjectSelect;
+        message = "Mapped Other activity target select karein.";
+      } else if (contactInput && contactDigits.length !== 10) {
+        invalidInput = contactInput;
+        message = "Contact Number valid 10 digit hona chahiye.";
+      } else if (departmentInput && !departmentInput.value) {
+        invalidInput = departmentInput;
+        message = "Department autofill required hai.";
+      } else if (!targetInput?.value || targetValue < 0) {
+        invalidInput = targetInput;
+        message = "Mapped Target valid hona chahiye.";
+      } else if (!achievementInput?.value || achievementValue < 0) {
+        invalidInput = achievementInput;
+        message = "Achievement valid hona chahiye.";
+      } else if (achievementValue > targetValue) {
+        invalidInput = achievementInput;
+        message = `Achievement Target (${targetValue}) se jyada nahi ho sakta.`;
+      }
+
+      if (!invalidInput) return true;
+
+      invalidInput.setCustomValidity(message);
+      if (report) invalidInput.reportValidity();
+      return false;
+    };
+
+    [vrpSelect, monthSelect, icsSelect, villageSelect, topicSelect, subjectSelect, targetInput, achievementInput].forEach((input) => {
+      input?.addEventListener("input", () => validateSeedTargetForm(false));
+      input?.addEventListener("change", () => validateSeedTargetForm(false));
+    });
+
+    formShell.querySelector("form")?.addEventListener("submit", (event) => {
+      if (validateSeedTargetForm(true)) return;
+
+      event.preventDefault();
+    });
+  });
 
   document.querySelectorAll("[data-vrp-ics-mapping]").forEach((shell) => {
     const vrpSelect = shell.querySelector("[data-vrp-ics-vrp]");
@@ -3000,9 +3289,10 @@ document.addEventListener("turbo:load", () => {
     };
     const selectedAchievementTotal = () => {
       const selectedVrp = String(vrpSelect?.value || "");
+      const selectedMonth = normalizeOption(monthSelect?.value);
       if (!selectedVrp) return null;
 
-      const total = achievementSummary?.[selectedVrp]?.__all;
+      const total = selectedMonth ? achievementSummary?.[selectedVrp]?.[selectedMonth] : achievementSummary?.[selectedVrp]?.__all;
       return total === undefined || total === null ? null : numberValue(total);
     };
 
@@ -3030,8 +3320,8 @@ document.addEventListener("turbo:load", () => {
                 <th>Father</th>
                 <th>Mobile</th>
                 <th>Department</th>
-                <th>Training Topic</th>
-                <th>Training Subject</th>
+                <th>Main Activity</th>
+                <th>Sub Activity</th>
                 <th>Date</th>
               </tr>
             </thead>
@@ -3053,7 +3343,8 @@ document.addEventListener("turbo:load", () => {
         const achievementInput = row.querySelector("[data-jeevika-achievement]");
         const manualAchievement = row.dataset.achievementEntryMode === "self";
         const achievement = manualAchievement ? numberValue(achievementInput?.value) : numberValue(row.dataset.achievementCount);
-        const pending = Math.max(assigned - achievement, 0);
+        const pendingBase = row.dataset.mainActivityType === "other" ? target : assigned;
+        const pending = Math.max(pendingBase - achievement, 0);
         const rate = numberValue(row.querySelector("[data-jeevika-rate]")?.value);
         const amount = achievement * rate;
         const amountInput = row.querySelector("[data-jeevika-amount]");
@@ -3085,7 +3376,12 @@ document.addEventListener("turbo:load", () => {
       if (!rowsBody) return;
 
       const selectedVrp = String(vrpSelect?.value || "");
-      const rows = billRows.filter((row) => String(row.vrp_id || "") === selectedVrp);
+      const selectedMonth = normalizeOption(monthSelect?.value);
+      const rows = billRows.filter((row) => {
+        const vrpMatches = String(row.vrp_id || "") === selectedVrp;
+        const monthMatches = !selectedMonth || normalizeOption(row.month_name) === selectedMonth;
+        return vrpMatches && monthMatches;
+      });
 
       if (!selectedVrp) {
         rowsBody.innerHTML = `<tr data-empty-bill-row><td colspan="9">Select Jeevika Jankar Name to load target achievement list.</td></tr>`;
@@ -3094,7 +3390,7 @@ document.addEventListener("turbo:load", () => {
       }
 
       if (!rows.length) {
-        rowsBody.innerHTML = `<tr data-empty-bill-row><td colspan="9">No target mapping found for selected Jeevika Jankar.</td></tr>`;
+        rowsBody.innerHTML = `<tr data-empty-bill-row><td colspan="9">No target mapping found for selected Jeevika Jankar and month.</td></tr>`;
         recalculateJeevikaBill();
         return;
       }
@@ -3110,7 +3406,8 @@ document.addEventListener("turbo:load", () => {
         const autoAchievementCount = automaticAchievementFor(row, mainActivityType);
         const achievementCount = manualAchievement ? (savedItem.achievement_count ?? autoAchievementCount) : autoAchievementCount;
         const assignedCount = row.assigned_count ?? 0;
-        const pendingCount = Math.max(numberValue(assignedCount) - numberValue(achievementCount), 0);
+        const pendingBase = mainActivityType === "other" ? row.target_quantity : assignedCount;
+        const pendingCount = Math.max(numberValue(pendingBase) - numberValue(achievementCount), 0);
 
         return `
           <tr data-bill-row data-row-index="${index}" data-target-quantity="${escapeHtml(row.target_quantity)}" data-assigned-count="${escapeHtml(assignedCount)}" data-achievement-count="${escapeHtml(autoAchievementCount)}" data-current-achievement="${escapeHtml(achievementCount)}" data-main-activity-type="${escapeHtml(mainActivityType)}" data-achievement-entry-mode="${escapeHtml(achievementEntryMode)}">
@@ -3142,7 +3439,7 @@ document.addEventListener("turbo:load", () => {
             <td>${escapeHtml(row.target_quantity || 0)}</td>
             <td>
               ${manualAchievement
-                ? `<input type="number" min="0" step="1" name="${inputPrefix}[achievement_count]" value="${escapeHtml(achievementCount)}" data-jeevika-achievement>`
+                ? `<input type="number" min="0" step="any" name="${inputPrefix}[achievement_count]" value="${escapeHtml(achievementCount)}" data-jeevika-achievement>`
                 : `<span data-jeevika-achievement-display>${escapeHtml(achievementCount)}</span>`}
             </td>
             <td><span data-jeevika-pending-display>${escapeHtml(pendingCount)}</span></td>

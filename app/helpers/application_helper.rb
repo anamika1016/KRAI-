@@ -114,7 +114,9 @@ module ApplicationHelper
       links: [
         # ["Farmer Training Topic Mapping", :module, "training-topic-mapping"],
         ["Farmer Target Form", :module, "training-form"],
-        ["Farmer Target Form List", :module, "training-form-list"]
+        ["Farmer Target Form List", :module, "training-form-list"],
+        ["Seed Distribution Target", :module, "seed-distribution-target"],
+        ["PAPL360 Target", :module, "papl360-target"]
       ]
     },
     {
@@ -256,13 +258,19 @@ module ApplicationHelper
       keys.concat(["vrp-type", "add-jeevika-jankar-type", "jeevika-jankar-type"])
     end
     if ["Farmer Training", "Farmer Target"].include?(name.to_s.strip)
-      keys.concat(["farmer-training", "farmer-target"])
+      keys.concat(["farmer-training", "farmer-target", "seed-distribution-target", "papl360-target"])
     end
     if ["Farmer Training Form", "Farmer Target Form"].include?(name.to_s.strip)
-      keys.concat(["farmer-training-form", "farmer-target-form"])
+      keys.concat(["farmer-training-form", "farmer-target-form", "seed-distribution-target", "papl360-target"])
     end
     if ["Farmer Training Form List", "Farmer Target Form List"].include?(name.to_s.strip)
       keys.concat(["farmer-training-form-list", "farmer-target-form-list"])
+    end
+    if ["Seed Distribution Target", "Seed Distribution Target Form"].include?(name.to_s.strip)
+      keys.concat(["seed-distribution-target", "seed-distribution-target-form"])
+    end
+    if ["PAPL360 Target", "PAPL360 Targate", "PAPL360 Target Form"].include?(name.to_s.strip)
+      keys.concat(["papl360-target", "papl360-targate", "papl360-target-form"])
     end
     if ["Farmer Farm Information", "Farmer FARM Information", "Farmer_FARM _Information"].include?(name.to_s.strip)
       keys.concat(["farmer-farm-information", "application-format-for-exit-of-farmer-from-ics"])
@@ -354,7 +362,9 @@ module ApplicationHelper
         icon: "▥",
         links: [
           ["Farmer Target Form", :module, "training-form"],
-          ["Farmer Target Form List", :module, "training-form-list"]
+          ["Farmer Target Form List", :module, "training-form-list"],
+          ["Seed Distribution Target", :module, "seed-distribution-target"],
+          ["PAPL360 Target", :module, "papl360-target"]
         ]
       },
       {

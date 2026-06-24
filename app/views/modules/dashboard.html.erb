@@ -87,64 +87,6 @@
       <div class="table-pagination" data-pagination-for="vrp_target_progress_table"></div>
     </section>
 
-    <% followup = @vrp_farmer_followup || { repeat: [], new: [], pending: [], current_month: Date.current.beginning_of_month, previous_month: Date.current.prev_month.beginning_of_month } %>
-    <% farmer_sections = [
-      ["Repeat Farmers", followup[:repeat], "Worked in #{followup[:previous_month].strftime("%B")} and again in #{followup[:current_month].strftime("%B")}"],
-      ["New Farmers", followup[:new], "Worked in #{followup[:current_month].strftime("%B")} but not in #{followup[:previous_month].strftime("%B")}"],
-      ["Pending Target Farmers", followup[:pending], "Mapped or targeted farmers not covered in #{followup[:current_month].strftime("%B")}"]
-    ] %>
-    <section class="module-card" id="vrp_farmer_followup">
-      <div class="module-card-header">
-        <h2>Farmer Month Follow-up</h2>
-      </div>
-
-      <div class="dashboard-report-grid">
-        <% farmer_sections.each_with_index do |(title, farmers, caption), index| %>
-          <article class="report-card" data-dashboard-card>
-            <h3><%= title %></h3>
-            <div class="farmer-followup-count">
-              <strong><%= farmers.size %></strong>
-              <span><%= caption %></span>
-            </div>
-
-            <div class="table-shell compact-scroll">
-              <table class="module-table compact-table">
-                <thead>
-                  <tr>
-                    <th>Farmer</th>
-                    <th>Village</th>
-                    <th>Mobile</th>
-                    <th>Last Work Date</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  <% if farmers.any? %>
-                    <% farmers.first(12).each do |farmer| %>
-                      <tr>
-                        <td>
-                          <%= farmer[:name] %>
-                          <% if farmer[:father_name].present? %>
-                            <small>Father: <%= farmer[:father_name] %></small>
-                          <% end %>
-                        </td>
-                        <td><%= farmer[:village].presence || "-" %></td>
-                        <td><%= farmer[:mobile_no].presence || "-" %></td>
-                        <td><%= farmer[:work_date]&.strftime("%d-%m-%Y") || "-" %></td>
-                      </tr>
-                    <% end %>
-                  <% else %>
-                    <tr>
-                      <td colspan="4">No farmers in this list.</td>
-                    </tr>
-                  <% end %>
-                </tbody>
-              </table>
-            </div>
-          </article>
-        <% end %>
-      </div>
-    </section>
-
     <section class="module-card" id="vrp_mapped_villages">
       <div class="module-card-header">
         <h2>Mapped Village Work Area</h2>

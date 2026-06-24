@@ -239,8 +239,8 @@
               <th>Sl No.</th>
               <th>ICS</th>
               <th>Village</th>
-              <th>Training Topic</th>
-              <th>Training Subject</th>
+              <th>Main Activity</th>
+              <th>Sub Activity</th>
               <th>Target</th>
               <th>Achievement</th>
               <th>Pending</th>
@@ -274,8 +274,8 @@
               <th>Farmer</th>
               <th>Mobile</th>
               <th>Village</th>
-              <th>Training Topic</th>
-              <th>Training Subject</th>
+              <th>Main Activity</th>
+              <th>Sub Activity</th>
               <th>Training Date</th>
             </tr>
           </thead>
@@ -859,8 +859,8 @@
               <tr>
                 <th>ICS</th>
                 <th>Village</th>
-                <th>Training Topic</th>
-                <th>Training Subject</th>
+                <th>Main Activity</th>
+                <th>Sub Activity</th>
                 <th>Target</th>
                 <th>Achievement</th>
                 <th>Pending</th>
@@ -1514,7 +1514,8 @@
   <div class="module-grid">
     <% location_fields = ["State", "District", "Block", "Gram Panchayat", "Village"] %>
     <% has_location_fields = (@module[:fields] & location_fields).any? %>
-    <section class="module-card" id="module-form" <% if ["role-management", "role-name", "user-management-role", "person-type"].include?(@slug) %>data-user-role-form data-role-map="<%= json_escape(role_management_mappings.to_json) %>"<% end %> <% if @slug == "parent-office-add" %>data-parent-office-form data-parent-office-map="<%= json_escape(parent_office_mappings.to_json) %>"<% end %> <% if has_location_fields %>data-location-form data-location-map="<%= json_escape(location_hierarchy_mappings.to_json) %>"<% end %> <% if @slug == "training-form" %>data-training-target-form data-training-target-map="<%= json_escape(training_target_mappings.to_json) %>" data-training-activity-map="<%= json_escape(training_activity_setup_mappings.to_json) %>" data-training-month-options="<%= json_escape(training_target_month_options.to_json) %>"<% end %>>
+    <% other_target_form = ["seed-distribution-target", "papl360-target"].include?(@slug) %>
+    <section class="module-card" id="module-form" <% if ["role-management", "role-name", "user-management-role", "person-type"].include?(@slug) %>data-user-role-form data-role-map="<%= json_escape(role_management_mappings.to_json) %>"<% end %> <% if @slug == "parent-office-add" %>data-parent-office-form data-parent-office-map="<%= json_escape(parent_office_mappings.to_json) %>"<% end %> <% if has_location_fields %>data-location-form data-location-map="<%= json_escape(location_hierarchy_mappings.to_json) %>"<% end %> <% if @slug == "training-form" %>data-training-target-form data-training-target-map="<%= json_escape(training_target_mappings.to_json) %>" data-training-activity-map="<%= json_escape(training_activity_setup_mappings.to_json) %>" data-training-month-options="<%= json_escape(training_target_month_options.to_json) %>"<% end %> <% if other_target_form %>data-seed-target-form data-seed-target-map="<%= json_escape(seed_distribution_target_mappings.to_json) %>" data-seed-month-options="<%= json_escape(seed_distribution_target_month_options.to_json) %>"<% end %>>
       <div class="module-card-header">
         <h2><%= @slug == "new-user" ? "Registration" : (@record.present? ? "Edit Record" : "Fields") %></h2>
       </div>
@@ -1523,6 +1524,11 @@
       <%= form_with url: form_url, method: form_method, html: { class: "module-entry-form", multipart: true } do %>
         <% if @slug == "training-form" %>
           <input type="hidden" name="module_record[main_activity_type]" value="Training" data-training-main-activity-type>
+        <% end %>
+        <% if other_target_form %>
+          <input type="hidden" name="module_record[main_activity_type]" value="Other">
+          <input type="hidden" name="module_record[target_mapping_id]" value="<%= @record&.data&.[]("target_mapping_id") %>" data-seed-target-id>
+          <input type="hidden" name="module_record[jeevika_jankar_id]" value="<%= @record&.data&.[]("jeevika_jankar_id") %>" data-seed-vrp-id>
         <% end %>
         <% selected_training_farmer_ids = Array(@record&.data&.[]("selected_farmer_ids")).map(&:to_s) if @slug == "training-form" %>
         <div class="module-form-grid <%= "user-registration-grid" if @slug == "new-user" || (@slug == "all-user" && @record.present?) %>">
@@ -1539,10 +1545,19 @@
               <% field_value = @record&.data&.[]("parent_office").present? ? "Sub Parent Office" : "Parent Office" if @record.present? %>
             <% end %>
             <% if @slug == "training-form" && field_value.blank? %>
+              <% field_value = training_trainee_department_default if field == "Trainee Department" %>
               <% field_value = current_app_user&.dig("name").to_s if field == "Trainer Name" %>
               <% field_value = current_app_user&.dig("mobile_no").to_s if field == "Trainer Contact" %>
               <% field_value = selected_training_farmer_ids.size.to_s if field == "Farmer Count" && selected_training_farmer_ids.present? %>
             <% end %>
+            <% if other_target_form && field == "Contact Number" && field_value.blank? %>
+              <% field_value = @record&.data&.[]("jeevika_jankar_contact").to_s %>
+            <% end %>
+            <% if other_target_form && field == "Department" && field_value.blank? %>
+              <% field_value = @record&.data&.[]("fcoc_name").to_s %>
+            <% end %>
+            <% form_required = @slug == "training-form" || other_target_form %>
+            <% required_attr = form_required ? "required" : nil %>
             <label>
               <span>
                 <%= resource_person_label(field) %>
@@ -1556,7 +1571,7 @@
                   <option <%= "selected" if field_value == "Inactive" %>>Inactive</option>
                 </select>
               <% elsif field.downcase.include?("upload") || field.downcase.include?("file") %>
-                <input name="module_record[<%= field_key %>]" type="file" <%= "accept=\"image/*\" data-max-size-mb=\"5\"".html_safe if @slug == "training-form" && field == "Training Photo Upload with Geo Tag" %>>
+                <input name="module_record[<%= field_key %>]" type="file" <%= "accept=\"image/*\" data-max-size-mb=\"5\"".html_safe if @slug == "training-form" && field == "Training Photo Upload with Geo Tag" %> <%= "required" if form_required && field_value.blank? %>>
                 <% if @slug == "training-form" && field == "Training Photo Upload with Geo Tag" %>
                   <input type="hidden" name="module_record[geo_latitude]" data-training-geo-latitude value="<%= @record&.data&.[]("geo_latitude") %>">
                   <input type="hidden" name="module_record[geo_longitude]" data-training-geo-longitude value="<%= @record&.data&.[]("geo_longitude") %>">
@@ -1568,6 +1583,7 @@
                 <input name="module_record[<%= field_key %>]" type="text" placeholder="Enter <%= resource_person_label(field) %>" value="<%= field_value %>">
               <% elsif module_select_field?(field) %>
                 <% options = (module_field_options(field) + static_field_options(field)).compact_blank.uniq %>
+                <% options << field_value if field_value.present? && !options.include?(field_value) %>
                 <% role_dependency_attr =
                   case field
                   when "Stakeholder Category"
@@ -1595,6 +1611,21 @@
                   when "Sub Activity"
                     "data-training-sub-activity data-selected-value=\"#{ERB::Util.html_escape(field_value)}\""
                   end if @slug == "training-form" %>
+                <% seed_target_attr =
+                  case field
+                  when "Month"
+                    "data-seed-target-month data-selected-value=\"#{ERB::Util.html_escape(field_value)}\""
+                  when "ICS"
+                    "data-seed-target-ics data-selected-value=\"#{ERB::Util.html_escape(field_value)}\""
+                  when "Village"
+                    "data-seed-target-village data-selected-value=\"#{ERB::Util.html_escape(field_value)}\""
+                  when "Jeevika Jankar Name"
+                    "data-seed-target-vrp data-selected-value=\"#{ERB::Util.html_escape(@record&.data&.[]('jeevika_jankar_id').presence || field_value)}\""
+                  when "Main Activity"
+                    "data-seed-target-topic data-selected-value=\"#{ERB::Util.html_escape(field_value)}\""
+                  when "Sub Activity"
+                    "data-seed-target-subject data-selected-value=\"#{ERB::Util.html_escape(field_value)}\""
+                  end if other_target_form %>
                 <% parent_office_dependency_attr =
                   case field
                   when "Stakeholder Category"
@@ -1604,20 +1635,30 @@
                   when "Parent Office"
                     "data-parent-office-select data-selected-value=\"#{ERB::Util.html_escape(field_value)}\""
                   end if @slug == "parent-office-add" %>
-                <select name="module_record[<%= field_key %>]" <%= role_dependency_attr&.html_safe %> <%= location_dependency_attr&.html_safe %> <%= training_target_attr&.html_safe %> <%= parent_office_dependency_attr&.html_safe %>>
+                <select name="module_record[<%= field_key %>]" <%= role_dependency_attr&.html_safe %> <%= location_dependency_attr&.html_safe %> <%= training_target_attr&.html_safe %> <%= seed_target_attr&.html_safe %> <%= parent_office_dependency_attr&.html_safe %> <%= required_attr %>>
                   <option value=""><%= options.any? ? "Select #{resource_person_label(field)}" : "No #{resource_person_label(field)} saved yet" %></option>
                   <% options.each do |option| %>
                     <option value="<%= option %>" <%= "selected" if option == field_value %>><%= option %></option>
                   <% end %>
                 </select>
               <% elsif field.downcase.include?("remarks") || field.downcase.include?("address") %>
-                <textarea name="module_record[<%= field_key %>]" rows="3" placeholder="Enter <%= field %>"><%= field_value %></textarea>
+                <textarea name="module_record[<%= field_key %>]" rows="3" placeholder="Enter <%= field %>" <%= required_attr %>><%= field_value %></textarea>
               <% elsif field.downcase.include?("password") %>
-                <input name="module_record[<%= field_key %>]" type="password" placeholder="Enter <%= field %>" value="<%= field_value %>">
+                <input name="module_record[<%= field_key %>]" type="password" placeholder="Enter <%= field %>" value="<%= field_value %>" <%= required_attr %>>
               <% elsif field.downcase.include?("date") %>
-                <input name="module_record[<%= field_key %>]" type="date" value="<%= field_value %>">
+                <input name="module_record[<%= field_key %>]" type="date" value="<%= field_value %>" <%= required_attr %>>
+              <% elsif @slug == "training-form" && ["Farmer Count", "Male Count", "Female Count"].include?(field) %>
+                <input name="module_record[<%= field_key %>]" type="number" min="0" step="1" placeholder="Enter <%= resource_person_label(field) %>" value="<%= field_value %>" <%= required_attr %> <%= "readonly" if field == "Farmer Count" %> <%= "data-training-farmer-count-input" if field == "Farmer Count" %>>
+              <% elsif other_target_form && field == "Contact Number" %>
+                <input name="module_record[<%= field_key %>]" type="tel" pattern="[0-9]{10}" maxlength="10" placeholder="Auto-filled Contact Number" value="<%= field_value %>" data-seed-vrp-contact readonly required>
+              <% elsif other_target_form && field == "Department" %>
+                <input name="module_record[<%= field_key %>]" type="text" placeholder="Auto-filled Department" value="<%= field_value %>" data-seed-vrp-department readonly required>
+              <% elsif other_target_form && field == "Target" %>
+                <input name="module_record[<%= field_key %>]" type="number" min="0" step="any" placeholder="Mapped target" value="<%= field_value %>" data-seed-target-quantity readonly required>
+              <% elsif other_target_form && field == "Achievement" %>
+                <input name="module_record[<%= field_key %>]" type="number" min="0" step="any" placeholder="Enter Achievement" value="<%= field_value %>" data-seed-achievement required>
               <% else %>
-                <input name="module_record[<%= field_key %>]" type="text" placeholder="Enter <%= resource_person_label(field) %>" value="<%= field_value %>" <%= "readonly" if @slug == "training-form" && ["Trainer Name", "Trainer Contact"].include?(field) && current_app_user&.dig("record_type").to_s == "Vrp" %> <%= "data-training-farmer-count-input" if @slug == "training-form" && field == "Farmer Count" %> <%= "data-user-management-role-input" if @slug == "role-management" && field == "User Management Role" %>>
+                <input name="module_record[<%= field_key %>]" type="text" placeholder="Enter <%= resource_person_label(field) %>" value="<%= field_value %>" <%= "readonly" if @slug == "training-form" && ["Trainee Department", "Trainer Name", "Trainer Contact"].include?(field) && current_app_user&.dig("record_type").to_s == "Vrp" %> <%= "data-user-management-role-input" if @slug == "role-management" && field == "User Management Role" %> <%= required_attr %>>
               <% end %>
             </label>
             <% if @slug == "training-form" && field == "Training Photo Upload with Geo Tag" %>
