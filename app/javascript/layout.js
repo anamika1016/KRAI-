@@ -466,6 +466,100 @@ document.addEventListener("turbo:load", () => {
     });
   }
 
+  const aflListTable = document.getElementById("afl_list");
+  if (aflListTable) {
+    const aflSelectAll = aflListTable.querySelector("[data-afl-select-all]");
+    const aflDeleteButton = document.querySelector("[data-afl-delete-selected]");
+    const aflQueryInput = document.querySelector("[data-table-search='afl_list']");
+    const aflRows = () => Array.from(aflListTable.querySelectorAll("[data-afl-row-select]"));
+    const aflSelectAllKey = () => `afl-list-select-all:${(aflQueryInput?.value || "").trim().toLowerCase()}`;
+    const restoreAflSelection = () => {
+      if (!aflSelectAll) return;
+
+      const selectAllEnabled = sessionStorage.getItem(aflSelectAllKey()) === "1";
+      aflSelectAll.checked = selectAllEnabled;
+      aflSelectAll.indeterminate = false;
+      aflRows().forEach((checkbox) => {
+        checkbox.checked = selectAllEnabled;
+      });
+    };
+    const clearAflSelectAll = () => {
+      sessionStorage.removeItem(aflSelectAllKey());
+
+      if (!aflSelectAll) return;
+
+      aflSelectAll.checked = false;
+      aflSelectAll.indeterminate = false;
+    };
+
+    restoreAflSelection();
+
+    aflSelectAll?.addEventListener("change", () => {
+      if (aflSelectAll.checked) {
+        sessionStorage.setItem(aflSelectAllKey(), "1");
+      } else {
+        clearAflSelectAll();
+      }
+
+      aflRows().forEach((checkbox) => {
+        checkbox.checked = aflSelectAll.checked;
+      });
+    });
+
+    aflRows().forEach((checkbox) => {
+      checkbox.addEventListener("change", () => {
+        if (!checkbox.checked) {
+          clearAflSelectAll();
+          return;
+        }
+
+        const rows = aflRows();
+        const checkedCount = rows.filter((row) => row.checked).length;
+        if (rows.length > 0 && checkedCount === rows.length) {
+          sessionStorage.setItem(aflSelectAllKey(), "1");
+          aflSelectAll.checked = true;
+          aflSelectAll.indeterminate = false;
+        }
+      });
+    });
+
+    aflDeleteButton?.addEventListener("click", async () => {
+      const bulkSelectAll = sessionStorage.getItem(aflSelectAllKey()) === "1";
+
+      if (bulkSelectAll) {
+        if (!window.confirm("Delete all selected AFL records across every page?")) return;
+
+        const url = new URL(aflDeleteButton.dataset.aflBulkDestroyUrl, window.location.origin);
+        const query = aflQueryInput?.value?.trim();
+        if (query) url.searchParams.set("q", query);
+
+        const response = await fetch(url, {
+          method: "DELETE",
+          headers: {
+            "X-CSRF-Token": csrfToken,
+            "Accept": "text/vnd.turbo-stream.html, text/html, application/xhtml+xml"
+          }
+        });
+
+        if (!(response.ok || response.redirected)) {
+          window.alert("Some selected record(s) could not be deleted.");
+          return;
+        }
+
+        sessionStorage.removeItem(aflSelectAllKey());
+        window.location.reload();
+        return;
+      }
+
+      const paths = aflRows()
+        .filter((checkbox) => checkbox.checked)
+        .map((checkbox) => checkbox.value)
+        .map((path) => path.replace(/\/edit$/, ""));
+
+      deleteSelected(paths, "Delete selected record(s)?");
+    });
+  }
+
   document.querySelectorAll("[data-access-control-row]").forEach((row) => {
     const menuCheckbox = row.querySelector("[data-access-menu-checkbox]");
     const submenuCheckboxes = Array.from(row.querySelectorAll("[data-access-submenu-checkbox]"));
@@ -1870,6 +1964,8 @@ document.addEventListener("turbo:load", () => {
     const farmerSelectAllButton = formShell.querySelector("[data-seed-farmer-select-all-button]");
     const farmerCountLabel = formShell.querySelector("[data-seed-farmer-count]");
     const farmerCountInput = formShell.querySelector("[data-seed-farmer-count-input]");
+    const farmerSearchInput = formShell.querySelector("[data-seed-farmer-search]");
+    const farmerSearchEmpty = formShell.querySelector("[data-seed-farmer-search-empty]");
     if (!vrpSelect || !monthSelect || !icsSelect || !villageSelect || !topicSelect || !subjectSelect) return;
     const selectedSeedFarmerIds = new Set(JSON.parse(farmerPanel?.dataset.selectedFarmerIds || "[]").map(String));
 
@@ -1982,6 +2078,24 @@ document.addEventListener("turbo:load", () => {
 
     const seedFarmerBoxes = () => Array.from(formShell.querySelectorAll("[data-seed-farmer-checkbox]"));
     const selectedSeedFarmerBoxes = () => seedFarmerBoxes().filter((checkbox) => checkbox.checked);
+    const seedFarmerSearchTerm = () => (farmerSearchInput?.value || "").trim().toLowerCase();
+
+    const applySeedFarmerSearch = () => {
+      if (!farmerList) return;
+
+      const term = seedFarmerSearchTerm();
+      const items = Array.from(farmerList.querySelectorAll(".vrp-ics-farmer-item"));
+      let visibleCount = 0;
+
+      items.forEach((item) => {
+        const text = item.innerText.toLowerCase();
+        const visible = !term || text.includes(term);
+        item.hidden = !visible;
+        if (visible) visibleCount += 1;
+      });
+
+      if (farmerSearchEmpty) farmerSearchEmpty.hidden = visibleCount > 0 || !items.length;
+    };
 
     const updateSeedFarmerCount = () => {
       const count = selectedSeedFarmerBoxes().length;
@@ -2005,6 +2119,7 @@ document.addEventListener("turbo:load", () => {
       const mapping = selectedSeedMapping();
       if (!mapping) {
         farmerList.textContent = "Select Village and Activity to load mapped farmers.";
+        if (farmerSearchEmpty) farmerSearchEmpty.hidden = true;
         updateSeedFarmerCount();
         return;
       }
@@ -2013,6 +2128,7 @@ document.addEventListener("turbo:load", () => {
       const completedFarmerIds = new Set((mapping.completed_farmer_ids || []).map(String));
       if (!farmers.length) {
         farmerList.textContent = "No mapped farmers found for selected activity.";
+        if (farmerSearchEmpty) farmerSearchEmpty.hidden = true;
         updateSeedFarmerCount();
         return;
       }
@@ -2040,6 +2156,7 @@ document.addEventListener("turbo:load", () => {
           </label>
         `;
       }).join("");
+      applySeedFarmerSearch();
 
       farmerList.querySelectorAll("[data-seed-farmer-checkbox]").forEach((checkbox) => {
         checkbox.addEventListener("change", () => {
@@ -2124,6 +2241,8 @@ document.addEventListener("turbo:load", () => {
       selectedSeedFarmerIds.clear();
       refreshTarget();
     });
+
+    farmerSearchInput?.addEventListener("input", applySeedFarmerSearch);
 
     farmerSelectAll?.addEventListener("change", () => {
       seedFarmerBoxes().filter((checkbox) => !checkbox.disabled).forEach((checkbox) => {

@@ -20,10 +20,14 @@
         <div class="list-control-actions">
           <%= form_with url: afls_path, method: :get, local: true, class: "list-search compact" do |form| %>
             <span>⌕</span>
-            <%= form.search_field :q, value: @query, placeholder: "Search AFL", data: { table_search: "afl_list" } %>
+            <%= form.search_field :q, value: @query, placeholder: "Search any field", data: { table_search: "afl_list" } %>
           <% end %>
           <button type="button" class="list-btn export" data-export-table="afl_list">Export</button>
         </div>
+      </div>
+
+      <div class="vrp-list-toolbar compact">
+        <button type="button" class="list-btn delete" data-afl-delete-selected data-afl-bulk-destroy-url="<%= bulk_destroy_afls_path %>">Delete</button>
       </div>
 
       <% if params[:report_id].present? %>
@@ -37,6 +41,7 @@
         <table class="module-table vrp-list-table" id="afl_list" data-paginated-table data-page-size="15">
           <thead>
             <tr>
+              <th><input type="checkbox" data-afl-select-all></th>
               <th>ID</th>
               <th>FCO ID</th>
               <th>FCO</th>
@@ -63,6 +68,7 @@
             <% if @afls.any? %>
               <% @afls.each do |afl| %>
                 <tr>
+                  <td><input type="checkbox" value="<%= afl_path(afl, q: @query.presence, page: @page) %>" data-afl-row-select></td>
                   <td><%= afl.id %></td>
                   <td><%= afl.fco_id %></td>
                   <td><%= afl.fco %></td>
@@ -87,7 +93,7 @@
               <% end %>
             <% else %>
               <tr>
-                <td colspan="20">No target mapping records uploaded yet.</td>
+                <td colspan="21">No target mapping records uploaded yet.</td>
               </tr>
             <% end %>
           </tbody>

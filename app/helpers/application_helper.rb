@@ -113,8 +113,8 @@ module ApplicationHelper
       icon: "▥",
       links: [
         # ["Farmer Training Topic Mapping", :module, "training-topic-mapping"],
-        ["Farmer Target Form", :module, "training-form"],
-        ["Farmer Target Form List", :module, "training-form-list"],
+        ["Farmer Training Form", :module, "training-form"],
+        ["Farmer Training Form List", :module, "training-form-list"],
         ["Seed Distribution Target", :module, "seed-distribution-target"],
         ["Seed Distribution Target List", :module, "seed-distribution-target-list"],
         ["PAPL360 Target", :module, "papl360-target"],
@@ -368,12 +368,12 @@ module ApplicationHelper
       {
         title: "Farmer Target",
         icon: "▥",
-        links: [
-          ["Farmer Target Form", :module, "training-form"],
-          ["Farmer Target Form List", :module, "training-form-list"],
-          ["Seed Distribution Target", :module, "seed-distribution-target"],
-          ["Seed Distribution Target List", :module, "seed-distribution-target-list"],
-          ["PAPL360 Target", :module, "papl360-target"],
+      links: [
+        ["Farmer Training Form", :module, "training-form"],
+        ["Farmer Training Form List", :module, "training-form-list"],
+        ["Seed Distribution Target", :module, "seed-distribution-target"],
+        ["Seed Distribution Target List", :module, "seed-distribution-target-list"],
+        ["PAPL360 Target", :module, "papl360-target"],
           ["PAPL360 Target List", :module, "papl360-target-list"]
         ]
       },

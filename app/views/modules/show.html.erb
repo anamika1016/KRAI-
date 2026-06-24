@@ -1595,6 +1595,9 @@
             <% if seed_target_form && field == "Farmer Count" && field_value.blank? %>
               <% field_value = selected_seed_target_farmer_ids.size.to_s if selected_seed_target_farmer_ids.present? %>
             <% end %>
+            <% if other_target_form && @record.blank? && field == "Completion Date" && field_value.blank? %>
+              <% field_value = Date.current.to_s %>
+            <% end %>
             <% form_required = @slug == "training-form" || other_target_form %>
             <% required_attr = form_required ? "required" : nil %>
             <label>
@@ -1734,6 +1737,11 @@
               <button type="button" class="list-btn active training-select-all-button" data-seed-farmer-select-all-button>Select all</button>
               <span data-seed-farmer-count>0 farmer selected</span>
             </div>
+            <div class="list-search compact seed-farmer-search">
+              <span>⌕</span>
+              <input type="search" placeholder="Search mapped farmers" data-seed-farmer-search>
+            </div>
+            <div class="training-empty-state" data-seed-farmer-search-empty hidden>No mapped farmers matched your search.</div>
             <div class="vrp-ics-farmer-list" data-seed-farmer-list>
               Select Village and Activity to load mapped farmers.
             </div>

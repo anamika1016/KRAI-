@@ -3704,6 +3704,14 @@ body {
   color: var(--vrp-text);
 }
 
+.seed-farmer-search {
+  width: min(360px, 100%);
+}
+
+.seed-farmer-search input {
+  width: 100%;
+}
+
 .target-mapping-toolbar span {
   color: var(--vrp-primary);
   font-weight: 900;
@@ -3738,6 +3746,15 @@ body {
   .vrp-ics-farmer-toolbar {
     align-items: flex-start;
     flex-direction: column;
+  }
+
+  .target-mapping-toolbar {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .seed-farmer-search {
+    width: 100%;
   }
 }
 
@@ -5385,6 +5402,11 @@ body {
   .login-options {
     justify-content: flex-start;
     font-size: 0.92rem;
+  }
+
+  .login-options {
+    align-items: flex-start;
+    flex-direction: column;
   }
 
   .login-page .login-submit {

@@ -3,6 +3,8 @@ require "fileutils"
 require "securerandom"
 
 class AflsController < ApplicationController
+  before_action :set_afl, only: [:destroy]
+
   PAGE_SIZE = 15
   REPORT_DIR = Rails.root.join("tmp", "afl_import_reports")
 
@@ -49,7 +51,26 @@ class AflsController < ApplicationController
     send_file report_path, filename: "afl_skipped_rows_#{params[:id]}.csv", type: "text/csv"
   end
 
+  def destroy
+    @afl.destroy
+    redirect_to afls_path(q: params[:q].presence, page: params[:page].presence), notice: "Target mapping record deleted successfully."
+  end
+
+  def bulk_destroy
+    query = params[:q].to_s.strip
+    scoped_afls = Afl.search(query)
+    destroyed_count = scoped_afls.count
+
+    scoped_afls.find_each(&:destroy)
+
+    redirect_to afls_path(q: query.presence), notice: "#{destroyed_count} target mapping record(s) deleted successfully."
+  end
+
   private
+
+  def set_afl
+    @afl = Afl.find(params[:id])
+  end
 
   def write_import_report(skipped_rows)
     FileUtils.mkdir_p(REPORT_DIR)

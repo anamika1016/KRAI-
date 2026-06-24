@@ -159,7 +159,7 @@ class Afl < ApplicationRecord
   end
 
   def self.searchable_columns
-    LIST_COLUMNS - %i[id created_at]
+    column_names.map(&:to_sym) - %i[id created_at updated_at]
   end
 
   def self.search(query)

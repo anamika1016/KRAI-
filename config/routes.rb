@@ -24,8 +24,9 @@ Rails.application.routes.draw do
     patch :set_status, on: :member
   end
 
-  resources :afls, only: [:index] do
+  resources :afls, only: [:index, :destroy] do
     post :import, on: :collection
+    delete :bulk_destroy, on: :collection
     get "import_reports/:id", action: :import_report, as: :import_report, on: :collection
   end
 

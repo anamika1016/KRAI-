@@ -150,6 +150,7 @@ class ModulesController < ApplicationController
         "Village",
         "Main Activity",
         "Sub Activity",
+        "Completion Date",
         "Farmer Count",
         "Target",
         "Achievement",
@@ -189,6 +190,7 @@ class ModulesController < ApplicationController
         "Village",
         "Main Activity",
         "Sub Activity",
+        "Completion Date",
         "Target",
         "Achievement",
         "Excel Upload",
@@ -876,14 +878,6 @@ class ModulesController < ApplicationController
     @farmer_training_dashboard_rows = farmer_training_dashboard_rows(training_targets, month_name: selected_month)
     village_count = @vrp_village_rows.map { |row| normalize_dashboard_text(row[:village]) }.reject(&:blank?).uniq.size
 
-    @dashboard_cards = [
-      dashboard_card("Mapped Farmers", mapped_farmer_count, "Farmers mapped with your VRP profile", dashboard_path(anchor: "vrp_mapped_villages")),
-      dashboard_card("Mapped Villages", village_count, "Villages assigned for field work", dashboard_path(anchor: "vrp_mapped_villages")),
-      dashboard_card("Main Activities", main_activity_count, "Main activities mapped to your targets", target_mappings_path),
-      dashboard_card("Sub Activities", sub_activity_count, "Sub activities mapped to your targets", target_mappings_path),
-      dashboard_card("Assigned Target", dashboard_quantity(target_total), "Total target from Target Mapping Master", target_mappings_path)
-    ]
-
     @vrp_target_rows = targets.map do |target|
       completed = vrp_target_completed_quantity(target, bills)
       target_quantity = target.target_quantity.to_f
@@ -891,6 +885,8 @@ class ModulesController < ApplicationController
 
       {
         month: target.month_name,
+        completion_date: target.completion_date&.strftime("%d-%m-%Y") || "-",
+        completion_date_sort: target.completion_date,
         fco: target.fco_name.presence || target.fco_id,
         village: target.village_name.presence || target.village_id,
         farmers: target.farmer_count,
@@ -902,6 +898,19 @@ class ModulesController < ApplicationController
         progress: percentage(completed, target_quantity)
       }
     end
+    assigned_target_total = @vrp_target_rows.sum { |row| row[:target].to_f }
+    achieved_target_total = @vrp_target_rows.sum { |row| row[:completed].to_f }
+    pending_target_total = @vrp_target_rows.sum { |row| row[:pending].to_f }
+
+    @dashboard_cards = [
+      dashboard_card("Mapped Farmers", mapped_farmer_count, "Unique farmers linked to your target rows", dashboard_path(anchor: "vrp_mapped_villages")),
+      dashboard_card("Mapped Villages", village_count, "Villages assigned for field work", dashboard_path(anchor: "vrp_mapped_villages")),
+      dashboard_card("Main Activities", main_activity_count, "Main activities mapped to your targets", target_mappings_path),
+      dashboard_card("Sub Activities", sub_activity_count, "Sub activities mapped to your targets", target_mappings_path),
+      dashboard_card("Assigned Target", dashboard_quantity(assigned_target_total), "Total target quantity assigned to you", target_mappings_path),
+      dashboard_card("Achieved Target", dashboard_quantity(achieved_target_total), "Target completed so far", dashboard_path(anchor: "vrp_target_progress")),
+      dashboard_card("Pending Target", dashboard_quantity(pending_target_total), "Target left to complete", dashboard_path(anchor: "vrp_target_progress"))
+    ]
     @vrp_farmer_followup = empty_vrp_farmer_followup
   end
 
@@ -1018,7 +1027,7 @@ class ModulesController < ApplicationController
   def vrp_dashboard_targets(vrp)
     return [] unless model_ready?(:TargetMapping)
 
-    TargetMapping.where(vrp_id: vrp.id).order(:month_name, :main_activity_name, :activity_name, :id).to_a
+    TargetMapping.where(vrp_id: vrp.id).order(Arel.sql("completion_date ASC NULLS LAST"), :month_name, :main_activity_name, :activity_name, :id).to_a
   end
 
   def vrp_dashboard_bills(vrp)
@@ -3832,6 +3841,8 @@ class ModulesController < ApplicationController
       "Gram Code" => ["gp_code", "gram_code"],
       "Gram Panchayat Name" => ["gram_panchayat_name", "gram_panchayat", "gram_name"],
       "Gram Panchayat" => ["gram_panchayat", "gram_panchayat_name", "gram_name"],
+      "Completion Date" => ["completion_date", "date"],
+      "Date" => ["completion_date", "date"],
       "Village Name" => ["village_name", "village", "name"],
       "Village Code" => ["village_code"],
       "Block Name" => ["block_name", "block", "cd_block_name"],
@@ -4026,6 +4037,7 @@ class ModulesController < ApplicationController
     data["main_activity_type"] = "Other"
     data["training_topic"] = data["training_topic"].presence || data["main_activity"].presence
     data["training_subject"] = data["training_subject"].presence || data["sub_activity"].presence
+    data["completion_date"] = data["completion_date"].presence || data["date"].presence || Date.current.to_s
 
     if (mapping = seed_distribution_target_match(data))
       data["target_mapping_id"] = mapping[:target_mapping_id]
@@ -4517,6 +4529,7 @@ class ModulesController < ApplicationController
       "village" => "Village",
       "training_topic" => "Main Activity",
       "training_subject" => "Sub Activity",
+      "date" => "Date",
       "target" => "Target",
       "achievement" => "Achievement"
     )
