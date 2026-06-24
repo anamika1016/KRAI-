@@ -29,6 +29,7 @@
             <th>Accepted At</th>
             <th>Signature</th>
             <th>View</th>
+            <th>Action</th>
           </tr>
         </thead>
         <tbody>
@@ -41,11 +42,12 @@
                 <td><%= agreement[:accepted_at].presence || "-" %></td>
                 <td><%= agreement[:signature_present] ? "Signed" : "Pending" %></td>
                 <td><%= link_to "Open", vrp_agreement_record_path(agreement[:id]), class: "table-action", target: "_blank", rel: "noopener" %></td>
+                <td><%= button_to "Delete", reset_vrp_agreement_path(agreement[:id]), method: :delete, class: "table-action danger", form: { data: { turbo_confirm: "Delete this agreement and require signature again?" } } %></td>
               </tr>
             <% end %>
           <% else %>
             <tr>
-              <td colspan="6">No signed agreements found yet.</td>
+              <td colspan="7">No signed agreements found yet.</td>
             </tr>
           <% end %>
         </tbody>

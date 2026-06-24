@@ -10,6 +10,7 @@ Rails.application.routes.draw do
   post   "vrp-agreement", to: "sessions#complete_agreement"
   get    "vrp-agreements", to: "vrp_agreements#index", as: :vrp_agreements
   get    "vrp-agreements/export", to: "vrp_agreements#export", as: :export_vrp_agreements
+  delete "vrp-agreements/:id", to: "vrp_agreements#destroy", as: :reset_vrp_agreement
   get    "vrp-agreements/:id", to: "vrp_agreements#show", as: :vrp_agreement_record
   get    "logout", to: "sessions#destroy", as: nil
   delete "logout", to: "sessions#destroy", as: :logout
@@ -17,6 +18,7 @@ Rails.application.routes.draw do
   root "sessions#new"
   get "dashboard", to: "modules#dashboard", as: :dashboard
   get "dashboard/vrp-list/:list_type", to: "modules#vrp_dashboard_list", as: :vrp_dashboard_list
+  delete "dashboard/vrp-mapped-villages/:id", to: "modules#destroy_vrp_mapped_village", as: :destroy_vrp_mapped_village
   get "dashboard/farmer-training-participation", to: "modules#farmer_training_participation", as: :farmer_training_participation
   get "dashboard/farmer-training-target-status", to: "modules#farmer_training_target_status", as: :farmer_training_target_status
 

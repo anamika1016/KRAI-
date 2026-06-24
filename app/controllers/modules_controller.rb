@@ -613,6 +613,17 @@ class ModulesController < ApplicationController
     end
   end
 
+  def destroy_vrp_mapped_village
+    mapping = dashboard_vrp_mapping_scope&.find_by(id: params[:id])
+    unless mapping
+      redirect_back fallback_location: vrp_dashboard_list_path("mapped_villages"), alert: "Mapped village not found."
+      return
+    end
+
+    mapping.destroy!
+    redirect_back fallback_location: vrp_dashboard_list_path("mapped_villages"), notice: "Mapped village deleted successfully."
+  end
+
   def show
     load_module!
     redirect_to users_path and return if @slug == "all-user"
@@ -901,7 +912,7 @@ class ModulesController < ApplicationController
     @training_target_status_cards = training_target_status_cards(training_targets, month_name: selected_month, sub_activity_name: selected_sub_activity)
     @training_participation = training_participation_summary(training_targets, month_name: selected_month)
     @farmer_training_dashboard_rows = farmer_training_dashboard_rows(training_targets, month_name: selected_month)
-    village_count = @vrp_village_rows.map { |row| normalize_dashboard_text(row[:village]) }.reject(&:blank?).uniq.size
+    village_count = @vrp_village_rows.size
     @vrp_target_rows = vrp_dashboard_target_progress_rows(targets, bills)
     assigned_target_total = @vrp_target_rows.sum { |row| row[:target].to_f }
     achieved_target_total = @vrp_target_rows.sum { |row| row[:completed].to_f }
@@ -948,6 +959,16 @@ class ModulesController < ApplicationController
     return [] unless model_ready?(:VrpIcsMapping)
 
     VrpIcsMapping.where(vrp_id: vrp.id).order(:village_name, :id).to_a
+  end
+
+  def dashboard_vrp_mapping_scope
+    klass = "VrpIcsMapping".safe_constantize
+    return unless klass&.table_exists?
+
+    vrp = current_vrp_record
+    return klass.none unless vrp
+
+    klass.where(vrp_id: vrp.id)
   end
 
   def module_record_label_for_dashboard(module_slug, id, field_key)
@@ -997,6 +1018,7 @@ class ModulesController < ApplicationController
 
   def vrp_dashboard_village_rows(vrp, mappings, targets)
     targets_by_village = targets.group_by { |target| target.village_id.to_s }
+    mapped_village_ids = mappings.map { |mapping| mapping.village_id.to_s }.reject(&:blank?).uniq
 
     mapping_rows = mappings.map do |mapping|
       village_targets = targets_by_village[mapping.village_id.to_s] || []
@@ -1004,6 +1026,8 @@ class ModulesController < ApplicationController
       village = mapping.village_name.presence || module_record_label_for_dashboard("village-master", mapping.village_id, "village_name")
 
       {
+        mapping_id: mapping.id,
+        village_id: mapping.village_id.to_s,
         fco: mapping.fco_name.presence || mapping.fco_id,
         gram_panchayat: gram_panchayat_label_for_village(mapping.village_id),
         village: village.presence || mapping.village_id,
@@ -1014,8 +1038,12 @@ class ModulesController < ApplicationController
     end
 
     registration_rows = Array(vrp.village_ids).reject(&:blank?).map do |village_id|
+      next if mapped_village_ids.include?(village_id.to_s)
+
       village_targets = targets_by_village[village_id.to_s] || []
       {
+        mapping_id: nil,
+        village_id: village_id.to_s,
         fco: "-",
         gram_panchayat: gram_panchayat_label_for_village(village_id).presence || module_record_labels_for_dashboard("gram-panchayat-master", vrp.gram_panchayat_ids, "gram_panchayat_name"),
         village: module_record_label_for_dashboard("village-master", village_id, "village_name").presence || village_id,
@@ -1025,8 +1053,7 @@ class ModulesController < ApplicationController
       }
     end
 
-    (mapping_rows + registration_rows)
-      .uniq { |row| [normalize_dashboard_text(row[:gram_panchayat]), normalize_dashboard_text(row[:village])] }
+    mapping_rows + registration_rows.compact
   end
 
   def vrp_dashboard_targets(vrp)
@@ -1113,9 +1140,21 @@ class ModulesController < ApplicationController
     when "mapped_villages"
       village_rows = vrp_dashboard_village_rows(vrp, mappings, targets)
       rows = village_rows.map do |row|
-        [row[:fco], row[:gram_panchayat].presence || "-", row[:village], dashboard_quantity(row[:farmers]), dashboard_quantity(row[:targets]), dashboard_quantity(row[:target_quantity])]
+        action = if row[:mapping_id].present?
+          {
+            button: true,
+            label: "Delete",
+            path: destroy_vrp_mapped_village_path(row[:mapping_id]),
+            method: :delete,
+            class: "table-action danger",
+            confirm: "Delete this mapped village?"
+          }
+        else
+          "-"
+        end
+        [row[:fco], row[:gram_panchayat].presence || "-", row[:village], dashboard_quantity(row[:farmers]), dashboard_quantity(row[:targets]), dashboard_quantity(row[:target_quantity]), action]
       end
-      dashboard_detail_payload(key, "Mapped Villages", "Villages assigned for field work.", rows.size, ["FCO", "Gram Panchayat", "Village", "Mapped Farmers", "Targets", "Target Quantity"], rows)
+      dashboard_detail_payload(key, "Mapped Villages", "Villages assigned for field work.", rows.size, ["FCO", "Gram Panchayat", "Village", "Mapped Farmers", "Targets", "Target Quantity", "Action"], rows)
     when "main_activities"
       rows = vrp_dashboard_grouped_target_rows(target_rows, :main_activity)
       dashboard_detail_payload(key, "Main Activities", "Main activities mapped to your targets.", rows.size, ["Main Activity", "Targets", "Target", "Completed", "Pending", "Progress"], rows)

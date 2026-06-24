@@ -104,6 +104,7 @@
               <th>Mapped Farmers</th>
               <th>Targets</th>
               <th>Target Quantity</th>
+              <th>Action</th>
             </tr>
           </thead>
           <tbody>
@@ -116,11 +117,18 @@
                   <td><%= row[:farmers] %></td>
                   <td><%= row[:targets] %></td>
                   <td><%= quantity.call(row[:target_quantity]) %></td>
+                  <td>
+                    <% if row[:mapping_id].present? %>
+                      <%= button_to "Delete", destroy_vrp_mapped_village_path(row[:mapping_id]), method: :delete, class: "table-action danger", form: { data: { turbo_confirm: "Delete this mapped village?" } } %>
+                    <% else %>
+                      -
+                    <% end %>
+                  </td>
                 </tr>
               <% end %>
             <% else %>
               <tr>
-                <td colspan="6">No village or farmer mapping found for this VRP yet.</td>
+                <td colspan="7">No village or farmer mapping found for this VRP yet.</td>
               </tr>
             <% end %>
           </tbody>

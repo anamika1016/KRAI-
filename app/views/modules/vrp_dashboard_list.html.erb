@@ -40,7 +40,11 @@
                 <% row.each do |value| %>
                   <td>
                     <% if value.is_a?(Hash) && value[:path].present? %>
-                      <%= link_to value[:label].presence || "View List", value[:path], class: "table-action" %>
+                      <% if value[:button] %>
+                        <%= button_to value[:label].presence || "Action", value[:path], method: value[:method].presence || :post, class: value[:class].presence || "table-action", form: { data: { turbo_confirm: value[:confirm] } } %>
+                      <% else %>
+                        <%= link_to value[:label].presence || "View List", value[:path], class: "table-action" %>
+                      <% end %>
                     <% else %>
                       <%= value.presence || "-" %>
                     <% end %>

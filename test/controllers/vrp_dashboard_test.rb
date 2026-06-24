@@ -379,6 +379,53 @@ class VrpDashboardTest < ActionDispatch::IntegrationTest
     refute_includes response.body, "Training Farmer 3"
   end
 
+  test "mapped village dashboard count uses mapping rows and allows delete" do
+    vrp = create_vrp(
+      user_name: "mapped_village_vrp",
+      password: "secret",
+      village_ids: ["V1", "V2", "V3"],
+      agreement_accepted_at: Time.current
+    )
+    mappings = 3.times.map do |index|
+      VrpIcsMapping.create!(
+        vrp: vrp,
+        fco_id: "FCO#{index + 1}",
+        fco_name: "FCO #{index + 1}",
+        ics_id: "ICS#{index + 1}",
+        ics_name: "ICS #{index + 1}",
+        village_id: "V#{index + 1}",
+        village_name: "Shared Village",
+        afl_ids: ["#{index + 1}"],
+        created_by_type: "User",
+        created_by_id: 1
+      )
+    end
+
+    post login_path, params: { login: "mapped_village_vrp", password: "secret" }
+    follow_redirect!
+
+    assert_response :success
+    assert_match(/Mapped Villages.*?<strong>3<\/strong>/m, response.body)
+    assert_equal 3, response.body.scan("Delete this mapped village?").size
+
+    get vrp_dashboard_list_path("mapped_villages")
+
+    assert_response :success
+    assert_includes response.body, "Total: 3 | Rows: 3"
+    assert_equal 3, response.body.scan("Delete this mapped village?").size
+
+    assert_difference("VrpIcsMapping.count", -1) do
+      delete destroy_vrp_mapped_village_path(mappings.second)
+    end
+
+    assert_redirected_to vrp_dashboard_list_path("mapped_villages")
+
+    get vrp_dashboard_list_path("mapped_villages")
+
+    assert_response :success
+    assert_includes response.body, "Total: 2 | Rows: 2"
+  end
+
   test "partial target requires selected farmers and blocks same month reassignment" do
     vrp = create_vrp(
       name: "Target VRP",

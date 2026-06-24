@@ -43,6 +43,29 @@ class VrpAgreementsControllerTest < ActionDispatch::IntegrationTest
     assert_includes response.body, "data:image/png;base64,signature"
   end
 
+  test "accepted agreement delete resets signature requirement" do
+    vrp = create_vrp(
+      user_name: "reset_agreement_vrp",
+      password: "secret",
+      agreement_accepted_at: Time.current,
+      agreement_signature_data: "data:image/png;base64,signature"
+    )
+
+    post login_path, params: { login: "reset_agreement_vrp", password: "secret" }
+    follow_redirect!
+
+    delete reset_vrp_agreement_path(vrp)
+
+    assert_redirected_to vrp_agreements_path
+    assert_nil vrp.reload.agreement_accepted_at
+    assert_nil vrp.agreement_signature_data
+
+    delete logout_path
+    post login_path, params: { login: "reset_agreement_vrp", password: "secret" }
+
+    assert_redirected_to vrp_agreement_path
+  end
+
   private
 
   def create_vrp(attributes = {})

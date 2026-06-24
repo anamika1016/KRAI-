@@ -37,6 +37,17 @@ class VrpAgreementsController < ApplicationController
     @agreement_details = agreement_details(@vrp)
   end
 
+  def destroy
+    @vrp = Vrp.find_by(id: params[:id])
+    unless @vrp
+      redirect_to vrp_agreements_path, alert: "Agreement not found."
+      return
+    end
+
+    @vrp.update!(agreement_accepted_at: nil, agreement_signature_data: nil)
+    redirect_to vrp_agreements_path, notice: "Agreement deleted. Jeevika Jankar must sign again on next login."
+  end
+
   private
 
   def accepted_agreement_rows
