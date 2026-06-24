@@ -400,6 +400,26 @@ class VrpDashboardTest < ActionDispatch::IntegrationTest
         created_by_id: 1
       )
     end
+    mappings.each_with_index do |mapping, index|
+      TargetMapping.create!(
+        vrp: vrp,
+        fco_id: mapping.fco_id,
+        fco_name: mapping.fco_name,
+        ics_id: mapping.ics_id,
+        ics_name: mapping.ics_name,
+        village_id: mapping.village_id,
+        village_name: mapping.village_name,
+        farmer_count: 1,
+        month_name: "July",
+        completion_date: Date.new(2026, 7, 31),
+        main_activity_name: "Farmer Visit",
+        activity_name: "Farm Visit #{index + 1}",
+        target_quantity: 1,
+        afl_ids: ["#{index + 1}"],
+        created_by_type: "User",
+        created_by_id: 1
+      )
+    end
 
     post login_path, params: { login: "mapped_village_vrp", password: "secret" }
     follow_redirect!
@@ -414,8 +434,9 @@ class VrpDashboardTest < ActionDispatch::IntegrationTest
     assert_includes response.body, "Total: 3 | Rows: 3"
     assert_equal 3, response.body.scan("Delete this mapped village?").size
 
-    assert_difference("VrpIcsMapping.count", -1) do
-      delete destroy_vrp_mapped_village_path(mappings.second)
+    target = TargetMapping.find_by!(vrp: vrp, village_id: mappings.second.village_id)
+    assert_difference("TargetMapping.count", -1) do
+      delete destroy_vrp_mapped_village_path(target)
     end
 
     assert_redirected_to vrp_dashboard_list_path("mapped_villages")
@@ -424,6 +445,40 @@ class VrpDashboardTest < ActionDispatch::IntegrationTest
 
     assert_response :success
     assert_includes response.body, "Total: 2 | Rows: 2"
+  end
+
+  test "mapped village dashboard is zero when target mappings are deleted" do
+    vrp = create_vrp(
+      user_name: "empty_target_vrp",
+      password: "secret",
+      village_ids: ["V1", "V2"],
+      agreement_accepted_at: Time.current
+    )
+    2.times do |index|
+      VrpIcsMapping.create!(
+        vrp: vrp,
+        fco_id: "FCO#{index + 1}",
+        fco_name: "FCO #{index + 1}",
+        ics_id: "ICS#{index + 1}",
+        ics_name: "ICS #{index + 1}",
+        village_id: "V#{index + 1}",
+        village_name: "Village #{index + 1}",
+        afl_ids: ["#{index + 1}"],
+        created_by_type: "User",
+        created_by_id: 1
+      )
+    end
+
+    post login_path, params: { login: "empty_target_vrp", password: "secret" }
+    follow_redirect!
+
+    assert_response :success
+    assert_match(/Mapped Villages.*?<strong>0<\/strong>/m, response.body)
+
+    get vrp_dashboard_list_path("mapped_villages")
+
+    assert_response :success
+    assert_includes response.body, "Total: 0 | Rows: 0"
   end
 
   test "partial target requires selected farmers and blocks same month reassignment" do

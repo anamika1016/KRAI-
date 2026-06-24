@@ -614,13 +614,13 @@ class ModulesController < ApplicationController
   end
 
   def destroy_vrp_mapped_village
-    mapping = dashboard_vrp_mapping_scope&.find_by(id: params[:id])
-    unless mapping
+    target = dashboard_vrp_target_scope&.find_by(id: params[:id])
+    unless target
       redirect_back fallback_location: vrp_dashboard_list_path("mapped_villages"), alert: "Mapped village not found."
       return
     end
 
-    mapping.destroy!
+    dashboard_vrp_target_scope.where(village_id: target.village_id).destroy_all
     redirect_back fallback_location: vrp_dashboard_list_path("mapped_villages"), notice: "Mapped village deleted successfully."
   end
 
@@ -961,8 +961,8 @@ class ModulesController < ApplicationController
     VrpIcsMapping.where(vrp_id: vrp.id).order(:village_name, :id).to_a
   end
 
-  def dashboard_vrp_mapping_scope
-    klass = "VrpIcsMapping".safe_constantize
+  def dashboard_vrp_target_scope
+    klass = "TargetMapping".safe_constantize
     return unless klass&.table_exists?
 
     vrp = current_vrp_record
@@ -1016,44 +1016,33 @@ class ModulesController < ApplicationController
     gram_panchayat.to_s
   end
 
-  def vrp_dashboard_village_rows(vrp, mappings, targets)
-    targets_by_village = targets.group_by { |target| target.village_id.to_s }
-    mapped_village_ids = mappings.map { |mapping| mapping.village_id.to_s }.reject(&:blank?).uniq
+  def vrp_dashboard_village_rows(_vrp, _mappings, targets)
+    Array(targets).group_by { |target| dashboard_target_village_key(target) }.filter_map do |_village_key, village_targets|
+      target = village_targets.first
+      next unless target
 
-    mapping_rows = mappings.map do |mapping|
-      village_targets = targets_by_village[mapping.village_id.to_s] || []
-      target_farmer_ids = village_targets.flat_map { |target| target.respond_to?(:afl_ids) ? Array(target.afl_ids).map(&:to_s) : [] }.reject(&:blank?).uniq
-      village = mapping.village_name.presence || module_record_label_for_dashboard("village-master", mapping.village_id, "village_name")
+      farmer_ids = village_targets.flat_map { |row| row.respond_to?(:afl_ids) ? Array(row.afl_ids).map(&:to_s) : [] }.reject(&:blank?).uniq
+      village_id = target.village_id.to_s
+      village = target.village_name.presence || module_record_label_for_dashboard("village-master", village_id, "village_name")
 
       {
-        mapping_id: mapping.id,
-        village_id: mapping.village_id.to_s,
-        fco: mapping.fco_name.presence || mapping.fco_id,
-        gram_panchayat: gram_panchayat_label_for_village(mapping.village_id),
-        village: village.presence || mapping.village_id,
-        farmers: target_farmer_ids.any? ? target_farmer_ids.size : mapping.farmer_count,
+        mapping_id: target.id,
+        village_id: village_id,
+        fco: village_targets.filter_map { |row| row.fco_name.presence || row.fco_id.presence }.uniq.join(", ").presence || "-",
+        gram_panchayat: gram_panchayat_label_for_village(village_id),
+        village: village.presence || village_id,
+        farmers: farmer_ids.any? ? farmer_ids.size : village_targets.sum { |row| row.farmer_count.to_i },
         targets: village_targets.size,
-        target_quantity: village_targets.sum { |target| target.target_quantity.to_f }
+        target_quantity: village_targets.sum { |row| row.target_quantity.to_f }
       }
     end
+  end
 
-    registration_rows = Array(vrp.village_ids).reject(&:blank?).map do |village_id|
-      next if mapped_village_ids.include?(village_id.to_s)
+  def dashboard_target_village_key(target)
+    village_id = target.village_id.to_s
+    return "id:#{village_id}" if village_id.present?
 
-      village_targets = targets_by_village[village_id.to_s] || []
-      {
-        mapping_id: nil,
-        village_id: village_id.to_s,
-        fco: "-",
-        gram_panchayat: gram_panchayat_label_for_village(village_id).presence || module_record_labels_for_dashboard("gram-panchayat-master", vrp.gram_panchayat_ids, "gram_panchayat_name"),
-        village: module_record_label_for_dashboard("village-master", village_id, "village_name").presence || village_id,
-        farmers: 0,
-        targets: village_targets.size,
-        target_quantity: village_targets.sum { |target| target.target_quantity.to_f }
-      }
-    end
-
-    mapping_rows + registration_rows.compact
+    "name:#{normalize_dashboard_text(target.village_name)}"
   end
 
   def vrp_dashboard_targets(vrp)
