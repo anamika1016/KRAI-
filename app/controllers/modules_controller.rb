@@ -170,6 +170,7 @@ class ModulesController < ApplicationController
         "Village",
         "Main Activity",
         "Sub Activity",
+        "Completion Date",
         "Farmer Count",
         "Target",
         "Achievement",
@@ -210,6 +211,7 @@ class ModulesController < ApplicationController
         "Village",
         "Main Activity",
         "Sub Activity",
+        "Completion Date",
         "Target",
         "Achievement",
         "Excel Upload",
@@ -588,6 +590,29 @@ class ModulesController < ApplicationController
     end
   end
 
+  def vrp_dashboard_list
+    redirect_to dashboard_path, alert: "VRP dashboard list is available only for VRP login." and return unless vrp_login_user?
+
+    @vrp = current_vrp_record
+    redirect_to dashboard_path, alert: "VRP record not found." and return unless @vrp
+
+    mappings = vrp_dashboard_mappings(@vrp)
+    targets = vrp_dashboard_targets(@vrp)
+    bills = vrp_dashboard_bills(@vrp)
+    @vrp_dashboard_detail = vrp_dashboard_detail_payload(params[:list_type], @vrp, mappings, targets, bills, params)
+
+    respond_to do |format|
+      format.html
+      format.csv do
+        send_data(
+          dashboard_detail_rows_csv(@vrp_dashboard_detail),
+          filename: "#{@vrp_dashboard_detail[:key]}-#{Time.current.strftime("%Y%m%d%H%M")}.csv",
+          type: "text/csv"
+        )
+      end
+    end
+  end
+
   def show
     load_module!
     redirect_to users_path and return if @slug == "all-user"
@@ -877,48 +902,19 @@ class ModulesController < ApplicationController
     @training_participation = training_participation_summary(training_targets, month_name: selected_month)
     @farmer_training_dashboard_rows = farmer_training_dashboard_rows(training_targets, month_name: selected_month)
     village_count = @vrp_village_rows.map { |row| normalize_dashboard_text(row[:village]) }.reject(&:blank?).uniq.size
-    activity_settings = jeevika_jankar_main_activity_settings
-    sub_activity_settings = jeevika_jankar_sub_activity_settings(activity_settings)
-    other_target_achievement_index = approved_other_target_achievement_index
-
-    @vrp_target_rows = targets.map do |target|
-      completed = vrp_target_completed_quantity(
-        target,
-        bills,
-        activity_settings: activity_settings,
-        sub_activity_settings: sub_activity_settings,
-        other_target_achievement_index: other_target_achievement_index
-      )
-      target_quantity = target.target_quantity.to_f
-      pending = [target_quantity - completed, 0].max
-
-      {
-        month: target.month_name,
-        completion_date: target.completion_date&.strftime("%d-%m-%Y") || "-",
-        completion_date_sort: target.completion_date,
-        fco: target.fco_name.presence || target.fco_id,
-        village: target.village_name.presence || target.village_id,
-        farmers: target.farmer_count,
-        main_activity: target.main_activity_name,
-        activity: target.activity_name,
-        target: target_quantity,
-        completed: completed,
-        pending: pending,
-        progress: percentage(completed, target_quantity)
-      }
-    end
+    @vrp_target_rows = vrp_dashboard_target_progress_rows(targets, bills)
     assigned_target_total = @vrp_target_rows.sum { |row| row[:target].to_f }
     achieved_target_total = @vrp_target_rows.sum { |row| row[:completed].to_f }
     pending_target_total = @vrp_target_rows.sum { |row| row[:pending].to_f }
 
     @dashboard_cards = [
-      dashboard_card("Mapped Farmers", mapped_farmer_count, "Unique farmers linked to your target rows", dashboard_path(anchor: "vrp_mapped_villages")),
-      dashboard_card("Mapped Villages", village_count, "Villages assigned for field work", dashboard_path(anchor: "vrp_mapped_villages")),
-      dashboard_card("Main Activities", main_activity_count, "Main activities mapped to your targets", target_mappings_path),
-      dashboard_card("Sub Activities", sub_activity_count, "Sub activities mapped to your targets", target_mappings_path),
-      dashboard_card("Assigned Target", dashboard_quantity(assigned_target_total), "Total target quantity assigned to you", target_mappings_path),
-      dashboard_card("Achieved Target", dashboard_quantity(achieved_target_total), "Target completed so far", dashboard_path(anchor: "vrp_target_progress")),
-      dashboard_card("Pending Target", dashboard_quantity(pending_target_total), "Target left to complete", dashboard_path(anchor: "vrp_target_progress"))
+      dashboard_card("Mapped Farmers", mapped_farmer_count, "Unique farmers linked to your target rows", vrp_dashboard_list_path("mapped_farmers")),
+      dashboard_card("Mapped Villages", village_count, "Villages assigned for field work", vrp_dashboard_list_path("mapped_villages")),
+      dashboard_card("Main Activities", main_activity_count, "Main activities mapped to your targets", vrp_dashboard_list_path("main_activities")),
+      dashboard_card("Sub Activities", sub_activity_count, "Sub activities mapped to your targets", vrp_dashboard_list_path("sub_activities")),
+      dashboard_card("Assigned Target", dashboard_quantity(assigned_target_total), "Total target quantity assigned to you", vrp_dashboard_list_path("assigned_target")),
+      dashboard_card("Achieved Target", dashboard_quantity(achieved_target_total), "Target completed so far", vrp_dashboard_list_path("achieved_target")),
+      dashboard_card("Pending Target", dashboard_quantity(pending_target_total), "Target left to complete", vrp_dashboard_list_path("pending_target"))
     ]
     @vrp_farmer_followup = empty_vrp_farmer_followup
   end
@@ -1069,6 +1065,261 @@ class ModulesController < ApplicationController
     targets.flat_map { |target| target.respond_to?(:afl_ids) ? Array(target.afl_ids).map(&:to_s) : [] }.reject(&:blank?).uniq
   end
 
+  def vrp_dashboard_target_progress_rows(targets, bills)
+    activity_settings = jeevika_jankar_main_activity_settings
+    sub_activity_settings = jeevika_jankar_sub_activity_settings(activity_settings)
+    other_target_achievement_index = approved_other_target_achievement_index
+
+    Array(targets).map do |target|
+      completed = vrp_target_completed_quantity(
+        target,
+        bills,
+        activity_settings: activity_settings,
+        sub_activity_settings: sub_activity_settings,
+        other_target_achievement_index: other_target_achievement_index
+      )
+      target_quantity = target.target_quantity.to_f
+      pending = [target_quantity - completed, 0].max
+
+      {
+        month: target.month_name,
+        completion_date: target.completion_date&.strftime("%d-%m-%Y") || "-",
+        completion_date_sort: target.completion_date,
+        fco: target.fco_name.presence || target.fco_id,
+        ics: target.ics_name.presence || target.ics_id,
+        village: target.village_name.presence || target.village_id,
+        farmers: target.farmer_count,
+        main_activity: target.main_activity_name,
+        activity: target.activity_name,
+        target_mapping_id: target.id.to_s,
+        target: target_quantity,
+        completed: completed,
+        pending: pending,
+        progress: percentage(completed, target_quantity)
+      }
+    end
+  end
+
+  def vrp_dashboard_detail_payload(list_type, vrp, mappings, targets, bills, filters = {})
+    key = list_type.to_s.presence || "assigned_target"
+    target_rows = vrp_dashboard_target_progress_rows(targets, bills)
+
+    case key
+    when "target_farmers"
+      vrp_dashboard_target_farmer_payload(targets, filters)
+    when "mapped_farmers"
+      rows = vrp_dashboard_mapped_farmer_rows(mappings, targets)
+      dashboard_detail_payload(key, "Mapped Farmers", "Unique farmers linked to your target rows.", rows.size, ["Farmer", "Father Name", "Mobile", "TraceNet No", "ICS", "Village", "Status"], rows)
+    when "mapped_villages"
+      village_rows = vrp_dashboard_village_rows(vrp, mappings, targets)
+      rows = village_rows.map do |row|
+        [row[:fco], row[:gram_panchayat].presence || "-", row[:village], dashboard_quantity(row[:farmers]), dashboard_quantity(row[:targets]), dashboard_quantity(row[:target_quantity])]
+      end
+      dashboard_detail_payload(key, "Mapped Villages", "Villages assigned for field work.", rows.size, ["FCO", "Gram Panchayat", "Village", "Mapped Farmers", "Targets", "Target Quantity"], rows)
+    when "main_activities"
+      rows = vrp_dashboard_grouped_target_rows(target_rows, :main_activity)
+      dashboard_detail_payload(key, "Main Activities", "Main activities mapped to your targets.", rows.size, ["Main Activity", "Targets", "Target", "Completed", "Pending", "Progress"], rows)
+    when "sub_activities"
+      rows = vrp_dashboard_grouped_target_rows(target_rows, :activity)
+      dashboard_detail_payload(key, "Sub Activities", "Sub activities mapped to your targets.", rows.size, ["Main Activity", "Sub Activity", "Targets", "Target", "Completed", "Pending", "Progress"], rows)
+    when "achieved_target"
+      rows = target_rows.select { |row| row[:completed].to_f.positive? }
+      dashboard_detail_payload(key, "Achieved Target", "Target completed so far.", dashboard_quantity(rows.sum { |row| row[:completed].to_f }), vrp_target_detail_headers, vrp_target_detail_rows(rows, farmer_scope: "completed"))
+    when "pending_target"
+      rows = target_rows.select { |row| row[:pending].to_f.positive? }
+      dashboard_detail_payload(key, "Pending Target", "Target left to complete.", dashboard_quantity(rows.sum { |row| row[:pending].to_f }), vrp_target_detail_headers, vrp_target_detail_rows(rows, farmer_scope: "pending"))
+    else
+      rows = target_rows
+      dashboard_detail_payload("assigned_target", "Assigned Target", "Total target quantity assigned to you.", dashboard_quantity(rows.sum { |row| row[:target].to_f }), vrp_target_detail_headers, vrp_target_detail_rows(rows, farmer_scope: "assigned"))
+    end
+  end
+
+  def dashboard_detail_payload(key, title, caption, total, headers, rows)
+    {
+      key: key,
+      title: title,
+      caption: caption,
+      total: total,
+      headers: headers,
+      rows: rows
+    }
+  end
+
+  def vrp_dashboard_mapped_farmer_rows(mappings, targets)
+    farmer_ids = vrp_targeted_farmer_ids(targets)
+    farmer_ids = mappings.flat_map { |mapping| Array(mapping.afl_ids).map(&:to_s) }.reject(&:blank?).uniq if farmer_ids.blank?
+    farmers_by_id = model_ready?(:Afl) && farmer_ids.any? ? Afl.where(id: farmer_ids).index_by { |farmer| farmer.id.to_s } : {}
+
+    farmer_ids.map do |farmer_id|
+      farmer = farmers_by_id[farmer_id.to_s]
+      [
+        dashboard_text_value(farmer&.farmer_name).presence || "Farmer ##{farmer_id}",
+        dashboard_text_value(farmer&.father_name).presence || "-",
+        dashboard_text_value(farmer&.mobile_no).presence || "-",
+        dashboard_text_value(farmer&.tracenet_no).presence || "-",
+        dashboard_text_value(farmer&.ics_name).presence || dashboard_text_value(farmer&.ics_id).presence || "-",
+        dashboard_text_value(farmer&.village_name).presence || dashboard_text_value(farmer&.village_id).presence || "-",
+        dashboard_text_value(farmer&.status).presence || "-"
+      ]
+    end
+  end
+
+  def vrp_dashboard_target_farmer_payload(targets, filters)
+    target = Array(targets).find { |row| row.id.to_s == filters[:target_id].to_s }
+    scope = filters[:farmer_scope].presence_in(%w[assigned completed pending]) || "assigned"
+    return dashboard_detail_payload("target_farmers", "Target Farmers", "Target record not found.", 0, vrp_target_farmer_headers, []) unless target
+
+    assigned_ids = target_farmer_ids(target)
+    completed_ids = vrp_dashboard_completed_farmer_ids_for_target(target)
+    pending_ids = assigned_ids - completed_ids
+    farmer_ids = case scope
+    when "completed" then completed_ids
+    when "pending" then pending_ids
+    else assigned_ids
+    end
+
+    rows = vrp_target_farmer_rows(target, farmer_ids, completed_ids)
+    title = {
+      "assigned" => "Assigned Farmers",
+      "completed" => "Completed Farmers",
+      "pending" => "Pending Farmers"
+    }[scope]
+    caption = [
+      target.month_name,
+      target.village_name.presence || target.village_id,
+      target.main_activity_name,
+      target.activity_name
+    ].compact_blank.join(" | ")
+
+    dashboard_detail_payload("target_farmers", title, caption, rows.size, vrp_target_farmer_headers, rows)
+  end
+
+  def vrp_dashboard_completed_farmer_ids_for_target(target)
+    activity_settings = jeevika_jankar_main_activity_settings
+    sub_activity_settings = jeevika_jankar_sub_activity_settings(activity_settings)
+    activity_setting = jeevika_jankar_activity_setting_for(target, activity_settings, sub_activity_settings)
+
+    if activity_setting.present? && !training_main_activity_type?(activity_setting[:main_activity_type])
+      approved_other_target_completed_farmer_ids_for(target.id)
+    else
+      completed_training_farmer_ids_for_target_deadline(target, target_farmer_ids(target))
+    end
+  end
+
+  def approved_other_target_completed_farmer_ids_for(target_mapping_id)
+    return [] unless model_ready?(:ModuleRecord)
+
+    ModuleRecord
+      .where(module_slug: OTHER_TARGET_MODULE_SLUGS)
+      .order(created_at: :asc)
+      .select { |record| approved_other_target_record?(record) }
+      .select { |record| record.data["target_mapping_id"].to_s == target_mapping_id.to_s }
+      .flat_map { |record| Array(record.data["selected_farmer_ids"]).map(&:to_s) }
+      .reject(&:blank?)
+      .uniq
+  end
+
+  def vrp_target_farmer_headers
+    ["Farmer", "Father Name", "Mobile", "TraceNet No", "Khasara No", "ICS", "Village", "Target Month", "Main Activity", "Sub Activity", "Status"]
+  end
+
+  def vrp_target_farmer_rows(target, farmer_ids, completed_ids)
+    farmers_by_id = model_ready?(:Afl) && farmer_ids.any? ? Afl.where(id: farmer_ids).index_by { |farmer| farmer.id.to_s } : {}
+
+    Array(farmer_ids).map do |farmer_id|
+      farmer = farmers_by_id[farmer_id.to_s]
+      completed = completed_ids.include?(farmer_id.to_s)
+      [
+        dashboard_text_value(farmer&.farmer_name).presence || "Farmer ##{farmer_id}",
+        dashboard_text_value(farmer&.father_name).presence || "-",
+        dashboard_text_value(farmer&.mobile_no).presence || "-",
+        dashboard_text_value(farmer&.tracenet_no).presence || "-",
+        dashboard_text_value(farmer&.khasara_no).presence || "-",
+        dashboard_text_value(farmer&.ics_name).presence || dashboard_text_value(farmer&.ics_id).presence || dashboard_text_value(target.ics_name).presence || dashboard_text_value(target.ics_id).presence || "-",
+        dashboard_text_value(farmer&.village_name).presence || dashboard_text_value(farmer&.village_id).presence || dashboard_text_value(target.village_name).presence || dashboard_text_value(target.village_id).presence || "-",
+        dashboard_text_value(target.month_name).presence || "-",
+        dashboard_text_value(target.main_activity_name).presence || "-",
+        dashboard_text_value(target.activity_name).presence || "-",
+        completed ? "Completed" : "Pending"
+      ]
+    end
+  end
+
+  def vrp_dashboard_grouped_target_rows(target_rows, group_type)
+    grouped = Array(target_rows).group_by do |row|
+      if group_type == :activity
+        [normalize_dashboard_text(row[:main_activity]), normalize_dashboard_text(row[:activity])]
+      else
+        normalize_dashboard_text(row[:main_activity])
+      end
+    end
+
+    grouped.values.map do |rows|
+      target_total = rows.sum { |row| row[:target].to_f }
+      completed_total = rows.sum { |row| row[:completed].to_f }
+      pending_total = rows.sum { |row| row[:pending].to_f }
+
+      if group_type == :activity
+        [
+          rows.first[:main_activity].presence || "-",
+          rows.first[:activity].presence || "-",
+          rows.size,
+          dashboard_quantity(target_total),
+          dashboard_quantity(completed_total),
+          dashboard_quantity(pending_total),
+          percentage(completed_total, target_total)
+        ]
+      else
+        [
+          rows.first[:main_activity].presence || "-",
+          rows.size,
+          dashboard_quantity(target_total),
+          dashboard_quantity(completed_total),
+          dashboard_quantity(pending_total),
+          percentage(completed_total, target_total)
+        ]
+      end
+    end.sort_by { |row| row.first.to_s }
+  end
+
+  def vrp_target_detail_headers
+    ["Month", "Completion Date", "FCO", "ICS", "Village", "Farmers", "Main Activity", "Sub Activity", "Target", "Completed", "Pending", "Progress", "Farmer List"]
+  end
+
+  def vrp_target_detail_rows(rows, farmer_scope:)
+    Array(rows).map do |row|
+      [
+        row[:month].presence || "-",
+        row[:completion_date].presence || "-",
+        row[:fco].presence || "-",
+        row[:ics].presence || "-",
+        row[:village].presence || "-",
+        dashboard_quantity(row[:farmers]),
+        row[:main_activity].presence || "-",
+        row[:activity].presence || "-",
+        dashboard_quantity(row[:target]),
+        dashboard_quantity(row[:completed]),
+        dashboard_quantity(row[:pending]),
+        row[:progress],
+        {
+          label: "View List",
+          path: vrp_dashboard_list_path("target_farmers", target_id: row[:target_mapping_id], farmer_scope: farmer_scope)
+        }
+      ]
+    end
+  end
+
+  def dashboard_detail_rows_csv(detail)
+    CSV.generate(headers: true) do |csv|
+      csv << detail[:headers]
+      Array(detail[:rows]).each { |row| csv << row.map { |cell| dashboard_detail_cell_text(cell) } }
+    end
+  end
+
+  def dashboard_detail_cell_text(cell)
+    cell.is_a?(Hash) && cell[:label].present? ? cell[:label] : cell
+  end
+
   def vrp_farmer_followup(mappings)
     mapped_farmer_ids = mappings.flat_map { |mapping| Array(mapping.afl_ids).map(&:to_s) }.reject(&:blank?).uniq
     vrp_farmer_followup_for_ids(mapped_farmer_ids)
@@ -1128,11 +1379,11 @@ class ModulesController < ApplicationController
       next unless farmer
 
       {
-        name: farmer.farmer_name.presence || "Farmer ##{farmer.id}",
-        father_name: farmer.father_name,
-        village: farmer.village_name.presence || farmer.village_id,
-        mobile_no: farmer.mobile_no,
-        tracenet_no: farmer.tracenet_no,
+        name: dashboard_text_value(farmer.farmer_name).presence || "Farmer ##{farmer.id}",
+        father_name: dashboard_text_value(farmer.father_name),
+        village: dashboard_text_value(farmer.village_name).presence || dashboard_text_value(farmer.village_id),
+        mobile_no: dashboard_text_value(farmer.mobile_no),
+        tracenet_no: dashboard_text_value(farmer.tracenet_no),
         work_date: afl_work_date(farmer)
       }
     end.sort_by { |row| [row[:village].to_s, row[:name].to_s] }
@@ -1188,6 +1439,156 @@ class ModulesController < ApplicationController
 
   def normalize_dashboard_text(value)
     value.to_s.strip.downcase
+  end
+
+  def dashboard_text_value(value)
+    value.to_s.strip.presence
+  end
+
+  def dashboard_preferred_text(*values)
+    values.filter_map { |value| dashboard_text_value(value) }.first
+  end
+
+  def dashboard_farmer_profile_from_records(id, afl = nil, farmer_info = nil, declaration = nil)
+    {
+      id: id.to_s,
+      farmer_name: dashboard_preferred_text(afl&.farmer_name, farmer_info&.farmer_name, declaration&.farmer_name).presence || "Farmer ##{id}",
+      father_name: dashboard_preferred_text(afl&.father_name, farmer_info&.father_mother_name),
+      mobile_no: dashboard_preferred_text(afl&.mobile_no, farmer_info&.farmer_contact_no, declaration&.farmer_contact_no),
+      tracenet_no: dashboard_preferred_text(afl&.tracenet_no, farmer_info&.tracenet_no, declaration&.tracenet_no),
+      khasara_no: dashboard_preferred_text(afl&.khasara_no, farmer_info&.khasra_no),
+      ics_name: dashboard_preferred_text(afl&.ics_name, farmer_info&.ics_name, declaration&.ics_name),
+      ics_id: dashboard_text_value(afl&.ics_id),
+      village_name: dashboard_preferred_text(afl&.village_name, farmer_info&.farmer_village, farmer_info&.farm_village, declaration&.farmer_village),
+      village_id: dashboard_text_value(afl&.village_id),
+      status: dashboard_preferred_text(afl&.status, farmer_info&.status, declaration&.status),
+      work_date: afl ? afl_work_date(afl) : nil
+    }
+  end
+
+  def dashboard_farmer_profiles_by_id(farmer_ids)
+    ids = Array(farmer_ids).map(&:to_s).reject(&:blank?).uniq
+    return {} if ids.blank?
+
+    @dashboard_farmer_profiles_by_id_cache ||= {}
+    cache_key = ids.sort.join("|")
+    return @dashboard_farmer_profiles_by_id_cache[cache_key] if @dashboard_farmer_profiles_by_id_cache.key?(cache_key)
+
+    afls = if model_ready?(:Afl)
+      Afl.where(id: ids).to_a.index_by { |farmer| farmer.id.to_s }
+    else
+      {}
+    end
+
+    farmer_infos = dashboard_farmer_information_records(afls.values)
+    declarations = dashboard_exit_declarations_for_afls(afls.values)
+
+    farmer_info_by_farm_id = farmer_infos.index_by { |farmer| farmer.farm_id.to_s }
+    farmer_info_by_tracenet = farmer_infos.each_with_object({}) do |farmer_info, index|
+      key = dashboard_text_value(farmer_info.tracenet_no)
+      index[key] ||= farmer_info if key.present?
+    end
+    farmer_info_by_aadhar = farmer_infos.each_with_object({}) do |farmer_info, index|
+      key = dashboard_text_value(farmer_info.aadhar_number)
+      index[key] ||= farmer_info if key.present?
+    end
+    farmer_info_by_mobile = farmer_infos.each_with_object({}) do |farmer_info, index|
+      key = dashboard_text_value(farmer_info.farmer_contact_no)
+      index[key] ||= farmer_info if key.present?
+    end
+    farmer_info_by_name = farmer_infos.each_with_object({}) do |farmer_info, index|
+      key = dashboard_text_value(farmer_info.farmer_name)
+      index[key] ||= farmer_info if key.present?
+    end
+    farmer_info_by_id = farmer_infos.index_by { |farmer| farmer.id.to_s }
+
+    profiles = ids.each_with_object({}) do |id, memo|
+      afl = afls[id]
+      declaration = dashboard_farmer_declaration_for_afl(afl, declarations)
+      farmer_info = farmer_info_by_farm_id[id]
+      farmer_info ||= farmer_info_by_tracenet[dashboard_text_value(afl&.tracenet_no)] if afl.present?
+      farmer_info ||= farmer_info_by_aadhar[dashboard_text_value(afl&.aadhar)] if afl.present?
+      farmer_info ||= farmer_info_by_aadhar[dashboard_text_value(afl&.qr_aadhar)] if afl.present?
+      farmer_info ||= farmer_info_by_mobile[dashboard_text_value(afl&.mobile_no)] if afl.present?
+      farmer_info ||= farmer_info_by_name[dashboard_text_value(afl&.farmer_name)] if afl.present?
+      farmer_info ||= farmer_info_by_id[declaration&.farmer_farm_information_id.to_s] if declaration&.farmer_farm_information_id.present?
+      memo[id] = dashboard_farmer_profile_from_records(id, afl, farmer_info, declaration)
+    end
+
+    @dashboard_farmer_profiles_by_id_cache[cache_key] = profiles
+  end
+
+  def dashboard_farmer_information_records(afls)
+    return [] unless model_ready?(:FarmerFarmInformation)
+
+    afls = Array(afls)
+    ids = afls.map { |afl| afl.id.to_s }.reject(&:blank?).uniq
+    tracenets = afls.map { |afl| dashboard_text_value(afl&.tracenet_no) }.compact
+    aadhars = afls.flat_map { |afl| [afl.aadhar, afl.qr_aadhar] }.map { |value| dashboard_text_value(value) }.compact
+    mobiles = afls.map { |afl| dashboard_text_value(afl&.mobile_no) }.compact
+    names = afls.map { |afl| dashboard_text_value(afl&.farmer_name) }.compact
+    declaration_ids = dashboard_exit_declarations_for_afls(afls).values.map { |declaration| declaration&.farmer_farm_information_id.to_s }.reject(&:blank?).uniq
+
+    scope = FarmerFarmInformation.none
+    scope = scope.or(FarmerFarmInformation.where(farm_id: ids)) if ids.any?
+    scope = scope.or(FarmerFarmInformation.where(tracenet_no: tracenets)) if tracenets.any?
+    scope = scope.or(FarmerFarmInformation.where(aadhar_number: aadhars)) if aadhars.any?
+    scope = scope.or(FarmerFarmInformation.where(farmer_contact_no: mobiles)) if mobiles.any?
+    scope = scope.or(FarmerFarmInformation.where(farmer_name: names)) if names.any?
+    scope = scope.or(FarmerFarmInformation.where(id: declaration_ids)) if declaration_ids.any?
+
+    scope.to_a.uniq { |farmer| farmer.id }
+  end
+
+  def dashboard_exit_declarations_for_afls(afls)
+    return {} unless model_ready?(:IcsExitDeclaration)
+
+    afls = Array(afls)
+    ids = afls.map { |afl| afl.id.to_s }.reject(&:blank?).uniq
+    tracenets = afls.map { |afl| dashboard_text_value(afl&.tracenet_no) }.compact
+    mobiles = afls.map { |afl| dashboard_text_value(afl&.mobile_no) }.compact
+    names = afls.map { |afl| dashboard_text_value(afl&.farmer_name) }.compact
+    id_numbers = afls.flat_map { |afl| [afl.aadhar, afl.qr_aadhar] }.map { |value| dashboard_text_value(value) }.compact
+
+    scope = IcsExitDeclaration.none
+    scope = scope.or(IcsExitDeclaration.where(farm_id: ids)) if ids.any?
+    scope = scope.or(IcsExitDeclaration.where(tracenet_no: tracenets)) if tracenets.any?
+    scope = scope.or(IcsExitDeclaration.where(farmer_contact_no: mobiles)) if mobiles.any?
+    scope = scope.or(IcsExitDeclaration.where(farmer_name: names)) if names.any?
+    scope = scope.or(IcsExitDeclaration.where(id_number: id_numbers)) if id_numbers.any?
+
+    scope.to_a.each_with_object({}) do |declaration, index|
+      [
+        declaration.farm_id,
+        declaration.tracenet_no,
+        declaration.farmer_contact_no,
+        declaration.farmer_name,
+        declaration.id_number,
+        declaration.farmer_farm_information_id
+      ].map { |value| dashboard_text_value(value) }.reject(&:blank?).each do |key|
+        index[key] ||= declaration
+      end
+    end
+  end
+
+  def dashboard_farmer_declaration_for_afl(afl, declarations_by_key)
+    return nil unless afl.present?
+
+    keys = [
+      afl.id,
+      afl.tracenet_no,
+      afl.mobile_no,
+      afl.aadhar,
+      afl.qr_aadhar,
+      afl.farmer_name
+    ].map { |value| dashboard_text_value(value) }.reject(&:blank?)
+
+    keys.each do |key|
+      declaration = declarations_by_key[key]
+      return declaration if declaration.present?
+    end
+
+    nil
   end
 
   def dashboard_cards
@@ -1304,13 +1705,13 @@ class ModulesController < ApplicationController
 
       {
         farmer_id: farmer_id,
-        farmer_name: farmer&.farmer_name.presence || "Farmer ##{farmer_id}",
-        father_name: farmer&.father_name,
-        mobile_no: farmer&.mobile_no,
-        tracenet_no: farmer&.tracenet_no,
-        khasara_no: farmer&.khasara_no,
-        ics: membership[:ics].presence || farmer&.ics_name.presence || farmer&.ics_id.presence || "-",
-        village: membership[:village].presence || farmer&.village_name.presence || farmer&.village_id.presence || "-",
+        farmer_name: dashboard_text_value(farmer&.farmer_name).presence || "Farmer ##{farmer_id}",
+        father_name: dashboard_text_value(farmer&.father_name),
+        mobile_no: dashboard_text_value(farmer&.mobile_no),
+        tracenet_no: dashboard_text_value(farmer&.tracenet_no),
+        khasara_no: dashboard_text_value(farmer&.khasara_no),
+        ics: membership[:ics].presence || dashboard_text_value(farmer&.ics_name).presence || dashboard_text_value(farmer&.ics_id).presence || "-",
+        village: membership[:village].presence || dashboard_text_value(farmer&.village_name).presence || dashboard_text_value(farmer&.village_id).presence || "-",
         vrp: membership[:vrp].presence || "-",
         months: membership[:months].presence || "-",
         main_activities: membership[:main_activities].presence || "-",
@@ -4945,11 +5346,11 @@ class ModulesController < ApplicationController
       .map do |farmer|
         {
           id: farmer.id.to_s,
-          farmer_name: farmer.farmer_name.presence || "Farmer ##{farmer.id}",
-          father_name: farmer.father_name,
-          tracenet_no: farmer.tracenet_no,
-          mobile_no: farmer.mobile_no,
-          khasara_no: farmer.khasara_no
+          farmer_name: dashboard_text_value(farmer.farmer_name).presence || "Farmer ##{farmer.id}",
+          father_name: dashboard_text_value(farmer.father_name),
+          tracenet_no: dashboard_text_value(farmer.tracenet_no),
+          mobile_no: dashboard_text_value(farmer.mobile_no),
+          khasara_no: dashboard_text_value(farmer.khasara_no)
         }
       end
   end

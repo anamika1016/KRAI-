@@ -2833,9 +2833,10 @@ document.addEventListener("turbo:load", () => {
       const table = document.getElementById(button.dataset.exportTable);
       if (!table) return;
 
+      const startColumn = button.dataset.exportIncludeAll === "true" ? 0 : 1;
       const rows = Array.from(table.querySelectorAll("tr")).map((row) => {
         return Array.from(row.children)
-          .slice(1)
+          .slice(startColumn)
           .map((cell) => {
             const value = cell.matches("th") ? (cell.querySelector(".column-filter-label")?.innerText || cell.innerText) : cell.innerText;
             return `"${value.replaceAll('"', '""')}"`;

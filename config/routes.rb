@@ -16,6 +16,7 @@ Rails.application.routes.draw do
 
   root "sessions#new"
   get "dashboard", to: "modules#dashboard", as: :dashboard
+  get "dashboard/vrp-list/:list_type", to: "modules#vrp_dashboard_list", as: :vrp_dashboard_list
   get "dashboard/farmer-training-participation", to: "modules#farmer_training_participation", as: :farmer_training_participation
   get "dashboard/farmer-training-target-status", to: "modules#farmer_training_target_status", as: :farmer_training_target_status
 

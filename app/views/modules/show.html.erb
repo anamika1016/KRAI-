@@ -1529,7 +1529,17 @@
                         </div>
                       </td>
                     <% else %>
-                      <td><%= value %></td>
+                      <% if field.downcase.include?("upload") || field.downcase.include?("file") %>
+                        <td>
+                          <% if value.present? %>
+                            <%= link_to "View", value, target: "_blank", rel: "noopener", class: "table-action" %>
+                          <% else %>
+                            -
+                          <% end %>
+                        </td>
+                      <% else %>
+                        <td><%= value %></td>
+                      <% end %>
                     <% end %>
                   <% end %>
                 </tr>

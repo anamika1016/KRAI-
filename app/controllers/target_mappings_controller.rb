@@ -226,19 +226,23 @@ class TargetMappingsController < ApplicationController
       parsed_ics_name,
       parsed_village_values.map(&:last)
     )
-      .select(:id, :farmer_name, :father_name, :tracenet_no, :mobile_no, :khasara_no)
-      .order(:farmer_name, :id)
-      .map do |afl|
-        {
-          id: afl.id.to_s,
-          farmer_name: afl.farmer_name,
-          father_name: afl.father_name,
-          tracenet_no: afl.tracenet_no,
-          mobile_no: afl.mobile_no,
-          khasara_no: afl.khasara_no,
-          assigned_to_other: assigned_ids.include?(afl.id.to_s),
-          selected: selected_ids.include?(afl.id.to_s)
-        }
+      .to_a
+      .then do |afls|
+        profiles_by_id = target_farmer_profiles_by_id(afls)
+
+        afls.map do |afl|
+          profile = profiles_by_id[afl.id.to_s] || {}
+          {
+            id: afl.id.to_s,
+            farmer_name: profile[:farmer_name].presence || "Farmer ##{afl.id}",
+            father_name: profile[:father_name].presence || "-",
+            tracenet_no: profile[:tracenet_no].presence || "-",
+            mobile_no: profile[:mobile_no].presence || "-",
+            khasara_no: profile[:khasara_no].presence || "-",
+            assigned_to_other: assigned_ids.include?(afl.id.to_s),
+            selected: selected_ids.include?(afl.id.to_s)
+          }
+        end.sort_by { |row| [row[:farmer_name].to_s.downcase, row[:id].to_s] }
       end
   end
 
@@ -324,6 +328,139 @@ class TargetMappingsController < ApplicationController
   def option_hash(value, label)
     text = [label.presence, value].compact.join(" - ")
     { value: encoded_location_value(value, label), label: text.presence || value.to_s }
+  end
+
+  def target_farmer_profiles_by_id(afls)
+    afls = Array(afls)
+    ids = afls.map { |afl| afl.id.to_s }.reject(&:blank?).uniq
+    return {} if ids.blank?
+
+    farmer_infos = target_farmer_information_records(afls)
+    declarations = target_farmer_exit_declarations(afls)
+
+    farmer_info_by_farm_id = farmer_infos.index_by { |farmer| farmer.farm_id.to_s }
+    farmer_info_by_tracenet = farmer_infos.each_with_object({}) do |farmer_info, index|
+      key = target_farmer_text_value(farmer_info.tracenet_no)
+      index[key] ||= farmer_info if key.present?
+    end
+    farmer_info_by_aadhar = farmer_infos.each_with_object({}) do |farmer_info, index|
+      key = target_farmer_text_value(farmer_info.aadhar_number)
+      index[key] ||= farmer_info if key.present?
+    end
+    farmer_info_by_mobile = farmer_infos.each_with_object({}) do |farmer_info, index|
+      key = target_farmer_text_value(farmer_info.farmer_contact_no)
+      index[key] ||= farmer_info if key.present?
+    end
+    farmer_info_by_name = farmer_infos.each_with_object({}) do |farmer_info, index|
+      key = target_farmer_text_value(farmer_info.farmer_name)
+      index[key] ||= farmer_info if key.present?
+    end
+
+    ids.each_with_object({}) do |id, memo|
+      afl = afls.find { |row| row.id.to_s == id }
+      declaration = target_farmer_declaration_for_afl(afl, declarations)
+      farmer_info = farmer_info_by_farm_id[id]
+      farmer_info ||= farmer_info_by_tracenet[target_farmer_text_value(afl&.tracenet_no)] if afl.present?
+      farmer_info ||= farmer_info_by_aadhar[target_farmer_text_value(afl&.aadhar)] if afl.present?
+      farmer_info ||= farmer_info_by_aadhar[target_farmer_text_value(afl&.qr_aadhar)] if afl.present?
+      farmer_info ||= farmer_info_by_mobile[target_farmer_text_value(afl&.mobile_no)] if afl.present?
+      farmer_info ||= farmer_info_by_name[target_farmer_text_value(afl&.farmer_name)] if afl.present?
+      farmer_info ||= farmer_infos.find { |farmer| farmer.id.to_s == declaration&.farmer_farm_information_id.to_s } if declaration&.farmer_farm_information_id.present?
+
+      memo[id] = target_farmer_profile_from_records(id, afl, farmer_info, declaration)
+    end
+  end
+
+  def target_farmer_information_records(afls)
+    return [] unless defined?(FarmerFarmInformation) && FarmerFarmInformation.table_exists?
+
+    afls = Array(afls)
+    ids = afls.map { |afl| afl.id.to_s }.reject(&:blank?).uniq
+    tracenets = afls.map { |afl| target_farmer_text_value(afl&.tracenet_no) }.compact
+    aadhars = afls.flat_map { |afl| [afl.aadhar, afl.qr_aadhar] }.map { |value| target_farmer_text_value(value) }.compact
+    mobiles = afls.map { |afl| target_farmer_text_value(afl&.mobile_no) }.compact
+    names = afls.map { |afl| target_farmer_text_value(afl&.farmer_name) }.compact
+    declaration_ids = target_farmer_exit_declarations(afls).values.map { |declaration| declaration&.farmer_farm_information_id.to_s }.reject(&:blank?).uniq
+
+    scope = FarmerFarmInformation.none
+    scope = scope.or(FarmerFarmInformation.where(farm_id: ids)) if ids.any?
+    scope = scope.or(FarmerFarmInformation.where(tracenet_no: tracenets)) if tracenets.any?
+    scope = scope.or(FarmerFarmInformation.where(aadhar_number: aadhars)) if aadhars.any?
+    scope = scope.or(FarmerFarmInformation.where(farmer_contact_no: mobiles)) if mobiles.any?
+    scope = scope.or(FarmerFarmInformation.where(farmer_name: names)) if names.any?
+    scope = scope.or(FarmerFarmInformation.where(id: declaration_ids)) if declaration_ids.any?
+
+    scope.to_a.uniq { |farmer| farmer.id }
+  end
+
+  def target_farmer_exit_declarations(afls)
+    return {} unless defined?(IcsExitDeclaration) && IcsExitDeclaration.table_exists?
+
+    afls = Array(afls)
+    ids = afls.map { |afl| afl.id.to_s }.reject(&:blank?).uniq
+    tracenets = afls.map { |afl| target_farmer_text_value(afl&.tracenet_no) }.compact
+    mobiles = afls.map { |afl| target_farmer_text_value(afl&.mobile_no) }.compact
+    names = afls.map { |afl| target_farmer_text_value(afl&.farmer_name) }.compact
+    id_numbers = afls.flat_map { |afl| [afl.aadhar, afl.qr_aadhar] }.map { |value| target_farmer_text_value(value) }.compact
+
+    scope = IcsExitDeclaration.none
+    scope = scope.or(IcsExitDeclaration.where(farm_id: ids)) if ids.any?
+    scope = scope.or(IcsExitDeclaration.where(tracenet_no: tracenets)) if tracenets.any?
+    scope = scope.or(IcsExitDeclaration.where(farmer_contact_no: mobiles)) if mobiles.any?
+    scope = scope.or(IcsExitDeclaration.where(farmer_name: names)) if names.any?
+    scope = scope.or(IcsExitDeclaration.where(id_number: id_numbers)) if id_numbers.any?
+
+    scope.to_a.each_with_object({}) do |declaration, index|
+      [
+        declaration.farm_id,
+        declaration.tracenet_no,
+        declaration.farmer_contact_no,
+        declaration.farmer_name,
+        declaration.id_number,
+        declaration.farmer_farm_information_id
+      ].map { |value| target_farmer_text_value(value) }.reject(&:blank?).each do |key|
+        index[key] ||= declaration
+      end
+    end
+  end
+
+  def target_farmer_declaration_for_afl(afl, declarations_by_key)
+    return nil unless afl.present?
+
+    keys = [
+      afl.id,
+      afl.tracenet_no,
+      afl.mobile_no,
+      afl.aadhar,
+      afl.qr_aadhar,
+      afl.farmer_name
+    ].map { |value| target_farmer_text_value(value) }.reject(&:blank?)
+
+    keys.each do |key|
+      declaration = declarations_by_key[key]
+      return declaration if declaration.present?
+    end
+
+    nil
+  end
+
+  def target_farmer_profile_from_records(id, afl = nil, farmer_info = nil, declaration = nil)
+    {
+      id: id.to_s,
+      farmer_name: target_farmer_preferred_text(afl&.farmer_name, farmer_info&.farmer_name, declaration&.farmer_name).presence || "Farmer ##{id}",
+      father_name: target_farmer_preferred_text(afl&.father_name, farmer_info&.father_mother_name),
+      tracenet_no: target_farmer_preferred_text(afl&.tracenet_no, farmer_info&.tracenet_no, declaration&.tracenet_no),
+      mobile_no: target_farmer_preferred_text(afl&.mobile_no, farmer_info&.farmer_contact_no, declaration&.farmer_contact_no),
+      khasara_no: target_farmer_preferred_text(afl&.khasara_no, farmer_info&.khasra_no)
+    }
+  end
+
+  def target_farmer_text_value(value)
+    value.to_s.strip.presence
+  end
+
+  def target_farmer_preferred_text(*values)
+    values.filter_map { |value| target_farmer_text_value(value) }.first
   end
 
   def normalize_location_values(target_mapping)
