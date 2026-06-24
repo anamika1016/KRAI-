@@ -877,9 +877,18 @@ class ModulesController < ApplicationController
     @training_participation = training_participation_summary(training_targets, month_name: selected_month)
     @farmer_training_dashboard_rows = farmer_training_dashboard_rows(training_targets, month_name: selected_month)
     village_count = @vrp_village_rows.map { |row| normalize_dashboard_text(row[:village]) }.reject(&:blank?).uniq.size
+    activity_settings = jeevika_jankar_main_activity_settings
+    sub_activity_settings = jeevika_jankar_sub_activity_settings(activity_settings)
+    other_target_achievement_index = approved_other_target_achievement_index
 
     @vrp_target_rows = targets.map do |target|
-      completed = vrp_target_completed_quantity(target, bills)
+      completed = vrp_target_completed_quantity(
+        target,
+        bills,
+        activity_settings: activity_settings,
+        sub_activity_settings: sub_activity_settings,
+        other_target_achievement_index: other_target_achievement_index
+      )
       target_quantity = target.target_quantity.to_f
       pending = [target_quantity - completed, 0].max
 
@@ -1129,7 +1138,20 @@ class ModulesController < ApplicationController
     end.sort_by { |row| [row[:village].to_s, row[:name].to_s] }
   end
 
-  def vrp_target_completed_quantity(target, bills)
+  def vrp_target_completed_quantity(target, bills, activity_settings: nil, sub_activity_settings: nil, other_target_achievement_index: nil)
+    activity_settings ||= jeevika_jankar_main_activity_settings
+    sub_activity_settings ||= jeevika_jankar_sub_activity_settings(activity_settings)
+    activity_setting = jeevika_jankar_activity_setting_for(target, activity_settings, sub_activity_settings)
+
+    if activity_setting.present? && !training_main_activity_type?(activity_setting[:main_activity_type])
+      other_target_achievement = other_target_achievement_index&.dig(target.id.to_s) ||
+        approved_other_target_achievement_index[target.id.to_s]
+      return other_target_achievement[:achievement].to_f if other_target_achievement.present?
+    elsif activity_setting.present?
+      completed_farmer_count = completed_training_farmer_ids_for_target_deadline(target, target_farmer_ids(target)).size
+      return completed_farmer_count.to_f if completed_farmer_count.positive?
+    end
+
     relevant_bills = bills.select do |record|
       target.month_name.blank? || normalize_dashboard_text(record.data["select_bill_month"]) == normalize_dashboard_text(target.month_name)
     end
@@ -3363,16 +3385,27 @@ class ModulesController < ApplicationController
       .select { |record| approved_other_target_record?(record) }
       .each_with_object({}) do |record, index|
         target_mapping_id = record.data["target_mapping_id"].to_s
-        next if target_mapping_id.blank? || index.key?(target_mapping_id)
+        next if target_mapping_id.blank?
 
         achievement = decimal_value(record.data["achievement"])
         next if achievement.nil?
 
-        index[target_mapping_id] = {
-          achievement: achievement.to_f,
-          source_module: record.module_slug,
-          source_record_id: record.id.to_s,
-          achieved_at: (parse_module_date(record.data["achievement_date"]) || record.updated_at.to_date).to_s
+        entry = index[target_mapping_id] ||= {
+          achievement: 0.0,
+          source_modules: [],
+          source_record_ids: [],
+          achieved_dates: []
+        }
+        entry[:achievement] += achievement.to_f
+        entry[:source_modules] |= [record.module_slug]
+        entry[:source_record_ids] |= [record.id.to_s]
+        entry[:achieved_dates] |= [(parse_module_date(record.data["achievement_date"]) || record.updated_at.to_date).to_s]
+      end.transform_values do |entry|
+        {
+          achievement: entry[:achievement],
+          source_module: entry[:source_modules].join(", "),
+          source_record_id: entry[:source_record_ids].join(", "),
+          achieved_at: entry[:achieved_dates].join(", ")
         }
       end
   end
