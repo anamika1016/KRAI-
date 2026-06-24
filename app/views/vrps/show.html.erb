@@ -163,6 +163,9 @@
               <p><strong>Waiting</strong></p>
             <% end %>
             <p><%= closing_history&.created_at&.strftime("%d-%m-%Y %I:%M %p") || (is_current ? "Current step" : "Waiting for previous approval") %></p>
+            <% if closing_history&.data&.[]("remarks").present? %>
+              <p><strong>Remarks:</strong> <%= closing_history.data["remarks"] %></p>
+            <% end %>
             <% if @can_approve && is_current && state == "current" %>
               <div class="approval-card-actions">
                 <button type="button" class="approval-mini-btn approve" data-open-approval-modal data-approval-action="approve" data-approval-url="<%= approve_vrp_path(@vrp) %>">Approve</button>

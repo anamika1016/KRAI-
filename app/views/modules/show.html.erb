@@ -333,7 +333,7 @@
       </div>
 
       <% approval_status_text = jeevika_bill_status_label(detail_record).to_s.downcase %>
-      <% show_approval_progress = !(approval_status_text.include?("pending") || approval_status_text.include?("submitted")) || jeevika_bill_current_approver?(detail_record) %>
+      <% show_approval_progress = !approval_status_text.include?("submitted") || jeevika_bill_approval_history(detail_record).any? %>
       <% if show_approval_progress %>
       <div class="approval-progress-section no-print">
         <h2>Jeevika Jankar Bill Approval Progress</h2>
@@ -348,6 +348,9 @@
               <p><%= step.data["approver_approved_by"].presence || "-" %></p>
               <% if step_history %>
                 <small><%= step_history.data["action"] %> at <%= step_history.data["action_at"] %></small>
+                <% if step_history.data["remarks"].present? %>
+                  <p><strong>Remarks:</strong> <%= step_history.data["remarks"] %></p>
+                <% end %>
               <% end %>
             </div>
           <% end %>
@@ -356,7 +359,7 @@
         <% if jeevika_bill_current_approver?(detail_record) && jeevika_bill_status_label(detail_record).include?("Pending") %>
           <div class="module-form-actions">
             <button type="button" class="list-btn active" data-open-approval-modal data-approval-action="approve" data-approval-url="<%= approve_bill_module_record_path("jeevika-jankar-bill-list", detail_record) %>">Approve</button>
-            <button type="button" class="list-btn deactive" data-open-approval-modal data-approval-action="return" data-approval-url="<%= return_bill_module_record_path("jeevika-jankar-bill-list", detail_record) %>">Return</button>
+            <button type="button" class="list-btn deactive" data-open-approval-modal data-approval-action="reject" data-approval-url="<%= reject_bill_module_record_path("jeevika-jankar-bill-list", detail_record) %>">Reject</button>
           </div>
         <% end %>
       </div>
@@ -1358,6 +1361,7 @@
               <th>View</th>
               <th>Download Bill</th>
               <th>Jeevika Jankar ID</th>
+              <th>Status</th>
               <th>Name</th>
               <th>Financial Year</th>
               <th>Bill Month</th>
@@ -1366,7 +1370,8 @@
               <th>Activity Name</th>
               <th>Total Target</th>
               <th>Total Achievement</th>
-              <th>Status</th>
+              <th>Approval Action</th>
+              <th>Remarks</th>
             </tr>
           </thead>
           <tbody>
@@ -1393,6 +1398,7 @@
                     <% end %>
                   </td>
                   <td><%= row[:vrp_id].presence || "-" %></td>
+                  <td><span class="grid-status <%= row[:status_class] %>"><%= row[:status] %></span></td>
                   <td><%= row[:name].presence || "-" %></td>
                   <td><%= row[:financial_year] %></td>
                   <td><%= row[:bill_month] %></td>
@@ -1401,18 +1407,42 @@
                   <td><%= row[:activity_names] %></td>
                   <td><%= row[:target] %></td>
                   <td><%= row[:achievement] %></td>
-                  <td><span class="status-pill <%= row[:record_state] == "Inactive" ? "inactive" : "active" %>"><%= row[:record_state] %></span></td>
+                  <td>
+                    <% if row[:current_approver] && row[:status].to_s.include?("Pending") %>
+                      <div class="table-actions">
+                        <button type="button" class="list-btn active" data-open-approval-modal data-approval-action="approve" data-approval-url="<%= row[:approve_path] %>">Approve</button>
+                        <button type="button" class="list-btn deactive" data-open-approval-modal data-approval-action="reject" data-approval-url="<%= row[:reject_path] %>">Reject</button>
+                      </div>
+                    <% else %>
+                      -
+                    <% end %>
+                  </td>
+                  <td><%= row[:approval_remarks] %></td>
                 </tr>
               <% end %>
             <% else %>
               <tr>
-                <td colspan="13">No Jeevika Jankar bill saved yet.</td>
+                <td colspan="15">No Jeevika Jankar bill saved yet.</td>
               </tr>
             <% end %>
           </tbody>
         </table>
       </div>
       <div class="table-pagination" data-pagination-for="<%= table_id %>"></div>
+      <dialog class="approval-remarks-modal" data-approval-modal>
+        <%= form_with url: "#", method: :patch, class: "approval-modal-form", data: { approval_modal_form: true } do %>
+          <div class="approval-modal-header">
+            <h2 data-approval-modal-title>Approval Remarks</h2>
+            <button type="button" data-close-approval-modal aria-label="Close">×</button>
+          </div>
+          <label for="bill_list_approval_modal_remarks">Remarks</label>
+          <textarea id="bill_list_approval_modal_remarks" name="remarks" rows="4" placeholder="Enter remarks" required></textarea>
+          <div class="approval-modal-actions">
+            <button type="button" class="table-action" data-close-approval-modal>Cancel</button>
+            <button type="submit" class="list-btn active" data-approval-modal-submit>Submit</button>
+          </div>
+        <% end %>
+      </dialog>
     </section>
 
   <% elsif list_only_slugs.include?(@slug) && @record.blank? %>

@@ -2986,17 +2986,22 @@ class ModulesController < ApplicationController
     Array(records).map do |record|
       data = record.data
       summary = jeevika_bill_summary(record)
+      approval_history = jeevika_bill_approval_history(record)
       {
         id: record.id,
         edit_path: edit_module_record_path("jeevika-jankar-bill-process", record),
         view_path: module_path("jeevika-jankar-bill-list", view_id: record.id),
         download_path: download_bill_module_record_path("jeevika-jankar-bill-list", record),
         send_path: send_for_approval_module_record_path("jeevika-jankar-bill-list", record),
+        approve_path: approve_bill_module_record_path("jeevika-jankar-bill-list", record),
+        reject_path: reject_bill_module_record_path("jeevika-jankar-bill-list", record),
         active_path: set_bill_state_module_record_path("jeevika-jankar-bill-list", record, state: "Active"),
         inactive_path: set_bill_state_module_record_path("jeevika-jankar-bill-list", record, state: "Inactive"),
         delete_path: module_record_path("jeevika-jankar-bill-list", record),
         status: jeevika_bill_status_label(record),
         status_class: jeevika_bill_status_class(record),
+        current_approver: jeevika_bill_current_approver?(record),
+        approval_remarks: bill_approval_remarks_text(approval_history),
         record_state: data["record_state"].presence || "Active",
         bill_id: record.id,
         vrp_id: data["select_vrp"],
@@ -3125,6 +3130,21 @@ class ModulesController < ApplicationController
     return "pending" if status.include?("pending")
 
     "submitted"
+  end
+
+  def bill_approval_remarks_text(history)
+    Array(history)
+      .reject { |record| record.data["remarks"].to_s.strip.blank? }
+      .map do |record|
+        [
+          record.data["approval_level"].presence || "Approval",
+          record.data["action"].presence,
+          record.data["action_by"].presence || record.data["approver"].presence,
+          record.data["remarks"].presence
+        ].compact.join(" - ")
+      end
+      .join(" | ")
+      .presence || "-"
   end
 
   def jeevika_bill_approval_steps(record)
