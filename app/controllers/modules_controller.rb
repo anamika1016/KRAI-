@@ -27,7 +27,6 @@ class ModulesController < ApplicationController
 
   APPROVAL_REGISTRATION_MODULES = ["Farmer Registration", "VRP Registration", "Jeevika Jankar Registration"].freeze
   OTHER_TARGET_MODULE_SLUGS = ["seed-distribution-target", "papl360-target"].freeze
-
   DASHBOARD_CARDS = [
     ["Total VRP", "0", "Registered field resources"],
     ["Active VRP", "0", "Currently active"],
@@ -151,8 +150,30 @@ class ModulesController < ApplicationController
         "Village",
         "Main Activity",
         "Sub Activity",
+        "Farmer Count",
         "Target",
-        "Achievement"
+        "Achievement",
+        "Attachment Upload"
+      ]
+    },
+    "seed-distribution-target-list" => {
+      title: "Seed Distribution Target List",
+      group: "Farmer Target",
+      purpose: "Saved seed distribution target records dekhne ke liye.",
+      fields: [
+        "Jeevika Jankar Name",
+        "Contact Number",
+        "Department",
+        "Month",
+        "ICS",
+        "Village",
+        "Main Activity",
+        "Sub Activity",
+        "Farmer Count",
+        "Target",
+        "Achievement",
+        "Attachment Upload",
+        "Status"
       ]
     },
     "papl360-target" => {
@@ -169,7 +190,29 @@ class ModulesController < ApplicationController
         "Main Activity",
         "Sub Activity",
         "Target",
-        "Achievement"
+        "Achievement",
+        "Excel Upload",
+        "Attachment Upload"
+      ]
+    },
+    "papl360-target-list" => {
+      title: "PAPL360 Target List",
+      group: "Farmer Target",
+      purpose: "Saved PAPL360 target records dekhne ke liye.",
+      fields: [
+        "Jeevika Jankar Name",
+        "Contact Number",
+        "Department",
+        "Month",
+        "ICS",
+        "Village",
+        "Main Activity",
+        "Sub Activity",
+        "Target",
+        "Achievement",
+        "Excel Upload",
+        "Attachment Upload",
+        "Status"
       ]
     },
     "training-topic-mapping" => {
@@ -436,6 +479,8 @@ class ModulesController < ApplicationController
     "vrp-bill-list" => "vrp-bill-add",
     "jeevika-jankar-bill-list" => "jeevika-jankar-bill-process",
     "training-form-list" => "training-form",
+    "seed-distribution-target-list" => "seed-distribution-target",
+    "papl360-target-list" => "papl360-target",
     "user-hierarchy-list" => "user-hierarchy-mapping",
     "all-user" => "new-user"
   }.freeze
@@ -2907,8 +2952,8 @@ class ModulesController < ApplicationController
   def prepare_vrp_bill_data
     @approved_vrp_options = approved_vrp_options
     month_master_rows = active_month_master_rows
-    @bill_financial_year_options = month_master_rows.filter_map { |record| record.data["financial_year"].presence }.uniq
-    @bill_month_options = month_master_rows.filter_map { |record| record.data["month_name"].presence }.uniq
+    @bill_financial_year_options = month_master_financial_year_options(month_master_rows)
+    @bill_month_options = month_master_month_options(month_master_rows)
     @bill_project_options = module_record_values("ics-master", "ics_name", "name", "ics", "select_ics") +
       module_record_values("add-vrp-activity", "ics", "select_ics", "ics_name")
     @bill_project_options = @bill_project_options.compact_blank.uniq
@@ -2924,8 +2969,8 @@ class ModulesController < ApplicationController
   def prepare_jeevika_jankar_bill_data
     month_master_rows = active_month_master_rows
     @jeevika_jankar_vrp_options = approved_vrp_id_options
-    @jeevika_jankar_month_options = month_master_rows.filter_map { |record| record.data["month_name"].presence }.uniq
-    @jeevika_jankar_financial_year_options = month_master_rows.filter_map { |record| record.data["financial_year"].presence }.uniq
+    @jeevika_jankar_month_options = month_master_month_options(month_master_rows)
+    @jeevika_jankar_financial_year_options = month_master_financial_year_options(month_master_rows)
     @jeevika_jankar_invoice_no = @record&.data&.[]("invoice_no").presence || generated_jeevika_jankar_invoice_no
     @jeevika_jankar_invoice_date = @record&.data&.[]("invoice_date").presence || Date.current.to_s
     @jeevika_jankar_bill_rows = jeevika_jankar_bill_rows
@@ -3590,6 +3635,26 @@ class ModulesController < ApplicationController
       .select { |record| active_module_record?(record) }
   end
 
+  def month_master_month_options(records = active_month_master_rows)
+    Array(records)
+      .filter_map { |record| first_present_data(record, "month_name", "month", "name", "select_bill_month") }
+      .map(&:to_s)
+      .map(&:strip)
+      .reject(&:blank?)
+      .uniq
+      .sort_by { |month| [dashboard_month_index(month), month] }
+  end
+
+  def month_master_financial_year_options(records = active_month_master_rows)
+    Array(records)
+      .filter_map { |record| first_present_data(record, "financial_year", "year", "fy") }
+      .map(&:to_s)
+      .map(&:strip)
+      .reject(&:blank?)
+      .uniq
+      .sort
+  end
+
   def bill_activity_map
     return {} unless model_ready?(:ModuleRecord)
 
@@ -3657,7 +3722,9 @@ class ModulesController < ApplicationController
     {
       "training-form" => "training-form-list",
       "vrp-bill-add" => "vrp-bill-list",
-      "jeevika-jankar-bill-process" => "jeevika-jankar-bill-list"
+      "jeevika-jankar-bill-process" => "jeevika-jankar-bill-list",
+      "seed-distribution-target" => "seed-distribution-target-list",
+      "papl360-target" => "papl360-target-list"
     }.fetch(record_source_slug, @slug)
   end
 
@@ -3953,6 +4020,21 @@ class ModulesController < ApplicationController
       data["sub_activity"] = mapping[:training_subject]
     end
 
+    if record_source_slug == "seed-distribution-target"
+      selected_farmer_ids = Array(data["selected_farmer_ids"]).map(&:to_s).reject(&:blank?).uniq
+      if data["target_mapping_id"].present?
+        pending_farmer_ids = pending_other_target_farmer_ids_for(data["target_mapping_id"])
+        selected_farmer_ids &= pending_farmer_ids unless pending_farmer_ids.nil?
+      end
+      data["selected_farmer_ids"] = selected_farmer_ids
+      data["selected_farmer_names"] = training_farmer_names(selected_farmer_ids)
+      data["farmer_count"] = selected_farmer_ids.size.to_s if selected_farmer_ids.any?
+    else
+      data.delete("selected_farmer_ids")
+      data.delete("selected_farmer_names")
+      data.delete("farmer_count")
+    end
+
     data["achievement"] = numeric_string(data["achievement"]) if data["achievement"].present?
     data["target"] = numeric_string(data["target"]) if data["target"].present?
     data.delete("status")
@@ -3984,6 +4066,15 @@ class ModulesController < ApplicationController
       mapping[:vrp_id],
       mapping[:jeevika_jankar_name]
     ].any? { |value| normalize_dashboard_text(value) == selected_vrp }
+  end
+
+  def pending_other_target_farmer_ids_for(target_mapping_id)
+    return nil unless model_ready?(:TargetMapping)
+
+    target = TargetMapping.find_by(id: target_mapping_id)
+    return [] unless target
+
+    target_farmer_ids(target) - other_target_completed_farmer_ids_for(target.id)
   end
 
   def training_form_activity_scope_present?(data)
@@ -4401,7 +4492,6 @@ class ModulesController < ApplicationController
       data,
       "jeevika_jankar_name" => "Jeevika Jankar Name",
       "contact_number" => "Contact Number",
-      "department" => "Department",
       "month" => "Month",
       "ics" => "ICS",
       "village" => "Village",
@@ -4418,6 +4508,17 @@ class ModulesController < ApplicationController
     errors << "Target zero se kam nahi ho sakta." if target && target.negative?
     errors << "Achievement zero se kam nahi ho sakta." if achievement && achievement.negative?
     errors << "Achievement Target se jyada nahi ho sakta." if target && achievement && achievement > target
+
+    if record_source_slug == "seed-distribution-target"
+      farmer_count = whole_number_value(data["farmer_count"])
+      selected_farmer_ids = Array(data["selected_farmer_ids"]).map(&:to_s).reject(&:blank?).uniq
+      errors << "Farmer Count required hai." if data["farmer_count"].blank?
+      errors << "Mapped Farmers select karein." if selected_farmer_ids.blank?
+      errors << "Farmer Count valid whole number hona chahiye." if farmer_count.nil?
+      errors << "Farmer Count selected farmers ke count ke equal hona chahiye." if farmer_count && selected_farmer_ids.any? && farmer_count != selected_farmer_ids.size
+      errors << "Farmer Count Target se jyada nahi ho sakta." if target && farmer_count && farmer_count > target
+    end
+
     errors << "Mapped Other activity target select karein." if seed_distribution_target_match(data).blank?
     errors << "Contact Number valid 10 digit hona chahiye." if data["contact_number"].present? && data["contact_number"].to_s.gsub(/\D/, "").length != 10
     errors
@@ -4621,6 +4722,7 @@ class ModulesController < ApplicationController
         activity_setting = jeevika_jankar_activity_setting_for(target, activity_settings, sub_activity_settings)
         next unless activity_setting.present? && !training_main_activity_type?(activity_setting[:main_activity_type])
 
+        farmer_ids = target_farmer_ids(target)
         {
           target_mapping_id: target.id.to_s,
           vrp_id: target.vrp_id.to_s,
@@ -4633,7 +4735,9 @@ class ModulesController < ApplicationController
           main_activity_type: "Other",
           training_topic: target.main_activity_name.to_s.strip,
           training_subject: target.activity_name.to_s.strip,
-          target: target.target_quantity.to_s
+          target: target.target_quantity.to_s,
+          completed_farmer_ids: other_target_completed_farmer_ids_for(target.id),
+          farmers: training_farmers_for_ids(farmer_ids)
         }
       end
       .reject { |mapping| mapping[:ics].blank? && mapping[:village].blank? }
@@ -4642,6 +4746,20 @@ class ModulesController < ApplicationController
 
   def training_main_activity_type?(value)
     normalize_dashboard_text(value.presence || "Training") == normalize_dashboard_text("Training")
+  end
+
+  def other_target_completed_farmer_ids_for(target_mapping_id)
+    return [] unless model_ready?(:ModuleRecord)
+
+    ModuleRecord
+      .where(module_slug: record_source_slug)
+      .order(created_at: :asc)
+      .reject { |record| record.id.to_s == params[:id].to_s }
+      .select { |record| approved_other_target_record?(record) || normalize_dashboard_text(record.data["status"]).include?("pending") || record.data["status"].blank? }
+      .select { |record| record.data["target_mapping_id"].to_s == target_mapping_id.to_s }
+      .flat_map { |record| Array(record.data["selected_farmer_ids"]).map(&:to_s) }
+      .reject(&:blank?)
+      .uniq
   end
 
   def training_target_month_options

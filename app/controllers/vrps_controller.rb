@@ -69,7 +69,7 @@ class VrpsController < ApplicationController
       return
     end
 
-    if @vrp.update(vrp_params)
+    if @vrp.update(vrp_update_params)
       redirect_to vrps_path, notice: "VRP updated successfully."
     else
       @vrp.build_vrp_profile unless @vrp.vrp_profile
@@ -256,6 +256,21 @@ class VrpsController < ApplicationController
         :_destroy
       ]
     )
+  end
+
+  def vrp_update_params
+    permitted = vrp_params
+    preserve_existing_vrp_list!(permitted, :gram_panchayat_ids)
+    preserve_existing_vrp_list!(permitted, :village_ids)
+    permitted
+  end
+
+  def preserve_existing_vrp_list!(permitted, key)
+    return unless permitted.key?(key)
+    return if Array(permitted[key]).reject(&:blank?).any?
+
+    existing_values = Array(@vrp.public_send(key)).reject(&:blank?)
+    permitted[key] = existing_values if existing_values.any?
   end
 
   def vrp_password_confirmed?(vrp)

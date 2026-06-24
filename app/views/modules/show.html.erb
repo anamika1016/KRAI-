@@ -12,7 +12,7 @@
     </div>
   <% end %>
 
-  <% list_only_slugs = ["activity-group-list", "vrp-activity-list", "task-completion-indicator-list", "approval-list", "access-control-list", "vrp-bill-list", "jeevika-jankar-bill-list", "training-form-list"] %>
+  <% list_only_slugs = ["activity-group-list", "vrp-activity-list", "task-completion-indicator-list", "approval-list", "access-control-list", "vrp-bill-list", "jeevika-jankar-bill-list", "training-form-list", "seed-distribution-target-list", "papl360-target-list"] %>
   <% entry_only_slugs = ["add-activity-group", "add-vrp-activity", "task-completion-indicator", "approval-master", "access-control", "vrp-bill-add", "jeevika-jankar-bill-process", "training-form"] %>
 
   <% if @slug == "jeevika-jankar-bill-list" && (@bill_print_mode || @bill_detail_record.present?) %>
@@ -870,7 +870,7 @@
             </thead>
             <tbody data-jeevika-bill-rows>
               <tr data-empty-bill-row>
-                <td colspan="9">Select Jeevika Jankar Name and Bill Month to load target achievement list.</td>
+                <td colspan="9">Select Jeevika Jankar Name to load all mapped target achievement list.</td>
               </tr>
             </tbody>
           </table>
@@ -1419,7 +1419,7 @@
     <% table_id = "#{@slug.tr("-", "_")}_table" %>
     <section class="module-card list-only-card">
       <div class="module-card-header list-title-header">
-        <h2><%= { "activity-group-list" => "All Main Activities", "vrp-activity-list" => "All Sub Activities", "task-completion-indicator-list" => "All Task Completion Indicators", "approval-list" => "All Approvals", "access-control-list" => "All Access Control", "vrp-bill-list" => "All VRP Bills", "jeevika-jankar-bill-list" => "All Jeevika Jankar Bills", "training-form-list" => "All Farmer Target Records" }[@slug] %></h2>
+        <h2><%= { "activity-group-list" => "All Main Activities", "vrp-activity-list" => "All Sub Activities", "task-completion-indicator-list" => "All Task Completion Indicators", "approval-list" => "All Approvals", "access-control-list" => "All Access Control", "vrp-bill-list" => "All VRP Bills", "jeevika-jankar-bill-list" => "All Jeevika Jankar Bills", "training-form-list" => "All Farmer Target Records", "seed-distribution-target-list" => "All Seed Distribution Target Records", "papl360-target-list" => "All PAPL360 Target Records" }[@slug] %></h2>
       </div>
 
       <div class="vrp-list-toolbar compact">
@@ -1458,8 +1458,12 @@
             <% if @records.any? %>
               <% @records.each do |record| %>
                 <tr>
-                  <% edit_slug = { "approval-list" => "approval-master", "access-control-list" => "access-control", "vrp-bill-list" => "vrp-bill-add", "jeevika-jankar-bill-list" => "jeevika-jankar-bill-process", "training-form-list" => "training-form" }.fetch(@slug, @slug) %>
-                  <td><input type="checkbox" value="<%= edit_module_record_path(edit_slug, record) %>" data-module-row-select></td>
+                  <% edit_slug = { "approval-list" => "approval-master", "access-control-list" => "access-control", "vrp-bill-list" => "vrp-bill-add", "jeevika-jankar-bill-list" => "jeevika-jankar-bill-process", "training-form-list" => "training-form", "seed-distribution-target-list" => "seed-distribution-target", "papl360-target-list" => "papl360-target" }.fetch(@slug, @slug) %>
+                  <td>
+                    <input type="checkbox"
+                      value="<%= edit_module_record_path(edit_slug, record) %>"
+                      data-module-row-select>
+                  </td>
                   <% @module[:fields].each do |field| %>
                     <% field_key = field.parameterize(separator: "_") %>
                     <% value = module_record_field_value(record, field).presence || record.data[field_key].presence %>
@@ -1515,6 +1519,7 @@
     <% location_fields = ["State", "District", "Block", "Gram Panchayat", "Village"] %>
     <% has_location_fields = (@module[:fields] & location_fields).any? %>
     <% other_target_form = ["seed-distribution-target", "papl360-target"].include?(@slug) %>
+    <% seed_target_form = @slug == "seed-distribution-target" %>
     <section class="module-card" id="module-form" <% if ["role-management", "role-name", "user-management-role", "person-type"].include?(@slug) %>data-user-role-form data-role-map="<%= json_escape(role_management_mappings.to_json) %>"<% end %> <% if @slug == "parent-office-add" %>data-parent-office-form data-parent-office-map="<%= json_escape(parent_office_mappings.to_json) %>"<% end %> <% if has_location_fields %>data-location-form data-location-map="<%= json_escape(location_hierarchy_mappings.to_json) %>"<% end %> <% if @slug == "training-form" %>data-training-target-form data-training-target-map="<%= json_escape(training_target_mappings.to_json) %>" data-training-activity-map="<%= json_escape(training_activity_setup_mappings.to_json) %>" data-training-month-options="<%= json_escape(training_target_month_options.to_json) %>"<% end %> <% if other_target_form %>data-seed-target-form data-seed-target-map="<%= json_escape(seed_distribution_target_mappings.to_json) %>" data-seed-month-options="<%= json_escape(seed_distribution_target_month_options.to_json) %>"<% end %>>
       <div class="module-card-header">
         <h2><%= @slug == "new-user" ? "Registration" : (@record.present? ? "Edit Record" : "Fields") %></h2>
@@ -1531,6 +1536,7 @@
           <input type="hidden" name="module_record[jeevika_jankar_id]" value="<%= @record&.data&.[]("jeevika_jankar_id") %>" data-seed-vrp-id>
         <% end %>
         <% selected_training_farmer_ids = Array(@record&.data&.[]("selected_farmer_ids")).map(&:to_s) if @slug == "training-form" %>
+        <% selected_seed_target_farmer_ids = Array(@record&.data&.[]("selected_farmer_ids")).map(&:to_s) if seed_target_form %>
         <div class="module-form-grid <%= "user-registration-grid" if @slug == "new-user" || (@slug == "all-user" && @record.present?) %>">
           <% @module[:fields].each do |field| %>
             <% field_key = field.parameterize(separator: "_") %>
@@ -1556,6 +1562,9 @@
             <% if other_target_form && field == "Department" && field_value.blank? %>
               <% field_value = @record&.data&.[]("fcoc_name").to_s %>
             <% end %>
+            <% if seed_target_form && field == "Farmer Count" && field_value.blank? %>
+              <% field_value = selected_seed_target_farmer_ids.size.to_s if selected_seed_target_farmer_ids.present? %>
+            <% end %>
             <% form_required = @slug == "training-form" || other_target_form %>
             <% required_attr = form_required ? "required" : nil %>
             <label>
@@ -1571,7 +1580,9 @@
                   <option <%= "selected" if field_value == "Inactive" %>>Inactive</option>
                 </select>
               <% elsif field.downcase.include?("upload") || field.downcase.include?("file") %>
-                <input name="module_record[<%= field_key %>]" type="file" <%= "accept=\"image/*\" data-max-size-mb=\"5\"".html_safe if @slug == "training-form" && field == "Training Photo Upload with Geo Tag" %> <%= "required" if form_required && field_value.blank? %>>
+                <% upload_accept = field == "Excel Upload" ? "accept=\".csv,.xlsx,.xls\"" : nil %>
+                <% upload_accept = "accept=\"image/*\" data-max-size-mb=\"5\"" if @slug == "training-form" && field == "Training Photo Upload with Geo Tag" %>
+                <input name="module_record[<%= field_key %>]" type="file" <%= upload_accept&.html_safe %> <%= "required" if form_required && field_value.blank? && !other_target_form %>>
                 <% if @slug == "training-form" && field == "Training Photo Upload with Geo Tag" %>
                   <input type="hidden" name="module_record[geo_latitude]" data-training-geo-latitude value="<%= @record&.data&.[]("geo_latitude") %>">
                   <input type="hidden" name="module_record[geo_longitude]" data-training-geo-longitude value="<%= @record&.data&.[]("geo_longitude") %>">
@@ -1649,10 +1660,12 @@
                 <input name="module_record[<%= field_key %>]" type="date" value="<%= field_value %>" <%= required_attr %>>
               <% elsif @slug == "training-form" && ["Farmer Count", "Male Count", "Female Count"].include?(field) %>
                 <input name="module_record[<%= field_key %>]" type="number" min="0" step="1" placeholder="Enter <%= resource_person_label(field) %>" value="<%= field_value %>" <%= required_attr %> <%= "readonly" if field == "Farmer Count" %> <%= "data-training-farmer-count-input" if field == "Farmer Count" %>>
+              <% elsif seed_target_form && field == "Farmer Count" %>
+                <input name="module_record[<%= field_key %>]" type="number" min="0" step="1" placeholder="Selected Farmer Count" value="<%= field_value %>" data-seed-farmer-count-input readonly required>
               <% elsif other_target_form && field == "Contact Number" %>
                 <input name="module_record[<%= field_key %>]" type="tel" pattern="[0-9]{10}" maxlength="10" placeholder="Auto-filled Contact Number" value="<%= field_value %>" data-seed-vrp-contact readonly required>
               <% elsif other_target_form && field == "Department" %>
-                <input name="module_record[<%= field_key %>]" type="text" placeholder="Auto-filled Department" value="<%= field_value %>" data-seed-vrp-department readonly required>
+                <input name="module_record[<%= field_key %>]" type="text" placeholder="Auto-filled Department" value="<%= field_value %>" data-seed-vrp-department readonly>
               <% elsif other_target_form && field == "Target" %>
                 <input name="module_record[<%= field_key %>]" type="number" min="0" step="any" placeholder="Mapped target" value="<%= field_value %>" data-seed-target-quantity readonly required>
               <% elsif other_target_form && field == "Achievement" %>
@@ -1680,6 +1693,23 @@
           <% end %>
         </div>
 
+        <% if seed_target_form %>
+          <div class="training-farmer-panel" data-seed-farmer-panel data-selected-farmer-ids="<%= json_escape((selected_seed_target_farmer_ids || []).to_json) %>">
+            <div class="target-mapping-toolbar">
+              <strong>Mapped Farmers</strong>
+              <label class="training-select-all">
+                <input type="checkbox" data-seed-farmer-select-all>
+                <span>Select all</span>
+              </label>
+              <button type="button" class="list-btn active training-select-all-button" data-seed-farmer-select-all-button>Select all</button>
+              <span data-seed-farmer-count>0 farmer selected</span>
+            </div>
+            <div class="vrp-ics-farmer-list" data-seed-farmer-list>
+              Select Village and Activity to load mapped farmers.
+            </div>
+          </div>
+        <% end %>
+
         <div class="module-form-actions">
           <%= link_to "Clear", module_path(@slug), class: "btn btn-secondary" %>
           <button type="submit" class="btn btn-primary"><%= @record.present? ? "Update" : "Save" %></button>
@@ -1687,7 +1717,7 @@
       <% end %>
     </section>
 
-    <% unless @slug == "new-user" || entry_only_slugs.include?(@slug) %>
+    <% unless @slug == "new-user" || entry_only_slugs.include?(@slug) || other_target_form %>
       <% saved_record_fields = @module[:fields].reject { |field| field == "Status" } %>
       <% full_saved_record_slugs = ["state-master", "district-master", "block-master", "gram-panchayat-master", "village-master", "person-type"] %>
       <% saved_record_fields = saved_record_fields.first(4) unless full_saved_record_slugs.include?(@slug) %>

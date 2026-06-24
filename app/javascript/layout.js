@@ -1864,7 +1864,21 @@ document.addEventListener("turbo:load", () => {
     const contactInput = formShell.querySelector("[data-seed-vrp-contact]");
     const departmentInput = formShell.querySelector("[data-seed-vrp-department]");
     const achievementInput = formShell.querySelector("[data-seed-achievement]");
+    const farmerPanel = formShell.querySelector("[data-seed-farmer-panel]");
+    const farmerList = formShell.querySelector("[data-seed-farmer-list]");
+    const farmerSelectAll = formShell.querySelector("[data-seed-farmer-select-all]");
+    const farmerSelectAllButton = formShell.querySelector("[data-seed-farmer-select-all-button]");
+    const farmerCountLabel = formShell.querySelector("[data-seed-farmer-count]");
+    const farmerCountInput = formShell.querySelector("[data-seed-farmer-count-input]");
     if (!vrpSelect || !monthSelect || !icsSelect || !villageSelect || !topicSelect || !subjectSelect) return;
+    const selectedSeedFarmerIds = new Set(JSON.parse(farmerPanel?.dataset.selectedFarmerIds || "[]").map(String));
+
+    const escapeSeedHtml = (value) => String(value || "")
+      .replaceAll("&", "&amp;")
+      .replaceAll("<", "&lt;")
+      .replaceAll(">", "&gt;")
+      .replaceAll('"', "&quot;")
+      .replaceAll("'", "&#039;");
 
     const selectOption = (option, optionData, selected) => {
       const value = optionValue(optionData);
@@ -1966,6 +1980,81 @@ document.addEventListener("turbo:load", () => {
       if (vrpIdInput) vrpIdInput.value = mapping?.vrp_id || vrpSelect.value || "";
     };
 
+    const seedFarmerBoxes = () => Array.from(formShell.querySelectorAll("[data-seed-farmer-checkbox]"));
+    const selectedSeedFarmerBoxes = () => seedFarmerBoxes().filter((checkbox) => checkbox.checked);
+
+    const updateSeedFarmerCount = () => {
+      const count = selectedSeedFarmerBoxes().length;
+      const boxes = seedFarmerBoxes().filter((checkbox) => !checkbox.disabled);
+      if (farmerCountLabel) farmerCountLabel.textContent = `${count} farmer selected`;
+      if (farmerCountInput) farmerCountInput.value = count ? String(count) : "";
+      if (farmerSelectAll) {
+        farmerSelectAll.checked = boxes.length > 0 && boxes.every((checkbox) => checkbox.checked);
+        farmerSelectAll.indeterminate = boxes.some((checkbox) => checkbox.checked) && !farmerSelectAll.checked;
+        farmerSelectAll.disabled = boxes.length === 0;
+      }
+      if (farmerSelectAllButton) {
+        farmerSelectAllButton.disabled = boxes.length === 0;
+        farmerSelectAllButton.textContent = boxes.length > 0 && boxes.every((checkbox) => checkbox.checked) ? "Clear all" : "Select all";
+      }
+    };
+
+    const renderSeedFarmers = () => {
+      if (!farmerList) return;
+
+      const mapping = selectedSeedMapping();
+      if (!mapping) {
+        farmerList.textContent = "Select Village and Activity to load mapped farmers.";
+        updateSeedFarmerCount();
+        return;
+      }
+
+      const farmers = mapping.farmers || [];
+      const completedFarmerIds = new Set((mapping.completed_farmer_ids || []).map(String));
+      if (!farmers.length) {
+        farmerList.textContent = "No mapped farmers found for selected activity.";
+        updateSeedFarmerCount();
+        return;
+      }
+
+      farmerList.innerHTML = farmers.map((farmer) => {
+        const farmerId = String(farmer.id || "");
+        const completed = completedFarmerIds.has(farmerId) && !selectedSeedFarmerIds.has(farmerId);
+        const checked = selectedSeedFarmerIds.has(farmerId) ? " checked" : "";
+        const disabled = completed ? " disabled" : "";
+        const meta = [
+          farmer.father_name ? `Father: ${farmer.father_name}` : "",
+          farmer.tracenet_no ? `Tracenet: ${farmer.tracenet_no}` : "",
+          farmer.mobile_no ? `Mobile: ${farmer.mobile_no}` : "",
+          farmer.khasara_no ? `Khasara: ${farmer.khasara_no}` : "",
+          completed ? "Already submitted" : ""
+        ].filter(Boolean).join(" | ");
+
+        return `
+          <label class="vrp-ics-farmer-item${completed ? " disabled" : ""}">
+            <input type="checkbox" name="module_record[selected_farmer_ids][]" value="${escapeSeedHtml(farmerId)}" data-seed-farmer-checkbox${checked}${disabled}>
+            <span>
+              <strong>${escapeSeedHtml(farmer.farmer_name || `Farmer #${farmerId}`)}</strong>
+              <small>${escapeSeedHtml(meta)}</small>
+            </span>
+          </label>
+        `;
+      }).join("");
+
+      farmerList.querySelectorAll("[data-seed-farmer-checkbox]").forEach((checkbox) => {
+        checkbox.addEventListener("change", () => {
+          if (checkbox.checked) {
+            selectedSeedFarmerIds.add(String(checkbox.value));
+          } else {
+            selectedSeedFarmerIds.delete(String(checkbox.value));
+          }
+          updateSeedFarmerCount();
+          validateSeedTargetForm(false);
+        });
+      });
+      updateSeedFarmerCount();
+    };
+
     const refreshTarget = () => {
       const mapping = selectedSeedMapping();
       if (targetInput) targetInput.value = mapping?.target || "";
@@ -1976,6 +2065,7 @@ document.addEventListener("turbo:load", () => {
       } else if (achievementInput) {
         achievementInput.removeAttribute("max");
       }
+      renderSeedFarmers();
     };
 
     const resetAfter = (selects) => {
@@ -1983,6 +2073,7 @@ document.addEventListener("turbo:load", () => {
         select.dataset.selectedValue = "";
         select.value = "";
       });
+      selectedSeedFarmerIds.clear();
       refreshTarget();
     };
 
@@ -2029,15 +2120,48 @@ document.addEventListener("turbo:load", () => {
       resetAfter([subjectSelect]);
       fillSeedSelect(subjectSelect, subjectValues(), "Select Sub Activity");
     });
-    subjectSelect.addEventListener("change", refreshTarget);
+    subjectSelect.addEventListener("change", () => {
+      selectedSeedFarmerIds.clear();
+      refreshTarget();
+    });
+
+    farmerSelectAll?.addEventListener("change", () => {
+      seedFarmerBoxes().filter((checkbox) => !checkbox.disabled).forEach((checkbox) => {
+        checkbox.checked = farmerSelectAll.checked;
+        if (checkbox.checked) {
+          selectedSeedFarmerIds.add(String(checkbox.value));
+        } else {
+          selectedSeedFarmerIds.delete(String(checkbox.value));
+        }
+      });
+      updateSeedFarmerCount();
+      validateSeedTargetForm(false);
+    });
+
+    farmerSelectAllButton?.addEventListener("click", () => {
+      const boxes = seedFarmerBoxes().filter((checkbox) => !checkbox.disabled);
+      const shouldSelect = !boxes.length ? false : boxes.some((checkbox) => !checkbox.checked);
+      boxes.forEach((checkbox) => {
+        checkbox.checked = shouldSelect;
+        if (shouldSelect) {
+          selectedSeedFarmerIds.add(String(checkbox.value));
+        } else {
+          selectedSeedFarmerIds.delete(String(checkbox.value));
+        }
+      });
+      updateSeedFarmerCount();
+      validateSeedTargetForm(false);
+    });
 
     const validateSeedTargetForm = (report = false) => {
-      [vrpSelect, monthSelect, icsSelect, villageSelect, topicSelect, subjectSelect, contactInput, departmentInput, targetInput, achievementInput].forEach((input) => {
+      [vrpSelect, monthSelect, icsSelect, villageSelect, topicSelect, subjectSelect, contactInput, farmerCountInput, targetInput, achievementInput].forEach((input) => {
         input?.setCustomValidity("");
       });
 
       const mapping = selectedSeedMapping();
       const contactDigits = String(contactInput?.value || "").replace(/\D/g, "");
+      const selectedFarmerCount = selectedSeedFarmerBoxes().length;
+      const farmerCountValue = Number(farmerCountInput?.value || 0);
       const targetValue = Number(targetInput?.value || 0);
       const achievementValue = Number(achievementInput?.value || 0);
       let invalidInput = null;
@@ -2049,9 +2173,15 @@ document.addEventListener("turbo:load", () => {
       } else if (contactInput && contactDigits.length !== 10) {
         invalidInput = contactInput;
         message = "Contact Number valid 10 digit hona chahiye.";
-      } else if (departmentInput && !departmentInput.value) {
-        invalidInput = departmentInput;
-        message = "Department autofill required hai.";
+      } else if (farmerPanel && selectedFarmerCount <= 0) {
+        invalidInput = farmerCountInput;
+        message = "Mapped Farmers select karein.";
+      } else if (farmerPanel && farmerCountValue !== selectedFarmerCount) {
+        invalidInput = farmerCountInput;
+        message = "Farmer Count selected farmers ke count ke equal hona chahiye.";
+      } else if (farmerPanel && farmerCountValue > targetValue) {
+        invalidInput = farmerCountInput;
+        message = `Farmer Count Target (${targetValue}) se jyada nahi ho sakta.`;
       } else if (!targetInput?.value || targetValue < 0) {
         invalidInput = targetInput;
         message = "Mapped Target valid hona chahiye.";
@@ -3289,10 +3419,9 @@ document.addEventListener("turbo:load", () => {
     };
     const selectedAchievementTotal = () => {
       const selectedVrp = String(vrpSelect?.value || "");
-      const selectedMonth = normalizeOption(monthSelect?.value);
       if (!selectedVrp) return null;
 
-      const total = selectedMonth ? achievementSummary?.[selectedVrp]?.[selectedMonth] : achievementSummary?.[selectedVrp]?.__all;
+      const total = achievementSummary?.[selectedVrp]?.__all;
       return total === undefined || total === null ? null : numberValue(total);
     };
 
@@ -3376,11 +3505,9 @@ document.addEventListener("turbo:load", () => {
       if (!rowsBody) return;
 
       const selectedVrp = String(vrpSelect?.value || "");
-      const selectedMonth = normalizeOption(monthSelect?.value);
       const rows = billRows.filter((row) => {
         const vrpMatches = String(row.vrp_id || "") === selectedVrp;
-        const monthMatches = !selectedMonth || normalizeOption(row.month_name) === selectedMonth;
-        return vrpMatches && monthMatches;
+        return vrpMatches;
       });
 
       if (!selectedVrp) {
@@ -3390,7 +3517,7 @@ document.addEventListener("turbo:load", () => {
       }
 
       if (!rows.length) {
-        rowsBody.innerHTML = `<tr data-empty-bill-row><td colspan="9">No target mapping found for selected Jeevika Jankar and month.</td></tr>`;
+        rowsBody.innerHTML = `<tr data-empty-bill-row><td colspan="9">No target mapping found for selected Jeevika Jankar.</td></tr>`;
         recalculateJeevikaBill();
         return;
       }
@@ -3467,7 +3594,7 @@ document.addEventListener("turbo:load", () => {
       if (rowInputs().length > 0) return;
 
       event.preventDefault();
-      window.alert("Please select Jeevika Jankar Name and Bill Month with target mapping.");
+      window.alert("Please select Jeevika Jankar Name with target mapping.");
     });
     vrpSelect?.addEventListener("change", renderJeevikaBillRows);
     monthSelect?.addEventListener("change", renderJeevikaBillRows);
