@@ -125,6 +125,9 @@ Rails.application.routes.draw do
     patch :bulk_update, action: :bulk_update, on: :member
 
     resources :records, controller: :modules, only: [:edit, :update, :destroy] do
+      get :selected_farmers, on: :member
+      get :export_selected_farmers, on: :member
+      delete :selected_farmer, on: :member
       patch :toggle, action: :toggle_status, on: :member
       patch :set_status, action: :set_status, on: :member
       patch :send_for_approval, action: :send_bill_for_approval, on: :member

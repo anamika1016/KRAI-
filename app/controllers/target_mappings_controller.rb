@@ -262,23 +262,15 @@ class TargetMappingsController < ApplicationController
   end
 
   def assigned_farmer_ids_for_location(vrp_id:, fco_id:, ics_id:, village_id:, month_name:, main_activity_name: nil, activity_name: nil, edit_target: nil)
-    return [] if main_activity_name.blank?
+    return [] if month_name.blank? || main_activity_name.blank? || activity_name.blank?
 
-    parsed_fco_id, parsed_fco_name = parse_location_value(fco_id)
-    parsed_ics_id, parsed_ics_name = parse_location_value(ics_id)
-    parsed_village_ids = parse_location_values(village_id).map(&:first)
-    return [] if parsed_village_ids.blank?
-
-    scope = TargetMapping.where(fco_id: parsed_fco_id, ics_id: parsed_ics_id)
-    scope = scope.where("LOWER(TRIM(month_name)) = ?", month_name.to_s.strip.downcase) if month_name.present?
+    scope = TargetMapping.all
+    scope = scope.where("LOWER(TRIM(month_name)) = ?", month_name.to_s.strip.downcase)
     scope = scope.where("LOWER(TRIM(main_activity_name)) = ?", main_activity_name.to_s.strip.downcase)
-    scope = scope.where("LOWER(TRIM(activity_name)) = ?", activity_name.to_s.strip.downcase) if activity_name.present?
+    scope = scope.where("LOWER(TRIM(activity_name)) = ?", activity_name.to_s.strip.downcase)
     scope = scope.where.not(id: edit_target.id) if edit_target&.persisted?
 
-    scope.to_a
-      .select { |mapping| (village_ids_for(mapping) & parsed_village_ids).any? }
-      .flat_map { |mapping| normalized_afl_ids(mapping.afl_ids) }
-      .uniq
+    scope.pluck(:afl_ids).flat_map { |ids| normalized_afl_ids(ids) }.uniq
   end
 
   def afl_ids_for_location(fco_id, ics_id, village_id, fco_name = nil, ics_name = nil, village_name = nil, vrp_id: nil)

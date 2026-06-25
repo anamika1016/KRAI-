@@ -738,6 +738,55 @@ class ModulesController < ApplicationController
     redirect_to module_path(@slug), notice: "#{@module[:title]} deleted successfully.", status: :see_other
   end
 
+  def selected_farmers
+    load_module!
+    @record = ModuleRecord.find(params[:id])
+    @selected_farmer_rows = selected_farmer_rows_for(@record)
+  end
+
+  def export_selected_farmers
+    load_module!
+    record = ModuleRecord.find(params[:id])
+    rows = selected_farmer_rows_for(record)
+
+    csv_data = CSV.generate(headers: true) do |csv|
+      csv << ["Farmer ID", "Farmer Name", "Father Name", "Tracenet No", "Mobile No", "Khasara No"]
+      rows.each do |row|
+        csv << [
+          row[:id],
+          row[:farmer_name],
+          row[:father_name],
+          row[:tracenet_no],
+          row[:mobile_no],
+          row[:khasara_no]
+        ]
+      end
+    end
+
+    send_data csv_data,
+      filename: "#{record.module_slug}_selected_farmers_#{record.id}_#{Date.current}.csv",
+      type: "text/csv"
+  end
+
+  def selected_farmer
+    load_module!
+    record = ModuleRecord.find(params[:id])
+    farmer_id = params[:farmer_id].to_s
+    selected_ids = Array(record.data["selected_farmer_ids"]).map(&:to_s).reject(&:blank?)
+    next_ids = selected_ids - [farmer_id]
+    next_data = record.data.merge(
+      "selected_farmer_ids" => next_ids,
+      "selected_farmer_names" => training_farmer_names(next_ids),
+      "farmer_count" => next_ids.size.to_s
+    )
+
+    if record.update(data: next_data)
+      redirect_to selected_farmers_module_record_path(@slug, record), notice: "Farmer removed successfully."
+    else
+      redirect_to selected_farmers_module_record_path(@slug, record), alert: record.errors.full_messages.to_sentence
+    end
+  end
+
   def toggle_status
     load_module!
     record = ModuleRecord.find(params[:id])
@@ -3363,6 +3412,30 @@ class ModulesController < ApplicationController
     end
   end
 
+  def selected_farmer_rows_for(record)
+    selected_ids = Array(record.data["selected_farmer_ids"]).map(&:to_s).reject(&:blank?).uniq
+    return [] if selected_ids.blank?
+
+    farmers_by_id = if model_ready?(:Afl)
+      Afl.where(id: selected_ids).index_by { |farmer| farmer.id.to_s }
+    else
+      {}
+    end
+    names_by_id = Array(record.data["selected_farmer_names"]).map(&:to_s)
+
+    selected_ids.map.with_index do |id, index|
+      farmer = farmers_by_id[id]
+      {
+        id: id,
+        farmer_name: farmer&.farmer_name.presence || names_by_id[index].presence || "Farmer ##{id}",
+        father_name: farmer&.father_name.presence || "-",
+        tracenet_no: farmer&.tracenet_no.presence || "-",
+        mobile_no: farmer&.mobile_no.presence || "-",
+        khasara_no: farmer&.khasara_no.presence || "-"
+      }
+    end
+  end
+
   def import_module_records(file)
     raise ArgumentError, "Please choose an Excel or CSV file." unless file.present?
     raise ArgumentError, "Import is not available for this module." unless @module.present?
@@ -4500,6 +4573,7 @@ class ModulesController < ApplicationController
     data["training_topic"] = data["training_topic"].presence || data["main_activity"].presence
     data["training_subject"] = data["training_subject"].presence || data["sub_activity"].presence
     data["completion_date"] = data["completion_date"].presence || data["date"].presence || Date.current.to_s
+    data["date"] = data["completion_date"]
 
     if (mapping = seed_distribution_target_match(data))
       data["target_mapping_id"] = mapping[:target_mapping_id]
@@ -4991,7 +5065,7 @@ class ModulesController < ApplicationController
       "village" => "Village",
       "training_topic" => "Main Activity",
       "training_subject" => "Sub Activity",
-      "date" => "Date",
+      "completion_date" => "Completion Date",
       "target" => "Target",
       "achievement" => "Achievement"
     )

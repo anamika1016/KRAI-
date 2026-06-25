@@ -610,8 +610,7 @@ class VrpDashboardTest < ActionDispatch::IntegrationTest
       activity_name: "Farm Visit"
     }
     august_rows = JSON.parse(response.body).fetch("farmers")
-    assert_equal farmers.first(2).map { |farmer| farmer.id.to_s }.sort,
-      august_rows.select { |farmer| farmer["assigned_to_other"] }.map { |farmer| farmer["id"] }.sort
+    assert_empty august_rows.select { |farmer| farmer["assigned_to_other"] }
 
     other_vrp = create_vrp(
       user_name: "second_target_vrp",
@@ -651,9 +650,21 @@ class VrpDashboardTest < ActionDispatch::IntegrationTest
     assert_equal farmers.first(2).map { |farmer| farmer.id.to_s }.sort,
       cross_vrp_rows.select { |farmer| farmer["assigned_to_other"] }.map { |farmer| farmer["id"] }.sort
 
-    assert_no_difference("TargetMapping.count") do
+    assert_difference("TargetMapping.count", 1) do
       post target_mappings_path, params: {
         target_mapping: target_params(vrp, mapping, "August", 1, [farmers.first.id])
+      }
+    end
+
+    assert_difference("TargetMapping.count", 1) do
+      post target_mappings_path, params: {
+        target_mapping: target_params(vrp, mapping, "July", 1, [farmers.first.id], "Farmer Training")
+      }
+    end
+
+    assert_difference("TargetMapping.count", 1) do
+      post target_mappings_path, params: {
+        target_mapping: target_params(vrp, mapping, "July", 1, [farmers.first.id], "Farm Visit", "Farmer Awareness")
       }
     end
 
@@ -715,9 +726,77 @@ class VrpDashboardTest < ActionDispatch::IntegrationTest
     assert_equal farmers.map { |farmer| farmer.id.to_s }.sort, farmer_rows.map { |farmer| farmer["id"] }.sort
   end
 
+  test "other target forms accept completion date without legacy date key" do
+    vrp = create_vrp(
+      name: "Other Target VRP",
+      user_name: "other_target_vrp",
+      mobile_no: "9876543777",
+      email: "other-target@example.com",
+      aadhar_no: "123456789077",
+      fcoc: "Other Department"
+    )
+    farmer = create_afl(farmer_name: "Other Target Farmer")
+    target = TargetMapping.create!(
+      vrp: vrp,
+      fco_id: "FCO1",
+      fco_name: "FCO One",
+      ics_id: "ICS1",
+      ics_name: "ICS One",
+      village_id: "V1",
+      village_name: "Village One",
+      month_name: "June",
+      completion_date: Date.new(2026, 6, 30),
+      main_activity_name: "Seed Packet Distribution 2026-27",
+      activity_name: "Seed Packet Distribution",
+      target_quantity: 1,
+      farmer_count: 1,
+      afl_ids: [farmer.id]
+    )
+    ModuleRecord.create!(
+      module_slug: "add-activity-group",
+      data: {
+        "main_activity_name" => target.main_activity_name,
+        "main_activity_type" => "Other",
+        "achievement_fill" => "Manual",
+        "status" => "Active"
+      }
+    )
+    User.create!(
+      user_name: "other_target_admin",
+      password: "secret",
+      first_name: "Other Target Admin",
+      user_type: "admin",
+      status: "Active"
+    )
+
+    post login_path, params: { login: "other_target_admin", password: "secret" }
+    follow_redirect!
+
+    assert_difference("ModuleRecord.where(module_slug: 'seed-distribution-target').count", 1) do
+      post records_module_path("seed-distribution-target"), params: {
+        module_record: other_target_params(vrp, target).merge(
+          "farmer_count" => "1",
+          "selected_farmer_ids" => [farmer.id.to_s]
+        )
+      }
+    end
+    seed_record = ModuleRecord.where(module_slug: "seed-distribution-target").order(:id).last
+    assert_equal "2026-06-30", seed_record.data["completion_date"]
+    assert_equal "2026-06-30", seed_record.data["date"]
+
+    assert_difference("ModuleRecord.where(module_slug: 'papl360-target').count", 1) do
+      post records_module_path("papl360-target"), params: {
+        module_record: other_target_params(vrp, target)
+      }
+    end
+    papl_record = ModuleRecord.where(module_slug: "papl360-target").order(:id).last
+    assert_equal "2026-06-30", papl_record.data["completion_date"]
+    assert_equal "2026-06-30", papl_record.data["date"]
+  end
+
   private
 
-  def target_params(vrp, mapping, month, target_quantity, farmer_ids)
+  def target_params(vrp, mapping, month, target_quantity, farmer_ids, activity_name = "Farm Visit", main_activity_name = "Farmer Visit")
     {
       vrp_id: vrp.id,
       fco_id: mapping.fco_id,
@@ -725,10 +804,29 @@ class VrpDashboardTest < ActionDispatch::IntegrationTest
       village_id: mapping.village_id,
       month_name: month,
       completion_date: Date.new(2026, 7, 31),
-      main_activity_name: "Farmer Visit",
-      activity_name: "Farm Visit",
+      main_activity_name: main_activity_name,
+      activity_name: activity_name,
       target_quantity: target_quantity,
       afl_ids: farmer_ids
+    }
+  end
+
+  def other_target_params(vrp, target)
+    {
+      "main_activity_type" => "Other",
+      "target_mapping_id" => target.id.to_s,
+      "jeevika_jankar_id" => vrp.id.to_s,
+      "jeevika_jankar_name" => vrp.id.to_s,
+      "contact_number" => vrp.mobile_no,
+      "department" => vrp.fcoc,
+      "month" => target.month_name,
+      "ics" => target.ics_name,
+      "village" => target.village_name,
+      "main_activity" => target.main_activity_name,
+      "sub_activity" => target.activity_name,
+      "completion_date" => "2026-06-30",
+      "target" => target.target_quantity.to_i.to_s,
+      "achievement" => "1"
     }
   end
 

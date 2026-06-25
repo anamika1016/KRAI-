@@ -1515,6 +1515,18 @@
                     <% value ||= "-" %>
                     <% if field == "Status" %>
                       <td><span class="status-pill <%= value == "Inactive" ? "inactive" : "active" %>"><%= value == "-" ? "Active" : value %></span></td>
+                    <% elsif field == "Selected Farmers" %>
+                      <% selected_farmer_count = Array(record.data["selected_farmer_ids"]).map(&:to_s).reject(&:blank?).uniq.size %>
+                      <td>
+                        <% if selected_farmer_count.positive? %>
+                          <div class="table-actions">
+                            <%= link_to "View", selected_farmers_module_record_path(@slug, record), class: "table-action" %>
+                            <span><%= selected_farmer_count %></span>
+                          </div>
+                        <% else %>
+                          -
+                        <% end %>
+                      </td>
                     <% elsif @slug == "access-control-list" && ["Module Name", "Sub Module Name"].include?(field) %>
                       <% list_values = Array(value).flat_map { |item| item.to_s.split(",") }.map(&:strip).compact_blank %>
                       <td>
