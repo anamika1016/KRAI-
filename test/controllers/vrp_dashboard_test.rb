@@ -726,6 +726,52 @@ class VrpDashboardTest < ActionDispatch::IntegrationTest
     assert_equal farmers.map { |farmer| farmer.id.to_s }.sort, farmer_rows.map { |farmer| farmer["id"] }.sort
   end
 
+  test "target mapping vrp dropdown shows only approved vrps registered by current user" do
+    user = User.create!(
+      user_name: "target_owner",
+      password: "secret",
+      first_name: "Target Owner",
+      user_type: "user",
+      status: "Active"
+    )
+    own_vrp = create_vrp(
+      name: "Own Approved Jeevika",
+      user_name: "own_approved_jeevika",
+      mobile_no: "9876543666",
+      email: "own-approved-jeevika@example.com",
+      aadhar_no: "123456789066",
+      status: 55,
+      created_by_id: user.id
+    )
+    other_vrp = create_vrp(
+      name: "Other Approved Jeevika",
+      user_name: "other_approved_jeevika",
+      mobile_no: "9876543555",
+      email: "other-approved-jeevika@example.com",
+      aadhar_no: "123456789055",
+      status: 55,
+      created_by_id: user.id + 100
+    )
+    pending_vrp = create_vrp(
+      name: "Own Pending Jeevika",
+      user_name: "own_pending_jeevika",
+      mobile_no: "9876543444",
+      email: "own-pending-jeevika@example.com",
+      aadhar_no: "123456789044",
+      status: 25,
+      created_by_id: user.id
+    )
+
+    post login_path, params: { login: "target_owner", password: "secret" }
+    follow_redirect!
+    get target_mappings_path
+
+    assert_response :success
+    assert_includes response.body, own_vrp.name
+    refute_includes response.body, other_vrp.name
+    refute_includes response.body, pending_vrp.name
+  end
+
   test "other target forms accept completion date without legacy date key" do
     vrp = create_vrp(
       name: "Other Target VRP",

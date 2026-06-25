@@ -105,19 +105,12 @@ class TargetMappingsController < ApplicationController
 
   def own_registered_vrps
     ids = current_app_user_ids
-    emails = current_app_user_emails
-    return Vrp.none if ids.blank? && emails.blank?
+    return Vrp.none if ids.blank?
 
     scope = Vrp.none
     if ids.any?
       scope = scope.or(Vrp.where(created_by_id: ids))
       scope = scope.or(Vrp.where(user_id: ids)) if Vrp.column_names.include?("user_id")
-    end
-
-    if emails.any?
-      unassigned_scope = Vrp.where(created_by_id: nil).where("LOWER(email) IN (?)", emails)
-      unassigned_scope = unassigned_scope.where(user_id: nil) if Vrp.column_names.include?("user_id")
-      scope = scope.or(unassigned_scope)
     end
 
     scope
