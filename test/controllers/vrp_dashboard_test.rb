@@ -481,6 +481,61 @@ class VrpDashboardTest < ActionDispatch::IntegrationTest
     assert_includes response.body, "Total: 0 | Rows: 0"
   end
 
+  test "target mapping location dropdowns fall back to saved target rows" do
+    vrp = create_vrp(
+      name: "Location Target VRP",
+      user_name: "location_target_vrp",
+      mobile_no: "9876543777",
+      email: "location-target-vrp@example.com",
+      aadhar_no: "123456789077"
+    )
+    TargetMapping.create!(
+      vrp: vrp,
+      fco_id: "FCO-TM",
+      fco_name: "Target FCO",
+      ics_id: "ICS-TM",
+      ics_name: "Target ICS",
+      village_id: "V-TM",
+      village_name: "Target Village",
+      farmer_count: 10,
+      month_name: "July",
+      completion_date: Date.new(2026, 7, 31),
+      main_activity_name: "Farmer Visit",
+      activity_name: "Farm Visit",
+      target_quantity: 10,
+      created_by_type: "User",
+      created_by_id: 1
+    )
+    User.create!(
+      user_name: "location_target_admin",
+      password: "secret",
+      first_name: "Location Target Admin",
+      user_type: "admin",
+      status: "Active"
+    )
+
+    post login_path, params: { login: "location_target_admin", password: "secret" }
+    follow_redirect!
+
+    get vrp_mappings_target_mappings_path, params: { vrp_id: vrp.id }
+
+    assert_response :success
+    data = JSON.parse(response.body)
+    assert_includes data.fetch("fco_options").map { |option| option["value"] }, "FCO-TM||Target FCO"
+
+    get vrp_mappings_target_mappings_path, params: { vrp_id: vrp.id, fco_id: "FCO-TM||Target FCO" }
+
+    assert_response :success
+    data = JSON.parse(response.body)
+    assert_includes data.fetch("ics_options").map { |option| option["value"] }, "ICS-TM||Target ICS"
+
+    get vrp_mappings_target_mappings_path, params: { vrp_id: vrp.id, fco_id: "FCO-TM||Target FCO", ics_id: "ICS-TM||Target ICS" }
+
+    assert_response :success
+    data = JSON.parse(response.body)
+    assert_includes data.fetch("village_options").map { |option| option["value"] }, "V-TM||Target Village"
+  end
+
   test "partial target requires selected farmers and blocks same month reassignment" do
     vrp = create_vrp(
       name: "Target VRP",
@@ -607,6 +662,57 @@ class VrpDashboardTest < ActionDispatch::IntegrationTest
         target_mapping: target_params(vrp, mapping, "July", 1, [farmers.last.id])
       }
     end
+  end
+
+  test "target mapping loads fco and farmers when afl fco id is blank" do
+    vrp = create_vrp(
+      name: "Blank FCO Target VRP",
+      user_name: "blank_fco_target_vrp",
+      mobile_no: "9876543888",
+      email: "blank-fco-target@example.com",
+      aadhar_no: "123456789088"
+    )
+    farmers = 2.times.map do |index|
+      create_afl(
+        fco_id: "",
+        fco: "Bhabra",
+        ics_id: "18",
+        ics_name: "BADGAON BHABHRA FARMERS PRODUCERS COMPANY LIMITED",
+        village_id: "116",
+        village_name: "Badgaon",
+        farmer_name: "Blank FCO Farmer #{index + 1}"
+      )
+    end
+    User.create!(
+      user_name: "blank_fco_admin",
+      password: "secret",
+      first_name: "Blank FCO Admin",
+      user_type: "admin",
+      status: "Active"
+    )
+
+    post login_path, params: { login: "blank_fco_admin", password: "secret" }
+    follow_redirect!
+
+    get vrp_mappings_target_mappings_path, params: { vrp_id: vrp.id }
+    data = JSON.parse(response.body)
+    assert_includes data.fetch("fco_options").map { |option| option["label"] }, "Bhabra"
+
+    get vrp_mappings_target_mappings_path, params: {
+      vrp_id: vrp.id,
+      fco_id: "Bhabra||Bhabra"
+    }
+    data = JSON.parse(response.body)
+    assert_includes data.fetch("ics_options").map { |option| option["value"] }, "18||BADGAON BHABHRA FARMERS PRODUCERS COMPANY LIMITED"
+
+    get vrp_mappings_target_mappings_path, params: {
+      vrp_id: vrp.id,
+      fco_id: "Bhabra||Bhabra",
+      ics_id: "18||BADGAON BHABHRA FARMERS PRODUCERS COMPANY LIMITED",
+      village_ids: ["116||Badgaon"].to_json
+    }
+    farmer_rows = JSON.parse(response.body).fetch("farmers")
+    assert_equal farmers.map { |farmer| farmer.id.to_s }.sort, farmer_rows.map { |farmer| farmer["id"] }.sort
   end
 
   private

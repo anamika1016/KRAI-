@@ -37,9 +37,9 @@ class TargetMappingsController < ApplicationController
 
   def vrp_mappings
     render json: {
-      fco_options: fco_options,
-      ics_options: ics_options_for(params[:fco_id]),
-      village_options: village_options_for(params[:fco_id], params[:ics_id]),
+      fco_options: fco_options(params[:vrp_id]),
+      ics_options: ics_options_for(params[:fco_id], params[:vrp_id]),
+      village_options: village_options_for(params[:fco_id], params[:ics_id], params[:vrp_id]),
       farmers: target_farmers_for(
         vrp_id: params[:vrp_id],
         fco_id: params[:fco_id],
@@ -145,7 +145,8 @@ class TargetMappingsController < ApplicationController
       target_mapping.village_id,
       target_mapping.fco_name,
       target_mapping.ics_name,
-      target_mapping.village_name
+      target_mapping.village_name,
+      vrp_id: target_mapping.vrp_id
     )
     target_count = target_farmer_count(target_mapping)
     return false unless target_count
@@ -218,7 +219,8 @@ class TargetMappingsController < ApplicationController
     parsed_village_values = parse_location_values(village_id)
     return [] if parsed_village_values.blank?
 
-    afl_scope_for_location(
+    target_afl_scope_for_location(
+      vrp_id,
       parsed_fco_id,
       parsed_ics_id,
       parsed_village_values.map(&:first),
@@ -279,28 +281,66 @@ class TargetMappingsController < ApplicationController
       .uniq
   end
 
-  def afl_ids_for_location(fco_id, ics_id, village_id, fco_name = nil, ics_name = nil, village_name = nil)
+  def afl_ids_for_location(fco_id, ics_id, village_id, fco_name = nil, ics_name = nil, village_name = nil, vrp_id: nil)
     return [] unless defined?(Afl) && Afl.table_exists?
+
+    mapped_ids = mapped_afl_ids_for_location(
+      vrp_id: vrp_id,
+      fco_id: fco_id,
+      ics_id: ics_id,
+      village_id: village_id,
+      fco_name: fco_name,
+      ics_name: ics_name,
+      village_name: village_name
+    )
+    return mapped_ids if mapped_ids.any?
 
     afl_scope_for_location(fco_id, ics_id, village_id, fco_name, ics_name, village_name).pluck(:id).map(&:to_s).uniq
   end
 
-  def fco_options
+  def fco_options(vrp_id = nil)
+    unique_location_options(afl_fco_options + saved_location_options(vrp_id, :fco_id, :fco_name))
+  end
+
+  def ics_options_for(fco_value, vrp_id = nil)
+    return [] if fco_value.blank?
+
+    mapping_scope = filter_mapping_location(mapped_location_scope(vrp_id), :fco_id, :fco_name, fco_value)
+    target_scope = filter_mapping_location(target_location_scope(vrp_id), :fco_id, :fco_name, fco_value)
+    saved_options = saved_location_options(vrp_id, :ics_id, :ics_name, mapping_scope, target_scope)
+
+    unique_location_options(afl_ics_options_for(fco_value) + saved_options)
+  end
+
+  def village_options_for(fco_value, ics_value, vrp_id = nil)
+    return [] if fco_value.blank? || ics_value.blank?
+
+    mapping_scope = filter_mapping_location(mapped_location_scope(vrp_id), :fco_id, :fco_name, fco_value)
+    mapping_scope = filter_mapping_location(mapping_scope, :ics_id, :ics_name, ics_value)
+    target_scope = filter_mapping_location(target_location_scope(vrp_id), :fco_id, :fco_name, fco_value)
+    target_scope = filter_mapping_location(target_scope, :ics_id, :ics_name, ics_value)
+    saved_options = saved_location_options(vrp_id, :village_id, :village_name, mapping_scope, target_scope)
+
+    unique_location_options(afl_village_options_for(fco_value, ics_value) + saved_options)
+  end
+
+  def afl_fco_options
     return [] unless defined?(Afl) && Afl.table_exists?
 
-    Afl.where.not(fco_id: [nil, ""])
+    Afl
+      .where.not(fco_id: [nil, ""])
+      .or(Afl.where.not(fco: [nil, ""]))
       .select(:fco_id, :fco)
       .distinct
       .order(:fco, :fco_id)
-      .map { |afl| option_hash(afl.fco_id, afl.fco) }
+      .map { |afl| option_hash(afl.fco_id.presence || afl.fco, afl.fco) }
   end
 
-  def ics_options_for(fco_value)
+  def afl_ics_options_for(fco_value)
     return [] if fco_value.blank? || !defined?(Afl) || !Afl.table_exists?
 
     fco_id, fco_name = parse_location_value(fco_value)
-    scope = Afl.where(fco_id: fco_id)
-    scope = scope.where(fco: fco_name) if fco_name.present?
+    scope = filter_afl_location(Afl.all, :fco_id, :fco, fco_id, fco_name)
     scope
       .where.not(ics_id: [nil, ""])
       .select(:ics_id, :ics_name)
@@ -309,14 +349,13 @@ class TargetMappingsController < ApplicationController
       .map { |afl| option_hash(afl.ics_id, afl.ics_name) }
   end
 
-  def village_options_for(fco_value, ics_value)
+  def afl_village_options_for(fco_value, ics_value)
     return [] if fco_value.blank? || ics_value.blank? || !defined?(Afl) || !Afl.table_exists?
 
     fco_id, fco_name = parse_location_value(fco_value)
     ics_id, ics_name = parse_location_value(ics_value)
-    scope = Afl.where(fco_id: fco_id, ics_id: ics_id)
-    scope = scope.where(fco: fco_name) if fco_name.present?
-    scope = scope.where(ics_name: ics_name) if ics_name.present?
+    scope = filter_afl_location(Afl.all, :fco_id, :fco, fco_id, fco_name)
+    scope = filter_afl_location(scope, :ics_id, :ics_name, ics_id, ics_name)
     scope
       .where.not(village_id: [nil, ""])
       .select(:village_id, :village_name)
@@ -325,8 +364,102 @@ class TargetMappingsController < ApplicationController
       .map { |afl| option_hash(afl.village_id, afl.village_name) }
   end
 
+  def mapped_location_scope(vrp_id = nil)
+    scope = visible_vrp_ics_mappings
+    scope = scope.where(vrp_id: vrp_id) if vrp_id.present?
+    scope
+  end
+
+  def target_location_scope(vrp_id = nil)
+    scope = visible_target_mappings
+    scope = scope.where(vrp_id: vrp_id) if vrp_id.present?
+    scope
+  end
+
+  def saved_location_options(vrp_id, id_column, name_column, mapping_scope = nil, target_scope = nil)
+    mapping_scope ||= mapped_location_scope(vrp_id)
+    target_scope ||= target_location_scope(vrp_id)
+
+    unique_location_options(
+      mapping_location_options(mapping_scope, id_column, name_column) +
+      target_location_options(target_scope, id_column, name_column)
+    )
+  end
+
+  def unique_location_options(options)
+    Array(options).uniq { |option| [option[:value].to_s, option[:label].to_s] }
+  end
+
+  def mapping_location_options(scope, id_column, name_column)
+    location_options(scope, id_column, name_column)
+  end
+
+  def target_location_options(scope, id_column, name_column)
+    location_options(scope, id_column, name_column)
+  end
+
+  def location_options(scope, id_column, name_column)
+    return [] unless scope
+
+    scope
+      .where.not(id_column => [nil, ""])
+      .reorder(name_column => :asc, id_column => :asc)
+      .pluck(id_column, name_column)
+      .uniq
+      .map { |value, label| option_hash(value, label) }
+  end
+
+  def filter_mapping_location(scope, id_column, name_column, location_value)
+    id, label = parse_location_value(location_value)
+    return scope.none if id.blank?
+
+    id_scope = scope.where(id_column => id)
+    return id_scope if label.blank?
+
+    label_scope = id_scope.where(name_column => label)
+    label_scope.exists? ? label_scope : id_scope
+  end
+
+  def mapped_afl_ids_for_location(vrp_id:, fco_id:, ics_id:, village_id:, fco_name: nil, ics_name: nil, village_name: nil)
+    return [] unless defined?(VrpIcsMapping) && VrpIcsMapping.table_exists?
+
+    village_values = parse_location_values(village_id)
+    village_ids = village_values.map(&:first).reject(&:blank?).uniq
+    village_names = Array(village_name).flat_map { |value| label_value_list(value) }.presence ||
+      village_values.map(&:last).reject(&:blank?).uniq
+    return [] if fco_id.blank? || ics_id.blank? || village_ids.blank?
+
+    scope = mapped_location_scope(vrp_id)
+    scope = filter_mapping_location(scope, :fco_id, :fco_name, encoded_location_value(fco_id, fco_name))
+    scope = filter_mapping_location(scope, :ics_id, :ics_name, encoded_location_value(ics_id, ics_name))
+    scope.to_a
+      .select do |mapping|
+        mapped_village_ids = parse_location_values(mapping.village_id).map(&:first)
+        mapped_village_names = label_value_list(mapping.village_name)
+        (mapped_village_ids & village_ids).any? ||
+          (village_names.present? && (mapped_village_names & village_names).any?)
+      end
+      .flat_map { |mapping| normalized_afl_ids(mapping.afl_ids) }
+      .uniq
+  end
+
+  def target_afl_scope_for_location(vrp_id, fco_id, ics_id, village_id, fco_name = nil, ics_name = nil, village_name = nil)
+    mapped_ids = mapped_afl_ids_for_location(
+      vrp_id: vrp_id,
+      fco_id: fco_id,
+      ics_id: ics_id,
+      village_id: village_id,
+      fco_name: fco_name,
+      ics_name: ics_name,
+      village_name: village_name
+    )
+    return Afl.where(id: mapped_ids) if mapped_ids.any?
+
+    afl_scope_for_location(fco_id, ics_id, village_id, fco_name, ics_name, village_name)
+  end
+
   def option_hash(value, label)
-    text = [label.presence, value].compact.join(" - ")
+    text = label.present? && label.to_s == value.to_s ? label.to_s : [label.presence, value].compact.join(" - ")
     { value: encoded_location_value(value, label), label: text.presence || value.to_s }
   end
 
@@ -486,11 +619,38 @@ class TargetMappingsController < ApplicationController
     village_ids = Array(village_id).flat_map { |value| parse_location_values(value).map(&:first) }.reject(&:blank?).uniq
     village_names = Array(village_name).flat_map { |value| label_value_list(value) }.map(&:to_s).reject(&:blank?).uniq
 
-    scope = Afl.where(fco_id: fco_id, ics_id: ics_id, village_id: village_ids)
-    scope = scope.where(fco: fco_name) if fco_name.present?
-    scope = scope.where(ics_name: ics_name) if ics_name.present?
-    scope = scope.where(village_name: village_names) if village_names.any?
-    scope
+    scope = filter_afl_location(Afl.all, :fco_id, :fco, fco_id, fco_name)
+    scope = filter_afl_location(scope, :ics_id, :ics_name, ics_id, ics_name)
+    filter_afl_location(scope, :village_id, :village_name, village_ids, village_names)
+  end
+
+  def filter_afl_location(scope, id_column, name_column, id_value, name_value)
+    id_values = Array(id_value).flat_map { |value| location_value_list(value).map { |item| parse_location_value(item).first } }.reject(&:blank?).uniq
+    label_values = location_label_variants(name_value, id_values)
+    return scope.none if id_values.blank? && label_values.blank?
+
+    conditions = []
+    bind_values = {}
+    if id_values.any?
+      conditions << "#{Afl.connection.quote_column_name(id_column)} IN (:ids)"
+      bind_values[:ids] = id_values
+    end
+    if label_values.any?
+      conditions << "LOWER(TRIM(#{Afl.connection.quote_column_name(name_column)})) IN (:labels)"
+      bind_values[:labels] = label_values.map(&:downcase)
+    end
+
+    scope.where(conditions.join(" OR "), bind_values)
+  end
+
+  def location_label_variants(*values)
+    Array(values).flatten.flat_map { |value| label_value_list(value) }
+      .flat_map do |label|
+        text = label.to_s.strip
+        [text, text.sub(/\s+-\s*\d+\z/, "").strip]
+      end
+      .reject(&:blank?)
+      .uniq
   end
 
   def encoded_location_value(value, label)
