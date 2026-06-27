@@ -382,9 +382,11 @@ class VrpsController < ApplicationController
 
   def visible_vrps
     return Vrp.all if current_app_user.blank? || admin_user?
-    return cluster_mapped_vrps if cluster_incharge_login?
 
-    (own_vrps.to_a + cluster_mapped_vrps).uniq
+    mapped_vrps = cluster_mapped_vrps.to_a
+    return mapped_vrps if cluster_incharge_login? || mapped_vrps.any?
+
+    own_vrps.to_a
   end
 
   def find_visible_vrp(id)
@@ -399,9 +401,8 @@ class VrpsController < ApplicationController
     labels = current_cluster_incharge_labels
     return Vrp.none if labels.blank?
 
-    normalized_labels = labels.map { |label| normalize_approver_label(label) }.reject(&:blank?).uniq
     Vrp.where.not(cluster_incharge: [nil, ""]).select do |vrp|
-      normalized_labels.include?(normalize_approver_label(vrp.cluster_incharge))
+      labels.any? { |label| cluster_label_matches?(label, vrp.cluster_incharge) }
     end
   end
 
@@ -424,9 +425,9 @@ class VrpsController < ApplicationController
     ].compact_blank.join(" ")
     return true if current_role.downcase.include?("cluster")
 
-    mapped_labels = hierarchy_cluster_incharge_labels.map { |label| normalize_approver_label(label) }
-    current_labels = current_cluster_incharge_labels.map { |label| normalize_approver_label(label) }
-    (mapped_labels & current_labels).any?
+    hierarchy_cluster_incharge_labels.any? do |mapped_label|
+      current_cluster_incharge_labels.any? { |current_label| cluster_label_matches?(mapped_label, current_label) }
+    end
   end
 
   def user_model_cluster_labels
@@ -671,6 +672,61 @@ class VrpsController < ApplicationController
 
   def normalize_approver_label(label)
     label.to_s.sub(/\s*\([^)]*\)\s*\z/, "").strip.downcase
+  end
+
+  def cluster_label_matches?(expected, actual)
+    expected_values = cluster_label_match_values(expected)
+    actual_values = cluster_label_match_values(actual)
+    return false if expected_values.blank? || actual_values.blank?
+    return true if (expected_values & actual_values).any?
+
+    expected_values.any? do |expected_value|
+      actual_values.any? { |actual_value| similar_person_label?(expected_value, actual_value) }
+    end
+  end
+
+  def cluster_label_match_values(label)
+    base = label.to_s.sub(/\s*\([^)]*\)\s*\z/, "")
+    [label, base].map { |value| normalize_person_label(value) }.reject { |value| value.blank? || value.length < 3 }.uniq
+  end
+
+  def normalize_person_label(value)
+    value.to_s.downcase.gsub(/[^a-z0-9]+/, " ").squish
+  end
+
+  def similar_person_label?(left, right)
+    left_words = left.split
+    right_words = right.split
+    return false unless left_words.size == right_words.size
+    return false if left_words.size < 2
+    return false unless left_words.last == right_words.last
+
+    left_words.zip(right_words).all? { |left_word, right_word| left_word == right_word || one_edit_apart?(left_word, right_word) }
+  end
+
+  def one_edit_apart?(left, right)
+    return false if left.blank? || right.blank?
+    return false if (left.length - right.length).abs > 1
+
+    longer, shorter = [left, right].sort_by(&:length).reverse
+    edits = 0
+    longer_index = 0
+    shorter_index = 0
+
+    while longer_index < longer.length && shorter_index < shorter.length
+      if longer[longer_index] == shorter[shorter_index]
+        longer_index += 1
+        shorter_index += 1
+      else
+        edits += 1
+        return false if edits > 1
+
+        longer_index += 1
+        shorter_index += 1 if longer.length == shorter.length
+      end
+    end
+
+    edits + (longer.length - longer_index) <= 1
   end
 
   def module_value_matches?(expected, actual)
