@@ -23,7 +23,7 @@ class ModulesController < ApplicationController
                 :training_participation_status_label, :training_participation_status_caption,
                 :training_target_status_label, :training_target_status_caption,
                 :training_trainee_department_default, :seed_distribution_target_mappings,
-                :seed_distribution_target_month_options
+                :seed_distribution_target_month_options, :current_seed_target_vrp_option
 
   APPROVAL_REGISTRATION_MODULES = ["Farmer Registration", "VRP Registration", "Jeevika Jankar Registration"].freeze
   OTHER_TARGET_MODULE_SLUGS = ["seed-distribution-target", "papl360-target"].freeze
@@ -5227,7 +5227,10 @@ class ModulesController < ApplicationController
   def seed_distribution_target_field_options(field)
     case field
     when "Jeevika Jankar Name"
-      seed_distribution_target_mappings.filter_map { |mapping| mapping[:jeevika_jankar_name].presence }.uniq
+      (
+        seed_distribution_target_mappings.filter_map { |mapping| mapping[:jeevika_jankar_name].presence } +
+        [current_seed_target_vrp_option&.dig(:label)]
+      ).compact_blank.uniq
     when "Month"
       seed_distribution_target_month_options
     when "ICS"
@@ -5414,6 +5417,17 @@ class ModulesController < ApplicationController
       .reject(&:blank?)
       .uniq
       .sort_by { |month| [dashboard_month_index(month), month] }
+  end
+
+  def current_seed_target_vrp_option
+    return nil unless vrp_login_user? && current_vrp_record.present?
+
+    {
+      value: current_vrp_record.id.to_s,
+      label: current_vrp_record.name.presence || current_vrp_record.user_name.presence || "Jeevika Jankar ##{current_vrp_record.id}",
+      contact_number: current_vrp_record.mobile_no.to_s.gsub(/\D/, "").last(10),
+      department: registered_vrp_fcoc(current_vrp_record)
+    }
   end
 
   def training_target_scope

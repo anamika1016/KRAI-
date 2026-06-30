@@ -1935,6 +1935,7 @@ document.addEventListener("turbo:load", () => {
   document.querySelectorAll("[data-seed-target-form]").forEach((formShell) => {
     let mappings = [];
     let monthOptions = [];
+    let currentVrpOption = null;
     try {
       mappings = JSON.parse(formShell.dataset.seedTargetMap || "[]");
     } catch (_error) {
@@ -1944,6 +1945,11 @@ document.addEventListener("turbo:load", () => {
       monthOptions = JSON.parse(formShell.dataset.seedMonthOptions || "[]");
     } catch (_error) {
       monthOptions = [];
+    }
+    try {
+      currentVrpOption = JSON.parse(formShell.dataset.seedCurrentVrpOption || "null");
+    } catch (_error) {
+      currentVrpOption = null;
     }
 
     const vrpSelect = formShell.querySelector("[data-seed-target-vrp]");
@@ -2035,10 +2041,10 @@ document.addEventListener("turbo:load", () => {
     };
 
     const vrpValues = () => uniqueOptions(
-      mappings.map((mapping) => ({
+      (currentVrpOption ? [currentVrpOption] : []).concat(mappings.map((mapping) => ({
         value: mapping.vrp_id || mapping.jeevika_jankar_name,
         label: mapping.jeevika_jankar_name || mapping.vrp_id
-      }))
+      })))
     );
     const monthValues = () => uniqueOptions(
       monthOptions.concat(rowsForSelection({ includeVrp: true }).map((mapping) => mapping.month)).map((month) => makeOption(month, month))
@@ -2071,9 +2077,14 @@ document.addEventListener("turbo:load", () => {
 
     const refreshVrpDetails = () => {
       const mapping = selectedSeedMapping() || selectedVrpMapping();
-      if (contactInput) contactInput.value = String(mapping?.contact_number || "").replace(/\D/g, "").slice(-10);
-      if (departmentInput) departmentInput.value = mapping?.department || "";
-      if (vrpIdInput) vrpIdInput.value = mapping?.vrp_id || vrpSelect.value || "";
+      const fallbackMatches = currentVrpOption && (
+        normalizeOption(currentVrpOption.value) === normalizeOption(vrpSelect.value) ||
+        normalizeOption(currentVrpOption.label) === normalizeOption(vrpSelect.value)
+      );
+      const fallback = fallbackMatches ? currentVrpOption : {};
+      if (contactInput) contactInput.value = String(mapping?.contact_number || fallback.contact_number || "").replace(/\D/g, "").slice(-10);
+      if (departmentInput) departmentInput.value = mapping?.department || fallback.department || "";
+      if (vrpIdInput) vrpIdInput.value = mapping?.vrp_id || fallback.value || vrpSelect.value || "";
     };
 
     const seedFarmerBoxes = () => Array.from(formShell.querySelectorAll("[data-seed-farmer-checkbox]"));
