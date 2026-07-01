@@ -4643,20 +4643,14 @@ class ModulesController < ApplicationController
       data["sub_activity"] = mapping[:training_subject]
     end
 
-    if record_source_slug == "seed-distribution-target"
-      selected_farmer_ids = Array(data["selected_farmer_ids"]).map(&:to_s).reject(&:blank?).uniq
-      if data["target_mapping_id"].present?
-        pending_farmer_ids = pending_other_target_farmer_ids_for(data["target_mapping_id"])
-        selected_farmer_ids &= pending_farmer_ids unless pending_farmer_ids.nil?
-      end
-      data["selected_farmer_ids"] = selected_farmer_ids
-      data["selected_farmer_names"] = training_farmer_names(selected_farmer_ids)
-      data["farmer_count"] = selected_farmer_ids.size.to_s if selected_farmer_ids.any?
-    else
-      data.delete("selected_farmer_ids")
-      data.delete("selected_farmer_names")
-      data.delete("farmer_count")
+    selected_farmer_ids = Array(data["selected_farmer_ids"]).map(&:to_s).reject(&:blank?).uniq
+    if data["target_mapping_id"].present?
+      pending_farmer_ids = pending_other_target_farmer_ids_for(data["target_mapping_id"])
+      selected_farmer_ids &= pending_farmer_ids unless pending_farmer_ids.nil?
     end
+    data["selected_farmer_ids"] = selected_farmer_ids
+    data["selected_farmer_names"] = training_farmer_names(selected_farmer_ids)
+    data["farmer_count"] = selected_farmer_ids.size.to_s if selected_farmer_ids.any?
 
     data["achievement"] = numeric_string(data["achievement"]) if data["achievement"].present?
     data["target"] = numeric_string(data["target"]) if data["target"].present?
@@ -5133,15 +5127,13 @@ class ModulesController < ApplicationController
     errors << "Achievement zero se kam nahi ho sakta." if achievement && achievement.negative?
     errors << "Achievement Target se jyada nahi ho sakta." if target && achievement && achievement > target
 
-    if record_source_slug == "seed-distribution-target"
-      farmer_count = whole_number_value(data["farmer_count"])
-      selected_farmer_ids = Array(data["selected_farmer_ids"]).map(&:to_s).reject(&:blank?).uniq
-      errors << "Farmer Count required hai." if data["farmer_count"].blank?
-      errors << "Mapped Farmers select karein." if selected_farmer_ids.blank?
-      errors << "Farmer Count valid whole number hona chahiye." if farmer_count.nil?
-      errors << "Farmer Count selected farmers ke count ke equal hona chahiye." if farmer_count && selected_farmer_ids.any? && farmer_count != selected_farmer_ids.size
-      errors << "Farmer Count Target se jyada nahi ho sakta." if target && farmer_count && farmer_count > target
-    end
+    farmer_count = whole_number_value(data["farmer_count"])
+    selected_farmer_ids = Array(data["selected_farmer_ids"]).map(&:to_s).reject(&:blank?).uniq
+    errors << "Farmer Count required hai." if data["farmer_count"].blank?
+    errors << "Mapped Farmers select karein." if selected_farmer_ids.blank?
+    errors << "Farmer Count valid whole number hona chahiye." if farmer_count.nil?
+    errors << "Farmer Count selected farmers ke count ke equal hona chahiye." if farmer_count && selected_farmer_ids.any? && farmer_count != selected_farmer_ids.size
+    errors << "Farmer Count Target se jyada nahi ho sakta." if target && farmer_count && farmer_count > target
 
     errors << "Mapped Other activity target select karein." if seed_distribution_target_match(data).blank?
     errors << "Contact Number valid 10 digit hona chahiye." if data["contact_number"].present? && data["contact_number"].to_s.gsub(/\D/, "").length != 10

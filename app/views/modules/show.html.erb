@@ -1588,7 +1588,7 @@
           <input type="hidden" name="module_record[jeevika_jankar_id]" value="<%= @record&.data&.[]("jeevika_jankar_id") %>" data-seed-vrp-id>
         <% end %>
         <% selected_training_farmer_ids = Array(@record&.data&.[]("selected_farmer_ids")).map(&:to_s) if @slug == "training-form" %>
-        <% selected_seed_target_farmer_ids = Array(@record&.data&.[]("selected_farmer_ids")).map(&:to_s) if seed_target_form %>
+        <% selected_seed_target_farmer_ids = Array(@record&.data&.[]("selected_farmer_ids")).map(&:to_s) if other_target_form %>
         <div class="module-form-grid <%= "user-registration-grid" if @slug == "new-user" || (@slug == "all-user" && @record.present?) %>">
           <% @module[:fields].each do |field| %>
             <% field_key = field.parameterize(separator: "_") %>
@@ -1617,7 +1617,7 @@
             <% if other_target_form && field == "Jeevika Jankar Name" && field_value.blank? %>
               <% field_value = current_seed_target_vrp_option&.dig(:label).to_s %>
             <% end %>
-            <% if seed_target_form && field == "Farmer Count" && field_value.blank? %>
+            <% if other_target_form && field == "Farmer Count" && field_value.blank? %>
               <% field_value = selected_seed_target_farmer_ids.size.to_s if selected_seed_target_farmer_ids.present? %>
             <% end %>
             <% if other_target_form && @record.blank? && field == "Completion Date" && field_value.blank? %>
@@ -1718,7 +1718,7 @@
                 <input name="module_record[<%= field_key %>]" type="date" value="<%= field_value %>" <%= required_attr %>>
               <% elsif @slug == "training-form" && ["Farmer Count", "Male Count", "Female Count"].include?(field) %>
                 <input name="module_record[<%= field_key %>]" type="number" min="0" step="1" placeholder="Enter <%= resource_person_label(field) %>" value="<%= field_value %>" <%= required_attr %> <%= "readonly" if field == "Farmer Count" %> <%= "data-training-farmer-count-input" if field == "Farmer Count" %>>
-              <% elsif seed_target_form && field == "Farmer Count" %>
+              <% elsif other_target_form && field == "Farmer Count" %>
                 <input name="module_record[<%= field_key %>]" type="number" min="0" step="1" placeholder="Selected Farmer Count" value="<%= field_value %>" data-seed-farmer-count-input readonly required>
               <% elsif other_target_form && field == "Contact Number" %>
                 <input name="module_record[<%= field_key %>]" type="tel" pattern="[0-9]{10}" maxlength="10" placeholder="Auto-filled Contact Number" value="<%= field_value %>" data-seed-vrp-contact readonly required>
@@ -1751,7 +1751,7 @@
           <% end %>
         </div>
 
-        <% if seed_target_form %>
+        <% if other_target_form %>
           <div class="training-farmer-panel" data-seed-farmer-panel data-selected-farmer-ids="<%= json_escape((selected_seed_target_farmer_ids || []).to_json) %>">
             <div class="target-mapping-toolbar">
               <strong>Mapped Farmers</strong>

@@ -1605,6 +1605,13 @@ document.addEventListener("turbo:load", () => {
       });
     };
 
+    const setOnlyTrainingOption = (select, options) => {
+      if (!select || select.value || options.length !== 1) return;
+
+      select.value = optionValue(options[0]);
+      select.dataset.selectedValue = select.value;
+    };
+
     const targetRowsForSelection = ({
       requireMonth = false,
       requireVillage = false,
@@ -1641,11 +1648,11 @@ document.addEventListener("turbo:load", () => {
     ).map(optionValue);
     const mappedIcsOptions = () => uniqueOptions(targetRowsForSelection().map((mapping) => makeOption(mapping.ics, mapping.ics))).map(optionValue);
     const mappedMainActivityOptions = () => uniqueOptions(
-      targetRowsForSelection({ requireMonth: true, requireVillage: true, includeMainActivity: false })
+      targetRowsForSelection({ requireVillage: true, includeMainActivity: false })
         .map((mapping) => makeOption(mapping.main_activity, mapping.main_activity))
     ).map(optionValue);
     const mappedSubActivityOptions = () => uniqueOptions(
-      targetRowsForSelection({ requireMonth: true, requireVillage: true, requireMainActivity: true, includeSubActivity: false })
+      targetRowsForSelection({ requireVillage: true, requireMainActivity: true, includeSubActivity: false })
         .map((mapping) => makeOption(mapping.sub_activity, mapping.sub_activity))
     ).map(optionValue);
 	    const mappedVillageOptions = () => {
@@ -1654,7 +1661,25 @@ document.addEventListener("turbo:load", () => {
 	      return uniqueOptions(rows.map((mapping) => makeOption(mapping.village, mapping.village))).map(optionValue);
 	    };
 
+    const syncTrainingMonthFromSelection = () => {
+      if (!monthSelect || monthSelect.value) return;
+
+      const selectedSubActivity = normalizeOption(subActivitySelect?.value);
+      const rows = targetRowsForSelection({
+        requireVillage: true,
+        requireMainActivity: true,
+        includeSubActivity: false
+      }).filter((mapping) => !selectedSubActivity || normalizeOption(mapping.sub_activity) === selectedSubActivity);
+      const months = uniqueOptions(rows.map((mapping) => makeOption(mapping.month, mapping.month))).map(optionValue);
+      if (months.length !== 1) return;
+
+      monthSelect.value = months[0];
+      monthSelect.dataset.selectedValue = months[0];
+    };
+
     const mappedFarmers = () => {
+      syncTrainingMonthFromSelection();
+
       const selectedVillage = normalizeOption(villageSelect.value);
       const selectedMainActivity = normalizeOption(mainActivitySelect?.value);
       const selectedSubActivity = normalizeOption(subActivitySelect?.value);
@@ -1843,10 +1868,18 @@ document.addEventListener("turbo:load", () => {
 	    });
 
 	    if (monthSelect) fillTrainingSelect(monthSelect, mappedMonthOptions(), "Select Month");
-	    fillTrainingSelect(icsSelect, mappedIcsOptions(), "Select ICS Name");
-	    fillTrainingSelect(villageSelect, mappedVillageOptions(), "Select Village Name");
-	    if (mainActivitySelect) fillTrainingSelect(mainActivitySelect, mappedMainActivityOptions(), "Select Main Activity");
-	    if (subActivitySelect) fillTrainingSelect(subActivitySelect, mappedSubActivityOptions(), "Select Sub Activity");
+	    const initialIcsOptions = mappedIcsOptions();
+	    fillTrainingSelect(icsSelect, initialIcsOptions, "Select ICS Name");
+	    setOnlyTrainingOption(icsSelect, initialIcsOptions);
+	    const initialVillageOptions = mappedVillageOptions();
+	    fillTrainingSelect(villageSelect, initialVillageOptions, "Select Village Name");
+	    setOnlyTrainingOption(villageSelect, initialVillageOptions);
+	    const initialMainOptions = mappedMainActivityOptions();
+	    if (mainActivitySelect) fillTrainingSelect(mainActivitySelect, initialMainOptions, "Select Main Activity");
+	    setOnlyTrainingOption(mainActivitySelect, initialMainOptions);
+	    const initialSubOptions = mappedSubActivityOptions();
+	    if (subActivitySelect) fillTrainingSelect(subActivitySelect, initialSubOptions, "Select Sub Activity");
+	    setOnlyTrainingOption(subActivitySelect, initialSubOptions);
 	    renderTrainingFarmers();
 
 	    if (geoLatitudeInput && geoLongitudeInput && navigator.geolocation) {
@@ -1865,10 +1898,18 @@ document.addEventListener("turbo:load", () => {
 	      if (subActivitySelect) subActivitySelect.dataset.selectedValue = "";
 	      if (mainActivitySelect) mainActivitySelect.value = "";
 	      if (subActivitySelect) subActivitySelect.value = "";
-	      fillTrainingSelect(icsSelect, mappedIcsOptions(), "Select ICS Name");
-	      fillTrainingSelect(villageSelect, mappedVillageOptions(), "Select Village Name");
-	      if (mainActivitySelect) fillTrainingSelect(mainActivitySelect, mappedMainActivityOptions(), "Select Main Activity");
-	      if (subActivitySelect) fillTrainingSelect(subActivitySelect, mappedSubActivityOptions(), "Select Sub Activity");
+	      const icsOptions = mappedIcsOptions();
+	      fillTrainingSelect(icsSelect, icsOptions, "Select ICS Name");
+	      setOnlyTrainingOption(icsSelect, icsOptions);
+	      const villageOptions = mappedVillageOptions();
+	      fillTrainingSelect(villageSelect, villageOptions, "Select Village Name");
+	      setOnlyTrainingOption(villageSelect, villageOptions);
+	      const mainOptions = mappedMainActivityOptions();
+	      if (mainActivitySelect) fillTrainingSelect(mainActivitySelect, mainOptions, "Select Main Activity");
+	      setOnlyTrainingOption(mainActivitySelect, mainOptions);
+	      const subOptions = mappedSubActivityOptions();
+	      if (subActivitySelect) fillTrainingSelect(subActivitySelect, subOptions, "Select Sub Activity");
+	      setOnlyTrainingOption(subActivitySelect, subOptions);
 	      selectedFarmerIds.clear();
 	      renderTrainingFarmers();
 	    };
@@ -1882,9 +1923,15 @@ document.addEventListener("turbo:load", () => {
 	      if (subActivitySelect) subActivitySelect.dataset.selectedValue = "";
 	      if (mainActivitySelect) mainActivitySelect.value = "";
 	      if (subActivitySelect) subActivitySelect.value = "";
-	      fillTrainingSelect(villageSelect, mappedVillageOptions(), "Select Village Name");
-	      if (mainActivitySelect) fillTrainingSelect(mainActivitySelect, mappedMainActivityOptions(), "Select Main Activity");
-	      if (subActivitySelect) fillTrainingSelect(subActivitySelect, mappedSubActivityOptions(), "Select Sub Activity");
+	      const villageOptions = mappedVillageOptions();
+	      fillTrainingSelect(villageSelect, villageOptions, "Select Village Name");
+	      setOnlyTrainingOption(villageSelect, villageOptions);
+	      const mainOptions = mappedMainActivityOptions();
+	      if (mainActivitySelect) fillTrainingSelect(mainActivitySelect, mainOptions, "Select Main Activity");
+	      setOnlyTrainingOption(mainActivitySelect, mainOptions);
+	      const subOptions = mappedSubActivityOptions();
+	      if (subActivitySelect) fillTrainingSelect(subActivitySelect, subOptions, "Select Sub Activity");
+	      setOnlyTrainingOption(subActivitySelect, subOptions);
 	      selectedFarmerIds.clear();
 	      renderTrainingFarmers();
 	    });
@@ -1893,8 +1940,12 @@ document.addEventListener("turbo:load", () => {
 	      if (subActivitySelect) subActivitySelect.dataset.selectedValue = "";
 	      if (mainActivitySelect) mainActivitySelect.value = "";
 	      if (subActivitySelect) subActivitySelect.value = "";
-	      if (mainActivitySelect) fillTrainingSelect(mainActivitySelect, mappedMainActivityOptions(), "Select Main Activity");
-	      if (subActivitySelect) fillTrainingSelect(subActivitySelect, mappedSubActivityOptions(), "Select Sub Activity");
+	      const mainOptions = mappedMainActivityOptions();
+	      if (mainActivitySelect) fillTrainingSelect(mainActivitySelect, mainOptions, "Select Main Activity");
+	      setOnlyTrainingOption(mainActivitySelect, mainOptions);
+	      const subOptions = mappedSubActivityOptions();
+	      if (subActivitySelect) fillTrainingSelect(subActivitySelect, subOptions, "Select Sub Activity");
+	      setOnlyTrainingOption(subActivitySelect, subOptions);
 	      selectedFarmerIds.clear();
 	      renderTrainingFarmers();
 	    });
@@ -1903,8 +1954,12 @@ document.addEventListener("turbo:load", () => {
 	      if (subActivitySelect) subActivitySelect.dataset.selectedValue = "";
 	      if (mainActivitySelect) mainActivitySelect.value = "";
 	      if (subActivitySelect) subActivitySelect.value = "";
-	      if (mainActivitySelect) fillTrainingSelect(mainActivitySelect, mappedMainActivityOptions(), "Select Main Activity");
-	      if (subActivitySelect) fillTrainingSelect(subActivitySelect, mappedSubActivityOptions(), "Select Sub Activity");
+	      const mainOptions = mappedMainActivityOptions();
+	      if (mainActivitySelect) fillTrainingSelect(mainActivitySelect, mainOptions, "Select Main Activity");
+	      setOnlyTrainingOption(mainActivitySelect, mainOptions);
+	      const subOptions = mappedSubActivityOptions();
+	      if (subActivitySelect) fillTrainingSelect(subActivitySelect, subOptions, "Select Sub Activity");
+	      setOnlyTrainingOption(subActivitySelect, subOptions);
 	      selectedFarmerIds.clear();
 	      renderTrainingFarmers();
 	    });
@@ -2007,6 +2062,13 @@ document.addEventListener("turbo:load", () => {
       });
     };
 
+    const setOnlySeedOption = (select, options) => {
+      if (!select || select.value || options.length !== 1) return;
+
+      select.value = optionValue(options[0]);
+      select.dataset.selectedValue = select.value;
+    };
+
     const rowsForSelection = ({
       requireMonth = false,
       requireIcs = false,
@@ -2055,11 +2117,20 @@ document.addEventListener("turbo:load", () => {
     const subjectValues = () => uniqueOptions(rowsForSelection({ requireIcs: true, requireVillage: true, requireTopic: true, includeSubject: false }).map((mapping) => makeOption(mapping.training_subject, mapping.training_subject))).map(optionValue);
 
     const selectedSeedMapping = () => rowsForSelection({
-      requireMonth: true,
       requireIcs: true,
       requireVillage: true,
       requireTopic: true
     }).find((mapping) => normalizeOption(mapping.training_subject) === normalizeOption(subjectSelect.value));
+
+    const syncSeedMonthFromSelection = () => {
+      if (monthSelect.value) return;
+
+      const mapping = selectedSeedMapping();
+      if (!mapping?.month) return;
+
+      monthSelect.value = mapping.month;
+      monthSelect.dataset.selectedValue = mapping.month;
+    };
 
     const selectedVrpMapping = () => rowsForSelection({}).find((mapping) => {
       const selectedVrp = normalizeOption(vrpSelect.value);
@@ -2184,6 +2255,7 @@ document.addEventListener("turbo:load", () => {
     };
 
     const refreshTarget = () => {
+      syncSeedMonthFromSelection();
       const mapping = selectedSeedMapping();
       if (targetInput) targetInput.value = mapping?.target || "";
       if (targetIdInput) targetIdInput.value = mapping?.target_mapping_id || "";
@@ -2211,42 +2283,83 @@ document.addEventListener("turbo:load", () => {
       vrpSelect.dataset.selectedValue = vrpSelect.value;
     }
     fillSeedSelect(monthSelect, monthValues(), "Select Month");
-    fillSeedSelect(icsSelect, icsValues(), "Select ICS");
-    fillSeedSelect(villageSelect, villageValues(), "Select Village");
-    fillSeedSelect(topicSelect, topicValues(), "Select Main Activity");
-    fillSeedSelect(subjectSelect, subjectValues(), "Select Sub Activity");
+    const initialIcsOptions = icsValues();
+    fillSeedSelect(icsSelect, initialIcsOptions, "Select ICS");
+    setOnlySeedOption(icsSelect, initialIcsOptions);
+    const initialVillageOptions = villageValues();
+    fillSeedSelect(villageSelect, initialVillageOptions, "Select Village");
+    setOnlySeedOption(villageSelect, initialVillageOptions);
+    const initialTopicOptions = topicValues();
+    fillSeedSelect(topicSelect, initialTopicOptions, "Select Main Activity");
+    setOnlySeedOption(topicSelect, initialTopicOptions);
+    const initialSubjectOptions = subjectValues();
+    fillSeedSelect(subjectSelect, initialSubjectOptions, "Select Sub Activity");
+    setOnlySeedOption(subjectSelect, initialSubjectOptions);
     refreshTarget();
 
     vrpSelect.addEventListener("change", () => {
       resetAfter([monthSelect, icsSelect, villageSelect, topicSelect, subjectSelect]);
       refreshVrpDetails();
       fillSeedSelect(monthSelect, monthValues(), "Select Month");
-      fillSeedSelect(icsSelect, icsValues(), "Select ICS");
-      fillSeedSelect(villageSelect, villageValues(), "Select Village");
-      fillSeedSelect(topicSelect, topicValues(), "Select Main Activity");
-      fillSeedSelect(subjectSelect, subjectValues(), "Select Sub Activity");
+      const icsOptions = icsValues();
+      fillSeedSelect(icsSelect, icsOptions, "Select ICS");
+      setOnlySeedOption(icsSelect, icsOptions);
+      const villageOptions = villageValues();
+      fillSeedSelect(villageSelect, villageOptions, "Select Village");
+      setOnlySeedOption(villageSelect, villageOptions);
+      const topicOptions = topicValues();
+      fillSeedSelect(topicSelect, topicOptions, "Select Main Activity");
+      setOnlySeedOption(topicSelect, topicOptions);
+      const subjectOptions = subjectValues();
+      fillSeedSelect(subjectSelect, subjectOptions, "Select Sub Activity");
+      setOnlySeedOption(subjectSelect, subjectOptions);
+      refreshTarget();
     });
     monthSelect.addEventListener("change", () => {
       resetAfter([icsSelect, villageSelect, topicSelect, subjectSelect]);
-      fillSeedSelect(icsSelect, icsValues(), "Select ICS");
-      fillSeedSelect(villageSelect, villageValues(), "Select Village");
-      fillSeedSelect(topicSelect, topicValues(), "Select Main Activity");
-      fillSeedSelect(subjectSelect, subjectValues(), "Select Sub Activity");
+      const icsOptions = icsValues();
+      fillSeedSelect(icsSelect, icsOptions, "Select ICS");
+      setOnlySeedOption(icsSelect, icsOptions);
+      const villageOptions = villageValues();
+      fillSeedSelect(villageSelect, villageOptions, "Select Village");
+      setOnlySeedOption(villageSelect, villageOptions);
+      const topicOptions = topicValues();
+      fillSeedSelect(topicSelect, topicOptions, "Select Main Activity");
+      setOnlySeedOption(topicSelect, topicOptions);
+      const subjectOptions = subjectValues();
+      fillSeedSelect(subjectSelect, subjectOptions, "Select Sub Activity");
+      setOnlySeedOption(subjectSelect, subjectOptions);
+      refreshTarget();
     });
     icsSelect.addEventListener("change", () => {
       resetAfter([villageSelect, topicSelect, subjectSelect]);
-      fillSeedSelect(villageSelect, villageValues(), "Select Village");
-      fillSeedSelect(topicSelect, topicValues(), "Select Main Activity");
-      fillSeedSelect(subjectSelect, subjectValues(), "Select Sub Activity");
+      const villageOptions = villageValues();
+      fillSeedSelect(villageSelect, villageOptions, "Select Village");
+      setOnlySeedOption(villageSelect, villageOptions);
+      const topicOptions = topicValues();
+      fillSeedSelect(topicSelect, topicOptions, "Select Main Activity");
+      setOnlySeedOption(topicSelect, topicOptions);
+      const subjectOptions = subjectValues();
+      fillSeedSelect(subjectSelect, subjectOptions, "Select Sub Activity");
+      setOnlySeedOption(subjectSelect, subjectOptions);
+      refreshTarget();
     });
     villageSelect.addEventListener("change", () => {
       resetAfter([topicSelect, subjectSelect]);
-      fillSeedSelect(topicSelect, topicValues(), "Select Main Activity");
-      fillSeedSelect(subjectSelect, subjectValues(), "Select Sub Activity");
+      const topicOptions = topicValues();
+      fillSeedSelect(topicSelect, topicOptions, "Select Main Activity");
+      setOnlySeedOption(topicSelect, topicOptions);
+      const subjectOptions = subjectValues();
+      fillSeedSelect(subjectSelect, subjectOptions, "Select Sub Activity");
+      setOnlySeedOption(subjectSelect, subjectOptions);
+      refreshTarget();
     });
     topicSelect.addEventListener("change", () => {
       resetAfter([subjectSelect]);
-      fillSeedSelect(subjectSelect, subjectValues(), "Select Sub Activity");
+      const subjectOptions = subjectValues();
+      fillSeedSelect(subjectSelect, subjectOptions, "Select Sub Activity");
+      setOnlySeedOption(subjectSelect, subjectOptions);
+      refreshTarget();
     });
     subjectSelect.addEventListener("change", () => {
       selectedSeedFarmerIds.clear();
@@ -2304,12 +2417,12 @@ document.addEventListener("turbo:load", () => {
         invalidInput = contactInput;
         message = "Contact Number valid 10 digit hona chahiye.";
       } else if (farmerPanel && selectedFarmerCount <= 0) {
-        invalidInput = farmerCountInput;
+        invalidInput = farmerCountInput || subjectSelect;
         message = "Mapped Farmers select karein.";
-      } else if (farmerPanel && farmerCountValue !== selectedFarmerCount) {
+      } else if (farmerPanel && farmerCountInput && farmerCountValue !== selectedFarmerCount) {
         invalidInput = farmerCountInput;
         message = "Farmer Count selected farmers ke count ke equal hona chahiye.";
-      } else if (farmerPanel && farmerCountValue > targetValue) {
+      } else if (farmerPanel && farmerCountInput && farmerCountValue > targetValue) {
         invalidInput = farmerCountInput;
         message = `Farmer Count Target (${targetValue}) se jyada nahi ho sakta.`;
       } else if (!targetInput?.value || targetValue < 0) {
