@@ -1639,7 +1639,7 @@ document.addEventListener("turbo:load", () => {
     const mappedMonthOptions = () => uniqueOptions(
       monthOptions.concat(mappings.map((mapping) => mapping.month)).map((month) => makeOption(month, month))
     ).map(optionValue);
-    const mappedIcsOptions = () => uniqueOptions(targetRowsForSelection({ requireMonth: true }).map((mapping) => makeOption(mapping.ics, mapping.ics))).map(optionValue);
+    const mappedIcsOptions = () => uniqueOptions(targetRowsForSelection().map((mapping) => makeOption(mapping.ics, mapping.ics))).map(optionValue);
     const mappedMainActivityOptions = () => uniqueOptions(
       targetRowsForSelection({ requireMonth: true, requireVillage: true, includeMainActivity: false })
         .map((mapping) => makeOption(mapping.main_activity, mapping.main_activity))
@@ -1649,7 +1649,7 @@ document.addEventListener("turbo:load", () => {
         .map((mapping) => makeOption(mapping.sub_activity, mapping.sub_activity))
     ).map(optionValue);
 	    const mappedVillageOptions = () => {
-	      const rows = targetRowsForSelection({ requireMonth: true });
+	      const rows = targetRowsForSelection();
 
 	      return uniqueOptions(rows.map((mapping) => makeOption(mapping.village, mapping.village))).map(optionValue);
 	    };
@@ -2049,10 +2049,10 @@ document.addEventListener("turbo:load", () => {
     const monthValues = () => uniqueOptions(
       monthOptions.concat(rowsForSelection({ includeVrp: true }).map((mapping) => mapping.month)).map((month) => makeOption(month, month))
     ).map(optionValue);
-    const icsValues = () => uniqueOptions(rowsForSelection({ requireMonth: true }).map((mapping) => makeOption(mapping.ics, mapping.ics))).map(optionValue);
-    const villageValues = () => uniqueOptions(rowsForSelection({ requireMonth: true, requireIcs: true }).map((mapping) => makeOption(mapping.village, mapping.village))).map(optionValue);
-    const topicValues = () => uniqueOptions(rowsForSelection({ requireMonth: true, requireIcs: true, requireVillage: true }).map((mapping) => makeOption(mapping.training_topic, mapping.training_topic))).map(optionValue);
-    const subjectValues = () => uniqueOptions(rowsForSelection({ requireMonth: true, requireIcs: true, requireVillage: true, requireTopic: true, includeSubject: false }).map((mapping) => makeOption(mapping.training_subject, mapping.training_subject))).map(optionValue);
+    const icsValues = () => uniqueOptions(rowsForSelection().map((mapping) => makeOption(mapping.ics, mapping.ics))).map(optionValue);
+    const villageValues = () => uniqueOptions(rowsForSelection({ requireIcs: true }).map((mapping) => makeOption(mapping.village, mapping.village))).map(optionValue);
+    const topicValues = () => uniqueOptions(rowsForSelection({ requireIcs: true, requireVillage: true }).map((mapping) => makeOption(mapping.training_topic, mapping.training_topic))).map(optionValue);
+    const subjectValues = () => uniqueOptions(rowsForSelection({ requireIcs: true, requireVillage: true, requireTopic: true, includeSubject: false }).map((mapping) => makeOption(mapping.training_subject, mapping.training_subject))).map(optionValue);
 
     const selectedSeedMapping = () => rowsForSelection({
       requireMonth: true,

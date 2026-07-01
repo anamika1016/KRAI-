@@ -3803,6 +3803,8 @@ class ModulesController < ApplicationController
   end
 
   def module_mapped_vrp_scope_active?
+    return false if vrp_login_user?
+
     module_cluster_incharge_login? || module_cluster_visible_vrps.any?
   end
 
