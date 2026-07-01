@@ -2215,10 +2215,22 @@ document.addEventListener("turbo:load", () => {
         return;
       }
 
-      farmerList.innerHTML = farmers.map((farmer) => {
+      const farmerRows = farmers.map((farmer, index) => {
         const farmerId = String(farmer.id || "");
-        const completed = completedFarmerIds.has(farmerId) && !selectedSeedFarmerIds.has(farmerId);
-        const checked = selectedSeedFarmerIds.has(farmerId) ? " checked" : "";
+        return {
+          farmer,
+          farmerId,
+          index,
+          completed: completedFarmerIds.has(farmerId) && !selectedSeedFarmerIds.has(farmerId),
+          checked: selectedSeedFarmerIds.has(farmerId)
+        };
+      }).sort((a, b) => {
+        if (a.completed !== b.completed) return a.completed ? 1 : -1;
+        return a.index - b.index;
+      });
+
+      farmerList.innerHTML = farmerRows.map(({ farmer, farmerId, completed, checked: isChecked }) => {
+        const checked = isChecked ? " checked" : "";
         const disabled = completed ? " disabled" : "";
         const meta = [
           farmer.father_name ? `Father: ${farmer.father_name}` : "",

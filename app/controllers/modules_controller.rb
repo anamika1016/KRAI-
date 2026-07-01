@@ -5370,15 +5370,35 @@ class ModulesController < ApplicationController
   def other_target_completed_farmer_ids_for(target_mapping_id)
     return [] unless model_ready?(:ModuleRecord)
 
+    target = model_ready?(:TargetMapping) ? TargetMapping.find_by(id: target_mapping_id) : nil
+    mapped_farmer_ids = target ? target_farmer_ids(target) : nil
+
     ModuleRecord
       .where(module_slug: record_source_slug)
       .order(created_at: :asc)
       .reject { |record| record.id.to_s == params[:id].to_s }
-      .select { |record| approved_other_target_record?(record) || normalize_dashboard_text(record.data["status"]).include?("pending") || record.data["status"].blank? }
+      .select { |record| blocking_other_target_record?(record) }
       .select { |record| record.data["target_mapping_id"].to_s == target_mapping_id.to_s }
       .flat_map { |record| Array(record.data["selected_farmer_ids"]).map(&:to_s) }
       .reject(&:blank?)
       .uniq
+      .then { |ids| mapped_farmer_ids.present? ? (ids & mapped_farmer_ids) : ids }
+  end
+
+  def blocking_other_target_record?(record)
+    return false if truthy_module_flag?(record.data["deleted"]) ||
+      truthy_module_flag?(record.data["is_deleted"]) ||
+      truthy_module_flag?(record.data["discarded"])
+
+    status = record.data["approval_status"].presence || record.data["approval_state"].presence || record.data["status"].presence
+    return true if status.blank?
+
+    normalized_status = normalize_dashboard_text(status)
+    return false if normalized_status.include?("reject") ||
+      normalized_status.include?("return") ||
+      normalized_status == "inactive"
+
+    true
   end
 
   def training_target_month_options
