@@ -3708,8 +3708,13 @@ body {
   width: min(360px, 100%);
 }
 
-.seed-farmer-search input {
+.seed-farmer-search input,
+.target-farmer-search input {
   width: 100%;
+}
+
+.target-farmer-search {
+  width: min(360px, 100%);
 }
 
 .target-mapping-toolbar span {
@@ -3754,6 +3759,10 @@ body {
   }
 
   .seed-farmer-search {
+    width: 100%;
+  }
+
+  .target-farmer-search {
     width: 100%;
   }
 }

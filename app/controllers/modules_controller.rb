@@ -4856,10 +4856,12 @@ class ModulesController < ApplicationController
 
   def create_approval_channel
     data = normalized_module_data
-    steps = data.delete("approval_steps").to_h
+    steps = approval_channel_step_rows(data.delete("approval_steps"))
     saved_count = 0
 
-    steps.each do |level, approver|
+    steps.each do |step|
+      level = step["approval_level"]
+      approver = step["approver_approved_by"]
       next if approver.blank?
 
       ModuleRecord.create!(
@@ -4884,16 +4886,21 @@ class ModulesController < ApplicationController
 
   def update_approval_channel(record)
     data = normalized_module_data
-    steps = data.delete("approval_steps").to_h
+    steps = approval_channel_step_rows(data.delete("approval_steps"))
     channel_records = approval_channel_records_for(record)
+    records_by_id = channel_records.index_by(&:id)
     records_by_sequence = channel_records.group_by { |approval_record| approval_sequence_from_level(approval_record.data["approval_level"]) }
     saved_records = []
 
-    steps.each do |level, approver|
+    steps.each do |step|
+      level = step["approval_level"]
+      approver = step["approver_approved_by"]
       next if approver.blank?
 
       sequence = approval_sequence_from_level(level)
-      approval_record = records_by_sequence[sequence]&.shift || ModuleRecord.new(module_slug: "approval-master")
+      approval_record = records_by_id[step["record_id"].to_i] if step["record_id"].present?
+      records_by_sequence.each_value { |records| records.delete(approval_record) } if approval_record
+      approval_record ||= records_by_sequence[sequence]&.shift || ModuleRecord.new(module_slug: "approval-master")
       approval_record.data = data.merge(
         "approval_level" => level,
         "approver_approved_by" => approver,
@@ -4922,6 +4929,27 @@ class ModulesController < ApplicationController
     prepare_approval_channel_form(record)
     flash.now[:alert] = e.record.errors.full_messages.to_sentence
     render :show, status: :unprocessable_entity
+  end
+
+  def approval_channel_step_rows(raw_steps)
+    steps = raw_steps.respond_to?(:to_h) ? raw_steps.to_h : {}
+
+    steps.filter_map do |level_or_key, value|
+      if value.respond_to?(:to_h)
+        step_data = value.to_h
+        {
+          "record_id" => step_data["record_id"].to_s,
+          "approval_level" => step_data["approval_level"].presence || level_or_key.to_s,
+          "approver_approved_by" => step_data["approver_approved_by"].presence || step_data["approver"].to_s
+        }
+      else
+        {
+          "record_id" => "",
+          "approval_level" => level_or_key.to_s,
+          "approver_approved_by" => value.to_s
+        }
+      end
+    end
   end
 
   def prepare_approval_channel_form(record)

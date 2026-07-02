@@ -395,16 +395,18 @@
     <%
       approval_channel_records = Array(@approval_channel_records.presence || (@record.present? ? [@record] : []))
       approval_rows = approval_channel_records
-        .sort_by { |record| approval_sequence_from_level(record.data["approval_level"]) }
-        .map do |record|
+        .sort_by { |record| [approval_sequence_from_level(record.data["approval_level"]), record.created_at&.to_i || 0, record.id || 0] }
+        .map.with_index do |record, index|
           sequence = approval_sequence_from_level(record.data["approval_level"])
           {
             level: approval_level_label_for_sequence(sequence),
             sequence: sequence,
-            approver: record.data["approver_approved_by"].to_s
+            approver: record.data["approver_approved_by"].to_s,
+            record_id: record.id,
+            row_key: "record_#{record.id || index}"
           }
         end
-      approval_rows = (1..3).map { |number| { level: approval_level_label_for_sequence(number), sequence: number, approver: "" } } if approval_rows.blank?
+      approval_rows = (1..3).map { |number| { level: approval_level_label_for_sequence(number), sequence: number, approver: "", record_id: nil, row_key: "new_#{number}" } } if approval_rows.blank?
       next_approval_level = approval_rows.map { |row| row[:sequence].to_i }.max.to_i + 1
     %>
     <% form_url = @record.present? ? module_record_path(@slug, @record) : records_module_path(@slug) %>
@@ -454,12 +456,14 @@
             <div class="approval-level-head">Action</div>
 
             <% approval_rows.each do |row| %>
-              <div class="approval-level-cell" data-approval-row="<%= row[:sequence] %>">
+              <div class="approval-level-cell" data-approval-row="<%= row[:row_key] %>">
                 <strong><%= row[:level] %></strong>
                 <small>Approval step <%= row[:sequence] %></small>
               </div>
-              <div class="approval-level-cell" data-approval-row="<%= row[:sequence] %>">
-                <select name="module_record[approval_steps][<%= row[:level] %>]">
+              <div class="approval-level-cell" data-approval-row="<%= row[:row_key] %>">
+                <input type="hidden" name="module_record[approval_steps][<%= row[:row_key] %>][record_id]" value="<%= row[:record_id] %>">
+                <input type="hidden" name="module_record[approval_steps][<%= row[:row_key] %>][approval_level]" value="<%= row[:level] %>">
+                <select name="module_record[approval_steps][<%= row[:row_key] %>][approver_approved_by]">
                   <option value="">Select approval user</option>
                   <% approver_options.each do |option| %>
                     <option value="<%= option %>" <%= "selected" if option == row[:approver] %>><%= option %></option>
@@ -467,7 +471,7 @@
                 </select>
                 <small>Select the user responsible at this approval stage.</small>
               </div>
-              <div class="approval-level-cell" data-approval-row="<%= row[:sequence] %>">
+              <div class="approval-level-cell" data-approval-row="<%= row[:row_key] %>">
                 <button type="button" class="remove-level-btn" data-remove-approval-level>Remove</button>
               </div>
             <% end %>

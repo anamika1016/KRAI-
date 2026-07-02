@@ -2686,6 +2686,8 @@ document.addEventListener("turbo:load", () => {
     const farmerList = shell.querySelector("[data-target-farmer-list]");
     const farmerCountLabel = shell.querySelector("[data-target-farmer-count]");
     const farmerSelectAll = shell.querySelector("[data-target-farmer-select-all]");
+    const farmerSearchInput = shell.querySelector("[data-target-farmer-search]");
+    const farmerSearchEmpty = shell.querySelector("[data-target-farmer-search-empty]");
     const form = shell.querySelector("form");
     let editTarget = {};
     let targetSubActivityRows = [];
@@ -2711,6 +2713,8 @@ document.addEventListener("turbo:load", () => {
     const selectedTargetBoxes = () => Array.from(shell.querySelectorAll("[data-target-farmer-checkbox]:checked"));
     const targetBoxes = () => Array.from(shell.querySelectorAll("[data-target-farmer-checkbox]"));
     const availableTargetBoxes = () => targetBoxes().filter((checkbox) => !checkbox.disabled);
+    const visibleAvailableTargetBoxes = () => availableTargetBoxes().filter((checkbox) => !checkbox.closest(".vrp-ics-farmer-item")?.hidden);
+    const targetFarmerSearchTerm = () => (farmerSearchInput?.value || "").trim().toLowerCase();
     const locationValueParts = (value) => `${value || ""}`.split("||");
     const targetOptionMatches = (optionValueText, selectedValueText) => {
       const optionParts = locationValueParts(optionValueText);
@@ -2812,20 +2816,40 @@ document.addEventListener("turbo:load", () => {
     const updateTargetFarmerCount = () => {
       const selectedCount = selectedTargetBoxes().length;
       const totalCount = targetBoxes().length;
-      const availableCount = availableTargetBoxes().length;
+      const availableBoxes = visibleAvailableTargetBoxes();
+      const availableCount = availableBoxes.length;
+      const visibleSelectedCount = availableBoxes.filter((checkbox) => checkbox.checked).length;
       if (farmerCountLabel) farmerCountLabel.textContent = `${selectedCount} farmer selected`;
       if (registeredCountInput) registeredCountInput.value = String(totalCount);
       if (targetInput) targetInput.value = String(selectedCount);
-      if (targetInput) targetInput.max = String(availableCount || selectedCount || 1);
+      if (targetInput) targetInput.max = String(availableTargetBoxes().length || selectedCount || 1);
       if (farmerSelectAll) {
-        farmerSelectAll.checked = availableCount > 0 && selectedCount === availableCount;
-        farmerSelectAll.indeterminate = selectedCount > 0 && selectedCount < availableCount;
+        farmerSelectAll.checked = availableCount > 0 && visibleSelectedCount === availableCount;
+        farmerSelectAll.indeterminate = visibleSelectedCount > 0 && visibleSelectedCount < availableCount;
         farmerSelectAll.disabled = availableCount === 0;
       }
     };
 
+    const applyTargetFarmerSearch = () => {
+      if (!farmerList) return;
+
+      const term = targetFarmerSearchTerm();
+      const items = Array.from(farmerList.querySelectorAll(".vrp-ics-farmer-item"));
+      let visibleCount = 0;
+
+      items.forEach((item) => {
+        const visible = !term || item.innerText.toLowerCase().includes(term);
+        item.hidden = !visible;
+        if (visible) visibleCount += 1;
+      });
+
+      if (farmerSearchEmpty) farmerSearchEmpty.hidden = visibleCount > 0 || !items.length;
+      updateTargetFarmerCount();
+    };
+
     const clearTargetFarmers = (message = "Select FCO Name, ICS and Village to load farmers.") => {
       if (farmerList) farmerList.textContent = message;
+      if (farmerSearchEmpty) farmerSearchEmpty.hidden = true;
       updateTargetFarmerCount();
     };
 
@@ -2834,6 +2858,7 @@ document.addEventListener("turbo:load", () => {
 
       if (!farmers.length) {
         farmerList.textContent = "No farmers found for selected village.";
+        if (farmerSearchEmpty) farmerSearchEmpty.hidden = true;
         updateTargetFarmerCount();
         return;
       }
@@ -2859,6 +2884,7 @@ document.addEventListener("turbo:load", () => {
           </label>
         `;
       }).join("");
+      applyTargetFarmerSearch();
 
       farmerList.querySelectorAll("[data-target-farmer-checkbox]").forEach((checkbox) => {
         checkbox.addEventListener("change", updateTargetFarmerCount);
@@ -2905,11 +2931,13 @@ document.addEventListener("turbo:load", () => {
     };
 
     farmerSelectAll?.addEventListener("change", () => {
-      availableTargetBoxes().forEach((checkbox) => {
+      visibleAvailableTargetBoxes().forEach((checkbox) => {
         checkbox.checked = farmerSelectAll.checked;
       });
       updateTargetFarmerCount();
     });
+
+    farmerSearchInput?.addEventListener("input", applyTargetFarmerSearch);
 
     form?.addEventListener("submit", (event) => {
       syncTargetVillageHidden();
@@ -3441,7 +3469,7 @@ document.addEventListener("turbo:load", () => {
   document.querySelectorAll("[data-approval-levels]").forEach((shell) => {
     const table = shell.querySelector("[data-approval-level-table]");
     const addButton = shell.querySelector("[data-add-approval-level]");
-    const firstSelect = table?.querySelector("select[name^='module_record[approval_steps]']");
+    const firstSelect = table?.querySelector("select[name*='[approval_steps]']");
     const approverOptions = firstSelect
       ? Array.from(firstSelect.options).map((option) => ({ value: option.value, label: option.textContent }))
       : [{ value: "", label: "Select approval user" }];
@@ -3474,18 +3502,28 @@ document.addEventListener("turbo:load", () => {
 
       const rowIndex = Number(shell.dataset.nextApprovalLevel || approvalRowCount() + 1);
       const level = approvalLevelLabel(rowIndex);
+      const rowKey = `new_${Date.now()}_${rowIndex}`;
       shell.dataset.nextApprovalLevel = String(rowIndex + 1);
 
       const levelCell = document.createElement("div");
       levelCell.className = "approval-level-cell";
-      levelCell.dataset.approvalRow = String(rowIndex);
+      levelCell.dataset.approvalRow = rowKey;
       levelCell.innerHTML = `<strong>${level}</strong><small>Approval step ${rowIndex}</small>`;
 
       const userCell = document.createElement("div");
       userCell.className = "approval-level-cell";
-      userCell.dataset.approvalRow = String(rowIndex);
+      userCell.dataset.approvalRow = rowKey;
+      const recordIdInput = document.createElement("input");
+      recordIdInput.type = "hidden";
+      recordIdInput.name = `module_record[approval_steps][${rowKey}][record_id]`;
+      userCell.appendChild(recordIdInput);
+      const levelInput = document.createElement("input");
+      levelInput.type = "hidden";
+      levelInput.name = `module_record[approval_steps][${rowKey}][approval_level]`;
+      levelInput.value = level;
+      userCell.appendChild(levelInput);
       const select = document.createElement("select");
-      select.name = `module_record[approval_steps][${level}]`;
+      select.name = `module_record[approval_steps][${rowKey}][approver_approved_by]`;
       approverOptions.forEach((optionData) => {
         const option = document.createElement("option");
         option.value = optionData.value;
@@ -3499,7 +3537,7 @@ document.addEventListener("turbo:load", () => {
 
       const actionCell = document.createElement("div");
       actionCell.className = "approval-level-cell";
-      actionCell.dataset.approvalRow = String(rowIndex);
+      actionCell.dataset.approvalRow = rowKey;
       const removeButton = document.createElement("button");
       removeButton.type = "button";
       removeButton.className = "remove-level-btn";

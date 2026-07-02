@@ -104,12 +104,17 @@
         <div class="target-farmer-panel" data-target-farmer-panel>
           <div class="target-mapping-toolbar">
             <strong>Farmer List</strong>
+            <div class="list-search compact target-farmer-search">
+              <span>⌕</span>
+              <input type="search" placeholder="Search farmers" data-target-farmer-search>
+            </div>
             <label class="vrp-ics-select-all">
               <input type="checkbox" data-target-farmer-select-all>
               <span>Select all</span>
             </label>
             <span data-target-farmer-count>0 farmer selected</span>
           </div>
+          <div class="training-empty-state" data-target-farmer-search-empty hidden>No farmers matched your search.</div>
           <div class="vrp-ics-farmer-list target-farmer-list" data-target-farmer-list>
             Select FCO Name, ICS and Village to load farmers.
           </div>
