@@ -3644,6 +3644,10 @@ body {
   padding: 10px;
 }
 
+.vrp-ics-farmer-item[hidden] {
+  display: none;
+}
+
 .vrp-ics-farmer-item input {
   margin-top: 3px;
 }

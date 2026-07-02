@@ -1295,6 +1295,7 @@
             <% if approval_groups.any? %>
               <% approval_groups.each_value do |approval_records| %>
                 <% sorted_records = approval_records.sort_by { |record| approval_sequence_from_level(record.data["approval_level"]) } %>
+                <% display_records = sorted_records.uniq { |record| [approval_sequence_from_level(record.data["approval_level"]), (module_record_field_value(record, "Approver (Approved By)").presence || record.data["approver_approved_by"]).to_s.strip.downcase] } %>
                 <% group_paths = sorted_records.map { |record| edit_module_record_path("approval-master", record) } %>
                 <% primary_record = sorted_records.first %>
                 <% module_name = primary_record.data["module_name"].presence || "-" %>
@@ -1310,7 +1311,7 @@
               <td><%= user_name %></td>
               <td>
                     <div class="approval-level-stack">
-                      <% sorted_records.each do |record| %>
+                      <% display_records.each do |record| %>
                         <% approval_level = approval_level_label_for_sequence(approval_sequence_from_level(record.data["approval_level"])) %>
                         <% approver_name = module_record_field_value(record, "Approver (Approved By)").presence || record.data["approver_approved_by"].presence || "-" %>
                         <div class="approval-level-item">
