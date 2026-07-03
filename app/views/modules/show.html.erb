@@ -883,6 +883,13 @@
           </table>
         </div>
 
+        <div class="jeevika-bill-payment-total">
+          <label>
+            <span>Total Payment</span>
+            <input name="module_record[grand_total]" value="<%= format("%.2f", ModulesController::JEEVIKA_JANKAR_BILL_FIXED_TOTAL) %>" readonly>
+          </label>
+        </div>
+
         <div class="module-form-actions bill-save-actions">
           <%= link_to "Clear", module_path(@slug), class: "btn btn-secondary" %>
           <button type="submit" class="btn btn-primary">Save Jeevika Jankar Bill</button>

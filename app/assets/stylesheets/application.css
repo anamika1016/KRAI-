@@ -2090,6 +2090,31 @@ body {
   padding-inline: 12px;
 }
 
+.jeevika-bill-payment-total {
+  display: flex;
+  justify-content: flex-end;
+  border-top: 1px solid #d5e0e6;
+  padding-top: 14px;
+}
+
+.jeevika-bill-payment-total label {
+  display: grid;
+  width: min(100%, 280px);
+  gap: 7px;
+  font-weight: 800;
+}
+
+.jeevika-bill-payment-total input {
+  min-height: 46px;
+  border: 1px solid #b7cbd4;
+  border-radius: 6px;
+  background: #f7fafb;
+  padding: 9px 12px;
+  font: inherit;
+  font-weight: 800;
+  text-align: right;
+}
+
 .jeevika-farmer-details summary {
   cursor: pointer;
   font-weight: 800;
