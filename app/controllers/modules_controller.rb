@@ -27,6 +27,7 @@ class ModulesController < ApplicationController
 
   APPROVAL_REGISTRATION_MODULES = ["Farmer Registration", "VRP Registration", "Jeevika Jankar Registration"].freeze
   OTHER_TARGET_MODULE_SLUGS = ["seed-distribution-target", "papl360-target"].freeze
+  TARGET_RECORD_MODULE_SLUGS = (["training-form"] + OTHER_TARGET_MODULE_SLUGS).freeze
   JEEVIKA_JANKAR_BILL_FIXED_TOTAL = 5000.0
   DASHBOARD_CARDS = [
     ["Total VRP", "0", "Registered field resources"],
@@ -695,6 +696,10 @@ class ModulesController < ApplicationController
   def update
     load_module!
     record = ModuleRecord.find(params[:id])
+    unless module_record_visible_for_current_context?(record)
+      redirect_to module_path(module_redirect_slug), alert: "You are not allowed to update this record."
+      return
+    end
 
     if record_source_slug == "approval-master" && approval_channel_params?
       update_approval_channel(record)
@@ -751,12 +756,20 @@ class ModulesController < ApplicationController
   def selected_farmers
     load_module!
     @record = ModuleRecord.find(params[:id])
+    unless module_record_visible_for_current_context?(@record)
+      redirect_to module_path(module_redirect_slug), alert: "You are not allowed to view this record."
+      return
+    end
     @selected_farmer_rows = selected_farmer_rows_for(@record)
   end
 
   def export_selected_farmers
     load_module!
     record = ModuleRecord.find(params[:id])
+    unless module_record_visible_for_current_context?(record)
+      redirect_to module_path(module_redirect_slug), alert: "You are not allowed to export this record."
+      return
+    end
     rows = selected_farmer_rows_for(record)
 
     csv_data = CSV.generate(headers: true) do |csv|
@@ -781,6 +794,10 @@ class ModulesController < ApplicationController
   def selected_farmer
     load_module!
     record = ModuleRecord.find(params[:id])
+    unless module_record_visible_for_current_context?(record)
+      redirect_to module_path(module_redirect_slug), alert: "You are not allowed to update this record."
+      return
+    end
     farmer_id = params[:farmer_id].to_s
     selected_ids = Array(record.data["selected_farmer_ids"]).map(&:to_s).reject(&:blank?)
     next_ids = selected_ids - [farmer_id]
@@ -3141,7 +3158,7 @@ class ModulesController < ApplicationController
 
     records = ModuleRecord.where(module_slug: record_source_slug).to_a
     records = records.select { |record| jeevika_jankar_bill_record_visible?(record) } if record_source_slug == "jeevika-jankar-bill-process"
-    records = records.select { |record| other_target_record_visible?(record) } if other_target_record_source?
+    records = records.select { |record| target_record_visible?(record) } if target_record_source?
     records.sort_by { |record| module_record_sort_value(record) }
   end
 
@@ -3149,31 +3166,55 @@ class ModulesController < ApplicationController
     OTHER_TARGET_MODULE_SLUGS.include?(record_source_slug)
   end
 
-  def other_target_record_visible?(record)
+  def target_record_source?
+    TARGET_RECORD_MODULE_SLUGS.include?(record_source_slug)
+  end
+
+  def target_record_visible?(record)
     return true if admin_dashboard_user?
 
-    vrp_id = record.data["jeevika_jankar_id"].presence || record.data["vrp_id"].presence || record.data["select_vrp"].presence
     if vrp_login_user?
       return false unless current_vrp_record.present?
 
-      return true if vrp_id.to_s == current_vrp_record.id.to_s
-      return other_target_record_matches_vrp?(record, current_vrp_record)
+      return target_record_matches_vrp?(record, current_vrp_record)
     end
 
-    return true unless module_mapped_vrp_scope_active?
+    return true if target_record_created_by_current_user?(record)
 
-    visible_ids = module_cluster_visible_vrp_ids.map(&:to_s)
-    return visible_ids.include?(vrp_id.to_s) if vrp_id.present?
+    vrp = target_record_vrp_for_visibility(record)
+    if vrp
+      return true if jeevika_bill_vrp_registered_by_current_user?(vrp)
+      return true if jeevika_bill_vrp_office_visible?(vrp)
+      return true if module_cluster_visible_vrp_ids.map(&:to_s).include?(vrp.id.to_s)
+    end
 
-    module_cluster_visible_vrps.any? { |vrp| other_target_record_matches_vrp?(record, vrp) }
+    return false unless module_mapped_vrp_scope_active?
+
+    module_cluster_visible_vrps.any? { |visible_vrp| target_record_matches_vrp?(record, visible_vrp) }
   end
 
-  def other_target_record_matches_vrp?(record, vrp)
+  def target_record_vrp_for_visibility(record)
+    return unless model_ready?(:Vrp)
+
+    vrp_id = record.data["jeevika_jankar_id"].presence || record.data["vrp_id"].presence || record.data["select_vrp"].presence
+    return Vrp.find_by(id: vrp_id) if vrp_id.present?
+
+    Vrp.all.find { |vrp| target_record_matches_vrp?(record, vrp) }
+  end
+
+  def target_record_matches_vrp?(record, vrp)
     values = [
+      record.data["jeevika_jankar_id"],
+      record.data["vrp_id"],
       record.data["jeevika_jankar_name"],
       record.data["vrp_name"],
-      record.data["select_vrp"]
+      record.data["select_vrp"],
+      record.data["trainer_contact"],
+      record.data["trainer_name"],
+      record.data["contact_number"],
+      record.data["jeevika_jankar_contact"]
     ].map { |value| normalize_dashboard_text(value) }.reject(&:blank?)
+    return false if values.blank?
 
     labels = [
       vrp.id,
@@ -3184,6 +3225,29 @@ class ModulesController < ApplicationController
     ].map { |value| normalize_dashboard_text(value) }.reject(&:blank?)
 
     (values & labels).any?
+  end
+
+  def target_record_created_by_current_user?(record)
+    data = record.data
+    current_ids = dashboard_current_app_user_ids.map(&:to_s)
+    return true if data["created_by_id"].present? && current_ids.include?(data["created_by_id"].to_s)
+
+    current_values = normalized_visibility_values(
+      current_app_user&.dig("username"),
+      current_app_user&.dig("user_name"),
+      current_app_user&.dig("name"),
+      current_app_user&.dig("email"),
+      current_app_user&.dig("mobile_no")
+    )
+    record_values = normalized_visibility_values(
+      data["created_by_username"],
+      data["created_by_name"],
+      data["created_by_email"],
+      data["trainer_name"],
+      data["trainer_contact"]
+    )
+
+    (current_values & record_values).any?
   end
 
   def prepare_lg_directory_data
@@ -4696,9 +4760,10 @@ class ModulesController < ApplicationController
   end
 
   def module_record_visible_for_current_context?(record)
-    return true unless record&.module_slug == "jeevika-jankar-bill-process" || record_source_slug == "jeevika-jankar-bill-process"
+    return jeevika_jankar_bill_record_visible?(record) if record&.module_slug == "jeevika-jankar-bill-process" || record_source_slug == "jeevika-jankar-bill-process"
+    return target_record_visible?(record) if TARGET_RECORD_MODULE_SLUGS.include?(record&.module_slug) || target_record_source?
 
-    jeevika_jankar_bill_record_visible?(record)
+    true
   end
 
   def jeevika_bill_vrp_for_visibility(record)
@@ -4789,6 +4854,7 @@ class ModulesController < ApplicationController
   end
 
   def normalize_training_form_data(data)
+    stamp_target_record_creator!(data)
     trainer_name, trainer_contact = training_trainer_defaults
     data["trainer_name"] = trainer_name if trainer_name.present?
     data["trainer_contact"] = trainer_contact if trainer_contact.present?
@@ -4798,6 +4864,13 @@ class ModulesController < ApplicationController
     data["sub_activity"] = data["sub_activity"].presence || data["training_subject"].presence
     data["training_topic"] = data["main_activity"] if data["main_activity"].present?
     data["training_subject"] = data["sub_activity"] if data["sub_activity"].present?
+
+    if (mapping = training_target_match(data))
+      data["target_mapping_id"] = mapping[:target_mapping_id]
+      data["jeevika_jankar_id"] = mapping[:vrp_id]
+      data["jeevika_jankar_name"] = mapping[:jeevika_jankar_name]
+      data["jeevika_jankar_contact"] = mapping[:contact_number]
+    end
 
     selected_farmer_ids = Array(data["selected_farmer_ids"]).map(&:to_s).reject(&:blank?).uniq
     if training_form_activity_scope_present?(data)
@@ -4812,6 +4885,7 @@ class ModulesController < ApplicationController
   end
 
   def normalize_seed_distribution_target_data(data)
+    stamp_target_record_creator!(data)
     data["main_activity_type"] = "Other"
     data["training_topic"] = data["training_topic"].presence || data["main_activity"].presence
     data["training_subject"] = data["training_subject"].presence || data["sub_activity"].presence
@@ -4844,6 +4918,31 @@ class ModulesController < ApplicationController
     data["target"] = numeric_string(data["target"]) if data["target"].present?
     data.delete("status")
     data
+  end
+
+  def stamp_target_record_creator!(data)
+    user = current_app_user || {}
+    data["created_by_record_type"] = data["created_by_record_type"].presence || user["record_type"].to_s
+    data["created_by_id"] = data["created_by_id"].presence || user["id"].to_s
+    data["created_by_username"] = data["created_by_username"].presence || user["username"].presence || user["user_name"].to_s
+    data["created_by_name"] = data["created_by_name"].presence || user["name"].to_s
+    data["created_by_email"] = data["created_by_email"].presence || user["email"].to_s
+  end
+
+  def training_target_match(data)
+    selected_month = normalize_dashboard_text(data["month"])
+    selected_ics = normalize_dashboard_text(data["ics_block"].presence || data["ics"])
+    selected_village = normalize_dashboard_text(data["gram_name"].presence || data["village"])
+    selected_main_activity = normalize_dashboard_text(data["main_activity"].presence || data["training_topic"])
+    selected_sub_activity = normalize_dashboard_text(data["sub_activity"].presence || data["training_subject"])
+
+    training_target_mappings.find do |mapping|
+      normalize_dashboard_text(mapping[:month]) == selected_month &&
+        normalize_dashboard_text(mapping[:ics]) == selected_ics &&
+        normalize_dashboard_text(mapping[:village]) == selected_village &&
+        normalize_dashboard_text(mapping[:main_activity]) == selected_main_activity &&
+        normalize_dashboard_text(mapping[:sub_activity]) == selected_sub_activity
+    end
   end
 
   def seed_distribution_target_match(data)
