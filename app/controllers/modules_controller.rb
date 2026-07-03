@@ -27,6 +27,7 @@ class ModulesController < ApplicationController
 
   APPROVAL_REGISTRATION_MODULES = ["Farmer Registration", "VRP Registration", "Jeevika Jankar Registration"].freeze
   OTHER_TARGET_MODULE_SLUGS = ["seed-distribution-target", "papl360-target"].freeze
+  JEEVIKA_JANKAR_BILL_FIXED_TOTAL = 5000.0
   DASHBOARD_CARDS = [
     ["Total VRP", "0", "Registered field resources"],
     ["Active VRP", "0", "Currently active"],
@@ -3566,7 +3567,7 @@ class ModulesController < ApplicationController
         activity_names: summary[:activity_names].presence || "-",
         target: data["total_target"].presence || "0",
         achievement: data["total_achievement"].presence || "0",
-        amount: data["grand_total"].presence || "0.00"
+        amount: jeevika_jankar_bill_total_payment(record)
       }
     end
   end
@@ -3580,7 +3581,7 @@ class ModulesController < ApplicationController
   def jeevika_bill_summary(record)
     data = record&.data || {}
     items = jeevika_bill_detail_rows(record)
-    amount = data["grand_total"].presence || items.sum { |item| item["amount"].to_f }
+    amount = jeevika_jankar_bill_total_payment(record)
     deduction = data["deduction_amount"].presence || data["deduction"].presence
     payable = amount.to_f - deduction.to_f
 
@@ -3594,6 +3595,12 @@ class ModulesController < ApplicationController
       deduction_amount: deduction,
       total_payable: payable
     }
+  end
+
+  def jeevika_jankar_bill_total_payment(record = nil)
+    return format("%.2f", JEEVIKA_JANKAR_BILL_FIXED_TOTAL) if record.blank? || record.module_slug == "jeevika-jankar-bill-process"
+
+    record.data["grand_total"].presence || "0.00"
   end
 
   def jeevika_bill_attachment_rows(record)
@@ -3704,12 +3711,81 @@ class ModulesController < ApplicationController
   def jeevika_bill_approval_steps(record)
     return [] unless model_ready?(:ModuleRecord)
 
-    ModuleRecord
+    steps = ModuleRecord
       .where(module_slug: "approval-master")
       .order(created_at: :asc)
       .select { |step| active_module_record?(step) }
       .select { |step| ["Jeevika Jankar Bill", "VRP Bill"].any? { |name| dashboard_value_matches?(step.data["module_name"], name) } }
+      .sort_by { |step| [approval_sequence_from_level(step.data["approval_level"]), step.created_at&.to_i || 0, step.id || 0] }
+
+    matching_steps = steps.select { |step| jeevika_bill_approval_step_matches_bill?(step, record) }
+    steps = matching_steps if matching_steps.any?
+
+    steps
+      .uniq { |step| [approval_sequence_from_level(step.data["approval_level"]), normalize_dashboard_user_label(step.data["approver_approved_by"])] }
+      .group_by { |step| approval_sequence_from_level(step.data["approval_level"]) }
+      .values
+      .map(&:first)
       .sort_by { |step| approval_sequence_from_level(step.data["approval_level"]) }
+  end
+
+  def jeevika_bill_approval_step_matches_bill?(step, record)
+    identities = jeevika_bill_approval_identities(record)
+    return false if identities.blank?
+
+    identities.any? do |identity|
+      dashboard_value_matches?(step.data["stakeholder_name"], identity[:stakeholder]) &&
+        approval_identity_filters_match?(step, identity)
+    end
+  end
+
+  def jeevika_bill_approval_identities(record)
+    identities = []
+    vrp = jeevika_bill_vrp(record)
+    identities.concat(vrp_creator_identities_for_dashboard(vrp)) if vrp
+    identities << current_bill_creator_identity(record)
+    identities.compact.uniq
+  end
+
+  def current_bill_creator_identity(record)
+    data = record.data
+    return if data["created_by_id"].blank? && data["created_by_username"].blank? && data["created_by_name"].blank?
+
+    user = bill_creator_user(data)
+    return user_dashboard_identity(user) if user
+
+    legacy_record = bill_creator_module_record(data)
+    return record_dashboard_identity(legacy_record) if legacy_record
+
+    {
+      role: nil,
+      stakeholder: nil,
+      stakeholder_role: nil,
+      user_management_role: nil,
+      person_type: nil,
+      office: nil,
+      office_category: nil,
+      user_name: data["created_by_username"],
+      user_names: [data["created_by_username"], data["created_by_name"]]
+    }
+  end
+
+  def bill_creator_user(data)
+    return unless model_ready?(:User)
+
+    User.find_by(id: data["created_by_id"]) ||
+      User.find_by(user_name: data["created_by_username"]) ||
+      User.find_by(email: data["created_by_email"])
+  end
+
+  def bill_creator_module_record(data)
+    return unless model_ready?(:ModuleRecord)
+
+    ModuleRecord.where(module_slug: "new-user").find_by(id: data["created_by_id"]) ||
+      ModuleRecord.where(module_slug: "new-user").detect do |record|
+        record.data["user_name"].to_s == data["created_by_username"].to_s ||
+          record.data["email"].to_s.casecmp(data["created_by_email"].to_s).zero?
+      end
   end
 
   def jeevika_bill_approval_history(record)
@@ -4538,7 +4614,6 @@ class ModulesController < ApplicationController
 
     total_target = bill_items.sum { |item| item["target_quantity"].to_f }
     total_achievement = bill_items.sum { |item| item["achievement_count"].to_f }
-    grand_total = bill_items.sum { |item| item["amount"].to_f }
 
     data["invoice_no"] = data["invoice_no"].presence || generated_jeevika_jankar_invoice_no
     data["invoice_date"] = data["invoice_date"].presence || Date.current.to_s
@@ -4548,7 +4623,7 @@ class ModulesController < ApplicationController
     data["bill_items"] = bill_items
     data["total_target"] = dashboard_quantity(total_target)
     data["total_achievement"] = dashboard_quantity(total_achievement)
-    data["grand_total"] = format("%.2f", grand_total)
+    data["grand_total"] = format("%.2f", JEEVIKA_JANKAR_BILL_FIXED_TOTAL)
     data["status"] = data["status"].presence || "Submitted (Not sent for approval)"
     data["record_state"] = data["record_state"].presence || "Active"
     data

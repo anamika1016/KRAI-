@@ -2064,7 +2064,7 @@ body {
 }
 
 .jeevika-bill-table {
-  min-width: 1180px;
+  min-width: 1320px;
 }
 
 .jeevika-bill-table input {
@@ -2074,6 +2074,20 @@ body {
   border-radius: 6px;
   padding: 7px 9px;
   font: inherit;
+}
+
+.jeevika-bill-table th:nth-child(8),
+.jeevika-bill-table th:nth-child(9),
+.jeevika-bill-table td:nth-child(8),
+.jeevika-bill-table td:nth-child(9) {
+  min-width: 150px;
+}
+
+.jeevika-bill-table input[data-jeevika-rate],
+.jeevika-bill-table input[data-jeevika-amount] {
+  min-width: 140px;
+  min-height: 44px;
+  padding-inline: 12px;
 }
 
 .jeevika-farmer-details summary {
