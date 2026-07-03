@@ -639,6 +639,10 @@ class ModulesController < ApplicationController
   def edit
     load_module!
     @record = ModuleRecord.find(params[:id])
+    unless module_record_visible_for_current_context?(@record)
+      redirect_to module_path(module_redirect_slug), alert: "You are not allowed to view this record."
+      return
+    end
     @records = module_records
     prepare_approval_channel_form(@record) if record_source_slug == "approval-master"
     prepare_vrp_bill_data if @slug == "vrp-bill-add"
@@ -734,7 +738,12 @@ class ModulesController < ApplicationController
 
   def destroy
     load_module!
-    ModuleRecord.find(params[:id]).destroy
+    record = ModuleRecord.find(params[:id])
+    unless module_record_visible_for_current_context?(record)
+      redirect_to module_path(@slug), alert: "You are not allowed to delete this record.", status: :see_other
+      return
+    end
+    record.destroy
     redirect_to module_path(@slug), notice: "#{@module[:title]} deleted successfully.", status: :see_other
   end
 
@@ -881,6 +890,7 @@ class ModulesController < ApplicationController
     unless ["jeevika-jankar-bill-process", "jeevika-jankar-bill-list"].include?(record.module_slug) || record_source_slug == "jeevika-jankar-bill-process"
       redirect_to module_path(@slug), alert: "Send for approval is available only for Jeevika Jankar bills." and return
     end
+    redirect_to module_path("jeevika-jankar-bill-list"), alert: "You are not allowed to view this bill." and return unless jeevika_jankar_bill_record_visible?(record)
 
     step = jeevika_bill_approval_steps(record).first
     redirect_to module_path("jeevika-jankar-bill-list"), alert: "Please create Jeevika Jankar Bill approval channel first." and return unless step
@@ -893,6 +903,7 @@ class ModulesController < ApplicationController
   def set_bill_state
     load_module!
     record = ModuleRecord.find(params[:id])
+    redirect_to module_path("jeevika-jankar-bill-list"), alert: "You are not allowed to update this bill." and return unless jeevika_jankar_bill_record_visible?(record)
     state = params[:state].presence_in(["Active", "Inactive"]) || "Active"
     record.update!(data: record.data.merge("record_state" => state))
     redirect_to module_path("jeevika-jankar-bill-list"), notice: "Bill marked #{state}."
@@ -913,6 +924,7 @@ class ModulesController < ApplicationController
   def download_bill
     load_module!
     @record = ModuleRecord.find(params[:id])
+    redirect_to module_path("jeevika-jankar-bill-list"), alert: "You are not allowed to view this bill." and return unless jeevika_jankar_bill_record_visible?(@record)
     @bill_print_mode = true
     @records = []
     render :show, layout: "bill_print"
@@ -3514,7 +3526,14 @@ class ModulesController < ApplicationController
   end
 
   def prepare_jeevika_jankar_bill_list
-    @bill_detail_record = ModuleRecord.find_by(id: params[:view_id]) if params[:view_id].present?
+    return if params[:view_id].blank?
+
+    record = ModuleRecord.find_by(id: params[:view_id])
+    if record.present? && jeevika_jankar_bill_record_visible?(record)
+      @bill_detail_record = record
+    else
+      flash.now[:alert] = "You are not allowed to view this bill."
+    end
   end
 
   def jeevika_bill_rows(records)
@@ -3723,6 +3742,7 @@ class ModulesController < ApplicationController
   def update_bill_approval(action)
     load_module!
     record = ModuleRecord.find(params[:id])
+    redirect_to module_path("jeevika-jankar-bill-list"), alert: "You are not allowed to update this bill." and return unless jeevika_jankar_bill_record_visible?(record)
     step = jeevika_bill_current_approval_step(record)
     redirect_to module_path("jeevika-jankar-bill-list", view_id: record.id), alert: "Approval channel not found." and return unless step
     redirect_to module_path("jeevika-jankar-bill-list", view_id: record.id), alert: "Please enter remarks." and return if params[:remarks].to_s.strip.blank?
@@ -4494,6 +4514,8 @@ class ModulesController < ApplicationController
   end
 
   def normalize_jeevika_jankar_bill_data(data)
+    stamp_jeevika_jankar_bill_creator!(data)
+
     bill_items = data["bill_items"]
     bill_items = bill_items.values if bill_items.is_a?(Hash)
     bill_items = Array(bill_items).filter_map do |item|
@@ -4530,6 +4552,15 @@ class ModulesController < ApplicationController
     data["status"] = data["status"].presence || "Submitted (Not sent for approval)"
     data["record_state"] = data["record_state"].presence || "Active"
     data
+  end
+
+  def stamp_jeevika_jankar_bill_creator!(data)
+    user = current_app_user || {}
+    data["created_by_record_type"] = data["created_by_record_type"].presence || user["record_type"].to_s
+    data["created_by_id"] = data["created_by_id"].presence || user["id"].to_s
+    data["created_by_username"] = data["created_by_username"].presence || user["username"].presence || user["user_name"].to_s
+    data["created_by_name"] = data["created_by_name"].presence || user["name"].to_s
+    data["created_by_email"] = data["created_by_email"].presence || user["email"].to_s
   end
 
   def jeevika_jankar_vrp_label(vrp_id)
@@ -4573,14 +4604,96 @@ class ModulesController < ApplicationController
   end
 
   def jeevika_jankar_bill_record_visible?(record)
-    if module_mapped_vrp_scope_active?
-      return module_cluster_visible_vrp_ids.map(&:to_s).include?(record.data["select_vrp"].to_s)
-    end
+    return true if admin_dashboard_user?
+    return false unless record&.data.present?
+    return true if jeevika_bill_created_by_current_user?(record)
+    return true if jeevika_bill_pending_for_current_approver?(record)
 
-    return true unless vrp_login_user?
-    return false unless current_vrp_record.present?
+    vrp = jeevika_bill_vrp_for_visibility(record)
+    return false unless vrp
 
-    record.data["select_vrp"].to_s == current_vrp_record.id.to_s
+    return vrp.id.to_s == current_vrp_record&.id.to_s if vrp_login_user?
+    return true if jeevika_bill_vrp_registered_by_current_user?(vrp)
+    return true if jeevika_bill_vrp_office_visible?(vrp)
+    return true if module_cluster_visible_vrp_ids.map(&:to_s).include?(vrp.id.to_s)
+
+    false
+  end
+
+  def module_record_visible_for_current_context?(record)
+    return true unless record&.module_slug == "jeevika-jankar-bill-process" || record_source_slug == "jeevika-jankar-bill-process"
+
+    jeevika_jankar_bill_record_visible?(record)
+  end
+
+  def jeevika_bill_vrp_for_visibility(record)
+    vrp_id = record.data["select_vrp"].presence || record.data["vrp_id"].presence || record.data["jeevika_jankar_id"].presence
+    return if vrp_id.blank? || !model_ready?(:Vrp)
+
+    @jeevika_bill_visibility_vrp_cache ||= {}
+    @jeevika_bill_visibility_vrp_cache[vrp_id.to_s] ||= Vrp.find_by(id: vrp_id)
+  end
+
+  def jeevika_bill_created_by_current_user?(record)
+    data = record.data
+    current_ids = dashboard_current_app_user_ids.map(&:to_s)
+    return true if data["created_by_id"].present? && current_ids.include?(data["created_by_id"].to_s)
+
+    current_user_values = normalized_visibility_values(
+      current_app_user&.dig("username"),
+      current_app_user&.dig("user_name"),
+      current_app_user&.dig("name"),
+      current_app_user&.dig("email")
+    )
+    creator_values = normalized_visibility_values(
+      data["created_by_username"],
+      data["created_by_name"],
+      data["created_by_email"]
+    )
+    (current_user_values & creator_values).any?
+  end
+
+  def jeevika_bill_pending_for_current_approver?(record)
+    jeevika_bill_status_label(record).to_s.downcase.include?("pending") && jeevika_bill_current_approver?(record)
+  end
+
+  def jeevika_bill_vrp_registered_by_current_user?(vrp)
+    current_ids = dashboard_current_app_user_ids.map(&:to_s)
+    return true if vrp.created_by_id.present? && current_ids.include?(vrp.created_by_id.to_s)
+    return true if vrp.respond_to?(:user_id) && vrp.user_id.present? && current_ids.include?(vrp.user_id.to_s)
+
+    false
+  end
+
+  def jeevika_bill_vrp_office_visible?(vrp)
+    vrp_fcoc_values = normalized_visibility_values(vrp.fcoc)
+    vrp_to_values = normalized_visibility_values(vrp.to_name)
+    current_fcoc_values = normalized_visibility_values(
+      current_app_user&.dig("fcoc"),
+      current_app_user&.dig("fcoc_name"),
+      current_app_user&.dig("office_category"),
+      current_app_user&.dig("office_name"),
+      current_app_user&.dig("parent_office")
+    )
+    current_to_values = normalized_visibility_values(
+      current_app_user&.dig("sub_office_name"),
+      current_app_user&.dig("office"),
+      current_app_user&.dig("office_name")
+    )
+
+    return true if vrp_fcoc_values.any? && (vrp_fcoc_values & current_fcoc_values).any?
+    return true if vrp_to_values.any? && (vrp_to_values & current_to_values).any?
+
+    false
+  end
+
+  def normalized_visibility_values(*values)
+    Array(values)
+      .flatten
+      .compact_blank
+      .map { |value| normalize_dashboard_user_label(value) }
+      .reject(&:blank?)
+      .uniq
   end
 
   def parse_bill_farmer_details(value)
