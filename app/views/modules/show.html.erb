@@ -815,25 +815,26 @@
       data-jeevika-jankar-bill
       data-bill-rows="<%= json_escape(@jeevika_jankar_bill_rows.to_json) %>"
       data-achievement-summary="<%= json_escape(@jeevika_jankar_achievement_summary.to_json) %>"
-      data-saved-items="<%= json_escape(@jeevika_jankar_saved_items.to_json) %>">
+      data-saved-items="<%= json_escape(@jeevika_jankar_saved_items.to_json) %>"
+      data-existing-bills="<%= json_escape(@jeevika_jankar_existing_bills.to_json) %>">
       <%= form_with url: form_url, method: form_method, html: { class: "module-entry-form" } do %>
         <div class="module-form-grid user-registration-grid">
-          <label>
-            <span>Jeevika Jankar Name <em>*</em></span>
-            <select name="module_record[select_vrp]" data-jeevika-vrp-select required>
-              <option value="">Select Jeevika Jankar Name</option>
-              <% @jeevika_jankar_vrp_options.each do |label, value| %>
-                <option value="<%= value %>" <%= "selected" if @record&.data&.[]("select_vrp").to_s == value.to_s %>><%= label %></option>
-              <% end %>
-            </select>
-          </label>
-
           <label>
             <span>Bill Month <em>*</em></span>
             <select name="module_record[bill_month]" data-jeevika-month-select required>
               <option value="">Select Month</option>
               <% @jeevika_jankar_month_options.each do |option| %>
                 <option value="<%= option %>" <%= "selected" if @record&.data&.[]("bill_month").to_s == option.to_s %>><%= option %></option>
+              <% end %>
+            </select>
+          </label>
+
+          <label>
+            <span>Jeevika Jankar Name <em>*</em></span>
+            <select name="module_record[select_vrp]" data-jeevika-vrp-select required>
+              <option value="">Select Bill Month first</option>
+              <% @jeevika_jankar_vrp_options.each do |label, value| %>
+                <option value="<%= value %>" <%= "selected" if @record&.data&.[]("select_vrp").to_s == value.to_s %>><%= label %></option>
               <% end %>
             </select>
           </label>
@@ -1618,7 +1619,8 @@
               <% field_value = training_trainee_department_default if field == "Trainee Department" %>
               <% field_value = current_app_user&.dig("name").to_s if field == "Trainer Name" %>
               <% field_value = current_app_user&.dig("mobile_no").to_s if field == "Trainer Contact" %>
-              <% field_value = selected_training_farmer_ids.size.to_s if field == "Farmer Count" && selected_training_farmer_ids.present? %>
+              <% field_value = (selected_training_farmer_ids || []).size.to_s if field == "Farmer Count" %>
+              <% field_value = ((@record&.data&.[]("male_count").to_s.to_i + @record&.data&.[]("female_count").to_s.to_i).to_s) if field == "Total Farmer Count" && @record.present? %>
             <% end %>
             <% if other_target_form && field == "Contact Number" && field_value.blank? %>
               <% field_value = @record&.data&.[]("jeevika_jankar_contact").to_s %>
@@ -1636,7 +1638,8 @@
               <% field_value = Date.current.to_s %>
             <% end %>
             <% form_required = @slug == "training-form" || other_target_form %>
-            <% required_attr = form_required ? "required" : nil %>
+            <% field_required = form_required && !(@slug == "training-form" && field == "New Farmer Count") %>
+            <% required_attr = field_required ? "required" : nil %>
             <label>
               <span>
                 <%= resource_person_label(field) %>
@@ -1728,8 +1731,17 @@
                 <input name="module_record[<%= field_key %>]" type="password" placeholder="Enter <%= field %>" value="<%= field_value %>" <%= required_attr %>>
               <% elsif field.downcase.include?("date") %>
                 <input name="module_record[<%= field_key %>]" type="date" value="<%= field_value %>" <%= required_attr %>>
-              <% elsif @slug == "training-form" && ["Farmer Count", "Male Count", "Female Count"].include?(field) %>
-                <input name="module_record[<%= field_key %>]" type="number" min="0" step="1" placeholder="Enter <%= resource_person_label(field) %>" value="<%= field_value %>" <%= required_attr %> <%= "readonly" if field == "Farmer Count" %> <%= "data-training-farmer-count-input" if field == "Farmer Count" %>>
+              <% elsif @slug == "training-form" && ["Farmer Count", "New Farmer Count", "Male Count", "Female Count", "Total Farmer Count"].include?(field) %>
+                <% training_count_attr =
+                  case field
+                  when "Farmer Count"
+                    "data-training-farmer-count-input readonly"
+                  when "New Farmer Count"
+                    "data-training-new-farmer-count-input"
+                  when "Total Farmer Count"
+                    "data-training-total-farmer-count-input readonly"
+                  end %>
+                <input name="module_record[<%= field_key %>]" type="number" min="0" step="1" placeholder="Enter <%= resource_person_label(field) %>" value="<%= field_value %>" <%= required_attr %> <%= training_count_attr&.html_safe %>>
               <% elsif other_target_form && field == "Farmer Count" %>
                 <input name="module_record[<%= field_key %>]" type="number" min="0" step="1" placeholder="Selected Farmer Count" value="<%= field_value %>" data-seed-farmer-count-input readonly required>
               <% elsif other_target_form && field == "Contact Number" %>

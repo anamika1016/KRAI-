@@ -112,8 +112,10 @@ class ModulesController < ApplicationController
         "Sub Activity",
         "Training Description",
         "Farmer Count",
+        "New Farmer Count",
         "Male Count",
         "Female Count",
+        "Total Farmer Count",
         "Next Farmer Training Date",
         "Training Register Upload",
         "Training Photo Upload with Geo Tag"
@@ -133,6 +135,8 @@ class ModulesController < ApplicationController
         "Main Activity",
         "Sub Activity",
         "Farmer Count",
+        "New Farmer Count",
+        "Total Farmer Count",
         "Selected Farmers",
         "Male Count",
         "Female Count",
@@ -358,7 +362,7 @@ class ModulesController < ApplicationController
       title: "Jeevika Jankar Bill Process",
       group: "Jeevika Jankar Bill",
       purpose: "Approved VRP ke target, achievement, farmer training aur invoice wise timesheet generate karne ke liye.",
-      fields: ["Jeevika Jankar Name", "Bill Month", "Total Target", "Total Achievement"]
+      fields: ["Bill Month", "Jeevika Jankar Name", "Total Target", "Total Achievement"]
     },
     "jeevika-jankar-bill-list" => {
       title: "Jeevika Jankar Bill List",
@@ -3126,7 +3130,10 @@ class ModulesController < ApplicationController
   def approval_user_name_matches?(expected, actual)
     return true if expected.blank?
 
-    Array(actual).compact_blank.any? { |value| dashboard_value_matches?(expected, value) }
+    Array(actual).compact_blank.any? do |value|
+      dashboard_value_matches?(expected, value) ||
+        dashboard_user_label_matches?(expected, [value])
+    end
   end
 
   def identity_user_name_values(identity)
@@ -3588,6 +3595,7 @@ class ModulesController < ApplicationController
     @jeevika_jankar_bill_rows = jeevika_jankar_bill_rows
     @jeevika_jankar_achievement_summary = jeevika_jankar_achievement_summary(@jeevika_jankar_bill_rows)
     @jeevika_jankar_saved_items = jeevika_jankar_saved_items
+    @jeevika_jankar_existing_bills = jeevika_jankar_existing_bill_keys
   end
 
   def prepare_jeevika_jankar_bill_list
@@ -3744,7 +3752,13 @@ class ModulesController < ApplicationController
   end
 
   def jeevika_bill_status_label(record)
-    record.data["status"].presence || "Submitted (Not sent for approval)"
+    status = record.data["status"].presence || "Submitted (Not sent for approval)"
+    if status.to_s.downcase.include?("pending")
+      step = jeevika_bill_current_approval_step(record)
+      return step ? "Pending at #{step.data["approver_approved_by"]}" : "Approval channel not configured"
+    end
+
+    status
   end
 
   def jeevika_bill_status_class(record)
@@ -3782,14 +3796,11 @@ class ModulesController < ApplicationController
       .select { |step| ["Jeevika Jankar Bill", "VRP Bill"].any? { |name| dashboard_value_matches?(step.data["module_name"], name) } }
       .sort_by { |step| [approval_sequence_from_level(step.data["approval_level"]), step.created_at&.to_i || 0, step.id || 0] }
 
-    matching_steps = steps.select { |step| jeevika_bill_approval_step_matches_bill?(step, record) }
-    steps = matching_steps if matching_steps.any?
-
     steps
-      .uniq { |step| [approval_sequence_from_level(step.data["approval_level"]), normalize_dashboard_user_label(step.data["approver_approved_by"])] }
+      .select { |step| jeevika_bill_approval_step_matches_bill?(step, record) }
       .group_by { |step| approval_sequence_from_level(step.data["approval_level"]) }
       .values
-      .map(&:first)
+      .map { |records| records.max_by { |step| approval_record_priority(step) } }
       .sort_by { |step| approval_sequence_from_level(step.data["approval_level"]) }
   end
 
@@ -3875,8 +3886,8 @@ class ModulesController < ApplicationController
       current_app_user&.dig("username"),
       current_app_user&.dig("user_name"),
       current_app_user&.dig("name")
-    ].map { |value| normalize_approval_label(value) }.reject(&:blank?)
-    current_labels.include?(normalize_approval_label(step.data["approver_approved_by"]))
+    ].compact_blank
+    dashboard_user_label_matches?(step.data["approver_approved_by"], current_labels)
   end
 
   def update_bill_approval(action)
@@ -3885,6 +3896,7 @@ class ModulesController < ApplicationController
     redirect_to module_path("jeevika-jankar-bill-list"), alert: "You are not allowed to update this bill." and return unless jeevika_jankar_bill_record_visible?(record)
     step = jeevika_bill_current_approval_step(record)
     redirect_to module_path("jeevika-jankar-bill-list", view_id: record.id), alert: "Approval channel not found." and return unless step
+    redirect_to module_path("jeevika-jankar-bill-list", view_id: record.id), alert: "This bill is not pending for your approval." and return unless jeevika_bill_current_approver?(record)
     redirect_to module_path("jeevika-jankar-bill-list", view_id: record.id), alert: "Please enter remarks." and return if params[:remarks].to_s.strip.blank?
 
     if ["Rejected", "Returned"].include?(action)
@@ -4091,6 +4103,32 @@ class ModulesController < ApplicationController
     raw_items = @record&.data&.[]("bill_items")
     raw_items = raw_items.values if raw_items.is_a?(Hash)
     Array(raw_items).select { |item| item.respond_to?(:[]) }
+  end
+
+  def jeevika_jankar_existing_bill_keys
+    return [] unless model_ready?(:ModuleRecord)
+
+    ModuleRecord
+      .where(module_slug: "jeevika-jankar-bill-process")
+      .order(created_at: :desc)
+      .select { |record| jeevika_jankar_bill_blocks_duplicate?(record) }
+      .map do |record|
+        {
+          id: record.id.to_s,
+          vrp_id: record.data["select_vrp"].to_s,
+          month: record.data["bill_month"].to_s
+        }
+      end
+      .reject { |item| item[:vrp_id].blank? || item[:month].blank? }
+  end
+
+  def jeevika_jankar_bill_blocks_duplicate?(record)
+    return false if record.id.to_s == params[:id].to_s
+    return false if truthy_module_flag?(record.data["deleted"]) ||
+      truthy_module_flag?(record.data["is_deleted"]) ||
+      truthy_module_flag?(record.data["discarded"])
+
+    record.data["record_state"].to_s.casecmp("Inactive") != 0
   end
 
   def approved_other_target_achievement_index
@@ -4879,7 +4917,9 @@ class ModulesController < ApplicationController
     end
     data["selected_farmer_ids"] = selected_farmer_ids
     data["selected_farmer_names"] = training_farmer_names(selected_farmer_ids)
-    data["farmer_count"] = selected_farmer_ids.size.to_s if selected_farmer_ids.any?
+    data["farmer_count"] = selected_farmer_ids.size.to_s
+    data["new_farmer_count"] = numeric_string(data["new_farmer_count"]) if data["new_farmer_count"].present?
+    data["total_farmer_count"] = training_total_farmer_count(data).to_s if training_total_farmer_count(data)
     data.delete("status")
     data
   end
@@ -5039,6 +5079,14 @@ class ModulesController < ApplicationController
     Afl.where(id: farmer_ids)
       .order(:farmer_name, :id)
       .map { |farmer| farmer.farmer_name.presence || "Farmer ##{farmer.id}" }
+  end
+
+  def training_total_farmer_count(data)
+    male_count = whole_number_value(data["male_count"])
+    female_count = whole_number_value(data["female_count"])
+    return nil unless male_count && female_count
+
+    male_count + female_count
   end
 
   def normalize_user_hierarchy_mappings(data)
@@ -5361,6 +5409,8 @@ class ModulesController < ApplicationController
       data["password"].to_s == data["confirmed_password"].to_s ? [] : ["Password and Confirmed Password must match."]
     when "training-form"
       training_form_error_messages(data)
+    when "jeevika-jankar-bill-process"
+      jeevika_jankar_bill_error_messages(data)
     when *OTHER_TARGET_MODULE_SLUGS
       seed_distribution_target_error_messages(data)
     else
@@ -5381,7 +5431,6 @@ class ModulesController < ApplicationController
       "main_activity" => "Main Activity",
       "sub_activity" => "Sub Activity",
       "training_description" => "Training Description",
-      "farmer_count" => "Farmer Count",
       "male_count" => "Male Count",
       "female_count" => "Female Count",
       "next_farmer_training_date" => "Next Farmer Training Date",
@@ -5391,29 +5440,59 @@ class ModulesController < ApplicationController
 
     errors = missing_required_data_errors(data, required_fields)
     selected_farmer_ids = Array(data["selected_farmer_ids"]).map(&:to_s).reject(&:blank?).uniq
-    errors << "Target Farmers select karein." if selected_farmer_ids.blank?
 
-    farmer_count = whole_number_value(data["farmer_count"])
+    farmer_count = whole_number_value(data["farmer_count"].presence || "0")
+    new_farmer_count = whole_number_value(data["new_farmer_count"].presence || "0")
     male_count = whole_number_value(data["male_count"])
     female_count = whole_number_value(data["female_count"])
-    errors << "Farmer Count valid whole number hona chahiye." if farmer_count.nil?
+    total_farmer_count = whole_number_value(data["total_farmer_count"].presence || training_total_farmer_count(data).to_s)
+    expected_total_count = farmer_count.to_i + new_farmer_count.to_i
+
+    errors << "Target Farmers select karein ya New Farmer Count enter karein." if selected_farmer_ids.blank? && new_farmer_count.to_i.zero?
+    errors << "AFL Farmer Count valid whole number hona chahiye." if farmer_count.nil?
+    errors << "New Farmer Count valid whole number hona chahiye." if new_farmer_count.nil?
     errors << "Male Count valid whole number hona chahiye." if male_count.nil?
     errors << "Female Count valid whole number hona chahiye." if female_count.nil?
-
-    if farmer_count && male_count && male_count > farmer_count
-      errors << "Male Count Farmer Count se jyada nahi ho sakta."
-    end
-
-    if farmer_count && female_count && female_count > farmer_count
-      errors << "Female Count Farmer Count se jyada nahi ho sakta."
-    end
+    errors << "Total Farmer Count valid whole number hona chahiye." if total_farmer_count.nil?
 
     if farmer_count && selected_farmer_ids.any? && farmer_count != selected_farmer_ids.size
-      errors << "Farmer Count selected farmers ke count ke equal hona chahiye."
+      errors << "AFL Farmer Count selected farmers ke count ke equal hona chahiye."
     end
 
-    if farmer_count && male_count && female_count && farmer_count != male_count + female_count
-      errors << "Male Count aur Female Count ka total Farmer Count ke equal hona chahiye."
+    if expected_total_count.positive? && male_count && male_count > expected_total_count
+      errors << "Male Count total farmers se jyada nahi ho sakta."
+    end
+
+    if expected_total_count.positive? && female_count && female_count > expected_total_count
+      errors << "Female Count total farmers se jyada nahi ho sakta."
+    end
+
+    if expected_total_count.positive? && total_farmer_count && total_farmer_count != expected_total_count
+      errors << "Male Count aur Female Count ka total AFL Farmer Count + New Farmer Count ke equal hona chahiye."
+    end
+
+    errors
+  end
+
+  def jeevika_jankar_bill_error_messages(data)
+    errors = missing_required_data_errors(
+      data,
+      "bill_month" => "Bill Month",
+      "select_vrp" => "Jeevika Jankar Name"
+    )
+    return errors if errors.any?
+
+    duplicate = ModuleRecord
+      .where(module_slug: "jeevika-jankar-bill-process")
+      .detect do |record|
+        jeevika_jankar_bill_blocks_duplicate?(record) &&
+          normalize_dashboard_text(record.data["select_vrp"]) == normalize_dashboard_text(data["select_vrp"]) &&
+          normalize_dashboard_text(record.data["bill_month"]) == normalize_dashboard_text(data["bill_month"])
+      end
+
+    if duplicate
+      name = jeevika_jankar_display_name(data["select_vrp_name"].presence || jeevika_jankar_vrp_label(data["select_vrp"])).presence || "Selected Jeevika Jankar"
+      errors << "#{name} ka #{data["bill_month"]} month ka bill already bana hua hai."
     end
 
     errors

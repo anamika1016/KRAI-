@@ -1,4 +1,29 @@
 module ApplicationHelper
+  def farmer_farm_information_select_options
+    return [] unless "FarmerFarmInformation".safe_constantize&.table_exists?
+
+    FarmerFarmInformation
+      .order(:farm_id, :farmer_name)
+      .limit(1_000)
+      .map { |record| [farmer_farm_information_option_label(record), record.id] }
+  end
+
+  def farmer_farm_information_option_label(record)
+    [record.farm_id, record.farmer_name, record.ics_name].compact_blank.join(" - ")
+  end
+
+  def linked_farmer_farm_id(record)
+    record.farmer_farm_information&.farm_id.presence || "-"
+  end
+
+  def linked_farmer_name(record)
+    record.farmer_farm_information&.farmer_name.presence || "-"
+  end
+
+  def linked_ics_name(record)
+    record.farmer_farm_information&.ics_name.presence || "-"
+  end
+
   SIDEBAR_SECTIONS = [
     {
       title: "LG Directory",
@@ -122,6 +147,13 @@ module ApplicationHelper
       ]
     },
     {
+      title: "ICS MASTER",
+      icon: "▥",
+      links: [
+        ["ICS Master", :module, "ics-master"]
+      ]
+    },
+    {
       title: "Farmer Farm Information",
       icon: "▥",
       links: [
@@ -212,7 +244,8 @@ module ApplicationHelper
       "Activity Group" => "Main Activity",
       "Activity Group Name" => "Main Activity Name",
       "Activity Name" => "Sub Activity Name",
-      "VRP Activity" => "Sub Activity"
+      "VRP Activity" => "Sub Activity",
+      "Farmer Count" => "AFL Farmer Count"
     }.fetch(label.to_s, label)
   end
 

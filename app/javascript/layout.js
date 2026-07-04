@@ -1561,6 +1561,8 @@ document.addEventListener("turbo:load", () => {
 	    const farmerSelectAllButton = formShell.querySelector("[data-training-farmer-select-all-button]");
 	    const farmerCount = formShell.querySelector("[data-training-farmer-count]");
 	    const farmerCountInput = formShell.querySelector("[data-training-farmer-count-input]");
+	    const newFarmerCountInput = formShell.querySelector("[data-training-new-farmer-count-input]");
+	    const totalFarmerCountInput = formShell.querySelector("[data-training-total-farmer-count-input]");
 	    const maleCountInput = formShell.querySelector('input[name="module_record[male_count]"]');
 	    const femaleCountInput = formShell.querySelector('input[name="module_record[female_count]"]');
 	    const geoLatitudeInput = formShell.querySelector("[data-training-geo-latitude]");
@@ -1702,19 +1704,25 @@ document.addEventListener("turbo:load", () => {
 
 	    const selectedFarmerBoxes = () => Array.from(formShell.querySelectorAll("[data-training-farmer-checkbox]:checked"));
 	    const farmerBoxes = () => Array.from(formShell.querySelectorAll("[data-training-farmer-checkbox]"));
+	    const numberValue = (input) => Number(input?.value || 0);
+
+	    const syncTotalFarmerCount = () => {
+	      if (!totalFarmerCountInput) return;
+
+	      const total = numberValue(maleCountInput) + numberValue(femaleCountInput);
+	      totalFarmerCountInput.value = total ? String(total) : "";
+	    };
 
 	    const updateFarmerCount = () => {
 	      const count = selectedFarmerBoxes().length;
 	      const boxes = farmerBoxes();
-	      if (farmerCount) farmerCount.textContent = `${count} farmer selected`;
-	      if (farmerCountInput) farmerCountInput.value = count ? String(count) : "";
+	      if (farmerCount) farmerCount.textContent = `${count} AFL farmer selected`;
+	      if (farmerCountInput) farmerCountInput.value = String(count);
       [maleCountInput, femaleCountInput].forEach((input) => {
         if (!input) return;
-        if (count > 0) {
-          input.max = String(count);
-        } else {
-          input.removeAttribute("max");
-        }
+        const totalAllowed = count + numberValue(newFarmerCountInput);
+        if (totalAllowed > 0) input.max = String(totalAllowed);
+        else input.removeAttribute("max");
       });
 	      if (farmerSelectAll) {
 	        farmerSelectAll.checked = boxes.length > 0 && count === boxes.length;
@@ -1725,38 +1733,46 @@ document.addEventListener("turbo:load", () => {
 	        farmerSelectAllButton.disabled = boxes.length === 0;
 	        farmerSelectAllButton.textContent = boxes.length > 0 && count === boxes.length ? "Clear all" : "Select all";
 	      }
+      syncTotalFarmerCount();
       validateTrainingCountSplit(false);
 	    };
 
     const validateTrainingCountSplit = (report = false) => {
-      [farmerCountInput, maleCountInput, femaleCountInput].forEach((input) => input?.setCustomValidity(""));
+      syncTotalFarmerCount();
+      [farmerCountInput, newFarmerCountInput, totalFarmerCountInput, maleCountInput, femaleCountInput].forEach((input) => input?.setCustomValidity(""));
 
       const farmerCountValue = Number(farmerCountInput?.value || 0);
+      const newFarmerCountValue = Number(newFarmerCountInput?.value || 0);
+      const expectedTotalValue = farmerCountValue + newFarmerCountValue;
       const maleBlank = !maleCountInput?.value;
       const femaleBlank = !femaleCountInput?.value;
       const maleCountValue = Number(maleCountInput?.value || 0);
       const femaleCountValue = Number(femaleCountInput?.value || 0);
+      const totalFarmerCountValue = Number(totalFarmerCountInput?.value || 0);
       let invalidInput = null;
       let message = "";
 
-      if (farmerCountValue <= 0) {
-        invalidInput = farmerCountInput;
-        message = "Target Farmers select karein.";
+      if (newFarmerCountValue < 0) {
+        invalidInput = newFarmerCountInput;
+        message = "New Farmer Count zero se kam nahi ho sakta.";
+      } else if (expectedTotalValue <= 0) {
+        invalidInput = newFarmerCountInput || farmerCountInput;
+        message = "Target Farmers select karein ya New Farmer Count enter karein.";
       } else if (maleBlank) {
         invalidInput = maleCountInput;
         message = "Male Count required hai.";
       } else if (femaleBlank) {
         invalidInput = femaleCountInput;
         message = "Female Count required hai.";
-      } else if (maleCountValue < 0 || maleCountValue > farmerCountValue) {
+      } else if (maleCountValue < 0 || maleCountValue > expectedTotalValue) {
         invalidInput = maleCountInput;
-        message = `Male Count 0 se ${farmerCountValue} ke beech hona chahiye.`;
-      } else if (femaleCountValue < 0 || femaleCountValue > farmerCountValue) {
+        message = `Male Count 0 se ${expectedTotalValue} ke beech hona chahiye.`;
+      } else if (femaleCountValue < 0 || femaleCountValue > expectedTotalValue) {
         invalidInput = femaleCountInput;
-        message = `Female Count 0 se ${farmerCountValue} ke beech hona chahiye.`;
-      } else if (maleCountValue + femaleCountValue !== farmerCountValue) {
-        invalidInput = femaleCountInput;
-        message = `Male Count aur Female Count ka total Farmer Count (${farmerCountValue}) ke equal hona chahiye.`;
+        message = `Female Count 0 se ${expectedTotalValue} ke beech hona chahiye.`;
+      } else if (totalFarmerCountValue !== expectedTotalValue) {
+        invalidInput = totalFarmerCountInput || femaleCountInput;
+        message = `Male Count aur Female Count ka total AFL Farmer Count + New Farmer Count (${expectedTotalValue}) ke equal hona chahiye.`;
       }
 
       if (!invalidInput) return true;
@@ -1975,9 +1991,15 @@ document.addEventListener("turbo:load", () => {
 	      renderTrainingFarmers();
 	    });
 
-    [maleCountInput, femaleCountInput].forEach((input) => {
-      input?.addEventListener("input", () => validateTrainingCountSplit(false));
-      input?.addEventListener("change", () => validateTrainingCountSplit(false));
+    [maleCountInput, femaleCountInput, newFarmerCountInput].forEach((input) => {
+      input?.addEventListener("input", () => {
+        updateFarmerCount();
+        validateTrainingCountSplit(false);
+      });
+      input?.addEventListener("change", () => {
+        updateFarmerCount();
+        validateTrainingCountSplit(false);
+      });
     });
 
     formShell.querySelector("form")?.addEventListener("submit", (event) => {
@@ -3683,15 +3705,18 @@ document.addEventListener("turbo:load", () => {
     const grandTotalInput = billForm.querySelector("[data-jeevika-grand-total]");
     let billRows = [];
     let savedItems = [];
+    let existingBills = [];
     let achievementSummary = {};
 
     try {
       billRows = JSON.parse(billForm.dataset.billRows || "[]");
       savedItems = JSON.parse(billForm.dataset.savedItems || "[]");
+      existingBills = JSON.parse(billForm.dataset.existingBills || "[]");
       achievementSummary = JSON.parse(billForm.dataset.achievementSummary || "{}");
     } catch (_error) {
       billRows = [];
       savedItems = [];
+      existingBills = [];
       achievementSummary = {};
     }
 
@@ -3706,6 +3731,14 @@ document.addEventListener("turbo:load", () => {
     const savedItemFor = (row) => savedItems.find((item) => String(item.target_mapping_id || "") === String(row.target_mapping_id || "")) || {};
     const rowInputs = () => Array.from(rowsBody?.querySelectorAll("tr[data-bill-row]") || []);
     const normalizedChoice = (value) => String(value || "").trim().toLowerCase().replaceAll(" ", "_");
+    const normalizedMonth = (value) => String(value || "").trim().toLowerCase();
+    const originalVrpOptions = Array.from(vrpSelect?.options || [])
+      .filter((option) => option.value)
+      .map((option) => ({ value: option.value, label: option.textContent }));
+    const billExistsFor = (vrpId, month) => {
+      const monthKey = normalizedMonth(month);
+      return existingBills.some((bill) => String(bill.vrp_id || "") === String(vrpId || "") && normalizedMonth(bill.month) === monthKey);
+    };
     const rowAchievementMode = (row) => normalizedChoice(row.achievement_entry_mode) === "self" ? "self" : "auto_fill";
     const rowMainActivityType = (row) => normalizedChoice(row.main_activity_type) === "other" ? "other" : "training";
     const automaticAchievementFor = (row, mainActivityType = rowMainActivityType(row)) => {
@@ -3713,10 +3746,49 @@ document.addEventListener("turbo:load", () => {
     };
     const selectedAchievementTotal = () => {
       const selectedVrp = String(vrpSelect?.value || "");
+      const selectedMonth = normalizedMonth(monthSelect?.value);
       if (!selectedVrp) return null;
 
-      const total = achievementSummary?.[selectedVrp]?.__all;
+      const total = selectedMonth ? achievementSummary?.[selectedVrp]?.[selectedMonth] : achievementSummary?.[selectedVrp]?.__all;
       return total === undefined || total === null ? null : numberValue(total);
+    };
+
+    const syncJeevikaVrpOptions = () => {
+      if (!vrpSelect) return;
+
+      const selectedMonth = monthSelect?.value || "";
+      const previousValue = vrpSelect.value;
+      vrpSelect.innerHTML = "";
+
+      const blank = document.createElement("option");
+      blank.value = "";
+      blank.textContent = selectedMonth ? "Select Jeevika Jankar Name" : "Select Bill Month first";
+      vrpSelect.appendChild(blank);
+
+      if (!selectedMonth) {
+        vrpSelect.value = "";
+        vrpSelect.disabled = true;
+        return;
+      }
+
+      const availableOptions = originalVrpOptions.filter((option) => !billExistsFor(option.value, selectedMonth));
+      availableOptions.forEach((optionData) => {
+        const option = document.createElement("option");
+        option.value = optionData.value;
+        option.textContent = optionData.label;
+        vrpSelect.appendChild(option);
+      });
+
+      vrpSelect.disabled = false;
+      if (availableOptions.some((option) => option.value === previousValue)) {
+        vrpSelect.value = previousValue;
+      } else {
+        vrpSelect.value = "";
+      }
+
+      if (!availableOptions.length) {
+        blank.textContent = "Selected month ke liye sabhi bills ban chuke hain";
+      }
     };
 
     const farmerDetailsHtml = (farmers) => {
@@ -3799,10 +3871,18 @@ document.addEventListener("turbo:load", () => {
       if (!rowsBody) return;
 
       const selectedVrp = String(vrpSelect?.value || "");
+      const selectedMonth = normalizedMonth(monthSelect?.value);
       const rows = billRows.filter((row) => {
         const vrpMatches = String(row.vrp_id || "") === selectedVrp;
-        return vrpMatches;
+        const monthMatches = normalizedMonth(row.month_name) === selectedMonth;
+        return vrpMatches && monthMatches;
       });
+
+      if (!selectedMonth) {
+        rowsBody.innerHTML = `<tr data-empty-bill-row><td colspan="9">Select Bill Month to load Jeevika Jankar Name.</td></tr>`;
+        recalculateJeevikaBill();
+        return;
+      }
 
       if (!selectedVrp) {
         rowsBody.innerHTML = `<tr data-empty-bill-row><td colspan="9">Select Jeevika Jankar Name to load target achievement list.</td></tr>`;
@@ -3888,10 +3968,14 @@ document.addEventListener("turbo:load", () => {
       if (rowInputs().length > 0) return;
 
       event.preventDefault();
-      window.alert("Please select Jeevika Jankar Name with target mapping.");
+      window.alert(monthSelect?.value ? "Please select Jeevika Jankar Name with target mapping." : "Please select Bill Month first.");
     });
     vrpSelect?.addEventListener("change", renderJeevikaBillRows);
-    monthSelect?.addEventListener("change", renderJeevikaBillRows);
+    monthSelect?.addEventListener("change", () => {
+      syncJeevikaVrpOptions();
+      renderJeevikaBillRows();
+    });
+    syncJeevikaVrpOptions();
     renderJeevikaBillRows();
   });
 
