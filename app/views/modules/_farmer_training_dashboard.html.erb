@@ -22,9 +22,9 @@
   <div class="training-participation-boxes">
     <% if status_cards.any? %>
       <%= link_to farmer_training_participation_path(total_status_path_params), class: "training-participation-box total", data: { dashboard_card: true } do %>
-        <span>Total Mapped Farmer</span>
+        <span>Total Training Farmer</span>
         <strong><%= status_total %></strong>
-        <small>Farmer Target Form ke selected farmers.</small>
+        <small>Farmer Training Form ke selected farmers.</small>
         <b>View List</b>
       <% end %>
       <% status_cards.each do |card| %>

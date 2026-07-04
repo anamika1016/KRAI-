@@ -22,9 +22,9 @@
   <section class="module-card training-participation-status-card">
     <div class="training-participation-boxes compact">
       <%= link_to farmer_training_participation_path(filter_params.merge(status: "total")), class: "training-participation-box total #{'is-active' if @training_participation_status == 'total'}" do %>
-        <span>Total Mapped Farmer</span>
+        <span>Total Training Farmer</span>
         <strong><%= status_counts[:total].to_i %></strong>
-        <small>Farmer Target Form ke selected farmers.</small>
+        <small>Farmer Training Form ke selected farmers.</small>
       <% end %>
       <% %w[green yellow red pending].each do |status| %>
         <%= link_to farmer_training_participation_path(filter_params.merge(status: status)), class: "training-participation-box #{status} #{'is-active' if @training_participation_status == status}" do %>

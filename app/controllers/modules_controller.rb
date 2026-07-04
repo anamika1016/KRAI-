@@ -227,10 +227,11 @@ class ModulesController < ApplicationController
     "add-farmer-form" => {
       title: "Add Farmer Form",
       group: "Farmer Target",
-      purpose: "Mapped village ke farmers select karne ke liye.",
+      purpose: "New Farmer Target ke against No. Farmer save karne ke liye.",
       fields: [
         "Mapped Village",
-        "New Farmer Target"
+        "New Farmer Target",
+        "No. Farmer"
       ]
     },
     "training-topic-mapping" => {
@@ -520,14 +521,8 @@ class ModulesController < ApplicationController
     @training_selected_sub_activity = selected_sub_activity
     @training_month_options = dashboard_month_options_for_targets(targets)
     @training_sub_activity_options = dashboard_sub_activity_options_for_targets(month_targets, selected_month)
-    participation_status_targets = if selected_month.present? && selected_sub_activity.present?
-      training_targets
-    elsif selected_month.present?
-      month_targets
-    else
-      targets
-    end
-    @training_participation_status_cards = training_participation_status_cards(participation_status_targets, month_name: selected_month, sub_activity_name: selected_sub_activity)
+    participation_records = dashboard_training_participation_records(month_name: selected_month, sub_activity_name: selected_sub_activity)
+    @training_participation_status_cards = training_participation_status_cards_from_records(participation_records, month_name: selected_month, sub_activity_name: selected_sub_activity)
     @training_target_status_cards = training_target_status_cards(training_targets, month_name: selected_month, sub_activity_name: selected_sub_activity)
     @training_participation = training_participation_summary(training_targets, month_name: selected_month)
     @farmer_training_dashboard_rows = farmer_training_dashboard_rows(training_targets, month_name: selected_month)
@@ -537,24 +532,17 @@ class ModulesController < ApplicationController
   end
 
   def farmer_training_participation
-    targets = dashboard_participation_targets
     selected_month = params[:training_month].presence
     selected_sub_activity = params[:training_sub_activity].presence
     selected_status = normalize_training_participation_status(params[:status]) || "green"
-    filtered_targets = if selected_month.present? && selected_sub_activity.present?
-      dashboard_targets_for_filters(targets, selected_month, selected_sub_activity)
-    elsif selected_month.present?
-      dashboard_targets_for_month(targets, selected_month)
-    else
-      targets
-    end
+    training_records = dashboard_training_participation_records(month_name: selected_month, sub_activity_name: selected_sub_activity)
 
     @training_participation_status = selected_status
     @training_participation_title = training_participation_status_label(selected_status)
     @training_participation_caption = training_participation_status_caption(selected_status)
-    @training_participation_rows = training_participation_farmer_rows(filtered_targets, month_name: selected_month)
+    @training_participation_rows = training_participation_farmer_rows_from_records(training_records)
     @training_participation_rows = @training_participation_rows.select { |row| row[:status] == selected_status } unless selected_status == "total"
-    @training_participation_totals = training_participation_status_counts(filtered_targets, month_name: selected_month)
+    @training_participation_totals = training_participation_status_counts_from_records(training_records)
     @training_selected_month = selected_month
     @training_selected_sub_activity = selected_sub_activity
 
@@ -1009,14 +997,8 @@ class ModulesController < ApplicationController
     @training_selected_sub_activity = selected_sub_activity
     @training_month_options = dashboard_month_options_for_targets(targets)
     @training_sub_activity_options = dashboard_sub_activity_options_for_targets(filtered_targets, selected_month)
-    participation_status_targets = if selected_month.present? && selected_sub_activity.present?
-      training_targets
-    elsif selected_month.present?
-      filtered_targets
-    else
-      targets
-    end
-    @training_participation_status_cards = training_participation_status_cards(participation_status_targets, month_name: selected_month, sub_activity_name: selected_sub_activity)
+    participation_records = dashboard_training_participation_records(month_name: selected_month, sub_activity_name: selected_sub_activity)
+    @training_participation_status_cards = training_participation_status_cards_from_records(participation_records, month_name: selected_month, sub_activity_name: selected_sub_activity)
     @training_target_status_cards = training_target_status_cards(training_targets, month_name: selected_month, sub_activity_name: selected_sub_activity)
     @training_participation = training_participation_summary(training_targets, month_name: selected_month)
     @farmer_training_dashboard_rows = farmer_training_dashboard_rows(training_targets, month_name: selected_month)
@@ -1792,6 +1774,24 @@ class ModulesController < ApplicationController
     end
   end
 
+  def dashboard_training_participation_records(month_name: nil, sub_activity_name: nil)
+    return [] unless model_ready?(:ModuleRecord)
+
+    ModuleRecord
+      .where(module_slug: "training-form")
+      .order(created_at: :desc)
+      .select { |record| active_module_record?(record) }
+      .select { |record| module_record_visible_for_current_context?(record) }
+      .select { |record| training_record_main_activity_type?(record) }
+      .select { |record| training_record_selected_farmer_ids(record).any? }
+      .select { |record| month_name.blank? || normalize_dashboard_text(training_record_month_name(record)) == normalize_dashboard_text(month_name) }
+      .select { |record| sub_activity_name.blank? || normalize_dashboard_text(training_summary(record)[:training_subject]) == normalize_dashboard_text(sub_activity_name) }
+  end
+
+  def training_record_main_activity_type?(record)
+    normalize_dashboard_text(record.data["main_activity_type"].presence || "Training") == normalize_dashboard_text("Training")
+  end
+
   def training_participation_status_cards(targets, month_name: nil, sub_activity_name: nil)
     counts = training_participation_status_counts(targets, month_name: month_name)
 
@@ -1808,6 +1808,100 @@ class ModulesController < ApplicationController
         path: farmer_training_participation_path(path_params)
       }
     end
+  end
+
+  def training_participation_status_cards_from_records(records, month_name: nil, sub_activity_name: nil)
+    counts = training_participation_status_counts_from_records(records)
+
+    %w[green yellow red pending].map do |status|
+      path_params = { status: status }
+      path_params[:training_month] = month_name if month_name.present?
+      path_params[:training_sub_activity] = sub_activity_name if sub_activity_name.present?
+
+      {
+        status: status,
+        title: training_participation_status_label(status),
+        value: counts[status.to_sym].to_i,
+        caption: training_participation_status_caption(status),
+        path: farmer_training_participation_path(path_params)
+      }
+    end
+  end
+
+  def training_participation_status_counts_from_records(records)
+    rows = training_participation_farmer_rows_from_records(records)
+
+    {
+      green: rows.count { |row| row[:status] == "green" },
+      yellow: rows.count { |row| row[:status] == "yellow" },
+      red: rows.count { |row| row[:status] == "red" },
+      pending: rows.count { |row| row[:status] == "pending" },
+      total: rows.size
+    }
+  end
+
+  def training_participation_farmer_rows_from_records(records)
+    records = Array(records)
+    return [] if records.blank?
+
+    memberships = Hash.new do |hash, farmer_id|
+      hash[farmer_id] = {
+        farmer_id: farmer_id,
+        months: [],
+        ics: [],
+        village: [],
+        vrp: [],
+        main_activities: [],
+        sub_activities: [],
+        training_dates: [],
+        attendance_count: 0
+      }
+    end
+
+    records.each do |record|
+      summary = training_summary(record)
+      training_date = bill_display_date(summary[:training_date]).presence || bill_display_date(record.created_at)
+      training_record_selected_farmer_ids(record).each do |farmer_id|
+        membership = memberships[farmer_id]
+        membership[:months] |= [summary[:month].to_s.strip].reject(&:blank?)
+        membership[:ics] |= [record.data["ics_block"].presence || record.data["ics"]].map(&:to_s).map(&:strip).reject(&:blank?)
+        membership[:village] |= [record.data["gram_name"].presence || record.data["village"]].map(&:to_s).map(&:strip).reject(&:blank?)
+        membership[:vrp] |= [record.data["trainer_name"].presence || record.data["jeevika_jankar_name"].presence || record.data["vrp_name"]].map(&:to_s).map(&:strip).reject(&:blank?)
+        membership[:main_activities] |= [summary[:training_topic].to_s.strip].reject(&:blank?)
+        membership[:sub_activities] |= [summary[:training_subject].to_s.strip].reject(&:blank?)
+        membership[:training_dates] |= [training_date].reject(&:blank?)
+        membership[:attendance_count] += 1
+      end
+    end
+
+    farmers_by_id = training_farmers_by_id(memberships.keys)
+    memberships.values.map do |membership|
+      farmer_id = membership[:farmer_id]
+      farmer = farmers_by_id[farmer_id]
+      attendance_count = membership[:attendance_count].to_i
+      status = training_participation_status_for_count(attendance_count)
+      dates = membership[:training_dates].sort_by { |date| parse_module_date(date)&.to_time || Time.zone.local(1900, 1, 1) }
+
+      {
+        farmer_id: farmer_id,
+        farmer_name: dashboard_text_value(farmer&.farmer_name).presence || "Farmer ##{farmer_id}",
+        father_name: dashboard_text_value(farmer&.father_name),
+        mobile_no: dashboard_text_value(farmer&.mobile_no),
+        tracenet_no: dashboard_text_value(farmer&.tracenet_no),
+        khasara_no: dashboard_text_value(farmer&.khasara_no),
+        ics: membership[:ics].presence&.join(", ") || dashboard_text_value(farmer&.ics_name).presence || dashboard_text_value(farmer&.ics_id).presence || "-",
+        village: membership[:village].presence&.join(", ") || dashboard_text_value(farmer&.village_name).presence || dashboard_text_value(farmer&.village_id).presence || "-",
+        vrp: membership[:vrp].presence&.join(", ") || "-",
+        months: membership[:months].presence&.join(", ") || "-",
+        main_activities: membership[:main_activities].presence&.join(", ") || "-",
+        sub_activities: membership[:sub_activities].presence&.join(", ") || "-",
+        attendance_count: attendance_count,
+        status: status,
+        status_label: training_participation_status_label(status),
+        training_dates: dates.join(", ").presence || "-",
+        last_training_date: dates.last.presence || "-"
+      }
+    end.sort_by { |row| [row[:status], -row[:attendance_count], row[:farmer_name].to_s.downcase] }
   end
 
   def training_participation_status_counts(targets, month_name: nil)
@@ -4892,7 +4986,20 @@ class ModulesController < ApplicationController
     return if vrp_id.blank? || !model_ready?(:Vrp)
 
     @jeevika_bill_visibility_vrp_cache ||= {}
-    @jeevika_bill_visibility_vrp_cache[vrp_id.to_s] ||= Vrp.find_by(id: vrp_id)
+    @jeevika_bill_visibility_vrp_cache[vrp_id.to_s] ||= begin
+      vrp = Vrp.find_by(id: vrp_id)
+      normalized_vrp = normalize_dashboard_text(vrp_id)
+      vrp ||= Vrp.all.find do |candidate|
+        [
+          candidate.id,
+          candidate.name,
+          candidate.user_name,
+          candidate.mobile_no,
+          [candidate.name, candidate.mobile_no.presence].compact_blank.join(" - ")
+        ].map { |value| normalize_dashboard_text(value) }.include?(normalized_vrp)
+      end
+      vrp
+    end
   end
 
   def jeevika_bill_created_by_current_user?(record)
@@ -4933,17 +5040,22 @@ class ModulesController < ApplicationController
       current_app_user&.dig("fcoc"),
       current_app_user&.dig("fcoc_name"),
       current_app_user&.dig("office_category"),
-      current_app_user&.dig("office_name"),
       current_app_user&.dig("parent_office")
     )
     current_to_values = normalized_visibility_values(
+      current_app_user&.dig("to"),
+      current_app_user&.dig("to_name"),
       current_app_user&.dig("sub_office_name"),
       current_app_user&.dig("office"),
       current_app_user&.dig("office_name")
     )
 
-    return true if vrp_fcoc_values.any? && (vrp_fcoc_values & current_fcoc_values).any?
-    return true if vrp_to_values.any? && (vrp_to_values & current_to_values).any?
+    fcoc_matches = vrp_fcoc_values.any? && (vrp_fcoc_values & current_fcoc_values).any?
+    to_matches = vrp_to_values.any? && (vrp_to_values & current_to_values).any?
+
+    return fcoc_matches && to_matches if vrp_fcoc_values.any? && vrp_to_values.any?
+    return fcoc_matches if vrp_fcoc_values.any?
+    return to_matches if vrp_to_values.any?
 
     false
   end
@@ -5071,7 +5183,7 @@ class ModulesController < ApplicationController
     end
 
     data.delete("selected_farmer_ids")
-    data.delete("no_farmer")
+    data["no_farmer"] = whole_number_value(data["no_farmer"]).to_s if whole_number_value(data["no_farmer"])
     data
   end
 
@@ -5085,6 +5197,9 @@ class ModulesController < ApplicationController
 
     errors << "Mapped Village required hai." if mapping.blank?
     errors << "New Farmer Target required hai." if mapping.present? && data["new_farmer_target"].to_i != mapping[:target_quantity].to_i
+    errors << "No. Farmer required hai." if data["no_farmer"].blank?
+    errors << "No. Farmer valid whole number hona chahiye." if data["no_farmer"].present? && whole_number_value(data["no_farmer"]).nil?
+    errors << "No. Farmer 0 se jyada hona chahiye." if whole_number_value(data["no_farmer"]) && whole_number_value(data["no_farmer"]).to_i <= 0
     errors
   end
 

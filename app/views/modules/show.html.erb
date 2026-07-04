@@ -1659,6 +1659,8 @@
                 </select>
               <% elsif add_farmer_form && field == "New Farmer Target" %>
                 <input name="module_record[<%= field_key %>]" type="number" min="1" step="1" placeholder="New Farmer Target" value="<%= field_value %>" data-add-farmer-target readonly required>
+              <% elsif add_farmer_form && field == "No. Farmer" %>
+                <input name="module_record[<%= field_key %>]" type="number" min="1" step="1" placeholder="Enter No. Farmer" value="<%= field_value %>" data-add-farmer-no-farmer required>
               <% elsif field.downcase.include?("status") %>
                 <select name="module_record[<%= field_key %>]">
                   <option <%= "selected" if field_value == "Active" %>>Active</option>

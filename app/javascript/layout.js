@@ -3045,6 +3045,7 @@ document.addEventListener("turbo:load", () => {
     const villageSelect = formShell.querySelector("[data-add-farmer-village]");
     const villageLabelInput = formShell.querySelector("[data-add-farmer-village-label]");
     const targetInput = formShell.querySelector("[data-add-farmer-target]");
+    const noFarmerInput = formShell.querySelector("[data-add-farmer-no-farmer]");
     const form = formShell.querySelector("form");
     let mappings = [];
 
@@ -3060,6 +3061,7 @@ document.addEventListener("turbo:load", () => {
       const mapping = selectedMapping();
       if (villageLabelInput) villageLabelInput.value = mapping?.label || "";
       if (targetInput) targetInput.value = mapping?.target_quantity || "";
+      if (noFarmerInput) noFarmerInput.removeAttribute("max");
     };
 
     villageSelect?.addEventListener("change", () => {
@@ -3067,10 +3069,12 @@ document.addEventListener("turbo:load", () => {
     });
 
     form?.addEventListener("submit", (event) => {
-      if (selectedMapping()) return;
+      const mapping = selectedMapping();
+      const noFarmerValue = Number(noFarmerInput?.value || 0);
+      if (mapping && Number.isInteger(noFarmerValue) && noFarmerValue > 0) return;
 
       event.preventDefault();
-      window.alert("Please select Mapped Village.");
+      window.alert(mapping ? "No. Farmer valid whole number hona chahiye." : "Please select Mapped Village.");
     });
 
     syncAddFarmerTarget();
