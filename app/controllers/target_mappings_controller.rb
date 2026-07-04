@@ -16,17 +16,32 @@ class TargetMappingsController < ApplicationController
   end
 
   def create
-    target_mapping = editable_target || TargetMapping.new
-    target_mapping.assign_attributes(target_mapping_params)
-    target_mapping.vrp_ics_mapping_id = nil
-    normalize_location_values(target_mapping)
-    assign_afl_location_names(target_mapping)
-    assign_creator(target_mapping) if target_mapping.new_record?
+    if editable_target
+      target_mapping = editable_target
+      target_mapping.assign_attributes(single_target_mapping_attributes)
+      target_mapping.vrp_ics_mapping_id = nil
+      normalize_location_values(target_mapping)
+      assign_afl_location_names(target_mapping)
 
-    if target_vrp_allowed?(target_mapping) && assign_target_farmers(target_mapping) && target_mapping.save
-      redirect_to target_mappings_path, notice: "Target mapping saved successfully."
+      if target_vrp_allowed?(target_mapping) && assign_target_farmers(target_mapping) && target_mapping.save
+        redirect_to target_mappings_path, notice: "Target mapping saved successfully."
+      else
+        redirect_to target_mappings_path, alert: target_mapping.errors.full_messages.to_sentence
+      end
+      return
+    end
+
+    mappings = build_target_mappings_for_selected_activities
+    errors = mappings.flat_map do |target_mapping|
+      valid_mapping = target_vrp_allowed?(target_mapping) && assign_target_farmers(target_mapping) && target_mapping.valid?
+      valid_mapping ? [] : target_mapping.errors.full_messages
+    end
+
+    if mappings.any? && errors.blank?
+      TargetMapping.transaction { mappings.each(&:save!) }
+      redirect_to target_mappings_path, notice: "#{mappings.size} target mapping(s) saved successfully."
     else
-      redirect_to target_mappings_path, alert: target_mapping.errors.full_messages.to_sentence
+      redirect_to target_mappings_path, alert: errors.presence&.to_sentence || "Please select at least one Main Activity and Sub Activity."
     end
   end
 
@@ -72,8 +87,68 @@ class TargetMappingsController < ApplicationController
       :main_activity_name,
       :activity_name,
       :target_quantity,
+      main_activity_names: [],
+      activity_names: [],
       afl_ids: []
     )
+  end
+
+  def single_target_mapping_attributes
+    attrs = target_mapping_params.except(:main_activity_names, :activity_names, :afl_ids)
+    attrs[:main_activity_name] = target_activity_values(target_mapping_params[:main_activity_names]).first || attrs[:main_activity_name]
+    attrs[:activity_name] = target_activity_values(target_mapping_params[:activity_names]).first || attrs[:activity_name]
+    attrs
+  end
+
+  def build_target_mappings_for_selected_activities
+    target_activity_combinations.map do |main_activity, sub_activity|
+      target_mapping = TargetMapping.new(single_target_mapping_attributes.merge(
+        main_activity_name: main_activity,
+        activity_name: sub_activity
+      ))
+      target_mapping.vrp_ics_mapping_id = nil
+      normalize_location_values(target_mapping)
+      assign_afl_location_names(target_mapping)
+      assign_creator(target_mapping)
+      target_mapping
+    end
+  end
+
+  def target_activity_combinations
+    main_activities = target_activity_values(target_mapping_params[:main_activity_names].presence || target_mapping_params[:main_activity_name])
+    sub_activities = target_activity_values(target_mapping_params[:activity_names].presence || target_mapping_params[:activity_name])
+    return [] if main_activities.blank? || sub_activities.blank?
+
+    mapped_pairs = target_sub_activity_map.map do |row|
+      [row[:main_activity].to_s.strip, row[:sub_activity].to_s.strip]
+    end
+
+    main_activities.product(sub_activities).select do |main_activity, sub_activity|
+      mapped_pairs.blank? || mapped_pairs.any? do |mapped_main, mapped_sub|
+        mapped_main.casecmp(main_activity).zero? && mapped_sub.casecmp(sub_activity).zero?
+      end
+    end.uniq
+  end
+
+  def target_activity_values(value)
+    case value
+    when Array
+      value.flat_map { |item| target_activity_values(item) }
+    when String
+      stripped = value.strip
+      return [] if stripped.blank?
+
+      if stripped.start_with?("[")
+        parsed = JSON.parse(stripped)
+        return target_activity_values(parsed)
+      end
+
+      [stripped]
+    else
+      Array(value).flat_map { |item| target_activity_values(item) }
+    end.map(&:to_s).map(&:strip).reject(&:blank?).uniq
+  rescue JSON::ParserError
+    [value.to_s.strip].reject(&:blank?)
   end
 
   def target_village_param
@@ -255,12 +330,14 @@ class TargetMappingsController < ApplicationController
   end
 
   def assigned_farmer_ids_for_location(vrp_id:, fco_id:, ics_id:, village_id:, month_name:, main_activity_name: nil, activity_name: nil, edit_target: nil)
-    return [] if month_name.blank? || main_activity_name.blank? || activity_name.blank?
+    main_activity_names = target_activity_values(main_activity_name)
+    activity_names = target_activity_values(activity_name)
+    return [] if month_name.blank? || main_activity_names.blank? || activity_names.blank?
 
     scope = TargetMapping.all
     scope = scope.where("LOWER(TRIM(month_name)) = ?", month_name.to_s.strip.downcase)
-    scope = scope.where("LOWER(TRIM(main_activity_name)) = ?", main_activity_name.to_s.strip.downcase)
-    scope = scope.where("LOWER(TRIM(activity_name)) = ?", activity_name.to_s.strip.downcase)
+    scope = scope.where("LOWER(TRIM(main_activity_name)) IN (?)", main_activity_names.map { |value| value.to_s.strip.downcase })
+    scope = scope.where("LOWER(TRIM(activity_name)) IN (?)", activity_names.map { |value| value.to_s.strip.downcase })
     scope = scope.where.not(id: edit_target.id) if edit_target&.persisted?
 
     scope.pluck(:afl_ids).flat_map { |ids| normalized_afl_ids(ids) }.uniq
@@ -813,6 +890,8 @@ class TargetMappingsController < ApplicationController
       village_ids: encoded_location_values(target.village_id, target.village_name),
       month_name: target.month_name.to_s,
       completion_date: target.completion_date&.strftime("%Y-%m-%d"),
+      main_activity_names: [target.main_activity_name.to_s].reject(&:blank?),
+      activity_names: [target.activity_name.to_s].reject(&:blank?),
       target_quantity: target.target_quantity.to_s,
       afl_ids: Array(target.afl_ids).map(&:to_s)
     }

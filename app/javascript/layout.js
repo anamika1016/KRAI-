@@ -1561,7 +1561,6 @@ document.addEventListener("turbo:load", () => {
 	    const farmerSelectAllButton = formShell.querySelector("[data-training-farmer-select-all-button]");
 	    const farmerCount = formShell.querySelector("[data-training-farmer-count]");
 	    const farmerCountInput = formShell.querySelector("[data-training-farmer-count-input]");
-	    const newFarmerCountInput = formShell.querySelector("[data-training-new-farmer-count-input]");
 	    const totalFarmerCountInput = formShell.querySelector("[data-training-total-farmer-count-input]");
 	    const maleCountInput = formShell.querySelector('input[name="module_record[male_count]"]');
 	    const femaleCountInput = formShell.querySelector('input[name="module_record[female_count]"]');
@@ -1720,8 +1719,7 @@ document.addEventListener("turbo:load", () => {
 	      if (farmerCountInput) farmerCountInput.value = String(count);
       [maleCountInput, femaleCountInput].forEach((input) => {
         if (!input) return;
-        const totalAllowed = count + numberValue(newFarmerCountInput);
-        if (totalAllowed > 0) input.max = String(totalAllowed);
+        if (count > 0) input.max = String(count);
         else input.removeAttribute("max");
       });
 	      if (farmerSelectAll) {
@@ -1739,11 +1737,9 @@ document.addEventListener("turbo:load", () => {
 
     const validateTrainingCountSplit = (report = false) => {
       syncTotalFarmerCount();
-      [farmerCountInput, newFarmerCountInput, totalFarmerCountInput, maleCountInput, femaleCountInput].forEach((input) => input?.setCustomValidity(""));
+      [farmerCountInput, totalFarmerCountInput, maleCountInput, femaleCountInput].forEach((input) => input?.setCustomValidity(""));
 
       const farmerCountValue = Number(farmerCountInput?.value || 0);
-      const newFarmerCountValue = Number(newFarmerCountInput?.value || 0);
-      const expectedTotalValue = farmerCountValue + newFarmerCountValue;
       const maleBlank = !maleCountInput?.value;
       const femaleBlank = !femaleCountInput?.value;
       const maleCountValue = Number(maleCountInput?.value || 0);
@@ -1752,27 +1748,24 @@ document.addEventListener("turbo:load", () => {
       let invalidInput = null;
       let message = "";
 
-      if (newFarmerCountValue < 0) {
-        invalidInput = newFarmerCountInput;
-        message = "New Farmer Count zero se kam nahi ho sakta.";
-      } else if (expectedTotalValue <= 0) {
-        invalidInput = newFarmerCountInput || farmerCountInput;
-        message = "Target Farmers select karein ya New Farmer Count enter karein.";
+      if (farmerCountValue <= 0) {
+        invalidInput = farmerCountInput;
+        message = "Target Farmers select karein.";
       } else if (maleBlank) {
         invalidInput = maleCountInput;
         message = "Male Count required hai.";
       } else if (femaleBlank) {
         invalidInput = femaleCountInput;
         message = "Female Count required hai.";
-      } else if (maleCountValue < 0 || maleCountValue > expectedTotalValue) {
+      } else if (maleCountValue < 0 || maleCountValue > farmerCountValue) {
         invalidInput = maleCountInput;
-        message = `Male Count 0 se ${expectedTotalValue} ke beech hona chahiye.`;
-      } else if (femaleCountValue < 0 || femaleCountValue > expectedTotalValue) {
+        message = `Male Count 0 se ${farmerCountValue} ke beech hona chahiye.`;
+      } else if (femaleCountValue < 0 || femaleCountValue > farmerCountValue) {
         invalidInput = femaleCountInput;
-        message = `Female Count 0 se ${expectedTotalValue} ke beech hona chahiye.`;
-      } else if (totalFarmerCountValue !== expectedTotalValue) {
+        message = `Female Count 0 se ${farmerCountValue} ke beech hona chahiye.`;
+      } else if (totalFarmerCountValue !== farmerCountValue) {
         invalidInput = totalFarmerCountInput || femaleCountInput;
-        message = `Male Count aur Female Count ka total AFL Farmer Count + New Farmer Count (${expectedTotalValue}) ke equal hona chahiye.`;
+        message = `Male Count aur Female Count ka total AFL Farmer Count (${farmerCountValue}) ke equal hona chahiye.`;
       }
 
       if (!invalidInput) return true;
@@ -1991,7 +1984,7 @@ document.addEventListener("turbo:load", () => {
 	      renderTrainingFarmers();
 	    });
 
-    [maleCountInput, femaleCountInput, newFarmerCountInput].forEach((input) => {
+    [maleCountInput, femaleCountInput].forEach((input) => {
       input?.addEventListener("input", () => {
         updateFarmerCount();
         validateTrainingCountSplit(false);
@@ -2700,8 +2693,8 @@ document.addEventListener("turbo:load", () => {
     const villageSelect = shell.querySelector("[data-target-village]");
     const villageHidden = shell.querySelector("[data-target-village-hidden]");
     const monthSelect = shell.querySelector("select[name='target_mapping[month_name]']");
-    const mainActivitySelect = shell.querySelector("select[name='target_mapping[main_activity_name]']");
-    const subActivitySelect = shell.querySelector("select[name='target_mapping[activity_name]']");
+    const mainActivitySelect = shell.querySelector("[data-target-main-activity]");
+    const subActivitySelect = shell.querySelector("[data-target-sub-activity]");
     const targetInput = shell.querySelector("[data-target-quantity-input]");
     const registeredCountInput = shell.querySelector("[data-target-registered-count]");
     const farmerPanel = shell.querySelector("[data-target-farmer-panel]");
@@ -2808,12 +2801,12 @@ document.addEventListener("turbo:load", () => {
     };
 
     const targetSubActivityOptionsForMain = () => {
-      const selectedMainActivity = normalizeOption(mainActivitySelect?.value);
-      if (!selectedMainActivity) return [];
+      const selectedMainActivities = targetSelectedValues(mainActivitySelect).map((value) => normalizeOption(value));
+      if (!selectedMainActivities.length) return [];
 
       return uniqueOptions(
         targetSubActivityRows
-          .filter((row) => normalizeOption(row.main_activity) === selectedMainActivity)
+          .filter((row) => selectedMainActivities.includes(normalizeOption(row.main_activity)))
           .map((row) => makeOption(row.sub_activity, row.sub_activity))
       );
     };
@@ -2822,13 +2815,17 @@ document.addEventListener("turbo:load", () => {
       if (!subActivitySelect) return;
 
       if (resetSelection) {
-        subActivitySelect.dataset.selectedValue = "";
-        subActivitySelect.value = "";
+        subActivitySelect.dataset.selectedValues = "[]";
+        Array.from(subActivitySelect.options || []).forEach((option) => {
+          option.selected = false;
+        });
+        subActivitySelect.dataset.selectionDirty = "true";
       }
 
-      if (!mainActivitySelect?.value) {
+      if (!targetSelectedValues(mainActivitySelect).length) {
         subActivitySelect.innerHTML = '<option value="">Select Main Activity first</option>';
         subActivitySelect.disabled = true;
+        subActivitySelect.dispatchEvent(new Event("chip:refresh"));
         return;
       }
 
@@ -2925,8 +2922,10 @@ document.addEventListener("turbo:load", () => {
       if (icsValue) url.searchParams.set("ics_id", icsValue);
       if (villageValues.length) url.searchParams.set("village_ids", JSON.stringify(villageValues));
       if (monthSelect?.value) url.searchParams.set("month_name", monthSelect.value);
-      if (mainActivitySelect?.value) url.searchParams.set("main_activity_name", mainActivitySelect.value);
-      if (subActivitySelect?.value) url.searchParams.set("activity_name", subActivitySelect.value);
+      const mainActivityValues = targetSelectedValues(mainActivitySelect);
+      const subActivityValues = targetSelectedValues(subActivitySelect);
+      if (mainActivityValues.length) url.searchParams.set("main_activity_name", JSON.stringify(mainActivityValues));
+      if (subActivityValues.length) url.searchParams.set("activity_name", JSON.stringify(subActivityValues));
       if (editTarget.id) url.searchParams.set("edit_id", editTarget.id);
 
       try {

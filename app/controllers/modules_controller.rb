@@ -112,7 +112,6 @@ class ModulesController < ApplicationController
         "Sub Activity",
         "Training Description",
         "Farmer Count",
-        "New Farmer Count",
         "Male Count",
         "Female Count",
         "Total Farmer Count",
@@ -135,7 +134,6 @@ class ModulesController < ApplicationController
         "Main Activity",
         "Sub Activity",
         "Farmer Count",
-        "New Farmer Count",
         "Total Farmer Count",
         "Selected Farmers",
         "Male Count",
@@ -4918,7 +4916,6 @@ class ModulesController < ApplicationController
     data["selected_farmer_ids"] = selected_farmer_ids
     data["selected_farmer_names"] = training_farmer_names(selected_farmer_ids)
     data["farmer_count"] = selected_farmer_ids.size.to_s
-    data["new_farmer_count"] = numeric_string(data["new_farmer_count"]) if data["new_farmer_count"].present?
     data["total_farmer_count"] = training_total_farmer_count(data).to_s if training_total_farmer_count(data)
     data.delete("status")
     data
@@ -5442,15 +5439,12 @@ class ModulesController < ApplicationController
     selected_farmer_ids = Array(data["selected_farmer_ids"]).map(&:to_s).reject(&:blank?).uniq
 
     farmer_count = whole_number_value(data["farmer_count"].presence || "0")
-    new_farmer_count = whole_number_value(data["new_farmer_count"].presence || "0")
     male_count = whole_number_value(data["male_count"])
     female_count = whole_number_value(data["female_count"])
     total_farmer_count = whole_number_value(data["total_farmer_count"].presence || training_total_farmer_count(data).to_s)
-    expected_total_count = farmer_count.to_i + new_farmer_count.to_i
 
-    errors << "Target Farmers select karein ya New Farmer Count enter karein." if selected_farmer_ids.blank? && new_farmer_count.to_i.zero?
+    errors << "Target Farmers select karein." if selected_farmer_ids.blank?
     errors << "AFL Farmer Count valid whole number hona chahiye." if farmer_count.nil?
-    errors << "New Farmer Count valid whole number hona chahiye." if new_farmer_count.nil?
     errors << "Male Count valid whole number hona chahiye." if male_count.nil?
     errors << "Female Count valid whole number hona chahiye." if female_count.nil?
     errors << "Total Farmer Count valid whole number hona chahiye." if total_farmer_count.nil?
@@ -5459,16 +5453,16 @@ class ModulesController < ApplicationController
       errors << "AFL Farmer Count selected farmers ke count ke equal hona chahiye."
     end
 
-    if expected_total_count.positive? && male_count && male_count > expected_total_count
+    if farmer_count&.positive? && male_count && male_count > farmer_count
       errors << "Male Count total farmers se jyada nahi ho sakta."
     end
 
-    if expected_total_count.positive? && female_count && female_count > expected_total_count
+    if farmer_count&.positive? && female_count && female_count > farmer_count
       errors << "Female Count total farmers se jyada nahi ho sakta."
     end
 
-    if expected_total_count.positive? && total_farmer_count && total_farmer_count != expected_total_count
-      errors << "Male Count aur Female Count ka total AFL Farmer Count + New Farmer Count ke equal hona chahiye."
+    if farmer_count&.positive? && total_farmer_count && total_farmer_count != farmer_count
+      errors << "Male Count aur Female Count ka total AFL Farmer Count ke equal hona chahiye."
     end
 
     errors

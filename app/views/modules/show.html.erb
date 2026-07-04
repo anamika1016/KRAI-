@@ -1638,8 +1638,7 @@
               <% field_value = Date.current.to_s %>
             <% end %>
             <% form_required = @slug == "training-form" || other_target_form %>
-            <% field_required = form_required && !(@slug == "training-form" && field == "New Farmer Count") %>
-            <% required_attr = field_required ? "required" : nil %>
+            <% required_attr = form_required ? "required" : nil %>
             <label>
               <span>
                 <%= resource_person_label(field) %>
@@ -1731,13 +1730,11 @@
                 <input name="module_record[<%= field_key %>]" type="password" placeholder="Enter <%= field %>" value="<%= field_value %>" <%= required_attr %>>
               <% elsif field.downcase.include?("date") %>
                 <input name="module_record[<%= field_key %>]" type="date" value="<%= field_value %>" <%= required_attr %>>
-              <% elsif @slug == "training-form" && ["Farmer Count", "New Farmer Count", "Male Count", "Female Count", "Total Farmer Count"].include?(field) %>
+              <% elsif @slug == "training-form" && ["Farmer Count", "Male Count", "Female Count", "Total Farmer Count"].include?(field) %>
                 <% training_count_attr =
                   case field
                   when "Farmer Count"
                     "data-training-farmer-count-input readonly"
-                  when "New Farmer Count"
-                    "data-training-new-farmer-count-input"
                   when "Total Farmer Count"
                     "data-training-total-farmer-count-input readonly"
                   end %>

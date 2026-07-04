@@ -70,25 +70,31 @@
               <input type="date" name="target_mapping[completion_date]" value="<%= @edit_target&.completion_date&.strftime("%Y-%m-%d") %>" required>
             </label>
 
-            <label>
-              <span>Main Activity <em>*</em></span>
-              <select name="target_mapping[main_activity_name]" required>
+            <div class="target-village-field">
+              <span class="location-multi-label">
+                <span>Main Activity <em>*</em></span>
+                <span class="location-select-all"><input type="checkbox" data-chip-select-all-for="target-main-activity"> Select all</span>
+              </span>
+              <select name="target_mapping[main_activity_names][]" data-target-main-activity data-selected-values="<%= json_escape(Array(@edit_payload[:main_activity_names]).to_json) %>" multiple required data-chip-multiselect data-chip-select-all-key="target-main-activity" data-placeholder="Select Main Activity">
                 <option value="">Select Main Activity</option>
                 <% @main_activity_options.each do |option| %>
-                  <option value="<%= option %>" <%= "selected" if @edit_target&.main_activity_name.to_s == option.to_s %>><%= option %></option>
+                  <option value="<%= option %>" <%= "selected" if Array(@edit_payload[:main_activity_names]).map(&:to_s).include?(option.to_s) %>><%= option %></option>
                 <% end %>
               </select>
-            </label>
+            </div>
 
-            <label>
-              <span>Sub Activity <em>*</em></span>
-              <select name="target_mapping[activity_name]" required>
+            <div class="target-village-field">
+              <span class="location-multi-label">
+                <span>Sub Activity <em>*</em></span>
+                <span class="location-select-all"><input type="checkbox" data-chip-select-all-for="target-sub-activity"> Select all</span>
+              </span>
+              <select name="target_mapping[activity_names][]" data-target-sub-activity data-selected-values="<%= json_escape(Array(@edit_payload[:activity_names]).to_json) %>" multiple required data-chip-multiselect data-chip-select-all-key="target-sub-activity" data-placeholder="Select Sub Activity">
                 <option value="">Select Sub Activity</option>
                 <% @sub_activity_options.each do |option| %>
-                  <option value="<%= option %>" <%= "selected" if @edit_target&.activity_name.to_s == option.to_s %>><%= option %></option>
+                  <option value="<%= option %>" <%= "selected" if Array(@edit_payload[:activity_names]).map(&:to_s).include?(option.to_s) %>><%= option %></option>
                 <% end %>
               </select>
-            </label>
+            </div>
 
             <label>
               <span>Registered Farmers</span>
