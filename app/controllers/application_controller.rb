@@ -11,6 +11,22 @@ class ApplicationController < ActionController::Base
 
   private
 
+  def send_xlsx(rows:, filename:, headers: nil, sheet_name: "Sheet1")
+    data = if headers
+      XlsxExporter.generate(headers: headers, rows: rows, sheet_name: sheet_name)
+    else
+      XlsxExporter.from_csv(rows, sheet_name: sheet_name)
+    end
+
+    xlsx_filename = filename.to_s.sub(/\.csv\z/i, ".xlsx")
+    xlsx_filename = "#{xlsx_filename}.xlsx" unless xlsx_filename.downcase.end_with?(".xlsx")
+
+    send_data data,
+      filename: xlsx_filename,
+      type: XlsxExporter::MIME_TYPE,
+      disposition: "attachment"
+  end
+
   def require_app_login
     redirect_to login_path, alert: "Please login first." unless current_app_user
   end

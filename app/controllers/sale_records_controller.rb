@@ -13,9 +13,9 @@ class SaleRecordsController < ApplicationController
   end
 
   def export
-    send_data SaleRecord.to_csv(SaleRecord.order(created_at: :desc)),
-      filename: "sale_records_#{Time.current.strftime('%Y%m%d%H%M%S')}.csv",
-      type: "text/csv"
+    send_data SaleRecord.to_xlsx(SaleRecord.order(created_at: :desc)),
+      filename: "sale_records_#{Time.current.strftime('%Y%m%d%H%M%S')}.xlsx",
+      type: XlsxExporter::MIME_TYPE
   end
 
   def create
@@ -64,12 +64,13 @@ class SaleRecordsController < ApplicationController
 
   def load_index_state
     @sale_record ||= SaleRecord.new(status: "Active")
-    @sale_records = SaleRecord.order(created_at: :desc).limit(200)
+    @sale_records = SaleRecord.includes(:farmer_farm_information).order(created_at: :desc).limit(200)
     @organic_status_options = SaleRecord::ORGANIC_STATUS_OPTIONS
   end
 
   def sale_record_params
     params.require(:sale_record).permit(
+      :farmer_farm_information_id,
       :produce_name,
       :organic_status,
       :total_output_for_sale_kg,

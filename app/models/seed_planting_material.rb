@@ -1,5 +1,6 @@
 class SeedPlantingMaterial < ApplicationRecord
   include TabularImportExport
+  include FarmerFarmLinkable
 
   EXPORT_COLUMNS = %i[
     serial_no crop_name variety purchase_date supplier_name_address seed_type seed_treatment_details seed_quantity status

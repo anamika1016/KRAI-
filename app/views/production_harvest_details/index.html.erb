@@ -28,6 +28,7 @@
     <section class="module-card">
       <%= form_with model: form_record, url: form_url, method: form_method, local: true, html: { class: "module-entry-form" } do |f| %>
         <div class="module-form-grid user-registration-grid">
+          <%= render "shared/farmer_farm_information_select", form: f, record: form_record %>
           <label>
             <span>Name of farm /plot</span>
             <%= f.text_field :farm_plot_name, placeholder: "Enter Farm / Plot" %>
@@ -93,6 +94,7 @@
           <thead>
             <tr>
               <th><input type="checkbox" data-module-select-all></th>
+              <%= render "shared/farmer_farm_information_table_headers" %>
               <th>Name of farm /plot</th>
               <th>Year & season</th>
               <th>Crop/produce</th>
@@ -108,6 +110,7 @@
               <% @production_harvest_details.each do |record| %>
                 <tr>
                   <td><input type="checkbox" value="<%= edit_production_harvest_detail_path(record) %>" data-module-row-select></td>
+                  <%= render "shared/farmer_farm_information_table_cells", record: record %>
                   <td><%= record.farm_plot_name.presence || "-" %></td>
                   <td><%= record.year_season.presence || "-" %></td>
                   <td><%= record.crop_produce_name.presence || "-" %></td>
@@ -120,7 +123,7 @@
               <% end %>
             <% else %>
               <tr>
-                <td colspan="9">No production harvest details saved yet.</td>
+                <td colspan="12">No production harvest details saved yet.</td>
               </tr>
             <% end %>
           </tbody>

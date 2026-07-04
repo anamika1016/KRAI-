@@ -51,6 +51,14 @@ module TabularImportExport
       end
     end
 
+    def to_xlsx(records = all)
+      XlsxExporter.generate(
+        headers: export_columns.map { |column| header_labels.fetch(column) },
+        rows: records.map { |record| export_columns.map { |column| record.public_send(column) } },
+        sheet_name: model_name.human.pluralize
+      )
+    end
+
     def export_columns
       self::EXPORT_COLUMNS
     end

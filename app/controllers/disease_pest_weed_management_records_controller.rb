@@ -13,9 +13,9 @@ class DiseasePestWeedManagementRecordsController < ApplicationController
   end
 
   def export
-    send_data DiseasePestWeedManagementRecord.to_csv(DiseasePestWeedManagementRecord.order(created_at: :desc)),
-      filename: "disease_pest_weed_management_records_#{Time.current.strftime('%Y%m%d%H%M%S')}.csv",
-      type: "text/csv"
+    send_data DiseasePestWeedManagementRecord.to_xlsx(DiseasePestWeedManagementRecord.order(created_at: :desc)),
+      filename: "disease_pest_weed_management_records_#{Time.current.strftime('%Y%m%d%H%M%S')}.xlsx",
+      type: XlsxExporter::MIME_TYPE
   end
 
   def create
@@ -64,11 +64,12 @@ class DiseasePestWeedManagementRecordsController < ApplicationController
 
   def load_index_state
     @disease_record ||= DiseasePestWeedManagementRecord.new(status: "Active")
-    @disease_records = DiseasePestWeedManagementRecord.order(created_at: :desc).limit(200)
+    @disease_records = DiseasePestWeedManagementRecord.includes(:farmer_farm_information).order(created_at: :desc).limit(200)
   end
 
   def disease_record_params
     params.require(:disease_pest_weed_management_record).permit(
+      :farmer_farm_information_id,
       :farm_plot_no,
       :area,
       :crop_name,

@@ -92,6 +92,18 @@ class FarmerFarmInformation < ApplicationRecord
 
   before_validation :default_status
 
+  has_many :farmer_farm_map_uploads, dependent: :nullify
+  has_many :farm_crop_area_details, dependent: :nullify
+  has_many :seed_planting_materials, dependent: :nullify
+  has_many :soil_conditioner_fertility_input_records, dependent: :nullify
+  has_many :on_farm_input_records, dependent: :nullify
+  has_many :disease_pest_weed_management_records, dependent: :nullify
+  has_many :contamination_control_records, dependent: :nullify
+  has_many :production_harvest_details, dependent: :nullify
+  has_many :post_harvest_handling_storage_records, dependent: :nullify
+  has_many :sale_records, dependent: :nullify
+  has_many :dispatch_records, dependent: :nullify
+
   SEARCHABLE_COLUMNS = %i[
     farm_id ics_name current_crop_year season farmer_name tracenet_no father_mother_name
     aadhar_number farmer_contact_no farmer_state farmer_district farmer_block farmer_gram farmer_village
@@ -159,6 +171,14 @@ class FarmerFarmInformation < ApplicationRecord
         csv << EXPORT_COLUMNS.map { |column| record.public_send(column) }
       end
     end
+  end
+
+  def self.to_xlsx(records = all)
+    XlsxExporter.generate(
+      headers: EXPORT_COLUMNS.map { |column| HEADER_LABELS.fetch(column) },
+      rows: records.map { |record| EXPORT_COLUMNS.map { |column| record.public_send(column) } },
+      sheet_name: "Farmer Farm Information"
+    )
   end
 
   def self.rows_from_upload(file)

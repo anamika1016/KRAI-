@@ -13,9 +13,9 @@ class OnFarmInputRecordsController < ApplicationController
   end
 
   def export
-    send_data OnFarmInputRecord.to_csv(OnFarmInputRecord.order(created_at: :desc)),
-      filename: "on_farm_input_records_#{Time.current.strftime('%Y%m%d%H%M%S')}.csv",
-      type: "text/csv"
+    send_data OnFarmInputRecord.to_xlsx(OnFarmInputRecord.order(created_at: :desc)),
+      filename: "on_farm_input_records_#{Time.current.strftime('%Y%m%d%H%M%S')}.xlsx",
+      type: XlsxExporter::MIME_TYPE
   end
 
   def create
@@ -64,11 +64,11 @@ class OnFarmInputRecordsController < ApplicationController
 
   def load_index_state
     @on_farm_input_record ||= OnFarmInputRecord.new(status: "Active")
-    @on_farm_input_records = OnFarmInputRecord.order(created_at: :desc).limit(200)
+    @on_farm_input_records = OnFarmInputRecord.includes(:farmer_farm_information).order(created_at: :desc).limit(200)
   end
 
   def on_farm_input_record_params
-    params.require(:on_farm_input_record).permit(:serial_no, :input_name, :preparation_date, :raw_material_details, :prepared_quantity, :status)
+    params.require(:on_farm_input_record).permit(:farmer_farm_information_id, :serial_no, :input_name, :preparation_date, :raw_material_details, :prepared_quantity, :status)
   end
 
   def import_notice(result, label)

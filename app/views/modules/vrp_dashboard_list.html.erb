@@ -11,7 +11,7 @@
 
     <div class="dashboard-actions">
       <%= link_to "Back to Dashboard", dashboard_path, class: "list-btn active" %>
-      <%= link_to "Export CSV", url_for(request.path_parameters.merge(request.query_parameters).merge(format: :csv)), class: "list-btn export" %>
+      <%= link_to "Export Excel", url_for(request.path_parameters.merge(request.query_parameters).merge(format: :xlsx)), class: "list-btn export" %>
     </div>
   </div>
 

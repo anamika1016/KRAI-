@@ -108,9 +108,9 @@ class FarmerFarmInformationController < ApplicationController
   def export
     records = FarmerFarmInformation.search(params[:q]).order(created_at: :desc)
 
-    send_data FarmerFarmInformation.to_csv(records),
-      filename: "farmer_farm_information_#{Time.current.strftime('%Y%m%d%H%M%S')}.csv",
-      type: "text/csv"
+    send_data FarmerFarmInformation.to_xlsx(records),
+      filename: "farmer_farm_information_#{Time.current.strftime('%Y%m%d%H%M%S')}.xlsx",
+      type: XlsxExporter::MIME_TYPE
   end
 
   private

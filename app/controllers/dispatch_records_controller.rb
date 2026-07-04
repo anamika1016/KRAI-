@@ -13,9 +13,9 @@ class DispatchRecordsController < ApplicationController
   end
 
   def export
-    send_data DispatchRecord.to_csv(DispatchRecord.order(created_at: :desc)),
-      filename: "dispatch_records_#{Time.current.strftime('%Y%m%d%H%M%S')}.csv",
-      type: "text/csv"
+    send_data DispatchRecord.to_xlsx(DispatchRecord.order(created_at: :desc)),
+      filename: "dispatch_records_#{Time.current.strftime('%Y%m%d%H%M%S')}.xlsx",
+      type: XlsxExporter::MIME_TYPE
   end
 
   def create
@@ -64,11 +64,12 @@ class DispatchRecordsController < ApplicationController
 
   def load_index_state
     @dispatch_record ||= DispatchRecord.new(status: "Active")
-    @dispatch_records = DispatchRecord.order(created_at: :desc).limit(200)
+    @dispatch_records = DispatchRecord.includes(:farmer_farm_information).order(created_at: :desc).limit(200)
   end
 
   def dispatch_record_params
     params.require(:dispatch_record).permit(
+      :farmer_farm_information_id,
       :produce_name,
       :organic_status,
       :quantity_sold_to_ics_kg,

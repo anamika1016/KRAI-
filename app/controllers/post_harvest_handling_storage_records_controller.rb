@@ -13,9 +13,9 @@ class PostHarvestHandlingStorageRecordsController < ApplicationController
   end
 
   def export
-    send_data PostHarvestHandlingStorageRecord.to_csv(PostHarvestHandlingStorageRecord.order(created_at: :desc)),
-      filename: "post_harvest_handling_storage_records_#{Time.current.strftime('%Y%m%d%H%M%S')}.csv",
-      type: "text/csv"
+    send_data PostHarvestHandlingStorageRecord.to_xlsx(PostHarvestHandlingStorageRecord.order(created_at: :desc)),
+      filename: "post_harvest_handling_storage_records_#{Time.current.strftime('%Y%m%d%H%M%S')}.xlsx",
+      type: XlsxExporter::MIME_TYPE
   end
 
   def create
@@ -64,11 +64,12 @@ class PostHarvestHandlingStorageRecordsController < ApplicationController
 
   def load_index_state
     @post_harvest_handling_storage_record ||= PostHarvestHandlingStorageRecord.new(status: "Active")
-    @post_harvest_handling_storage_records = PostHarvestHandlingStorageRecord.order(created_at: :desc).limit(200)
+    @post_harvest_handling_storage_records = PostHarvestHandlingStorageRecord.includes(:farmer_farm_information).order(created_at: :desc).limit(200)
   end
 
   def post_harvest_handling_storage_record_params
     params.require(:post_harvest_handling_storage_record).permit(
+      :farmer_farm_information_id,
       :crop_name,
       :post_harvest_treatment,
       :produce_name,

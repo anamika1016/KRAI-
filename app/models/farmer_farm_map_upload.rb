@@ -1,4 +1,6 @@
 class FarmerFarmMapUpload < ApplicationRecord
+  include FarmerFarmLinkable
+
   IMAGE_CONTENT_TYPES = %w[image/jpeg image/png].freeze
   MAP_TYPES = {
     "farm_map" => "Farm Map (lat long gps)",

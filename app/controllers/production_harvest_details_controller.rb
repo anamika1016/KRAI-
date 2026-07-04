@@ -13,9 +13,9 @@ class ProductionHarvestDetailsController < ApplicationController
   end
 
   def export
-    send_data ProductionHarvestDetail.to_csv(ProductionHarvestDetail.order(created_at: :desc)),
-      filename: "production_harvest_details_#{Time.current.strftime('%Y%m%d%H%M%S')}.csv",
-      type: "text/csv"
+    send_data ProductionHarvestDetail.to_xlsx(ProductionHarvestDetail.order(created_at: :desc)),
+      filename: "production_harvest_details_#{Time.current.strftime('%Y%m%d%H%M%S')}.xlsx",
+      type: XlsxExporter::MIME_TYPE
   end
 
   def create
@@ -64,11 +64,12 @@ class ProductionHarvestDetailsController < ApplicationController
 
   def load_index_state
     @production_harvest_detail ||= ProductionHarvestDetail.new(status: "Active")
-    @production_harvest_details = ProductionHarvestDetail.order(created_at: :desc).limit(200)
+    @production_harvest_details = ProductionHarvestDetail.includes(:farmer_farm_information).order(created_at: :desc).limit(200)
   end
 
   def production_harvest_detail_params
     params.require(:production_harvest_detail).permit(
+      :farmer_farm_information_id,
       :farm_plot_name,
       :year_season,
       :crop_produce_name,

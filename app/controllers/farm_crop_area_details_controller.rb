@@ -13,9 +13,9 @@ class FarmCropAreaDetailsController < ApplicationController
   end
 
   def export
-    send_data FarmCropAreaDetail.to_csv(FarmCropAreaDetail.order(created_at: :desc)),
-      filename: "farm_crop_area_details_#{Time.current.strftime('%Y%m%d%H%M%S')}.csv",
-      type: "text/csv"
+    send_data FarmCropAreaDetail.to_xlsx(FarmCropAreaDetail.order(created_at: :desc)),
+      filename: "farm_crop_area_details_#{Time.current.strftime('%Y%m%d%H%M%S')}.xlsx",
+      type: XlsxExporter::MIME_TYPE
   end
 
   def create
@@ -64,11 +64,12 @@ class FarmCropAreaDetailsController < ApplicationController
 
   def load_index_state
     @farm_crop_area_detail ||= FarmCropAreaDetail.new(status: "Active")
-    @farm_crop_area_details = FarmCropAreaDetail.order(created_at: :desc).limit(200)
+    @farm_crop_area_details = FarmCropAreaDetail.includes(:farmer_farm_information).order(created_at: :desc).limit(200)
   end
 
   def farm_crop_area_detail_params
     params.require(:farm_crop_area_detail).permit(
+      :farmer_farm_information_id,
       :record_title,
       :crop_name,
       :area_hectares,

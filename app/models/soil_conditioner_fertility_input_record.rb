@@ -1,5 +1,6 @@
 class SoilConditionerFertilityInputRecord < ApplicationRecord
   include TabularImportExport
+  include FarmerFarmLinkable
 
   EXPORT_COLUMNS = %i[
     serial_no farm_plot_no crop_name input_name input_source_brand application_time application_rate status

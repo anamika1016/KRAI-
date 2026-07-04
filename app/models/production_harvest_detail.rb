@@ -1,5 +1,6 @@
 class ProductionHarvestDetail < ApplicationRecord
   include TabularImportExport
+  include FarmerFarmLinkable
 
   EXPORT_COLUMNS = %i[
     farm_plot_name year_season crop_produce_name area_hectares estimated_production_mt harvest_time actual_production_mt status

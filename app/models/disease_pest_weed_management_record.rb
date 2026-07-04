@@ -1,5 +1,6 @@
 class DiseasePestWeedManagementRecord < ApplicationRecord
   include TabularImportExport
+  include FarmerFarmLinkable
 
   EXPORT_COLUMNS = %i[
     farm_plot_no area crop_name pest_disease_weed_name treatment_name treatment_time input_source_brand application_rate status

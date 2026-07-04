@@ -1,5 +1,6 @@
 class OnFarmInputRecord < ApplicationRecord
   include TabularImportExport
+  include FarmerFarmLinkable
 
   EXPORT_COLUMNS = %i[
     serial_no input_name preparation_date raw_material_details prepared_quantity status

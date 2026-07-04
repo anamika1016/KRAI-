@@ -674,7 +674,7 @@
           <button type="submit" name="bulk_action" value="inactive" class="list-btn deactive">Inactive</button>
           <button type="submit" name="bulk_action" value="edit" class="list-btn edit">Edit</button>
           <button type="submit" name="bulk_action" value="delete" class="list-btn delete" data-turbo-confirm="Delete selected LG Directory row(s)?">Delete</button>
-          <%= link_to "Export Excel", export_module_path(@slug, table: @lg_directory_filter, q: @lg_directory_query, format: :csv), class: "list-btn export" %>
+          <%= link_to "Export Excel", export_module_path(@slug, table: @lg_directory_filter, q: @lg_directory_query, format: :xlsx), class: "list-btn export" %>
         </div>
 
         <div class="table-shell lg-directory-table-shell">
@@ -1352,7 +1352,7 @@
 
       <div class="vrp-list-toolbar compact">
         <button type="button" class="list-btn send" data-bill-send-selected>Send for Approval</button>
-        <button type="button" class="list-btn export" data-export-table="<%= table_id %>">Export CSV</button>
+        <button type="button" class="list-btn export" data-export-table="<%= table_id %>">Export Excel</button>
         <button type="button" class="list-btn edit" data-module-edit-selected>Edit</button>
         <button type="button" class="list-btn active" data-bill-state-selected="Active">Active</button>
         <button type="button" class="list-btn deactive" data-bill-state-selected="Inactive">Inactive</button>
@@ -1821,7 +1821,7 @@
               <%= form.file_field :file, accept: ".csv,.xlsx", data: { import_file: true }, hidden: true %>
             </label>
             <%= form.submit "Upload", class: "list-btn upload" %>
-            <%= link_to "Export", export_module_path(@slug, format: :csv), class: "list-btn export" %>
+            <%= link_to "Export Excel", export_module_path(@slug, format: :xlsx), class: "list-btn export" %>
           <% end %>
         </div>
         <div class="table-shell">

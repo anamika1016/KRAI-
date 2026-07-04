@@ -28,6 +28,7 @@
     <section class="module-card">
       <%= form_with model: form_record, url: form_url, method: form_method, local: true, html: { class: "module-entry-form" } do |f| %>
         <div class="module-form-grid user-registration-grid">
+          <%= render "shared/farmer_farm_information_select", form: f, record: form_record %>
           <label><span>S No.</span><%= f.text_field :serial_no, placeholder: "Enter S No." %></label>
           <label><span>Name of the crop</span><%= f.text_field :crop_name, placeholder: "Enter Crop Name" %></label>
           <label><span>Variety</span><%= f.text_field :variety, placeholder: "Enter Variety" %></label>
@@ -56,12 +57,13 @@
       <div class="list-controls"><div class="list-search"><span>⌕</span><input type="search" placeholder="Search seed material" data-table-search="seed_planting_materials_list"></div></div>
       <div class="table-shell">
         <table class="module-table vrp-list-table" id="seed_planting_materials_list" data-paginated-table data-page-size="15">
-          <thead><tr><th><input type="checkbox" data-module-select-all></th><th>S No.</th><th>Crop</th><th>Variety</th><th>Purchase Date</th><th>Supplier</th><th>Seed Type</th><th>Quantity</th><th>Status</th></tr></thead>
+          <thead><tr><th><input type="checkbox" data-module-select-all></th><%= render "shared/farmer_farm_information_table_headers" %><th>S No.</th><th>Crop</th><th>Variety</th><th>Purchase Date</th><th>Supplier</th><th>Seed Type</th><th>Quantity</th><th>Status</th></tr></thead>
           <tbody>
             <% if @seed_planting_materials.any? %>
               <% @seed_planting_materials.each do |record| %>
                 <tr>
                   <td><input type="checkbox" value="<%= edit_seed_planting_material_path(record) %>" data-module-row-select></td>
+                  <%= render "shared/farmer_farm_information_table_cells", record: record %>
                   <td><%= record.serial_no.presence || "-" %></td>
                   <td><%= record.crop_name.presence || "-" %></td>
                   <td><%= record.variety.presence || "-" %></td>
@@ -73,7 +75,7 @@
                 </tr>
               <% end %>
             <% else %>
-              <tr><td colspan="9">No seed planting material saved yet.</td></tr>
+              <tr><td colspan="12">No seed planting material saved yet.</td></tr>
             <% end %>
           </tbody>
         </table>

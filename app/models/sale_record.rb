@@ -1,5 +1,6 @@
 class SaleRecord < ApplicationRecord
   include TabularImportExport
+  include FarmerFarmLinkable
 
   ORGANIC_STATUS_OPTIONS = [
     "Organic",

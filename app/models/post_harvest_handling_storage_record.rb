@@ -1,5 +1,6 @@
 class PostHarvestHandlingStorageRecord < ApplicationRecord
   include TabularImportExport
+  include FarmerFarmLinkable
 
   EXPORT_COLUMNS = %i[
     crop_name post_harvest_treatment produce_name packing_material storage_area status

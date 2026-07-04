@@ -1,5 +1,6 @@
 class ContaminationControlRecord < ApplicationRecord
   include TabularImportExport
+  include FarmerFarmLinkable
 
   CHANCE_OPTIONS = [
     "Machinery",

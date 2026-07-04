@@ -20,6 +20,7 @@
         <%= f.hidden_field :gps_accuracy, data: { gps_accuracy: true } %>
 
         <div class="module-form-grid">
+          <%= render "shared/farmer_farm_information_select", form: f, record: @farm_map_upload %>
           <label>
             <span>Photo Upload <em>*</em></span>
             <%= f.file_field :photo, accept: ".jpeg,.jpg,.png,image/jpeg,image/png", required: !@farm_map_upload.persisted?, class: "form-control" %>
@@ -57,6 +58,7 @@
           <thead>
             <tr>
               <th><input type="checkbox" data-module-select-all></th>
+              <%= render "shared/farmer_farm_information_table_headers" %>
               <th>Photo</th>
               <th>Latitude</th>
               <th>Longitude</th>
@@ -70,6 +72,7 @@
               <% @map_uploads.each do |upload| %>
                 <tr>
                   <td><input type="checkbox" value="<%= edit_farmer_farm_map_upload_path(upload) %>" data-module-row-select></td>
+                  <%= render "shared/farmer_farm_information_table_cells", record: upload %>
                   <td>
                     <% if upload.photo.attached? %>
                       <%= link_to "View Photo", rails_blob_path(upload.photo, disposition: "inline"), target: "_blank", class: "table-action" %>
@@ -86,7 +89,7 @@
               <% end %>
             <% else %>
               <tr>
-                <td colspan="7">No saved records yet.</td>
+                <td colspan="10">No saved records yet.</td>
               </tr>
             <% end %>
           </tbody>

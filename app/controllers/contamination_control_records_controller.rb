@@ -13,9 +13,9 @@ class ContaminationControlRecordsController < ApplicationController
   end
 
   def export
-    send_data ContaminationControlRecord.to_csv(ContaminationControlRecord.order(created_at: :desc)),
-      filename: "contamination_control_records_#{Time.current.strftime('%Y%m%d%H%M%S')}.csv",
-      type: "text/csv"
+    send_data ContaminationControlRecord.to_xlsx(ContaminationControlRecord.order(created_at: :desc)),
+      filename: "contamination_control_records_#{Time.current.strftime('%Y%m%d%H%M%S')}.xlsx",
+      type: XlsxExporter::MIME_TYPE
   end
 
   def create
@@ -64,12 +64,13 @@ class ContaminationControlRecordsController < ApplicationController
 
   def load_index_state
     @contamination_record ||= ContaminationControlRecord.new(status: "Active")
-    @contamination_records = ContaminationControlRecord.order(created_at: :desc).limit(200)
+    @contamination_records = ContaminationControlRecord.includes(:farmer_farm_information).order(created_at: :desc).limit(200)
     @chance_options = ContaminationControlRecord::CHANCE_OPTIONS
   end
 
   def contamination_record_params
     params.require(:contamination_control_record).permit(
+      :farmer_farm_information_id,
       :chance_of_contamination,
       :source_details,
       :contamination_control_time,

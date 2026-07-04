@@ -557,6 +557,13 @@ class ModulesController < ApplicationController
           type: "text/csv"
         )
       end
+      format.xlsx do
+        send_xlsx(
+          rows: training_participation_rows_csv(@training_participation_rows),
+          filename: "farmer-training-#{selected_status}-#{Time.current.strftime("%Y%m%d%H%M")}.xlsx",
+          sheet_name: "Training Participation"
+        )
+      end
     end
   end
 
@@ -591,6 +598,13 @@ class ModulesController < ApplicationController
           type: "text/csv"
         )
       end
+      format.xlsx do
+        send_xlsx(
+          rows: training_target_status_rows_csv(@training_target_status_rows),
+          filename: "farmer-training-target-#{selected_status}-#{Time.current.strftime("%Y%m%d%H%M")}.xlsx",
+          sheet_name: "Training Target"
+        )
+      end
     end
   end
 
@@ -612,6 +626,13 @@ class ModulesController < ApplicationController
           dashboard_detail_rows_csv(@vrp_dashboard_detail),
           filename: "#{@vrp_dashboard_detail[:key]}-#{Time.current.strftime("%Y%m%d%H%M")}.csv",
           type: "text/csv"
+        )
+      end
+      format.xlsx do
+        send_xlsx(
+          rows: dashboard_detail_rows_csv(@vrp_dashboard_detail),
+          filename: "#{@vrp_dashboard_detail[:key]}-#{Time.current.strftime("%Y%m%d%H%M")}.xlsx",
+          sheet_name: @vrp_dashboard_detail[:key].to_s.titleize
         )
       end
     end
@@ -774,10 +795,10 @@ class ModulesController < ApplicationController
     end
     rows = selected_farmer_rows_for(record)
 
-    csv_data = CSV.generate(headers: true) do |csv|
-      csv << ["Farmer ID", "Farmer Name", "Father Name", "Tracenet No", "Mobile No", "Khasara No"]
-      rows.each do |row|
-        csv << [
+    send_xlsx(
+      headers: ["Farmer ID", "Farmer Name", "Father Name", "Tracenet No", "Mobile No", "Khasara No"],
+      rows: rows.map do |row|
+        [
           row[:id],
           row[:farmer_name],
           row[:father_name],
@@ -785,12 +806,10 @@ class ModulesController < ApplicationController
           row[:mobile_no],
           row[:khasara_no]
         ]
-      end
-    end
-
-    send_data csv_data,
-      filename: "#{record.module_slug}_selected_farmers_#{record.id}_#{Date.current}.csv",
-      type: "text/csv"
+      end,
+      filename: "#{record.module_slug}_selected_farmers_#{record.id}_#{Date.current}.xlsx",
+      sheet_name: "Selected Farmers"
+    )
   end
 
   def selected_farmer
@@ -851,15 +870,13 @@ class ModulesController < ApplicationController
     if @slug == "lg-directory-list"
       prepare_lg_directory_data
       csv_data = lg_directory_csv(@lg_directory_rows)
-      filename = "lg_directory_all_list_#{Date.current}.csv"
+      filename = "lg_directory_all_list_#{Date.current}.xlsx"
     else
       csv_data = module_records_csv(module_records)
-      filename = "#{record_source_slug.tr("-", "_")}_records_#{Date.current}.csv"
+      filename = "#{record_source_slug.tr("-", "_")}_records_#{Date.current}.xlsx"
     end
 
-    send_data csv_data,
-      filename: filename,
-      type: "text/csv"
+    send_xlsx rows: csv_data, filename: filename, sheet_name: @module[:title]
   end
 
   def bulk_update

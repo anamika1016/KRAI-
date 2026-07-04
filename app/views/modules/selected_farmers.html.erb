@@ -11,7 +11,7 @@
       <div class="list-control-actions">
         <%= link_to "Back", module_path(@slug), class: "list-btn" %>
         <%= link_to "Edit Record", edit_module_record_path(edit_slug, @record), class: "list-btn edit" %>
-        <%= link_to "Export", export_selected_farmers_module_record_path(@slug, @record, format: :csv), class: "list-btn export" %>
+        <%= link_to "Export Excel", export_selected_farmers_module_record_path(@slug, @record, format: :xlsx), class: "list-btn export" %>
       </div>
     </div>
 

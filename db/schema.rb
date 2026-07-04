@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2026_06_23_062000) do
+ActiveRecord::Schema[8.1].define(version: 2026_06_26_093000) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "pg_catalog.plpgsql"
 
@@ -96,6 +96,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_06_23_062000) do
     t.string "contamination_control_time"
     t.string "control"
     t.datetime "created_at", null: false
+    t.bigint "farmer_farm_information_id"
     t.string "prevention"
     t.text "remarks"
     t.text "source_details"
@@ -103,6 +104,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_06_23_062000) do
     t.datetime "updated_at", null: false
     t.index ["chance_of_contamination"], name: "index_contamination_records_on_chance"
     t.index ["created_at"], name: "index_contamination_records_on_created_at"
+    t.index ["farmer_farm_information_id"], name: "idx_ccr_on_ffi_id"
   end
 
   create_table "disease_pest_weed_management_records", force: :cascade do |t|
@@ -111,6 +113,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_06_23_062000) do
     t.datetime "created_at", null: false
     t.string "crop_name"
     t.string "farm_plot_no"
+    t.bigint "farmer_farm_information_id"
     t.string "input_source_brand"
     t.string "pest_disease_weed_name"
     t.string "status", default: "Active", null: false
@@ -119,10 +122,12 @@ ActiveRecord::Schema[8.1].define(version: 2026_06_23_062000) do
     t.datetime "updated_at", null: false
     t.index ["created_at"], name: "index_disease_pest_records_on_created_at"
     t.index ["crop_name"], name: "index_disease_pest_records_on_crop_name"
+    t.index ["farmer_farm_information_id"], name: "idx_dpwmr_on_ffi_id"
   end
 
   create_table "dispatch_records", force: :cascade do |t|
     t.datetime "created_at", null: false
+    t.bigint "farmer_farm_information_id"
     t.string "organic_status"
     t.string "produce_name"
     t.decimal "quantity_sold_to_ics_kg", precision: 18, scale: 4
@@ -133,6 +138,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_06_23_062000) do
     t.decimal "transport_quantity", precision: 18, scale: 4
     t.datetime "updated_at", null: false
     t.index ["created_at"], name: "index_dispatch_records_on_created_at"
+    t.index ["farmer_farm_information_id"], name: "idx_dr_on_ffi_id"
     t.index ["produce_name"], name: "index_dispatch_records_on_produce_name"
     t.index ["transport_date"], name: "index_dispatch_records_on_transport_date"
   end
@@ -142,6 +148,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_06_23_062000) do
     t.datetime "created_at", null: false
     t.string "crop_name"
     t.text "farm_crop_area_rows", default: "[]", null: false
+    t.bigint "farmer_farm_information_id"
     t.text "on_farm_input_rows", default: "[]", null: false
     t.string "perennial_age_plantation_time"
     t.string "production_method"
@@ -154,6 +161,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_06_23_062000) do
     t.string "year_season_production"
     t.index ["created_at"], name: "index_farm_crop_area_details_on_created_at"
     t.index ["crop_name"], name: "index_farm_crop_area_details_on_crop_name"
+    t.index ["farmer_farm_information_id"], name: "idx_fcad_on_ffi_id"
     t.index ["record_title"], name: "index_farm_crop_area_details_on_record_title"
   end
 
@@ -205,6 +213,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_06_23_062000) do
 
   create_table "farmer_farm_map_uploads", force: :cascade do |t|
     t.datetime "created_at", null: false
+    t.bigint "farmer_farm_information_id"
     t.decimal "gps_accuracy", precision: 12, scale: 4
     t.decimal "latitude", precision: 20, scale: 8
     t.decimal "longitude", precision: 20, scale: 8
@@ -212,6 +221,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_06_23_062000) do
     t.string "status", default: "Active", null: false
     t.datetime "updated_at", null: false
     t.index ["created_at"], name: "index_farmer_farm_map_uploads_on_created_at"
+    t.index ["farmer_farm_information_id"], name: "idx_ffmu_on_ffi_id"
     t.index ["map_type"], name: "index_farmer_farm_map_uploads_on_map_type"
   end
 
@@ -250,6 +260,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_06_23_062000) do
 
   create_table "on_farm_input_records", force: :cascade do |t|
     t.datetime "created_at", null: false
+    t.bigint "farmer_farm_information_id"
     t.string "input_name"
     t.date "preparation_date"
     t.decimal "prepared_quantity", precision: 18, scale: 4
@@ -258,12 +269,14 @@ ActiveRecord::Schema[8.1].define(version: 2026_06_23_062000) do
     t.string "status", default: "Active", null: false
     t.datetime "updated_at", null: false
     t.index ["created_at"], name: "index_on_farm_input_records_on_created_at"
+    t.index ["farmer_farm_information_id"], name: "idx_ofir_on_ffi_id"
     t.index ["input_name"], name: "index_on_farm_input_records_on_input_name"
   end
 
   create_table "post_harvest_handling_storage_records", force: :cascade do |t|
     t.datetime "created_at", null: false
     t.string "crop_name"
+    t.bigint "farmer_farm_information_id"
     t.string "packing_material"
     t.text "post_harvest_treatment"
     t.string "produce_name"
@@ -272,6 +285,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_06_23_062000) do
     t.datetime "updated_at", null: false
     t.index ["created_at"], name: "idx_post_harvest_storage_on_created_at"
     t.index ["crop_name"], name: "idx_post_harvest_storage_on_crop_name"
+    t.index ["farmer_farm_information_id"], name: "idx_phhsr_on_ffi_id"
     t.index ["produce_name"], name: "idx_post_harvest_storage_on_produce_name"
   end
 
@@ -282,6 +296,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_06_23_062000) do
     t.string "crop_produce_name"
     t.decimal "estimated_production_mt", precision: 18, scale: 4
     t.string "farm_plot_name"
+    t.bigint "farmer_farm_information_id"
     t.string "harvest_time"
     t.string "status", default: "Active", null: false
     t.datetime "updated_at", null: false
@@ -289,11 +304,13 @@ ActiveRecord::Schema[8.1].define(version: 2026_06_23_062000) do
     t.index ["created_at"], name: "index_production_harvest_details_on_created_at"
     t.index ["crop_produce_name"], name: "index_production_harvest_details_on_crop_produce_name"
     t.index ["farm_plot_name"], name: "index_production_harvest_details_on_farm_plot_name"
+    t.index ["farmer_farm_information_id"], name: "idx_phd_on_ffi_id"
   end
 
   create_table "sale_records", force: :cascade do |t|
     t.decimal "balance_qty", precision: 18, scale: 4
     t.datetime "created_at", null: false
+    t.bigint "farmer_farm_information_id"
     t.string "organic_status"
     t.string "produce_name"
     t.string "purchase_receipt_no"
@@ -304,6 +321,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_06_23_062000) do
     t.datetime "updated_at", null: false
     t.text "usage_consumption_other_issues"
     t.index ["created_at"], name: "index_sale_records_on_created_at"
+    t.index ["farmer_farm_information_id"], name: "idx_sr_on_ffi_id"
     t.index ["organic_status"], name: "index_sale_records_on_organic_status"
     t.index ["produce_name"], name: "index_sale_records_on_produce_name"
   end
@@ -311,6 +329,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_06_23_062000) do
   create_table "seed_planting_materials", force: :cascade do |t|
     t.datetime "created_at", null: false
     t.string "crop_name"
+    t.bigint "farmer_farm_information_id"
     t.date "purchase_date"
     t.decimal "seed_quantity", precision: 18, scale: 4
     t.text "seed_treatment_details"
@@ -322,6 +341,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_06_23_062000) do
     t.string "variety"
     t.index ["created_at"], name: "index_seed_planting_materials_on_created_at"
     t.index ["crop_name"], name: "index_seed_planting_materials_on_crop_name"
+    t.index ["farmer_farm_information_id"], name: "idx_spm_on_ffi_id"
   end
 
   create_table "soil_conditioner_fertility_input_records", force: :cascade do |t|
@@ -330,6 +350,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_06_23_062000) do
     t.datetime "created_at", null: false
     t.string "crop_name"
     t.string "farm_plot_no"
+    t.bigint "farmer_farm_information_id"
     t.string "input_name"
     t.string "input_source_brand"
     t.string "serial_no"
@@ -337,6 +358,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_06_23_062000) do
     t.datetime "updated_at", null: false
     t.index ["created_at"], name: "index_soil_conditioner_records_on_created_at"
     t.index ["crop_name"], name: "index_soil_conditioner_records_on_crop_name"
+    t.index ["farmer_farm_information_id"], name: "idx_scfi_on_ffi_id"
   end
 
   create_table "target_mappings", force: :cascade do |t|
@@ -505,7 +527,18 @@ ActiveRecord::Schema[8.1].define(version: 2026_06_23_062000) do
 
   add_foreign_key "active_storage_attachments", "active_storage_blobs", column: "blob_id"
   add_foreign_key "active_storage_variant_records", "active_storage_blobs", column: "blob_id"
+  add_foreign_key "contamination_control_records", "farmer_farm_information"
+  add_foreign_key "disease_pest_weed_management_records", "farmer_farm_information"
+  add_foreign_key "dispatch_records", "farmer_farm_information"
+  add_foreign_key "farm_crop_area_details", "farmer_farm_information"
+  add_foreign_key "farmer_farm_map_uploads", "farmer_farm_information"
   add_foreign_key "ics_exit_declarations", "farmer_farm_information"
+  add_foreign_key "on_farm_input_records", "farmer_farm_information"
+  add_foreign_key "post_harvest_handling_storage_records", "farmer_farm_information"
+  add_foreign_key "production_harvest_details", "farmer_farm_information"
+  add_foreign_key "sale_records", "farmer_farm_information"
+  add_foreign_key "seed_planting_materials", "farmer_farm_information"
+  add_foreign_key "soil_conditioner_fertility_input_records", "farmer_farm_information"
   add_foreign_key "target_mappings", "vrp_ics_mappings"
   add_foreign_key "target_mappings", "vrps"
   add_foreign_key "vrp_ics_mappings", "vrps"

@@ -28,6 +28,7 @@
     <section class="module-card">
       <%= form_with model: form_record, url: form_url, method: form_method, local: true, html: { class: "module-entry-form" } do |f| %>
         <div class="module-form-grid user-registration-grid">
+          <%= render "shared/farmer_farm_information_select", form: f, record: form_record %>
           <label>
             <span>Chances of contamination</span>
             <%= f.select :chance_of_contamination, options_for_select(@chance_options, form_record.chance_of_contamination), { include_blank: "Select Chance" } %>
@@ -85,6 +86,7 @@
           <thead>
             <tr>
               <th><input type="checkbox" data-module-select-all></th>
+              <%= render "shared/farmer_farm_information_table_headers" %>
               <th>Chances of contamination</th>
               <th>Source & Details</th>
               <th>Time</th>
@@ -99,6 +101,7 @@
               <% @contamination_records.each do |record| %>
                 <tr>
                   <td><input type="checkbox" value="<%= edit_contamination_control_record_path(record) %>" data-module-row-select></td>
+                  <%= render "shared/farmer_farm_information_table_cells", record: record %>
                   <td><%= record.chance_of_contamination.presence || "-" %></td>
                   <td><%= record.source_details.presence || "-" %></td>
                   <td><%= record.contamination_control_time.presence || "-" %></td>
@@ -110,7 +113,7 @@
               <% end %>
             <% else %>
               <tr>
-                <td colspan="8">No contamination control record saved yet.</td>
+                <td colspan="11">No contamination control record saved yet.</td>
               </tr>
             <% end %>
           </tbody>

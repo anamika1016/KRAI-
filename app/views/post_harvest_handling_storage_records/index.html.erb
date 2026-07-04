@@ -28,6 +28,7 @@
     <section class="module-card">
       <%= form_with model: form_record, url: form_url, method: form_method, local: true, html: { class: "module-entry-form" } do |f| %>
         <div class="module-form-grid user-registration-grid">
+          <%= render "shared/farmer_farm_information_select", form: f, record: form_record %>
           <label>
             <span>Name of crop</span>
             <%= f.text_field :crop_name, placeholder: "Enter Crop Name" %>
@@ -85,6 +86,7 @@
           <thead>
             <tr>
               <th><input type="checkbox" data-module-select-all></th>
+              <%= render "shared/farmer_farm_information_table_headers" %>
               <th>Name of crop</th>
               <th>Post harvest treatment</th>
               <th>Name of produce</th>
@@ -98,6 +100,7 @@
               <% @post_harvest_handling_storage_records.each do |record| %>
                 <tr>
                   <td><input type="checkbox" value="<%= edit_post_harvest_handling_storage_record_path(record) %>" data-module-row-select></td>
+                  <%= render "shared/farmer_farm_information_table_cells", record: record %>
                   <td><%= record.crop_name.presence || "-" %></td>
                   <td><%= record.post_harvest_treatment.presence || "-" %></td>
                   <td><%= record.produce_name.presence || "-" %></td>
@@ -108,7 +111,7 @@
               <% end %>
             <% else %>
               <tr>
-                <td colspan="7">No post harvest handling storage records saved yet.</td>
+                <td colspan="10">No post harvest handling storage records saved yet.</td>
               </tr>
             <% end %>
           </tbody>

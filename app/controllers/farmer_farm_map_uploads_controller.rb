@@ -72,7 +72,7 @@ class FarmerFarmMapUploadsController < ApplicationController
 
   def load_upload_page_state(map_type)
     @map_title = FarmerFarmMapUpload.title_for(map_type)
-    @map_uploads = FarmerFarmMapUpload.where(map_type: map_type).with_attached_photo.order(created_at: :desc)
+    @map_uploads = FarmerFarmMapUpload.where(map_type: map_type).includes(:farmer_farm_information).with_attached_photo.order(created_at: :desc)
   end
 
   def set_farm_map_upload
@@ -84,6 +84,6 @@ class FarmerFarmMapUploadsController < ApplicationController
   end
 
   def farmer_farm_map_upload_params
-    params.require(:farmer_farm_map_upload).permit(:map_type, :latitude, :longitude, :gps_accuracy, :photo)
+    params.require(:farmer_farm_map_upload).permit(:farmer_farm_information_id, :map_type, :latitude, :longitude, :gps_accuracy, :photo)
   end
 end

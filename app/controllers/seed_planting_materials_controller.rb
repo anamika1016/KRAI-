@@ -13,9 +13,9 @@ class SeedPlantingMaterialsController < ApplicationController
   end
 
   def export
-    send_data SeedPlantingMaterial.to_csv(SeedPlantingMaterial.order(created_at: :desc)),
-      filename: "seed_planting_materials_#{Time.current.strftime('%Y%m%d%H%M%S')}.csv",
-      type: "text/csv"
+    send_data SeedPlantingMaterial.to_xlsx(SeedPlantingMaterial.order(created_at: :desc)),
+      filename: "seed_planting_materials_#{Time.current.strftime('%Y%m%d%H%M%S')}.xlsx",
+      type: XlsxExporter::MIME_TYPE
   end
 
   def create
@@ -64,11 +64,11 @@ class SeedPlantingMaterialsController < ApplicationController
 
   def load_index_state
     @seed_planting_material ||= SeedPlantingMaterial.new(status: "Active")
-    @seed_planting_materials = SeedPlantingMaterial.order(created_at: :desc).limit(200)
+    @seed_planting_materials = SeedPlantingMaterial.includes(:farmer_farm_information).order(created_at: :desc).limit(200)
   end
 
   def seed_planting_material_params
-    params.require(:seed_planting_material).permit(:serial_no, :crop_name, :variety, :purchase_date, :supplier_name_address, :seed_type, :seed_treatment_details, :seed_quantity, :status)
+    params.require(:seed_planting_material).permit(:farmer_farm_information_id, :serial_no, :crop_name, :variety, :purchase_date, :supplier_name_address, :seed_type, :seed_treatment_details, :seed_quantity, :status)
   end
 
   def import_notice(result, label)

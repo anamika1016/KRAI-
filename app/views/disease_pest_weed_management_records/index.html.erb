@@ -28,6 +28,7 @@
     <section class="module-card">
       <%= form_with model: form_record, url: form_url, method: form_method, local: true, html: { class: "module-entry-form" } do |f| %>
         <div class="module-form-grid user-registration-grid">
+          <%= render "shared/farmer_farm_information_select", form: f, record: form_record %>
           <label>
             <span>Name of farm /plot no.</span>
             <%= f.text_field :farm_plot_no, placeholder: "Enter Farm / Plot No" %>
@@ -93,6 +94,7 @@
           <thead>
             <tr>
               <th><input type="checkbox" data-module-select-all></th>
+              <%= render "shared/farmer_farm_information_table_headers" %>
               <th>Farm / Plot No</th>
               <th>Area</th>
               <th>Crop</th>
@@ -109,6 +111,7 @@
               <% @disease_records.each do |record| %>
                 <tr>
                   <td><input type="checkbox" value="<%= edit_disease_pest_weed_management_record_path(record) %>" data-module-row-select></td>
+                  <%= render "shared/farmer_farm_information_table_cells", record: record %>
                   <td><%= record.farm_plot_no.presence || "-" %></td>
                   <td><%= record.area.presence || "-" %></td>
                   <td><%= record.crop_name.presence || "-" %></td>
@@ -122,7 +125,7 @@
               <% end %>
             <% else %>
               <tr>
-                <td colspan="10">No disease, pest and weed management record saved yet.</td>
+                <td colspan="13">No disease, pest and weed management record saved yet.</td>
               </tr>
             <% end %>
           </tbody>

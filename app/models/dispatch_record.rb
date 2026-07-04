@@ -1,5 +1,6 @@
 class DispatchRecord < ApplicationRecord
   include TabularImportExport
+  include FarmerFarmLinkable
 
   EXPORT_COLUMNS = %i[
     produce_name organic_status quantity_sold_to_ics_kg transport_date transport_quantity transport_mode remarks status

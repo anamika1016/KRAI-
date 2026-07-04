@@ -28,6 +28,7 @@
     <section class="module-card">
       <%= form_with model: form_record, url: form_url, method: form_method, local: true, html: { class: "module-entry-form" } do |f| %>
         <div class="module-form-grid user-registration-grid">
+          <%= render "shared/farmer_farm_information_select", form: f, record: form_record %>
           <label>
             <span>Record Name</span>
             <%= f.text_field :record_title, placeholder: "Enter Record Name" %>
@@ -93,6 +94,7 @@
           <thead>
             <tr>
               <th><input type="checkbox" data-module-select-all></th>
+              <%= render "shared/farmer_farm_information_table_headers" %>
               <th>Record Name</th>
               <th>Name of the crop</th>
               <th>Area in Hectares</th>
@@ -107,6 +109,7 @@
               <% @farm_crop_area_details.each do |record| %>
                 <tr>
                   <td><input type="checkbox" value="<%= edit_farm_crop_area_detail_path(record) %>" data-module-row-select></td>
+                  <%= render "shared/farmer_farm_information_table_cells", record: record %>
                   <td><%= record.record_title.presence || "-" %></td>
                   <td><%= record.crop_name.presence || "-" %></td>
                   <td><%= record.area_hectares.presence || "-" %></td>
@@ -118,7 +121,7 @@
               <% end %>
             <% else %>
               <tr>
-                <td colspan="8">No farm crop area details saved yet.</td>
+                <td colspan="11">No farm crop area details saved yet.</td>
               </tr>
             <% end %>
           </tbody>

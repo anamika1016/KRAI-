@@ -13,9 +13,9 @@ class SoilConditionerFertilityInputRecordsController < ApplicationController
   end
 
   def export
-    send_data SoilConditionerFertilityInputRecord.to_csv(SoilConditionerFertilityInputRecord.order(created_at: :desc)),
-      filename: "soil_conditioner_fertility_input_records_#{Time.current.strftime('%Y%m%d%H%M%S')}.csv",
-      type: "text/csv"
+    send_data SoilConditionerFertilityInputRecord.to_xlsx(SoilConditionerFertilityInputRecord.order(created_at: :desc)),
+      filename: "soil_conditioner_fertility_input_records_#{Time.current.strftime('%Y%m%d%H%M%S')}.xlsx",
+      type: XlsxExporter::MIME_TYPE
   end
 
   def create
@@ -64,11 +64,11 @@ class SoilConditionerFertilityInputRecordsController < ApplicationController
 
   def load_index_state
     @soil_record ||= SoilConditionerFertilityInputRecord.new(status: "Active")
-    @soil_records = SoilConditionerFertilityInputRecord.order(created_at: :desc).limit(200)
+    @soil_records = SoilConditionerFertilityInputRecord.includes(:farmer_farm_information).order(created_at: :desc).limit(200)
   end
 
   def soil_record_params
-    params.require(:soil_conditioner_fertility_input_record).permit(:serial_no, :farm_plot_no, :crop_name, :input_name, :input_source_brand, :application_time, :application_rate, :status)
+    params.require(:soil_conditioner_fertility_input_record).permit(:farmer_farm_information_id, :serial_no, :farm_plot_no, :crop_name, :input_name, :input_source_brand, :application_time, :application_rate, :status)
   end
 
   def import_notice(result, label)

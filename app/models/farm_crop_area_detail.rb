@@ -1,5 +1,6 @@
 class FarmCropAreaDetail < ApplicationRecord
   include TabularImportExport
+  include FarmerFarmLinkable
 
   EXPORT_COLUMNS = %i[
     record_title crop_name area_hectares year_season_production perennial_age_plantation_time production_method remarks status

@@ -28,6 +28,7 @@
     <section class="module-card">
       <%= form_with model: form_record, url: form_url, method: form_method, local: true, html: { class: "module-entry-form" } do |f| %>
         <div class="module-form-grid user-registration-grid">
+          <%= render "shared/farmer_farm_information_select", form: f, record: form_record %>
           <label>
             <span>Name of the produce</span>
             <%= f.text_field :produce_name, placeholder: "Enter Produce Name" %>
@@ -93,6 +94,7 @@
           <thead>
             <tr>
               <th><input type="checkbox" data-module-select-all></th>
+              <%= render "shared/farmer_farm_information_table_headers" %>
               <th>Name of the produce</th>
               <th>Organic status</th>
               <th>Quantity sold to ICS(Kg)</th>
@@ -108,6 +110,7 @@
               <% @dispatch_records.each do |record| %>
                 <tr>
                   <td><input type="checkbox" value="<%= edit_dispatch_record_path(record) %>" data-module-row-select></td>
+                  <%= render "shared/farmer_farm_information_table_cells", record: record %>
                   <td><%= record.produce_name.presence || "-" %></td>
                   <td><%= record.organic_status.presence || "-" %></td>
                   <td><%= record.quantity_sold_to_ics_kg.presence || "-" %></td>
@@ -120,7 +123,7 @@
               <% end %>
             <% else %>
               <tr>
-                <td colspan="9">No dispatch records saved yet.</td>
+                <td colspan="12">No dispatch records saved yet.</td>
               </tr>
             <% end %>
           </tbody>
