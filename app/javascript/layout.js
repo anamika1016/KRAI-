@@ -1717,11 +1717,6 @@ document.addEventListener("turbo:load", () => {
 	      const boxes = farmerBoxes();
 	      if (farmerCount) farmerCount.textContent = `${count} AFL farmer selected`;
 	      if (farmerCountInput) farmerCountInput.value = String(count);
-      [maleCountInput, femaleCountInput].forEach((input) => {
-        if (!input) return;
-        if (count > 0) input.max = String(count);
-        else input.removeAttribute("max");
-      });
 	      if (farmerSelectAll) {
 	        farmerSelectAll.checked = boxes.length > 0 && count === boxes.length;
 	        farmerSelectAll.indeterminate = count > 0 && count < boxes.length;
@@ -1731,49 +1726,44 @@ document.addEventListener("turbo:load", () => {
 	        farmerSelectAllButton.disabled = boxes.length === 0;
 	        farmerSelectAllButton.textContent = boxes.length > 0 && count === boxes.length ? "Clear all" : "Select all";
 	      }
-      syncTotalFarmerCount();
-      validateTrainingCountSplit(false);
+	      syncTotalFarmerCount();
+	      validateTrainingCountSplit(false);
 	    };
 
-    const validateTrainingCountSplit = (report = false) => {
-      syncTotalFarmerCount();
-      [farmerCountInput, totalFarmerCountInput, maleCountInput, femaleCountInput].forEach((input) => input?.setCustomValidity(""));
+	    const validateTrainingCountSplit = (report = false) => {
+	      syncTotalFarmerCount();
+	      [farmerCountInput, totalFarmerCountInput, maleCountInput, femaleCountInput].forEach((input) => input?.setCustomValidity(""));
 
-      const farmerCountValue = Number(farmerCountInput?.value || 0);
-      const maleBlank = !maleCountInput?.value;
-      const femaleBlank = !femaleCountInput?.value;
-      const maleCountValue = Number(maleCountInput?.value || 0);
-      const femaleCountValue = Number(femaleCountInput?.value || 0);
-      const totalFarmerCountValue = Number(totalFarmerCountInput?.value || 0);
-      let invalidInput = null;
-      let message = "";
+	      const maleBlank = !maleCountInput?.value;
+	      const femaleBlank = !femaleCountInput?.value;
+	      const maleCountValue = Number(maleCountInput?.value || 0);
+	      const femaleCountValue = Number(femaleCountInput?.value || 0);
+	      let invalidInput = null;
+	      let message = "";
 
-      if (farmerCountValue <= 0) {
-        invalidInput = farmerCountInput;
-        message = "Target Farmers select karein.";
-      } else if (maleBlank) {
-        invalidInput = maleCountInput;
-        message = "Male Count required hai.";
-      } else if (femaleBlank) {
-        invalidInput = femaleCountInput;
-        message = "Female Count required hai.";
-      } else if (maleCountValue < 0 || maleCountValue > farmerCountValue) {
-        invalidInput = maleCountInput;
-        message = `Male Count 0 se ${farmerCountValue} ke beech hona chahiye.`;
-      } else if (femaleCountValue < 0 || femaleCountValue > farmerCountValue) {
-        invalidInput = femaleCountInput;
-        message = `Female Count 0 se ${farmerCountValue} ke beech hona chahiye.`;
-      } else if (totalFarmerCountValue !== farmerCountValue) {
-        invalidInput = totalFarmerCountInput || femaleCountInput;
-        message = `Male Count aur Female Count ka total AFL Farmer Count (${farmerCountValue}) ke equal hona chahiye.`;
-      }
+	      if (Number(farmerCountInput?.value || 0) <= 0) {
+	        invalidInput = farmerCountInput;
+	        message = "Target Farmers select karein.";
+	      } else if (maleBlank) {
+	        invalidInput = maleCountInput;
+	        message = "Male Count required hai.";
+	      } else if (femaleBlank) {
+	        invalidInput = femaleCountInput;
+	        message = "Female Count required hai.";
+	      } else if (maleCountValue < 0) {
+	        invalidInput = maleCountInput;
+	        message = "Male Count 0 se kam nahi ho sakta.";
+	      } else if (femaleCountValue < 0) {
+	        invalidInput = femaleCountInput;
+	        message = "Female Count 0 se kam nahi ho sakta.";
+	      }
 
-      if (!invalidInput) return true;
+	      if (!invalidInput) return true;
 
-      invalidInput?.setCustomValidity(message);
-      if (report) invalidInput?.reportValidity();
-      return false;
-    };
+	      invalidInput?.setCustomValidity(message);
+	      if (report) invalidInput?.reportValidity();
+	      return false;
+	    };
 
 	    const renderTrainingFarmers = () => {
 	      if (!farmerList) return;
@@ -2947,6 +2937,7 @@ document.addEventListener("turbo:load", () => {
       } catch (_error) {
         if (requestId !== targetLoadRequestId) return;
 
+        console.error("Target farmers load failed", _error);
         clearTargetFarmers("Farmers load nahi ho paye.");
       }
     };
@@ -3420,6 +3411,7 @@ document.addEventListener("turbo:load", () => {
       select.dispatchEvent(new Event("change", { bubbles: true }));
       render();
     });
+    select.addEventListener("chip:refresh", () => render());
 
     control.addEventListener("click", () => {
       if (select.disabled) return;

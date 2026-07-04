@@ -5453,18 +5453,6 @@ class ModulesController < ApplicationController
       errors << "AFL Farmer Count selected farmers ke count ke equal hona chahiye."
     end
 
-    if farmer_count&.positive? && male_count && male_count > farmer_count
-      errors << "Male Count total farmers se jyada nahi ho sakta."
-    end
-
-    if farmer_count&.positive? && female_count && female_count > farmer_count
-      errors << "Female Count total farmers se jyada nahi ho sakta."
-    end
-
-    if farmer_count&.positive? && total_farmer_count && total_farmer_count != farmer_count
-      errors << "Male Count aur Female Count ka total AFL Farmer Count ke equal hona chahiye."
-    end
-
     errors
   end
 
