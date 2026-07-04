@@ -143,7 +143,8 @@ module ApplicationHelper
         ["Seed Distribution Target", :module, "seed-distribution-target"],
         ["Seed Distribution Target List", :module, "seed-distribution-target-list"],
         ["PAPL360 Target", :module, "papl360-target"],
-        ["PAPL360 Target List", :module, "papl360-target-list"]
+        ["PAPL360 Target List", :module, "papl360-target-list"],
+        ["Add Farmer Form", :module, "add-farmer-form"]
       ]
     },
     {
@@ -293,7 +294,7 @@ module ApplicationHelper
       keys.concat(["vrp-type", "add-jeevika-jankar-type", "jeevika-jankar-type"])
     end
     if ["Farmer Training", "Farmer Target"].include?(name.to_s.strip)
-      keys.concat(["farmer-training", "farmer-target", "seed-distribution-target", "papl360-target"])
+      keys.concat(["farmer-training", "farmer-target", "seed-distribution-target", "papl360-target", "add-farmer-form"])
     end
     if ["Farmer Training Form", "Farmer Target Form"].include?(name.to_s.strip)
       keys.concat(["farmer-training-form", "farmer-target-form", "seed-distribution-target", "papl360-target"])
@@ -308,10 +309,13 @@ module ApplicationHelper
       keys.concat(["seed-distribution-target-list"])
     end
     if ["PAPL360 Target", "PAPL360 Targate", "PAPL360 Target Form"].include?(name.to_s.strip)
-      keys.concat(["papl360-target", "papl360-targate", "papl360-target-form", "papl360-target-list"])
+      keys.concat(["papl360-target", "papl360-targate", "papl360-target-form", "papl360-target-list", "add-farmer-form"])
     end
     if ["PAPL360 Target List", "PAPL360 Targate List"].include?(name.to_s.strip)
-      keys.concat(["papl360-target-list", "papl360-targate-list"])
+      keys.concat(["papl360-target-list", "papl360-targate-list", "add-farmer-form"])
+    end
+    if ["Add Farmer Form"].include?(name.to_s.strip)
+      keys.concat(["add-farmer-form"])
     end
     if ["Farmer Farm Information", "Farmer FARM Information", "Farmer_FARM _Information"].include?(name.to_s.strip)
       keys.concat(["farmer-farm-information", "application-format-for-exit-of-farmer-from-ics"])
@@ -407,7 +411,8 @@ module ApplicationHelper
         ["Seed Distribution Target", :module, "seed-distribution-target"],
         ["Seed Distribution Target List", :module, "seed-distribution-target-list"],
         ["PAPL360 Target", :module, "papl360-target"],
-          ["PAPL360 Target List", :module, "papl360-target-list"]
+          ["PAPL360 Target List", :module, "papl360-target-list"],
+          ["Add Farmer Form", :module, "add-farmer-form"]
         ]
       },
       {

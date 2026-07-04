@@ -23,11 +23,12 @@ class ModulesController < ApplicationController
                 :training_participation_status_label, :training_participation_status_caption,
                 :training_target_status_label, :training_target_status_caption,
                 :training_trainee_department_default, :seed_distribution_target_mappings,
-                :seed_distribution_target_month_options, :current_seed_target_vrp_option
+                :seed_distribution_target_month_options, :current_seed_target_vrp_option,
+                :add_farmer_form_mappings
 
   APPROVAL_REGISTRATION_MODULES = ["Farmer Registration", "VRP Registration", "Jeevika Jankar Registration"].freeze
   OTHER_TARGET_MODULE_SLUGS = ["seed-distribution-target", "papl360-target"].freeze
-  TARGET_RECORD_MODULE_SLUGS = (["training-form"] + OTHER_TARGET_MODULE_SLUGS).freeze
+  TARGET_RECORD_MODULE_SLUGS = (["training-form", "add-farmer-form"] + OTHER_TARGET_MODULE_SLUGS).freeze
   JEEVIKA_JANKAR_BILL_FIXED_TOTAL = 5000.0
   DASHBOARD_CARDS = [
     ["Total VRP", "0", "Registered field resources"],
@@ -221,6 +222,15 @@ class ModulesController < ApplicationController
         "Excel Upload",
         "Attachment Upload",
         "Status"
+      ]
+    },
+    "add-farmer-form" => {
+      title: "Add Farmer Form",
+      group: "Farmer Target",
+      purpose: "Mapped village ke farmers select karne ke liye.",
+      fields: [
+        "Mapped Village",
+        "New Farmer Target"
       ]
     },
     "training-topic-mapping" => {
@@ -2349,6 +2359,63 @@ class ModulesController < ApplicationController
 
   def target_farmer_ids(target)
     Array(target.respond_to?(:afl_ids) ? target.afl_ids : []).map(&:to_s).reject(&:blank?).uniq
+  end
+
+  def new_farmer_target_mapping?(target)
+    target_farmer_ids(target).blank? && target.target_quantity.to_f.positive?
+  end
+
+  def add_farmer_form_mappings
+    return @add_farmer_form_mappings if defined?(@add_farmer_form_mappings)
+    return [] unless model_ready?(:TargetMapping)
+
+    scope = TargetMapping.includes(:vrp).order(:village_name, :village_id, :id)
+      .select { |target| new_farmer_target_mapping?(target) }
+    if vrp_login_user?
+      vrp = current_vrp_record
+      return [] unless vrp
+
+      scope = scope.select { |target| target.vrp_id.to_s == vrp.id.to_s }
+    elsif !admin_dashboard_user?
+      visible_vrp_ids = add_farmer_visible_vrp_ids
+      return [] if visible_vrp_ids.blank?
+
+      scope = scope.select { |target| visible_vrp_ids.include?(target.vrp_id.to_s) }
+    end
+
+    @add_farmer_form_mappings = scope.map { |target| add_farmer_mapping_payload(target) }
+  end
+
+  def add_farmer_visible_vrp_ids
+    ids = module_cluster_visible_vrp_ids.map(&:to_s)
+    current_ids = dashboard_current_app_user_ids
+    if current_ids.any? && model_ready?(:Vrp)
+      scope = Vrp.where(created_by_id: current_ids)
+      scope = scope.or(Vrp.where(user_id: current_ids)) if Vrp.column_names.include?("user_id")
+      ids.concat(scope.pluck(:id).map(&:to_s))
+    end
+
+    ids.reject(&:blank?).uniq
+  end
+
+  def add_farmer_mapping_payload(target)
+    village_label = target.village_name.presence || target.village_id.to_s
+    vrp = target.vrp
+
+    {
+      id: target.id.to_s,
+      vrp_id: target.vrp_id.to_s,
+      jeevika_jankar_name: vrp&.name.presence || vrp&.user_name.presence || "Jeevika Jankar ##{target.vrp_id}",
+      contact_number: vrp&.mobile_no.to_s.gsub(/\D/, "").last(10),
+      fco_id: target.fco_id.to_s,
+      fco_name: target.fco_name.to_s,
+      ics_id: target.ics_id.to_s,
+      ics_name: target.ics_name.to_s,
+      village_id: target.village_id.to_s,
+      village_name: target.village_name.to_s,
+      label: village_label,
+      target_quantity: target.target_quantity.to_i.to_s
+    }
   end
 
   def dashboard_selected_training_month_name
@@ -4700,6 +4767,7 @@ class ModulesController < ApplicationController
     end
 
     data = normalize_training_form_data(data) if record_source_slug == "training-form"
+    data = normalize_add_farmer_form_data(data) if record_source_slug == "add-farmer-form"
     data = normalize_seed_distribution_target_data(data) if other_target_record_source?
     data = normalize_jeevika_jankar_bill_data(data) if record_source_slug == "jeevika-jankar-bill-process"
 
@@ -4981,6 +5049,43 @@ class ModulesController < ApplicationController
     data["created_by_username"] = data["created_by_username"].presence || user["username"].presence || user["user_name"].to_s
     data["created_by_name"] = data["created_by_name"].presence || user["name"].to_s
     data["created_by_email"] = data["created_by_email"].presence || user["email"].to_s
+  end
+
+  def normalize_add_farmer_form_data(data)
+    stamp_target_record_creator!(data)
+
+    mapping = add_farmer_form_mapping_for(data["target_mapping_id"])
+    if mapping
+      data["vrp_id"] = mapping[:vrp_id]
+      data["jeevika_jankar_id"] = mapping[:vrp_id]
+      data["jeevika_jankar_name"] = mapping[:jeevika_jankar_name]
+      data["contact_number"] = mapping[:contact_number]
+      data["fco_id"] = mapping[:fco_id]
+      data["fco_name"] = mapping[:fco_name]
+      data["ics_id"] = mapping[:ics_id]
+      data["ics_name"] = mapping[:ics_name]
+      data["village_id"] = mapping[:village_id]
+      data["village_name"] = mapping[:village_name]
+      data["mapped_village"] = mapping[:label]
+      data["new_farmer_target"] = mapping[:target_quantity]
+    end
+
+    data.delete("selected_farmer_ids")
+    data.delete("no_farmer")
+    data
+  end
+
+  def add_farmer_form_mapping_for(mapping_id)
+    add_farmer_form_mappings.find { |mapping| mapping[:id].to_s == mapping_id.to_s }
+  end
+
+  def add_farmer_form_error_messages(data)
+    errors = []
+    mapping = add_farmer_form_mapping_for(data["target_mapping_id"])
+
+    errors << "Mapped Village required hai." if mapping.blank?
+    errors << "New Farmer Target required hai." if mapping.present? && data["new_farmer_target"].to_i != mapping[:target_quantity].to_i
+    errors
   end
 
   def training_target_match(data)
@@ -5423,6 +5528,8 @@ class ModulesController < ApplicationController
       data["password"].to_s == data["confirmed_password"].to_s ? [] : ["Password and Confirmed Password must match."]
     when "training-form"
       training_form_error_messages(data)
+    when "add-farmer-form"
+      add_farmer_form_error_messages(data)
     when "jeevika-jankar-bill-process"
       jeevika_jankar_bill_error_messages(data)
     when *OTHER_TARGET_MODULE_SLUGS
@@ -5520,15 +5627,19 @@ class ModulesController < ApplicationController
     errors << "Achievement zero se kam nahi ho sakta." if achievement && achievement.negative?
     errors << "Achievement Target se jyada nahi ho sakta." if target && achievement && achievement > target
 
+    target_mapping = seed_distribution_target_match(data)
+    new_farmer_target = target_mapping&.dig(:new_farmer_target)
     farmer_count = whole_number_value(data["farmer_count"])
     selected_farmer_ids = Array(data["selected_farmer_ids"]).map(&:to_s).reject(&:blank?).uniq
-    errors << "Farmer Count required hai." if data["farmer_count"].blank?
-    errors << "Mapped Farmers select karein." if selected_farmer_ids.blank?
-    errors << "Farmer Count valid whole number hona chahiye." if farmer_count.nil?
-    errors << "Farmer Count selected farmers ke count ke equal hona chahiye." if farmer_count && selected_farmer_ids.any? && farmer_count != selected_farmer_ids.size
-    errors << "Farmer Count Target se jyada nahi ho sakta." if target && farmer_count && farmer_count > target
+    unless new_farmer_target
+      errors << "Farmer Count required hai." if data["farmer_count"].blank?
+      errors << "Mapped Farmers select karein." if selected_farmer_ids.blank?
+      errors << "Farmer Count valid whole number hona chahiye." if farmer_count.nil?
+      errors << "Farmer Count selected farmers ke count ke equal hona chahiye." if farmer_count && selected_farmer_ids.any? && farmer_count != selected_farmer_ids.size
+      errors << "Farmer Count Target se jyada nahi ho sakta." if target && farmer_count && farmer_count > target
+    end
 
-    errors << "Mapped Other activity target select karein." if seed_distribution_target_match(data).blank?
+    errors << "Mapped Other activity target select karein." if target_mapping.blank?
     errors << "Contact Number valid 10 digit hona chahiye." if data["contact_number"].present? && data["contact_number"].to_s.gsub(/\D/, "").length != 10
     errors
   end
@@ -5714,6 +5825,7 @@ class ModulesController < ApplicationController
           main_activity_type: "Training",
           main_activity: target.main_activity_name.to_s.strip,
           sub_activity: target.activity_name.to_s.strip,
+          new_farmer_target: new_farmer_target_mapping?(target),
           completed_farmer_ids: completed_training_farmer_ids_for(target, farmer_ids),
           farmers: training_farmers_for_ids(farmer_ids)
         }
@@ -5748,6 +5860,7 @@ class ModulesController < ApplicationController
           training_topic: target.main_activity_name.to_s.strip,
           training_subject: target.activity_name.to_s.strip,
           target: target.target_quantity.to_s,
+          new_farmer_target: new_farmer_target_mapping?(target),
           completed_farmer_ids: other_target_completed_farmer_ids_for(target.id),
           farmers: training_farmers_for_ids(farmer_ids)
         }

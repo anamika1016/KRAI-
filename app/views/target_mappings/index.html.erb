@@ -105,6 +105,11 @@
               <span>Target <em>*</em></span>
               <input type="number" name="target_mapping[target_quantity]" min="1" step="1" placeholder="Selected farmer count" value="<%= @edit_target&.target_quantity %>" data-target-quantity-input readonly required>
             </label>
+
+            <label>
+              <span>New Farmer Target</span>
+              <input type="number" name="target_mapping[new_farmer_target_quantity]" min="1" step="1" placeholder="Enter target without farmer selection" value="<%= @edit_payload[:new_farmer_target_quantity] %>" data-new-farmer-target-input>
+            </label>
           </div>
 
         <div class="target-farmer-panel" data-target-farmer-panel>
@@ -174,7 +179,7 @@
                   <td><%= target.fco_name.presence || target.fco_id %></td>
                   <td><%= target.ics_name.presence || target.ics_id %></td>
                   <td><%= target.village_name.presence || target.village_id %></td>
-                  <td><%= target.farmer_count %></td>
+                  <td><%= Array(target.afl_ids).blank? && target.target_quantity.to_f.positive? ? "New Farmer Target" : target.farmer_count %></td>
                   <td><%= target.month_name %></td>
                   <td><%= target.completion_date&.strftime("%d-%m-%Y") || "-" %></td>
                   <td><%= target.main_activity_name %></td>

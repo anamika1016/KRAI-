@@ -87,6 +87,7 @@ class TargetMappingsController < ApplicationController
       :main_activity_name,
       :activity_name,
       :target_quantity,
+      :new_farmer_target_quantity,
       main_activity_names: [],
       activity_names: [],
       afl_ids: []
@@ -94,9 +95,10 @@ class TargetMappingsController < ApplicationController
   end
 
   def single_target_mapping_attributes
-    attrs = target_mapping_params.except(:main_activity_names, :activity_names, :afl_ids)
+    attrs = target_mapping_params.except(:main_activity_names, :activity_names, :afl_ids, :new_farmer_target_quantity)
     attrs[:main_activity_name] = target_activity_values(target_mapping_params[:main_activity_names]).first || attrs[:main_activity_name]
     attrs[:activity_name] = target_activity_values(target_mapping_params[:activity_names]).first || attrs[:activity_name]
+    attrs[:target_quantity] = new_farmer_target_quantity if new_farmer_target_mode?
     attrs
   end
 
@@ -220,6 +222,17 @@ class TargetMappingsController < ApplicationController
     return false unless target_count
 
     selected_ids = normalized_afl_ids(target_mapping_params[:afl_ids])
+    if new_farmer_target_mode?
+      if target_count <= 0
+        target_mapping.errors.add(:new_farmer_target_quantity, "must be greater than 0")
+        return false
+      end
+
+      target_mapping.afl_ids = []
+      target_mapping.farmer_count = 0
+      return true
+    end
+
     if selected_ids.blank?
       target_mapping.errors.add(:afl_ids, "select at least one farmer")
       return false
@@ -264,6 +277,14 @@ class TargetMappingsController < ApplicationController
   rescue ArgumentError
     target_mapping.errors.add(:target_quantity, "is not a number")
     nil
+  end
+
+  def new_farmer_target_mode?
+    new_farmer_target_quantity.present?
+  end
+
+  def new_farmer_target_quantity
+    target_mapping_params[:new_farmer_target_quantity].to_s.strip
   end
 
   def target_farmers_for(vrp_id:, fco_id:, ics_id:, village_id:, month_name:, main_activity_name:, activity_name:, edit_target: nil)
@@ -893,6 +914,7 @@ class TargetMappingsController < ApplicationController
       main_activity_names: [target.main_activity_name.to_s].reject(&:blank?),
       activity_names: [target.activity_name.to_s].reject(&:blank?),
       target_quantity: target.target_quantity.to_s,
+      new_farmer_target_quantity: Array(target.afl_ids).blank? ? target.target_quantity.to_s : "",
       afl_ids: Array(target.afl_ids).map(&:to_s)
     }
   end

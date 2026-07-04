@@ -584,6 +584,19 @@ class VrpDashboardTest < ActionDispatch::IntegrationTest
     assert_equal 2, target.farmer_count
     assert_equal farmers.first(2).map { |farmer| farmer.id.to_s }, target.afl_ids
 
+    manual_target_params = target_params(vrp, mapping, "September", 0, [], "Farm Visit", "Farmer Visit")
+    manual_target_params.delete(:target_quantity)
+    manual_target_params.delete(:afl_ids)
+    manual_target_params[:new_farmer_target_quantity] = "7"
+    assert_difference("TargetMapping.count", 1) do
+      post target_mappings_path, params: { target_mapping: manual_target_params }
+    end
+
+    manual_target = TargetMapping.order(:id).last
+    assert_equal 0, manual_target.farmer_count
+    assert_equal [], manual_target.afl_ids
+    assert_equal 7, manual_target.target_quantity.to_i
+
     get vrp_mappings_target_mappings_path, params: {
       vrp_id: vrp.id,
       fco_id: mapping.fco_id,
@@ -838,6 +851,58 @@ class VrpDashboardTest < ActionDispatch::IntegrationTest
     papl_record = ModuleRecord.where(module_slug: "papl360-target").order(:id).last
     assert_equal "2026-06-30", papl_record.data["completion_date"]
     assert_equal "2026-06-30", papl_record.data["date"]
+  end
+
+  test "other target forms accept new farmer target without mapped farmers" do
+    vrp = create_vrp(
+      name: "Manual Other Target VRP",
+      user_name: "manual_other_target_vrp",
+      mobile_no: "9876543999",
+      email: "manual-other-target@example.com",
+      aadhar_no: "123456789099",
+      fcoc: "Manual Department"
+    )
+    target = TargetMapping.create!(
+      vrp: vrp,
+      fco_id: "FCO1",
+      fco_name: "FCO One",
+      ics_id: "ICS1",
+      ics_name: "ICS One",
+      village_id: "V1",
+      village_name: "Village One",
+      month_name: "June",
+      completion_date: Date.new(2026, 6, 30),
+      main_activity_name: "Manual Seed Packet Distribution",
+      activity_name: "Manual Seed Packet Distribution",
+      target_quantity: 5,
+      farmer_count: 0,
+      afl_ids: []
+    )
+    ModuleRecord.create!(
+      module_slug: "add-activity-group",
+      data: {
+        "main_activity_name" => target.main_activity_name,
+        "main_activity_type" => "Other",
+        "achievement_fill" => "Manual",
+        "status" => "Active"
+      }
+    )
+    User.create!(
+      user_name: "manual_other_target_admin",
+      password: "secret",
+      first_name: "Manual Other Target Admin",
+      user_type: "admin",
+      status: "Active"
+    )
+
+    post login_path, params: { login: "manual_other_target_admin", password: "secret" }
+    follow_redirect!
+
+    assert_difference("ModuleRecord.where(module_slug: 'seed-distribution-target').count", 1) do
+      post records_module_path("seed-distribution-target"), params: {
+        module_record: other_target_params(vrp, target).merge("achievement" => "3")
+      }
+    end
   end
 
   private

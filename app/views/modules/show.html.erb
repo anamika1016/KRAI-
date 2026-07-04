@@ -1584,8 +1584,9 @@
     <% location_fields = ["State", "District", "Block", "Gram Panchayat", "Village"] %>
     <% has_location_fields = (@module[:fields] & location_fields).any? %>
     <% other_target_form = ["seed-distribution-target", "papl360-target"].include?(@slug) %>
+    <% add_farmer_form = @slug == "add-farmer-form" %>
     <% seed_target_form = @slug == "seed-distribution-target" %>
-    <section class="module-card" id="module-form" <% if ["role-management", "role-name", "user-management-role", "person-type"].include?(@slug) %>data-user-role-form data-role-map="<%= json_escape(role_management_mappings.to_json) %>"<% end %> <% if @slug == "parent-office-add" %>data-parent-office-form data-parent-office-map="<%= json_escape(parent_office_mappings.to_json) %>"<% end %> <% if has_location_fields %>data-location-form data-location-map="<%= json_escape(location_hierarchy_mappings.to_json) %>"<% end %> <% if @slug == "training-form" %>data-training-target-form data-training-target-map="<%= json_escape(training_target_mappings.to_json) %>" data-training-activity-map="<%= json_escape(training_activity_setup_mappings.to_json) %>" data-training-month-options="<%= json_escape(training_target_month_options.to_json) %>"<% end %> <% if other_target_form %>data-seed-target-form data-seed-target-map="<%= json_escape(seed_distribution_target_mappings.to_json) %>" data-seed-month-options="<%= json_escape(seed_distribution_target_month_options.to_json) %>" data-seed-current-vrp-option="<%= json_escape(current_seed_target_vrp_option.to_json) %>"<% end %>>
+    <section class="module-card" id="module-form" <% if ["role-management", "role-name", "user-management-role", "person-type"].include?(@slug) %>data-user-role-form data-role-map="<%= json_escape(role_management_mappings.to_json) %>"<% end %> <% if @slug == "parent-office-add" %>data-parent-office-form data-parent-office-map="<%= json_escape(parent_office_mappings.to_json) %>"<% end %> <% if has_location_fields %>data-location-form data-location-map="<%= json_escape(location_hierarchy_mappings.to_json) %>"<% end %> <% if @slug == "training-form" %>data-training-target-form data-training-target-map="<%= json_escape(training_target_mappings.to_json) %>" data-training-activity-map="<%= json_escape(training_activity_setup_mappings.to_json) %>" data-training-month-options="<%= json_escape(training_target_month_options.to_json) %>"<% end %> <% if other_target_form %>data-seed-target-form data-seed-target-map="<%= json_escape(seed_distribution_target_mappings.to_json) %>" data-seed-month-options="<%= json_escape(seed_distribution_target_month_options.to_json) %>" data-seed-current-vrp-option="<%= json_escape(current_seed_target_vrp_option.to_json) %>"<% end %> <% if add_farmer_form %>data-add-farmer-form data-add-farmer-map="<%= json_escape(add_farmer_form_mappings.to_json) %>"<% end %>>
       <div class="module-card-header">
         <h2><%= @slug == "new-user" ? "Registration" : (@record.present? ? "Edit Record" : "Fields") %></h2>
       </div>
@@ -1599,6 +1600,9 @@
           <input type="hidden" name="module_record[main_activity_type]" value="Other">
           <input type="hidden" name="module_record[target_mapping_id]" value="<%= @record&.data&.[]("target_mapping_id") %>" data-seed-target-id>
           <input type="hidden" name="module_record[jeevika_jankar_id]" value="<%= @record&.data&.[]("jeevika_jankar_id") %>" data-seed-vrp-id>
+        <% end %>
+        <% if add_farmer_form %>
+          <input type="hidden" name="module_record[mapped_village]" value="<%= @record&.data&.[]("mapped_village") %>" data-add-farmer-village-label>
         <% end %>
         <% selected_training_farmer_ids = Array(@record&.data&.[]("selected_farmer_ids")).map(&:to_s) if @slug == "training-form" %>
         <% selected_seed_target_farmer_ids = Array(@record&.data&.[]("selected_farmer_ids")).map(&:to_s) if other_target_form %>
@@ -1637,7 +1641,7 @@
             <% if other_target_form && @record.blank? && field == "Completion Date" && field_value.blank? %>
               <% field_value = Date.current.to_s %>
             <% end %>
-            <% form_required = @slug == "training-form" || other_target_form %>
+            <% form_required = @slug == "training-form" || other_target_form || add_farmer_form %>
             <% required_attr = form_required ? "required" : nil %>
             <label>
               <span>
@@ -1646,7 +1650,16 @@
                   <small class="field-hint inline-upload-hint">Max 5 MB</small>
                 <% end %>
               </span>
-              <% if field.downcase.include?("status") %>
+              <% if add_farmer_form && field == "Mapped Village" %>
+                <select name="module_record[target_mapping_id]" data-add-farmer-village data-selected-value="<%= ERB::Util.html_escape(@record&.data&.[]("target_mapping_id").to_s) %>" required>
+                  <option value="">Select Mapped Village</option>
+                  <% add_farmer_form_mappings.each do |mapping| %>
+                    <option value="<%= mapping[:id] %>" <%= "selected" if @record&.data&.[]("target_mapping_id").to_s == mapping[:id].to_s %>><%= mapping[:label] %></option>
+                  <% end %>
+                </select>
+              <% elsif add_farmer_form && field == "New Farmer Target" %>
+                <input name="module_record[<%= field_key %>]" type="number" min="1" step="1" placeholder="New Farmer Target" value="<%= field_value %>" data-add-farmer-target readonly required>
+              <% elsif field.downcase.include?("status") %>
                 <select name="module_record[<%= field_key %>]">
                   <option <%= "selected" if field_value == "Active" %>>Active</option>
                   <option <%= "selected" if field_value == "Inactive" %>>Inactive</option>
