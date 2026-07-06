@@ -187,17 +187,16 @@ module ApplicationHelper
   ].freeze
 
   def sidebar_sections
+    return @sidebar_sections if defined?(@sidebar_sections)
     return visible_vrp_sidebar_sections if vrp_login_user?
 
     allowed_keys = allowed_sidebar_keys
-    return SIDEBAR_SECTIONS if allowed_keys.nil?
+    return @sidebar_sections = SIDEBAR_SECTIONS if allowed_keys.nil?
 
-    visible_sections = SIDEBAR_SECTIONS.filter_map do |section|
+    @sidebar_sections = SIDEBAR_SECTIONS.filter_map do |section|
       allowed_links = section[:links].select { |link| allowed_keys.include?(sidebar_access_key(link)) }
       section.merge(links: allowed_links) if allowed_links.any?
     end
-
-    visible_sections
   end
 
   def sidebar_link_path(link)
@@ -252,9 +251,10 @@ module ApplicationHelper
   end
 
   def allowed_sidebar_keys
+    return @allowed_sidebar_keys if defined?(@allowed_sidebar_keys)
     return nil unless current_app_user.present?
     return nil if admin_access_user?
-    return [] unless defined?(ModuleRecord) && ModuleRecord.table_exists?
+    return @allowed_sidebar_keys = [] unless defined?(ModuleRecord) && ModuleRecord.table_exists?
 
     access_records = ModuleRecord
       .where(module_slug: "access-control")
@@ -281,7 +281,7 @@ module ApplicationHelper
         stakeholder_match && stakeholder_role_match && role_match && role_name_match && user_management_role_match && person_type_match && vrp_type_match && can_view
       end
 
-    access_records.flat_map do |record|
+    @allowed_sidebar_keys = access_records.flat_map do |record|
       access_values(record.data["sub_module_names"].presence || record.data["sub_module_name"])
         .flat_map { |name| sidebar_access_name_keys(name) }
     end.uniq
@@ -442,11 +442,11 @@ module ApplicationHelper
   end
 
   def current_stakeholder
-    matching_stakeholder_record("stakeholder-master") || active_stakeholder_records("stakeholder-master").first
+    @current_stakeholder ||= matching_stakeholder_record("stakeholder-master") || active_stakeholder_records("stakeholder-master").first
   end
 
   def current_stakeholder_profile
-    matching_stakeholder_record("stakeholder-profile") || active_stakeholder_records("stakeholder-profile").first
+    @current_stakeholder_profile ||= matching_stakeholder_record("stakeholder-profile") || active_stakeholder_records("stakeholder-profile").first
   end
 
   def app_display_name
