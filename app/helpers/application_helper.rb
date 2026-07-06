@@ -180,7 +180,8 @@ module ApplicationHelper
       icon: "▧",
       links: [
         ["Bill Process", :module, "jeevika-jankar-bill-process"],
-        ["Bill List", :module, "jeevika-jankar-bill-list"]
+        ["Bill List", :module, "jeevika-jankar-bill-list"],
+        ["Payment List", :module, "jeevika-jankar-payment-list"]
       ]
     },
   ].freeze
@@ -354,7 +355,10 @@ module ApplicationHelper
       keys.concat(["bill-process", "jeevika-jankar-bill", "jeevika-jankar-bill-process"])
     end
     if ["Bill List", "Jeevika Jankar Bill List"].include?(name.to_s.strip)
-      keys.concat(["bill-list", "jeevika-jankar-bill-list"])
+      keys.concat(["bill-list", "jeevika-jankar-bill-list", "payment-list", "jeevika-jankar-payment-list"])
+    end
+    if ["Payment List", "Jeevika Jankar Payment List"].include?(name.to_s.strip)
+      keys.concat(["payment-list", "jeevika-jankar-payment-list"])
     end
     keys.uniq
   end
@@ -420,7 +424,8 @@ module ApplicationHelper
         icon: "▧",
         links: [
           ["Bill Process", :module, "jeevika-jankar-bill-process"],
-          ["Bill List", :module, "jeevika-jankar-bill-list"]
+          ["Bill List", :module, "jeevika-jankar-bill-list"],
+          ["Payment List", :module, "jeevika-jankar-payment-list"]
         ]
       }
     ]

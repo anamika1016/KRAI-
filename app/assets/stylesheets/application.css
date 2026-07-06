@@ -2629,6 +2629,27 @@ body {
   gap: 18px;
 }
 
+.compact-filter-form {
+  max-width: 360px;
+  margin-bottom: 12px;
+}
+
+.compact-filter-form label {
+  display: grid;
+  gap: 7px;
+  color: #2b373d;
+  font-size: 0.86rem;
+  font-weight: 800;
+}
+
+.compact-filter-form select {
+  min-height: 42px;
+  border: 1px solid var(--vrp-line);
+  border-radius: 8px;
+  padding: 0 12px;
+  background: #fff;
+}
+
 .module-form-actions {
   display: flex;
   justify-content: flex-end;

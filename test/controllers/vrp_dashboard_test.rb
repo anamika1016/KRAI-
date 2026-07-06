@@ -931,7 +931,7 @@ class VrpDashboardTest < ActionDispatch::IntegrationTest
         "module_name" => "Jeevika Jankar Bill",
         "stakeholder_name" => "PAPL",
         "user_name" => user.user_name,
-        "approval_level" => "L1",
+        "approval_level" => "First Appovel",
         "approver_approved_by" => "Sangam Kumari (Manager ics)",
         "status" => "Active"
       }
@@ -942,7 +942,7 @@ class VrpDashboardTest < ActionDispatch::IntegrationTest
         "module_name" => "Jeevika Jankar Bill",
         "stakeholder_name" => "PAPL",
         "user_name" => user.user_name,
-        "approval_level" => "L2",
+        "approval_level" => "Secound Appovel",
         "approver_approved_by" => "Akash Mandal (FCO-C Turekela)",
         "status" => "Active"
       }

@@ -17,6 +17,7 @@ class ModulesController < ApplicationController
                 :jeevika_jankar_vrp_label, :jeevika_bill_time_slot_rows,
                 :jeevika_bill_description_rows, :jeevika_bill_bank_rows,
                 :jeevika_bill_prepared_by, :jeevika_bill_approved_by_rows,
+                :jeevika_bill_payment_month_options, :jeevika_bill_payment_rows,
                 :jeevika_bill_vrp, :bill_display_date, :bill_display_datetime,
                 :approval_sequence_from_level, :module_record_field_value,
                 :approval_level_display_label, :approval_level_label_for_sequence,
@@ -379,6 +380,12 @@ class ModulesController < ApplicationController
       purpose: "Saved Jeevika Jankar bill aur invoice records dekhne ke liye.",
       fields: ["Jeevika Jankar Name", "Bill Month", "Total Target", "Total Achievement"]
     },
+    "jeevika-jankar-payment-list" => {
+      title: "Jeevika Jankar Payment List",
+      group: "Jeevika Jankar Bill",
+      purpose: "Month wise Jeevika Jankar bills aur bank payment details dekhne ke liye.",
+      fields: ["Jeevika Jankar ID", "Status", "Name", "Financial Year", "Bill Month", "Activity Group", "Total Payment", "Activity Name", "Total Target", "Total Achievement", "Bank Name", "IFSC Code", "Account Number", "Bank Passbook", "Download Bill"]
+    },
     "weekly-target-add" => {
       title: "Add Weekly Target",
       group: "Weekly Target Allocation",
@@ -497,6 +504,7 @@ class ModulesController < ApplicationController
     "access-control-list" => "access-control",
     "vrp-bill-list" => "vrp-bill-add",
     "jeevika-jankar-bill-list" => "jeevika-jankar-bill-process",
+    "jeevika-jankar-payment-list" => "jeevika-jankar-bill-process",
     "training-form-list" => "training-form",
     "seed-distribution-target-list" => "seed-distribution-target",
     "papl360-target-list" => "papl360-target",
@@ -3273,12 +3281,17 @@ class ModulesController < ApplicationController
     {
       "first" => 1,
       "1st" => 1,
+      "frist" => 1,
       "second" => 2,
       "2nd" => 2,
+      "secound" => 2,
+      "seconed" => 2,
       "third" => 3,
       "3rd" => 3,
+      "thrid" => 3,
       "fourth" => 4,
       "4th" => 4,
+      "forth" => 4,
       "fifth" => 5,
       "5th" => 5,
       "sixth" => 6,
@@ -3835,6 +3848,32 @@ class ModulesController < ApplicationController
     end
   end
 
+  def jeevika_bill_payment_month_options(records)
+    Array(records)
+      .filter_map { |record| record.data["bill_month"].to_s.strip.presence }
+      .uniq
+      .sort_by { |month| [Date::MONTHNAMES.find_index { |name| name.to_s.casecmp(month).zero? }.presence || 99, month] }
+  end
+
+  def jeevika_bill_payment_rows(records, selected_month)
+    filtered_records = Array(records).select do |record|
+      selected_month.blank? || record.data["bill_month"].to_s.strip.casecmp(selected_month.to_s.strip).zero?
+    end
+
+    jeevika_bill_rows(filtered_records).map do |row|
+      record = filtered_records.find { |candidate| candidate.id == row[:id] }
+      vrp = jeevika_bill_vrp(record)
+      bank_row = jeevika_bill_bank_rows(record).first || {}
+
+      row.merge(
+        bank_name: bank_row[:bank_name].presence || "-",
+        ifsc_code: bank_row[:ifsc_code].presence || "-",
+        account_number: bank_row[:account_number].presence || "-",
+        passbook_attachment: vrp&.bank_passbook_upload
+      )
+    end
+  end
+
   def jeevika_bill_detail_rows(record)
     raw_items = record&.data&.[]("bill_items")
     raw_items = raw_items.values if raw_items.is_a?(Hash)
@@ -3987,12 +4026,48 @@ class ModulesController < ApplicationController
       .select { |step| ["Jeevika Jankar Bill", "VRP Bill"].any? { |name| dashboard_value_matches?(step.data["module_name"], name) } }
       .sort_by { |step| [approval_sequence_from_level(step.data["approval_level"]), step.created_at&.to_i || 0, step.id || 0] }
 
-    steps
-      .select { |step| jeevika_bill_approval_step_matches_bill?(step, record) }
+    matching_steps = steps.select { |step| jeevika_bill_approval_step_matches_bill?(step, record) }
+    matching_channels = matching_steps
+      .group_by { |step| approval_channel_key(step) }
+      .values
+      .map { |records| ordered_approval_channel_steps(records) }
+      .reject(&:blank?)
+
+    matching_channels.max_by { |records| approval_channel_priority(records) } || []
+  end
+
+  def ordered_approval_channel_steps(records)
+    records
       .group_by { |step| approval_sequence_from_level(step.data["approval_level"]) }
       .values
-      .map { |records| records.max_by { |step| approval_record_priority(step) } }
+      .map { |grouped_records| grouped_records.max_by { |step| approval_record_priority(step) } }
       .sort_by { |step| approval_sequence_from_level(step.data["approval_level"]) }
+  end
+
+  def approval_channel_key(step)
+    [
+      step.data["module_name"],
+      step.data["stakeholder_name"],
+      step.data["user_name"]
+    ].map { |value| normalize_dashboard_text(value) }
+  end
+
+  def approval_channel_priority(records)
+    first_record = records.first
+    [
+      approval_channel_specificity(first_record),
+      records.size,
+      records.filter_map(&:updated_at).map(&:to_i).max || 0,
+      records.filter_map(&:id).max || 0
+    ]
+  end
+
+  def approval_channel_specificity(record)
+    [
+      record&.data&.[]("user_name"),
+      approval_record_office(record),
+      record&.data&.[]("office_category")
+    ].count(&:present?)
   end
 
   def jeevika_bill_approval_step_matches_bill?(step, record)
@@ -4066,7 +4141,17 @@ class ModulesController < ApplicationController
   def jeevika_bill_current_approval_step(record)
     sequence = record.data["approval_current_sequence"].to_i
     sequence = 1 if sequence.zero?
-    jeevika_bill_approval_steps(record).find { |step| approval_sequence_from_level(step.data["approval_level"]) == sequence }
+    steps = jeevika_bill_approval_steps(record)
+    return steps.first if jeevika_bill_approved_sequences(record).blank?
+
+    steps.find { |step| approval_sequence_from_level(step.data["approval_level"]) == sequence }
+  end
+
+  def jeevika_bill_approved_sequences(record)
+    jeevika_bill_approval_history(record)
+      .select { |history| history.data["action"].to_s == "Approved" }
+      .map { |history| approval_sequence_from_level(history.data["approval_level"]) }
+      .uniq
   end
 
   def jeevika_bill_current_approver?(record)

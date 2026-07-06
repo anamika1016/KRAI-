@@ -12,7 +12,7 @@
     </div>
   <% end %>
 
-  <% list_only_slugs = ["activity-group-list", "vrp-activity-list", "task-completion-indicator-list", "approval-list", "access-control-list", "vrp-bill-list", "jeevika-jankar-bill-list", "training-form-list", "seed-distribution-target-list", "papl360-target-list"] %>
+  <% list_only_slugs = ["activity-group-list", "vrp-activity-list", "task-completion-indicator-list", "approval-list", "access-control-list", "vrp-bill-list", "jeevika-jankar-bill-list", "jeevika-jankar-payment-list", "training-form-list", "seed-distribution-target-list", "papl360-target-list"] %>
   <% entry_only_slugs = ["add-activity-group", "add-vrp-activity", "task-completion-indicator", "approval-master", "access-control", "vrp-bill-add", "jeevika-jankar-bill-process", "training-form"] %>
 
   <% if @slug == "jeevika-jankar-bill-list" && (@bill_print_mode || @bill_detail_record.present?) %>
@@ -1335,6 +1335,104 @@
             <% else %>
               <tr>
                 <td colspan="6">No records saved yet.</td>
+              </tr>
+            <% end %>
+          </tbody>
+        </table>
+      </div>
+      <div class="table-pagination" data-pagination-for="<%= table_id %>"></div>
+    </section>
+  <% elsif @slug == "jeevika-jankar-payment-list" && @record.blank? %>
+    <% table_id = "jeevika_jankar_payment_table" %>
+    <% month_options = jeevika_bill_payment_month_options(@records) %>
+    <% selected_month = params[:payment_month].presence || month_options.first %>
+    <% payment_rows = jeevika_bill_payment_rows(@records, selected_month) %>
+    <section class="module-card list-only-card">
+      <div class="module-card-header list-title-header">
+        <h2>Jeevika Jankar Payment List</h2>
+      </div>
+
+      <%= form_with url: module_path("jeevika-jankar-payment-list"), method: :get, html: { class: "module-entry-form compact-filter-form" } do %>
+        <label>
+          <span>Bill Month</span>
+          <select name="payment_month" onchange="this.form.requestSubmit()">
+            <% if month_options.blank? %>
+              <option value="">No bill month saved yet</option>
+            <% else %>
+              <% month_options.each do |month| %>
+                <option value="<%= month %>" <%= "selected" if month == selected_month %>><%= month %></option>
+              <% end %>
+            <% end %>
+          </select>
+        </label>
+      <% end %>
+
+      <div class="vrp-list-toolbar compact">
+        <button type="button" class="list-btn export" data-export-table="<%= table_id %>">Export Excel</button>
+      </div>
+
+      <div class="list-controls">
+        <div class="list-search">
+          <span>⌕</span>
+          <input type="search" placeholder="Search payment records" data-table-search="<%= table_id %>">
+        </div>
+      </div>
+
+      <div class="table-shell">
+        <table class="module-table user-list-table" id="<%= table_id %>" data-paginated-table data-page-size="15">
+          <thead>
+            <tr>
+              <th>Jeevika Jankar ID</th>
+              <th>Status</th>
+              <th>Name</th>
+              <th>Financial Year</th>
+              <th>Bill Month</th>
+              <th>Activity Group</th>
+              <th>Total Payment</th>
+              <th>Activity Name</th>
+              <th>Total Target</th>
+              <th>Total Achievement</th>
+              <th>Bank Name</th>
+              <th>IFSC Code</th>
+              <th>Account Number</th>
+              <th>Jeevika Jankar Bank Passbook Photo</th>
+              <th>Download Bill</th>
+            </tr>
+          </thead>
+          <tbody>
+            <% if payment_rows.any? %>
+              <% payment_rows.each do |row| %>
+                <tr>
+                  <td><%= row[:vrp_id].presence || "-" %></td>
+                  <td><span class="grid-status <%= row[:status_class] %>"><%= row[:status] %></span></td>
+                  <td><%= row[:name].presence || "-" %></td>
+                  <td><%= row[:financial_year] %></td>
+                  <td><%= row[:bill_month] %></td>
+                  <td><%= row[:activity_groups] %></td>
+                  <td><%= row[:amount] %></td>
+                  <td><%= row[:activity_names] %></td>
+                  <td><%= row[:target] %></td>
+                  <td><%= row[:achievement] %></td>
+                  <td><%= row[:bank_name] %></td>
+                  <td><%= row[:ifsc_code] %></td>
+                  <td><%= row[:account_number] %></td>
+                  <td>
+                    <% if row[:passbook_attachment]&.attached? %>
+                      <%= link_to "View/Download", rails_blob_path(row[:passbook_attachment], disposition: "attachment"), target: "_blank", rel: "noopener", class: "table-action" %>
+                    <% else %>
+                      -
+                    <% end %>
+                  </td>
+                  <td>
+                    <%= link_to row[:download_path], class: "table-action icon-action", title: "Download", target: "_blank", rel: "noopener", aria: { label: "Download" } do %>
+                      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3v11"></path><path d="m7 10 5 5 5-5"></path><path d="M5 21h14"></path></svg>
+                    <% end %>
+                  </td>
+                </tr>
+              <% end %>
+            <% else %>
+              <tr>
+                <td colspan="15">No payment records found for this month.</td>
               </tr>
             <% end %>
           </tbody>
