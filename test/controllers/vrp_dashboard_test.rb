@@ -905,6 +905,72 @@ class VrpDashboardTest < ActionDispatch::IntegrationTest
     end
   end
 
+  test "jeevika bill approval starts at l1 approver" do
+    user = User.create!(
+      user_name: "bill_owner_#{SecureRandom.hex(4)}",
+      password: "secret",
+      first_name: "Lilabati",
+      last_name: "Bhoi",
+      stakeholder: "PAPL",
+      role: "User",
+      status: "Active"
+    )
+    vrp = create_vrp(
+      name: "Approval Bill VRP",
+      user_name: "approval_bill_vrp",
+      mobile_no: "9876543999",
+      email: "approval-bill-vrp@example.com",
+      aadhar_no: "123456789099",
+      status: 55,
+      created_by_id: user.id
+    )
+
+    ModuleRecord.create!(
+      module_slug: "approval-master",
+      data: {
+        "module_name" => "Jeevika Jankar Bill",
+        "stakeholder_name" => "PAPL",
+        "user_name" => user.user_name,
+        "approval_level" => "L1",
+        "approver_approved_by" => "Sangam Kumari (Manager ics)",
+        "status" => "Active"
+      }
+    )
+    ModuleRecord.create!(
+      module_slug: "approval-master",
+      data: {
+        "module_name" => "Jeevika Jankar Bill",
+        "stakeholder_name" => "PAPL",
+        "user_name" => user.user_name,
+        "approval_level" => "L2",
+        "approver_approved_by" => "Akash Mandal (FCO-C Turekela)",
+        "status" => "Active"
+      }
+    )
+    bill = ModuleRecord.create!(
+      module_slug: "jeevika-jankar-bill-process",
+      data: {
+        "select_vrp" => vrp.id.to_s,
+        "select_vrp_name" => vrp.name,
+        "financial_year" => "2026-2027",
+        "bill_month" => "June",
+        "created_by_id" => user.id.to_s,
+        "created_by_username" => user.user_name,
+        "created_by_name" => user.full_name,
+        "status" => "Submitted (Not sent for approval)"
+      }
+    )
+
+    post login_path, params: { login: user.user_name, password: "secret" }
+    follow_redirect!
+
+    patch send_for_approval_module_record_path("jeevika-jankar-bill-list", bill)
+
+    assert_redirected_to module_path("jeevika-jankar-bill-list")
+    assert_equal "Pending at Sangam Kumari (Manager ics)", bill.reload.data["status"]
+    assert_equal "1", bill.data["approval_current_sequence"]
+  end
+
   private
 
   def target_params(vrp, mapping, month, target_quantity, farmer_ids, activity_name = "Farm Visit", main_activity_name = "Farmer Visit")

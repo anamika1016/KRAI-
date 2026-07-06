@@ -3260,23 +3260,38 @@ class ModulesController < ApplicationController
     normalized = value.to_s.downcase.gsub(/\s+/, " ").strip
     return if normalized.blank?
 
-    {
-      "first approval" => 1,
-      "second approval" => 2,
-      "third approval" => 3,
-      "fourth approval" => 4,
-      "fifth approval" => 5,
-      "sixth approval" => 6,
-      "seventh approval" => 7,
-      "eighth approval" => 8,
-      "ninth approval" => 9,
-      "tenth approval" => 10
-    }.each do |label, sequence|
+    approval_ordinals.each do |label, sequence|
       return sequence if normalized.include?(label)
     end
 
-    normalized[/\bapproval\s*(\d+)\b/, 1]&.to_i.presence ||
-      normalized[/\b(\d+)\b/, 1]&.to_i.presence
+    normalized[/\b(?:approval|level|lvl|l)\s*[-#:]?\s*(\d+)\b/, 1]&.to_i.presence ||
+      normalized[/\A\s*(\d+)(?:st|nd|rd|th)?\s*(?:approval)?\s*\z/, 1]&.to_i.presence ||
+      normalized[/\b(\d+)(?:st|nd|rd|th)?\s+approval\b/, 1]&.to_i.presence
+  end
+
+  def approval_ordinals
+    {
+      "first" => 1,
+      "1st" => 1,
+      "second" => 2,
+      "2nd" => 2,
+      "third" => 3,
+      "3rd" => 3,
+      "fourth" => 4,
+      "4th" => 4,
+      "fifth" => 5,
+      "5th" => 5,
+      "sixth" => 6,
+      "6th" => 6,
+      "seventh" => 7,
+      "7th" => 7,
+      "eighth" => 8,
+      "8th" => 8,
+      "ninth" => 9,
+      "9th" => 9,
+      "tenth" => 10,
+      "10th" => 10
+    }
   end
 
   def normalize_approval_label(label)

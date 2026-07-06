@@ -585,18 +585,39 @@ class VrpsController < ApplicationController
 
   def approval_sequence_from_level(level)
     normalized = level.to_s.downcase.gsub(/\s+/, " ").strip
-    return 1 if normalized.include?("first approval")
-    return 2 if normalized.include?("second approval")
-    return 3 if normalized.include?("third approval")
-    return 4 if normalized.include?("fourth approval")
-    return 5 if normalized.include?("fifth approval")
-    return 6 if normalized.include?("sixth approval")
-    return 7 if normalized.include?("seventh approval")
-    return 8 if normalized.include?("eighth approval")
-    return 9 if normalized.include?("ninth approval")
-    return 10 if normalized.include?("tenth approval")
+    approval_ordinals.each do |label, sequence|
+      return sequence if normalized.include?(label)
+    end
 
-    normalized[/\bapproval\s*(\d+)\b/, 1].to_i.presence || normalized[/\b(\d+)\b/, 1].to_i.presence || 1
+    normalized[/\b(?:approval|level|lvl|l)\s*[-#:]?\s*(\d+)\b/, 1].to_i.presence ||
+      normalized[/\A\s*(\d+)(?:st|nd|rd|th)?\s*(?:approval)?\s*\z/, 1].to_i.presence ||
+      normalized[/\b(\d+)(?:st|nd|rd|th)?\s+approval\b/, 1].to_i.presence ||
+      1
+  end
+
+  def approval_ordinals
+    {
+      "first" => 1,
+      "1st" => 1,
+      "second" => 2,
+      "2nd" => 2,
+      "third" => 3,
+      "3rd" => 3,
+      "fourth" => 4,
+      "4th" => 4,
+      "fifth" => 5,
+      "5th" => 5,
+      "sixth" => 6,
+      "6th" => 6,
+      "seventh" => 7,
+      "7th" => 7,
+      "eighth" => 8,
+      "8th" => 8,
+      "ninth" => 9,
+      "9th" => 9,
+      "tenth" => 10,
+      "10th" => 10
+    }
   end
 
   def approver_labels
