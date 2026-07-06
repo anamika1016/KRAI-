@@ -3850,6 +3850,7 @@ class ModulesController < ApplicationController
 
   def jeevika_bill_payment_month_options(records)
     Array(records)
+      .select { |record| jeevika_bill_final_approved?(record) }
       .filter_map { |record| record.data["bill_month"].to_s.strip.presence }
       .uniq
       .sort_by { |month| [Date::MONTHNAMES.find_index { |name| name.to_s.casecmp(month).zero? }.presence || 99, month] }
@@ -3857,7 +3858,8 @@ class ModulesController < ApplicationController
 
   def jeevika_bill_payment_rows(records, selected_month)
     filtered_records = Array(records).select do |record|
-      selected_month.blank? || record.data["bill_month"].to_s.strip.casecmp(selected_month.to_s.strip).zero?
+      jeevika_bill_final_approved?(record) &&
+        (selected_month.blank? || record.data["bill_month"].to_s.strip.casecmp(selected_month.to_s.strip).zero?)
     end
 
     jeevika_bill_rows(filtered_records).map do |row|
@@ -3872,6 +3874,10 @@ class ModulesController < ApplicationController
         passbook_attachment: vrp&.bank_passbook_upload
       )
     end
+  end
+
+  def jeevika_bill_final_approved?(record)
+    record.data["status"].to_s.downcase.include?("final approved")
   end
 
   def jeevika_bill_detail_rows(record)
@@ -4026,8 +4032,13 @@ class ModulesController < ApplicationController
       .select { |step| ["Jeevika Jankar Bill", "VRP Bill"].any? { |name| dashboard_value_matches?(step.data["module_name"], name) } }
       .sort_by { |step| [approval_sequence_from_level(step.data["approval_level"]), step.created_at&.to_i || 0, step.id || 0] }
 
-    matching_steps = steps.select { |step| jeevika_bill_approval_step_matches_bill?(step, record) }
-    matching_channels = matching_steps
+    matching_channel_keys = steps
+      .select { |step| jeevika_bill_approval_step_matches_bill?(step, record) }
+      .map { |step| approval_channel_key(step) }
+      .uniq
+
+    matching_channels = steps
+      .select { |step| matching_channel_keys.include?(approval_channel_key(step)) }
       .group_by { |step| approval_channel_key(step) }
       .values
       .map { |records| ordered_approval_channel_steps(records) }
