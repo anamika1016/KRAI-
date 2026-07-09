@@ -394,6 +394,7 @@ a {
   margin-left: auto;
   color: #9ba8ad;
   font-size: 0.95rem;
+  line-height: 1;
 }
 
 .side-module[open] > summary,
@@ -410,6 +411,8 @@ a {
   display: grid;
   gap: 2px;
   padding: 2px 0 8px 44px;
+  content-visibility: auto;
+  contain-intrinsic-size: auto 240px;
 }
 
 .side-sub-link {
@@ -5163,9 +5166,16 @@ body {
     min-height: 42px;
   }
 
+  .side-module > summary {
+    cursor: pointer;
+    user-select: none;
+  }
+
   .side-subnav {
     max-height: none;
     overflow: visible;
+    content-visibility: auto;
+    contain-intrinsic-size: auto 200px;
   }
 
   .side-footer {
@@ -5573,5 +5583,240 @@ body {
 
   .module-table {
     min-width: 680px;
+  }
+}
+
+/* ─── Dashboard Filter Bar ───────────────────────────────────────────────── */
+
+.dashboard-filter-bar {
+  padding: 18px 22px;
+  border: 1px solid var(--vrp-line);
+  border-radius: 10px;
+  background: var(--vrp-panel);
+  box-shadow: 0 4px 16px rgba(23, 33, 38, 0.06);
+}
+
+.dashboard-filter-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+  gap: 14px;
+  align-items: end;
+}
+
+.dashboard-filter-field {
+  display: grid;
+  gap: 5px;
+}
+
+.dashboard-filter-field label {
+  font-size: 0.78rem;
+  font-weight: 800;
+  color: var(--vrp-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.dashboard-filter-input,
+.dashboard-filter-select {
+  min-height: 38px;
+  padding: 6px 10px;
+  border: 1px solid var(--vrp-line);
+  border-radius: 6px;
+  background: var(--vrp-panel-soft);
+  color: var(--vrp-text);
+  font: inherit;
+  font-size: 0.9rem;
+  width: 100%;
+  transition: border-color 0.18s;
+}
+
+.dashboard-filter-input:focus,
+.dashboard-filter-select:focus {
+  outline: none;
+  border-color: var(--vrp-primary);
+  box-shadow: 0 0 0 3px rgba(89, 143, 64, 0.14);
+}
+
+.dashboard-filter-actions {
+  display: flex;
+  align-items: flex-end;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+/* ─── Active Filter Chips ─────────────────────────────────────────────────── */
+
+.dashboard-filter-chips {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  padding: 10px 16px;
+  border: 1px solid var(--vrp-line);
+  border-radius: 8px;
+  background: rgba(89, 143, 64, 0.06);
+}
+
+.filter-chips-label {
+  font-size: 0.76rem;
+  font-weight: 800;
+  color: var(--vrp-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  margin-right: 4px;
+}
+
+.filter-chip {
+  display: inline-flex;
+  align-items: center;
+  padding: 3px 10px;
+  border-radius: 999px;
+  background: rgba(89, 143, 64, 0.14);
+  color: var(--vrp-primary-dark);
+  font-size: 0.8rem;
+  font-weight: 750;
+  border: 1px solid rgba(89, 143, 64, 0.22);
+}
+
+.filter-chip-clear {
+  margin-left: auto;
+  font-size: 0.8rem;
+  font-weight: 800;
+  color: var(--vrp-danger);
+  text-decoration: none;
+}
+
+.filter-chip-clear:hover {
+  text-decoration: underline;
+}
+
+/* ─── VRP Status Cards ────────────────────────────────────────────────────── */
+
+.vrp-status-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+  gap: 14px;
+  padding: 16px 20px 20px;
+}
+
+.vrp-status-card {
+  display: grid;
+  gap: 10px;
+  padding: 14px 16px;
+  border: 1px solid var(--vrp-line);
+  border-radius: 10px;
+  background: var(--vrp-panel-soft);
+  transition: box-shadow 0.18s;
+}
+
+.vrp-status-card:hover {
+  box-shadow: 0 6px 18px rgba(23, 33, 38, 0.1);
+}
+
+.vrp-status-name {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.vrp-status-name a {
+  font-weight: 800;
+  font-size: 0.97rem;
+  color: var(--vrp-primary-dark);
+  text-decoration: none;
+}
+
+.vrp-status-name a:hover {
+  text-decoration: underline;
+}
+
+.vrp-status-role {
+  font-size: 0.74rem;
+  color: var(--vrp-muted);
+  font-weight: 700;
+}
+
+.vrp-status-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+}
+
+.vrp-status-box {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 10px 12px;
+  border-radius: 8px;
+  border: 1px solid var(--vrp-line);
+  background: var(--vrp-panel);
+}
+
+.vrp-status-box.status-approved {
+  background: rgba(89, 143, 64, 0.10);
+  border-color: rgba(89, 143, 64, 0.28);
+}
+
+.vrp-status-box.status-rejected {
+  background: rgba(180, 35, 24, 0.09);
+  border-color: rgba(180, 35, 24, 0.26);
+}
+
+.vrp-status-box.status-pending {
+  background: rgba(217, 148, 0, 0.09);
+  border-color: rgba(217, 148, 0, 0.26);
+}
+
+.vrp-status-box.status-submitted {
+  background: rgba(93, 140, 146, 0.09);
+  border-color: rgba(93, 140, 146, 0.26);
+}
+
+.status-box-label {
+  font-size: 0.71rem;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--vrp-muted);
+}
+
+.status-box-value {
+  font-size: 0.88rem;
+  font-weight: 800;
+  color: var(--vrp-text);
+  line-height: 1.3;
+}
+
+.vrp-status-box.status-approved .status-box-value { color: var(--vrp-primary-dark); }
+.vrp-status-box.status-rejected .status-box-value { color: var(--vrp-danger); }
+.vrp-status-box.status-pending  .status-box-value { color: #b07800; }
+
+/* Dark mode overrides for filter & status */
+
+:root[data-theme="dark"] .dashboard-filter-bar,
+:root[data-theme="dark"] .dashboard-filter-chips,
+:root[data-theme="dark"] .vrp-status-card {
+  background: var(--vrp-panel);
+  border-color: var(--vrp-line);
+}
+
+:root[data-theme="dark"] .dashboard-filter-input,
+:root[data-theme="dark"] .dashboard-filter-select {
+  background: var(--vrp-panel-soft);
+  border-color: var(--vrp-line);
+  color: var(--vrp-text);
+}
+
+@media (max-width: 900px) {
+  .dashboard-filter-grid {
+    grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+  }
+
+  .vrp-status-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .vrp-status-row {
+    grid-template-columns: 1fr;
   }
 }

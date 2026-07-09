@@ -25,7 +25,7 @@ class ModulesController < ApplicationController
                 :training_target_status_label, :training_target_status_caption,
                 :training_trainee_department_default, :seed_distribution_target_mappings,
                 :seed_distribution_target_month_options, :current_seed_target_vrp_option,
-                :add_farmer_form_mappings
+                :add_farmer_form_mappings, :dashboard_vrp_previous_status, :dashboard_vrp_status_label
 
   APPROVAL_REGISTRATION_MODULES = ["Farmer Registration", "VRP Registration", "Jeevika Jankar Registration"].freeze
   OTHER_TARGET_MODULE_SLUGS = ["seed-distribution-target", "papl360-target"].freeze
@@ -518,7 +518,122 @@ class ModulesController < ApplicationController
       return
     end
 
-    targets = dashboard_target_mappings
+    # 1. Load unfiltered VRPs and Targets in the user's visible scope first
+    unfiltered_vrps = dashboard_vrps
+    unfiltered_targets = dashboard_target_mappings
+
+    # 1. Load unfiltered VRPs and Targets in the user's visible scope first
+    unfiltered_vrps = dashboard_vrps
+    unfiltered_targets = dashboard_target_mappings
+
+    # Start with all targets and VRPs in user scope
+    t_scope = unfiltered_targets.to_a
+    v_scope = unfiltered_vrps.to_a
+
+    # Apply search filter (if search query is present)
+    if params[:search].present?
+      q = params[:search].to_s.downcase.strip
+      v_scope = v_scope.select do |v|
+        v.name.to_s.downcase.include?(q) ||
+          v.mobile_no.to_s.include?(q) ||
+          v.role.to_s.downcase.include?(q) ||
+          v.fcoc.to_s.downcase.include?(q) ||
+          v.cluster_incharge.to_s.downcase.include?(q)
+      end
+      t_scope = t_scope.select do |t|
+        t.vrp&.name.to_s.downcase.include?(q) ||
+          t.month_name.to_s.downcase.include?(q) ||
+          t.village_name.to_s.downcase.include?(q) ||
+          t.main_activity_name.to_s.downcase.include?(q) ||
+          t.activity_name.to_s.downcase.include?(q)
+      end
+    end
+
+    # ─── CASCADING FILTER DROPDOWNS ───
+    # 1. Activity Filter (always show all in initial scope, restrict others)
+    @filter_activity_options = t_scope.map { |t| [t.main_activity_name, t.activity_name] }.flatten.uniq.compact_blank.sort
+    if params[:activity].present?
+      act = params[:activity].to_s
+      t_scope = t_scope.select { |t| t.main_activity_name == act || t.activity_name == act }
+      v_ids = t_scope.map(&:vrp_id).uniq
+      v_scope = v_scope.select { |v| v_ids.include?(v.id) }
+    end
+
+    # 2. FCO Filter (depends on selected Activity)
+    @filter_fcoc_options = v_scope.map(&:fcoc).uniq.compact_blank.sort
+    if params[:fcoc].present?
+      f = params[:fcoc].to_s
+      v_scope = v_scope.select { |v| v.fcoc == f }
+      v_ids = v_scope.map(&:id)
+      t_scope = t_scope.select { |t| t.vrp_id.present? && v_ids.include?(t.vrp_id) }
+    end
+
+    # 3. Cluster Incharge Filter (depends on selected Activity & FCO)
+    @filter_cluster_incharge_options = v_scope.map(&:cluster_incharge).uniq.compact_blank.sort
+    if params[:cluster_incharge].present?
+      ci = params[:cluster_incharge].to_s
+      v_scope = v_scope.select { |v| v.cluster_incharge == ci }
+      v_ids = v_scope.map(&:id)
+      t_scope = t_scope.select { |t| t.vrp_id.present? && v_ids.include?(t.vrp_id) }
+    end
+
+    # 4. Month Filter (depends on Activity, FCO, Cluster Incharge)
+    @filter_month_options = t_scope.map(&:month_name).uniq.compact_blank.sort_by { |m| dashboard_month_index(m) || 0 }
+    if params[:month].present?
+      m = params[:month].to_s
+      t_scope = t_scope.select { |t| t.month_name == m }
+      v_ids = t_scope.map(&:vrp_id).uniq
+      v_scope = v_scope.select { |v| v_ids.include?(v.id) }
+    end
+
+    # 5. Post Filter (depends on all above)
+    @filter_post_options = v_scope.map(&:role).uniq.compact_blank.sort
+    if params[:post].present?
+      p_filter = params[:post].to_s
+      v_scope = v_scope.select { |v| v.role == p_filter }
+      v_ids = v_scope.map(&:id)
+      t_scope = t_scope.select { |t| t.vrp_id.present? && v_ids.include?(t.vrp_id) }
+    end
+
+    # 6. VRP Name Filter (depends on all above)
+    @filter_vrp_options = v_scope.map { |v| [v.name, v.id] }.uniq.sort_by(&:first)
+    if params[:vrp_id].present?
+      vid = params[:vrp_id].to_i
+      v_scope = v_scope.select { |v| v.id == vid }
+      t_scope = t_scope.select { |t| t.vrp_id == vid }
+    end
+
+    @filtered_vrps = v_scope
+    @filtered_targets = t_scope
+
+    # ─── BILL FILTERING ───
+    filtered_vrp_ids = @filtered_vrps.map { |v| v.id.to_s }
+    bill_records = ModuleRecord.where(module_slug: "jeevika-jankar-bill-process").to_a
+    unless admin_dashboard_user?
+      bill_records = bill_records.select { |r| jeevika_jankar_bill_record_visible?(r) }
+    end
+
+    # Restrict bills to the filtered VRPs
+    bill_records = bill_records.select { |r| r.data.present? && filtered_vrp_ids.include?(r.data["select_vrp"].to_s) }
+
+    # Restrict bills by Selected Activity
+    if params[:activity].present?
+      act = params[:activity].to_s
+      bill_records = bill_records.select do |r|
+        items = jeevika_bill_detail_rows(r)
+        items.any? { |item| item["main_activity"] == act || item["activity"] == act }
+      end
+    end
+
+    # Restrict bills by Selected Month
+    if params[:month].present?
+      m = params[:month].to_s
+      bill_records = bill_records.select { |r| r.data["bill_month"] == m }
+    end
+
+    @filtered_bills = bill_records
+
+    targets = @filtered_targets
     selected_month = dashboard_selected_training_month_name
     selected_sub_activity = dashboard_selected_training_sub_activity_name
     month_targets = dashboard_targets_for_month(targets, selected_month)
@@ -538,6 +653,7 @@ class ModulesController < ApplicationController
     @dashboard_reports = dashboard_reports
     @dashboard_generated_at = Time.current
   end
+
 
   def farmer_training_participation
     selected_month = params[:training_month].presence
@@ -967,7 +1083,7 @@ class ModulesController < ApplicationController
   def download_bill
     load_module!
     @record = ModuleRecord.find(params[:id])
-    redirect_to module_path("jeevika-jankar-bill-list"), alert: "You are not allowed to view this bill." and return unless jeevika_jankar_bill_record_visible?(@record)
+    redirect_to module_path("jeevika-jankar-bill-list"), alert: "You are not allowed to view this bill." and return unless jeevika_jankar_bill_downloadable?(@record)
     @bill_print_mode = true
     @records = []
     render :show, layout: "bill_print"
@@ -1718,8 +1834,8 @@ class ModulesController < ApplicationController
   end
 
   def dashboard_cards
-    vrps = dashboard_vrps
-    targets = dashboard_target_mappings
+    vrps = @filtered_vrps || dashboard_vrps
+    targets = @filtered_targets || dashboard_target_mappings
     hierarchy_summary = user_hierarchy_dashboard_summary
     approved_vrps = dashboard_approved_vrps(vrps).size
     pending_approvals = dashboard_pending_approval_vrps(vrps).size
@@ -1728,12 +1844,18 @@ class ModulesController < ApplicationController
       .uniq
       .size
 
+    # Count approved and pending bills
+    approved_bills = (@filtered_bills || []).select { |r| r.data["status"].to_s.downcase.include?("final approved") }.size
+    pending_bills = (@filtered_bills || []).select { |r| r.data["status"].to_s.downcase.include?("pending") || r.data["status"].to_s.downcase.include?("submitted") || r.data["status"].blank? }.size
+
     cards = [
       dashboard_card("Total Registered VRP", vrps.size, admin_dashboard_user? ? "All VRP records saved in registration" : "VRP records visible to you", vrps_path),
       dashboard_card("Final Approved VRP", approved_vrps, "VRP records with final approval", vrps_path),
       dashboard_card("VRP Pending Approval", pending_approvals, admin_dashboard_user? ? "All VRP records currently pending" : "VRP records pending in your visible approval scope", approvals_vrps_path),
       dashboard_card("VRP Targets Assigned", targets.size, "Target records assigned in VRP Targets", target_mappings_path),
-      dashboard_card("Activities Assigned", activity_count, "Activities assigned in visible VRP targets", target_mappings_path)
+      dashboard_card("Activities Assigned", activity_count, "Activities assigned in visible VRP targets", target_mappings_path),
+      dashboard_card("Bill Approved", approved_bills, "Jeevika Jankar bills final approved", module_path("jeevika-jankar-bill-list")),
+      dashboard_card("Bill Pending", pending_bills, "Jeevika Jankar bills pending approval", module_path("jeevika-jankar-bill-list"))
     ]
 
     cards.insert(0, dashboard_card("Level 2 Users", hierarchy_summary[:level_2_total], "Users directly mapped under you", dashboard_path(anchor: "user_hierarchy_report"))) if hierarchy_summary[:level_2_total].positive?
@@ -1742,7 +1864,7 @@ class ModulesController < ApplicationController
   end
 
   def dashboard_reports
-    targets = dashboard_target_mappings
+    targets = @filtered_targets || dashboard_target_mappings
     hierarchy_summary = user_hierarchy_dashboard_summary
 
     reports = [
@@ -1785,7 +1907,7 @@ class ModulesController < ApplicationController
   def dashboard_training_participation_records(month_name: nil, sub_activity_name: nil)
     return [] unless model_ready?(:ModuleRecord)
 
-    ModuleRecord
+    records = ModuleRecord
       .where(module_slug: "training-form")
       .order(created_at: :desc)
       .select { |record| active_module_record?(record) }
@@ -1794,6 +1916,14 @@ class ModulesController < ApplicationController
       .select { |record| training_record_selected_farmer_ids(record).any? }
       .select { |record| month_name.blank? || normalize_dashboard_text(training_record_month_name(record)) == normalize_dashboard_text(month_name) }
       .select { |record| sub_activity_name.blank? || normalize_dashboard_text(training_summary(record)[:training_subject]) == normalize_dashboard_text(sub_activity_name) }
+
+    if @filtered_vrps.present?
+      records = records.select do |record|
+        @filtered_vrps.any? { |vrp| training_record_matches_vrp?(record, vrp) }
+      end
+    end
+
+    records
   end
 
   def training_record_main_activity_type?(record)
@@ -3368,7 +3498,13 @@ class ModulesController < ApplicationController
     return [] unless ModuleRecord.table_exists?
 
     records = ModuleRecord.where(module_slug: record_source_slug).to_a
-    records = records.select { |record| jeevika_jankar_bill_record_visible?(record) } if record_source_slug == "jeevika-jankar-bill-process"
+    if record_source_slug == "jeevika-jankar-bill-process"
+      records = if @slug == "jeevika-jankar-payment-list" && jeevika_jankar_payment_list_user?
+        records.select { |record| jeevika_bill_final_approved?(record) }
+      else
+        records.select { |record| jeevika_jankar_bill_record_visible?(record) }
+      end
+    end
     records = records.select { |record| target_record_visible?(record) } if target_record_source?
     records.sort_by { |record| module_record_sort_value(record) }
   end
@@ -4273,8 +4409,11 @@ class ModulesController < ApplicationController
 
   def module_cluster_visible_vrps
     return [] unless model_ready?(:Vrp)
+    return @module_cluster_visible_vrps if defined?(@module_cluster_visible_vrps)
 
-    @module_cluster_visible_vrps ||= Vrp
+    return @module_cluster_visible_vrps = [] if current_cluster_incharge_labels.blank?
+
+    @module_cluster_visible_vrps = Vrp
       .where.not(cluster_incharge: [nil, ""])
       .order(:name, :id)
       .select { |vrp| module_cluster_vrp_visible?(vrp) }
@@ -4309,10 +4448,7 @@ class ModulesController < ApplicationController
     username = current_app_user&.dig("username").to_s
     return [] if username.blank?
 
-    record = ModuleRecord
-      .where(module_slug: "new-user")
-      .order(created_at: :desc)
-      .detect { |row| row.data["user_name"].to_s == username }
+    record = legacy_user_record_by_username(username)
     return [] unless record
 
     full_name = [record.data["first_name"], record.data["last_name"]].compact_blank.join(" ").presence
@@ -5046,9 +5182,18 @@ class ModulesController < ApplicationController
   end
 
   def bill_display_datetime(value)
-    Time.zone.parse(value.to_s)&.strftime("%d-%b-%Y %I:%M %p")
+    parse_bill_datetime(value)&.in_time_zone(Time.zone)&.strftime("%d-%b-%Y %I:%M %p") || "-"
   rescue ArgumentError, TypeError
-    value.respond_to?(:strftime) ? value.strftime("%d-%b-%Y %I:%M %p") : "-"
+    "-"
+  end
+
+  def parse_bill_datetime(value)
+    case value
+    when ActiveSupport::TimeWithZone, Time, DateTime
+      value
+    else
+      Time.zone.parse(value.to_s)
+    end
   end
 
   def jeevika_bill_vrp(record)
@@ -5085,6 +5230,22 @@ class ModulesController < ApplicationController
     false
   end
 
+  def jeevika_jankar_payment_list_user?
+    return true if admin_dashboard_user?
+
+    keys = helpers.allowed_sidebar_keys
+    return false if keys.blank?
+
+    keys.intersect?(%w[payment-list jeevika-jankar-payment-list])
+  end
+
+  def jeevika_jankar_bill_downloadable?(record)
+    return true if jeevika_jankar_bill_record_visible?(record)
+    return true if jeevika_bill_final_approved?(record) && jeevika_jankar_payment_list_user?
+
+    false
+  end
+
   def module_record_visible_for_current_context?(record)
     return jeevika_jankar_bill_record_visible?(record) if record&.module_slug == "jeevika-jankar-bill-process" || record_source_slug == "jeevika-jankar-bill-process"
     return target_record_visible?(record) if TARGET_RECORD_MODULE_SLUGS.include?(record&.module_slug) || target_record_source?
@@ -5099,15 +5260,12 @@ class ModulesController < ApplicationController
     @jeevika_bill_visibility_vrp_cache ||= {}
     @jeevika_bill_visibility_vrp_cache[vrp_id.to_s] ||= begin
       vrp = Vrp.find_by(id: vrp_id)
-      normalized_vrp = normalize_dashboard_text(vrp_id)
-      vrp ||= Vrp.all.find do |candidate|
-        [
-          candidate.id,
-          candidate.name,
-          candidate.user_name,
-          candidate.mobile_no,
-          [candidate.name, candidate.mobile_no.presence].compact_blank.join(" - ")
-        ].map { |value| normalize_dashboard_text(value) }.include?(normalized_vrp)
+      unless vrp
+        normalized_vrp = normalize_dashboard_text(vrp_id)
+        vrp = Vrp.find_by(name: vrp_id) ||
+          Vrp.find_by(user_name: vrp_id) ||
+          Vrp.find_by(mobile_no: vrp_id) ||
+          Vrp.where("LOWER(name) = ?", normalized_vrp.downcase).first
       end
       vrp
     end
@@ -6971,5 +7129,29 @@ class ModulesController < ApplicationController
   def model_ready?(name)
     klass = name.to_s.safe_constantize
     klass.present? && (!klass.respond_to?(:table_exists?) || klass.table_exists?)
+  end
+
+  def dashboard_vrp_previous_status(vrp)
+    history = vrp_approval_history_for(vrp).sort_by(&:created_at)
+    return "-" if history.blank?
+
+    if history.size >= 2
+      history[-2].data["status"].presence || "-"
+    else
+      "Submitted"
+    end
+  end
+
+  def dashboard_vrp_status_label(vrp)
+    return "Rejected" if vrp.status.to_i == 99 || vrp_approval_rejected?(vrp)
+    return "Final Approved" if vrp.status.to_i == 55 || vrp_approval_complete?(vrp)
+
+    if vrp_approval_sent?(vrp)
+      step = dashboard_current_approval_step_for_visibility(vrp)
+      approver = step&.data&.[]("approver_approved_by").presence || "Approver"
+      "Pending at #{approver}"
+    else
+      "Submitted"
+    end
   end
 end

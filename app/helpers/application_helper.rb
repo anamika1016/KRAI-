@@ -256,6 +256,20 @@ module ApplicationHelper
     return nil if admin_access_user?
     return @allowed_sidebar_keys = [] unless defined?(ModuleRecord) && ModuleRecord.table_exists?
 
+    cache_version = ModuleRecord.where(module_slug: "access-control").maximum(:updated_at)&.to_i
+    cache_key = [
+      "allowed_sidebar_keys",
+      current_app_user["id"],
+      current_app_user["username"],
+      cache_version
+    ]
+
+    @allowed_sidebar_keys = Rails.cache.fetch(cache_key, expires_in: 10.minutes) do
+      compute_allowed_sidebar_keys
+    end
+  end
+
+  def compute_allowed_sidebar_keys
     access_records = ModuleRecord
       .where(module_slug: "access-control")
       .order(created_at: :desc)
@@ -281,7 +295,7 @@ module ApplicationHelper
         stakeholder_match && stakeholder_role_match && role_match && role_name_match && user_management_role_match && person_type_match && vrp_type_match && can_view
       end
 
-    @allowed_sidebar_keys = access_records.flat_map do |record|
+    access_records.flat_map do |record|
       access_values(record.data["sub_module_names"].presence || record.data["sub_module_name"])
         .flat_map { |name| sidebar_access_name_keys(name) }
     end.uniq

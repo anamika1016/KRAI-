@@ -1,10 +1,42 @@
-document.addEventListener("turbo:load", () => {
-  const vrpUiLabel = "Jeevika Jankar";
-  const replaceVrpUiText = (value) => `${value || ""}`
-    .replace(/\bvrp\b/gi, vrpUiLabel)
-    .replace(/वीआरपी/g, vrpUiLabel)
-    .replace(/व्हीआरपी/g, vrpUiLabel)
-    .replace(/ଭିଆରପି/g, vrpUiLabel);
+const closeOpenChipMultiControls = (event) => {
+  document.querySelectorAll(".chip-multi-control.open").forEach((control) => {
+    if (!control.contains(event.target)) control.classList.remove("open");
+  });
+};
+
+const closeMobileMenuOnEscape = (event) => {
+  if (event.key !== "Escape") return;
+
+  document.body.classList.remove("mobile-menu-open");
+  document.querySelector("[data-mobile-menu-toggle]")?.setAttribute("aria-expanded", "false");
+};
+
+if (!window.__vrpLayoutGlobalsReady) {
+  window.__vrpLayoutGlobalsReady = true;
+  document.addEventListener("keydown", closeMobileMenuOnEscape);
+  document.addEventListener("click", closeOpenChipMultiControls);
+}
+
+const vrpUiLabel = "Jeevika Jankar";
+const replaceVrpUiText = (value) => `${value || ""}`
+  .replace(/\bvrp\b/gi, vrpUiLabel)
+  .replace(/वीआरपी/g, vrpUiLabel)
+  .replace(/व्हीआरपी/g, vrpUiLabel)
+  .replace(/ଭିଆରପି/g, vrpUiLabel);
+
+const initFastNavigation = () => {
+  const path = window.location.pathname;
+  document.querySelectorAll(".side-nav a[href]").forEach((link) => {
+    const href = link.getAttribute("href");
+    if (!href || href.startsWith("http")) return;
+
+    const active = path === href || (href.length > 1 && path.startsWith(href));
+    link.classList.toggle("active", active);
+  });
+
+  document.querySelectorAll(".side-module").forEach((module) => {
+    if (module.querySelector(".side-sub-link.active")) module.setAttribute("open", "");
+  });
 
   const mobileMenuToggle = document.querySelector("[data-mobile-menu-toggle]");
   const mobileSidebar = document.querySelector("[data-mobile-sidebar]");
@@ -14,21 +46,61 @@ document.addEventListener("turbo:load", () => {
     mobileMenuToggle?.setAttribute("aria-expanded", isOpen ? "true" : "false");
   };
 
-  mobileMenuToggle?.addEventListener("click", () => {
-    setMobileMenuOpen(!document.body.classList.contains("mobile-menu-open"));
-  });
+  if (mobileMenuToggle && mobileMenuToggle.dataset.bound !== "true") {
+    mobileMenuToggle.dataset.bound = "true";
+    mobileMenuToggle.addEventListener("click", () => {
+      setMobileMenuOpen(!document.body.classList.contains("mobile-menu-open"));
+    });
+  }
 
-  mobileSidebarBackdrop?.addEventListener("click", () => setMobileMenuOpen(false));
+  if (mobileSidebarBackdrop && mobileSidebarBackdrop.dataset.bound !== "true") {
+    mobileSidebarBackdrop.dataset.bound = "true";
+    mobileSidebarBackdrop.addEventListener("click", () => setMobileMenuOpen(false));
+  }
+
   mobileSidebar?.querySelectorAll("a").forEach((link) => {
+    if (link.dataset.mobileSidebarBound === "true") return;
+
+    link.dataset.mobileSidebarBound = "true";
     link.addEventListener("click", () => setMobileMenuOpen(false));
   });
+};
 
-  document.addEventListener("keydown", (event) => {
-    if (event.key === "Escape") setMobileMenuOpen(false);
-  });
+const runDeferredLayoutInit = () => {
+  if (!window.__layoutVisitId) return;
+  initDeferredLayoutPage();
+};
 
-  setMobileMenuOpen(false);
+const scheduleDeferredLayoutInit = () => {
+  window.__layoutVisitId = (window.__layoutVisitId || 0) + 1;
+  const visitId = window.__layoutVisitId;
 
+  if (window.__layoutDeferredIdle) {
+    window.cancelIdleCallback?.(window.__layoutDeferredIdle);
+    window.__layoutDeferredIdle = null;
+  }
+  if (window.__layoutDeferredTimer) {
+    clearTimeout(window.__layoutDeferredTimer);
+    window.__layoutDeferredTimer = null;
+  }
+
+  const runIfCurrent = () => {
+    if (visitId !== window.__layoutVisitId) return;
+    runDeferredLayoutInit();
+  };
+
+  if (window.requestIdleCallback) {
+    window.__layoutDeferredIdle = window.requestIdleCallback(runIfCurrent, { timeout: 400 });
+  } else {
+    window.__layoutDeferredTimer = setTimeout(runIfCurrent, 32);
+  }
+};
+
+document.addEventListener("turbo:click", () => {
+  window.__layoutVisitId = (window.__layoutVisitId || 0) + 1;
+});
+
+function initDeferredLayoutPage() {
   document.querySelectorAll("[data-ics-exit-form]").forEach((form) => {
     const select = form.querySelector("[data-ics-exit-farmer-select]");
     const fieldFor = (name) => form.querySelector(`[data-ics-exit-field='${name}']`);
@@ -118,22 +190,15 @@ document.addEventListener("turbo:load", () => {
   });
 
   document.querySelectorAll("[data-gps-photo-form]").forEach((form) => {
+    if (form.dataset.gpsPhotoBound === "true") return;
+
+    form.dataset.gpsPhotoBound = "true";
     if (!navigator.geolocation) return;
 
     navigator.geolocation.getCurrentPosition((position) => {
       form.querySelector("[data-gps-latitude]").value = position.coords.latitude || "";
       form.querySelector("[data-gps-longitude]").value = position.coords.longitude || "";
       form.querySelector("[data-gps-accuracy]").value = position.coords.accuracy || "";
-    });
-  });
-
-  document.querySelectorAll(".side-module").forEach((module) => {
-    module.addEventListener("toggle", () => {
-      if (!module.open) return;
-
-      document.querySelectorAll(".side-module[open]").forEach((openModule) => {
-        if (openModule !== module) openModule.removeAttribute("open");
-      });
     });
   });
 
@@ -163,6 +228,9 @@ document.addEventListener("turbo:load", () => {
   const csrfToken = document.querySelector("meta[name='csrf-token']")?.content;
 
   document.querySelectorAll("[data-dashboard-training-filter-select]").forEach((select) => {
+    if (select.dataset.dashboardTrainingFilterBound === "true") return;
+
+    select.dataset.dashboardTrainingFilterBound = "true";
     select.addEventListener("change", () => {
       const form = select.closest("form");
       if (!form) return;
@@ -177,6 +245,23 @@ document.addEventListener("turbo:load", () => {
         return;
       }
 
+      form.submit();
+    });
+  });
+
+  // Auto-submit dashboard main filters when any dropdown changes
+  document.querySelectorAll("[data-dashboard-filter-select]").forEach((select) => {
+    if (select.dataset.dashboardFilterBound === "true") return;
+
+    select.dataset.dashboardFilterBound = "true";
+    select.addEventListener("change", () => {
+      const form = select.closest("form");
+      if (!form) return;
+
+      if (typeof form.requestSubmit === "function") {
+        form.requestSubmit();
+        return;
+      }
       form.submit();
     });
   });
@@ -336,9 +421,12 @@ document.addEventListener("turbo:load", () => {
   };
 
   applyTheme(localStorage.getItem("vrp_theme") || "light");
-  themeToggle?.addEventListener("click", () => {
-    applyTheme(document.documentElement.dataset.theme === "dark" ? "light" : "dark");
-  });
+  if (themeToggle && themeToggle.dataset.bound !== "true") {
+    themeToggle.dataset.bound = "true";
+    themeToggle.addEventListener("click", () => {
+      applyTheme(document.documentElement.dataset.theme === "dark" ? "light" : "dark");
+    });
+  }
 
   const submitPatch = (path) => {
     const form = document.createElement("form");
@@ -3463,7 +3551,10 @@ document.addEventListener("turbo:load", () => {
     });
   };
 
-  document.addEventListener("click", () => closeColumnFilters());
+  if (!window.__layoutColumnFilterClickBound) {
+    window.__layoutColumnFilterClickBound = true;
+    document.addEventListener("click", () => closeColumnFilters());
+  }
 
   const ensureTableSearch = (table, index) => {
     if (!table.id) table.id = `auto_paginated_table_${index + 1}`;
@@ -3492,6 +3583,10 @@ document.addEventListener("turbo:load", () => {
 
   const sortTableRowsAlphabetically = (table) => {
     if (table.dataset.alphaSorted === "true") return;
+    if (table.tBodies[0]?.rows.length > 80) {
+      table.dataset.alphaSorted = "true";
+      return;
+    }
 
     const tbody = table.tBodies[0];
     if (!tbody) return;
@@ -3526,6 +3621,9 @@ document.addEventListener("turbo:load", () => {
   });
 
   document.querySelectorAll("[data-table-search]").forEach((input) => {
+    if (input.dataset.tableSearchBound === "true") return;
+
+    input.dataset.tableSearchBound = "true";
     input.addEventListener("input", () => {
       const table = document.getElementById(input.dataset.tableSearch);
       if (table) paginateTable(table, 1);
@@ -3721,10 +3819,6 @@ document.addEventListener("turbo:load", () => {
 
       event.preventDefault();
       control.click();
-    });
-
-    document.addEventListener("click", (event) => {
-      if (!control.contains(event.target)) control.classList.remove("open");
     });
 
     select.addEventListener("change", render);
@@ -4486,6 +4580,15 @@ document.addEventListener("turbo:load", () => {
   });
 
   const initializeLanguageSwitcher = () => {
+    if (window.__vrpLanguageSwitcherInitialized) {
+      const language = localStorage.getItem("vrp_language") || "en";
+      if (language !== "en" && typeof window.__vrpApplyLanguage === "function") {
+        window.__vrpApplyLanguage(language, document.querySelector(".app-main") || document.body);
+      }
+      return;
+    }
+    window.__vrpLanguageSwitcherInitialized = true;
+
     const switcher = document.querySelector("[data-language-switcher]");
     const languageButtons = Array.from(document.querySelectorAll("[data-language-option]"));
     const originalText = window.__vrpOriginalText ||= new WeakMap();
@@ -5063,7 +5166,7 @@ document.addEventListener("turbo:load", () => {
 
     let languageMutationTimer = null;
     let languageApplying = false;
-	    const applyLanguage = (language) => {
+	    const applyLanguage = (language, root = document.body) => {
       languageApplying = true;
 	      document.documentElement.lang = language;
       document.title = replaceVrpUiText(document.title);
@@ -5071,7 +5174,13 @@ document.addEventListener("turbo:load", () => {
         button.classList.toggle("active", button.dataset.languageOption === language);
       });
 
-      document.querySelectorAll("body *").forEach((element) => {
+      if (language === "en" && !window.__vrpHadNonEnglishLanguage) {
+        languageApplying = false;
+        return;
+      }
+      if (language !== "en") window.__vrpHadNonEnglishLanguage = true;
+
+      root.querySelectorAll("*").forEach((element) => {
         translateAttributes(element, language);
         element.childNodes.forEach((node) => {
           if (node.nodeType === Node.TEXT_NODE) translateTextNode(node, language);
@@ -5079,6 +5188,8 @@ document.addEventListener("turbo:load", () => {
       });
       languageApplying = false;
 	    };
+
+      window.__vrpApplyLanguage = applyLanguage;
 
 	    const setLanguage = (language) => {
       const nextLanguage = ["en", "hi", "mr", "or", "gu"].includes(language) ? language : "en";
@@ -5089,6 +5200,9 @@ document.addEventListener("turbo:load", () => {
 
     if (switcher) {
       languageButtons.forEach((button) => {
+        if (button.dataset.languageBound === "true") return;
+
+        button.dataset.languageBound = "true";
         button.addEventListener("click", () => setLanguage(button.dataset.languageOption));
       });
     }
@@ -5199,16 +5313,39 @@ document.addEventListener("turbo:load", () => {
     });
 
     setLanguage(localStorage.getItem("vrp_language") || "en");
-    const languageObserver = new MutationObserver(() => {
-      if (languageApplying) return;
 
-      clearTimeout(languageMutationTimer);
-      languageMutationTimer = setTimeout(() => {
-        applyLanguage(localStorage.getItem("vrp_language") || "en");
-      }, 120);
-    });
-    languageObserver.observe(document.body, { childList: true, subtree: true });
+    if (!window.__vrpLanguageObserver) {
+      const observeTarget = () => document.querySelector(".app-main") || document.body;
+      window.__vrpLanguageObserver = new MutationObserver(() => {
+        if (languageApplying) return;
+
+        const language = localStorage.getItem("vrp_language") || "en";
+        if (language === "en" && !window.__vrpHadNonEnglishLanguage) return;
+
+        clearTimeout(languageMutationTimer);
+        languageMutationTimer = setTimeout(() => {
+          window.__vrpApplyLanguage(language, observeTarget());
+        }, 250);
+      });
+      window.__vrpLanguageObserver.observe(observeTarget(), { childList: true, subtree: true });
+    }
   };
 
   initializeLanguageSwitcher();
+}
+
+document.addEventListener("turbo:load", () => {
+  initFastNavigation();
+  scheduleDeferredLayoutInit();
+});
+
+document.addEventListener("turbo:frame-load", (event) => {
+  if (event.target.id !== "app_main") return;
+
+  initFastNavigation();
+  scheduleDeferredLayoutInit();
+
+  const pageTitle = document.title.replace(/\s*-\s*Vrp\z/i, "").trim();
+  const mobileTitle = document.querySelector(".mobile-menu-title");
+  if (mobileTitle && pageTitle) mobileTitle.textContent = pageTitle;
 });

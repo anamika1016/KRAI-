@@ -37,19 +37,44 @@ class ApplicationController < ActionController::Base
     @current_app_user = refreshed_app_user_session
   end
 
+  SESSION_REFRESH_INTERVAL = 15.minutes
+
   def refreshed_app_user_session
     stored_user = session[:app_user]
     return unless stored_user.present?
 
-    user = find_current_session_user(stored_user)
-    return stored_user unless user
+    if session_refresh_fresh?
+      @current_app_user = stored_user
+      return stored_user
+    end
 
+    user = find_current_session_user(stored_user)
+    unless user
+      @current_app_user = stored_user
+      return stored_user
+    end
+
+    mark_session_refreshed!
     refresh_app_user_session!(user)
+  end
+
+  def session_refresh_fresh?
+    refreshed_at = session[:app_user_refreshed_at]
+    return false if refreshed_at.blank?
+
+    Time.zone.parse(refreshed_at) > SESSION_REFRESH_INTERVAL.ago
+  rescue ArgumentError, TypeError
+    false
+  end
+
+  def mark_session_refreshed!
+    session[:app_user_refreshed_at] = Time.current.iso8601
   end
 
   def refresh_app_user_session!(user)
     refreshed_user = app_user_session_payload(user)
     session[:app_user] = refreshed_user
+    mark_session_refreshed!
     @current_app_user = refreshed_user
   end
 
@@ -145,8 +170,16 @@ class ApplicationController < ActionController::Base
     record = ModuleRecord.where(module_slug: "new-user").find_by(id: stored_user["id"])
     return record if record
 
+    legacy_user_record_by_username(stored_user["username"].to_s)
+  end
+
+  def legacy_user_record_by_username(username)
+    return if username.blank?
+
     ModuleRecord
       .where(module_slug: "new-user")
-      .detect { |legacy_record| legacy_record.data["user_name"].to_s == stored_user["username"].to_s }
+      .where("data::jsonb ->> 'user_name' = ?", username)
+      .order(created_at: :desc)
+      .first
   end
 end
