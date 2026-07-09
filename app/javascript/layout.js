@@ -64,6 +64,19 @@ const initFastNavigation = () => {
     link.dataset.mobileSidebarBound = "true";
     link.addEventListener("click", () => setMobileMenuOpen(false));
   });
+
+  document.querySelectorAll(".side-module").forEach((module) => {
+    if (module.dataset.sideModuleBound === "true") return;
+
+    module.dataset.sideModuleBound = "true";
+    module.addEventListener("toggle", () => {
+      if (!module.open) return;
+
+      document.querySelectorAll(".side-module[open]").forEach((openModule) => {
+        if (openModule !== module) openModule.removeAttribute("open");
+      });
+    });
+  });
 };
 
 const runDeferredLayoutInit = () => {
@@ -5337,15 +5350,4 @@ function initDeferredLayoutPage() {
 document.addEventListener("turbo:load", () => {
   initFastNavigation();
   scheduleDeferredLayoutInit();
-});
-
-document.addEventListener("turbo:frame-load", (event) => {
-  if (event.target.id !== "app_main") return;
-
-  initFastNavigation();
-  scheduleDeferredLayoutInit();
-
-  const pageTitle = document.title.replace(/\s*-\s*Vrp\z/i, "").trim();
-  const mobileTitle = document.querySelector(".mobile-menu-title");
-  if (mobileTitle && pageTitle) mobileTitle.textContent = pageTitle;
 });
