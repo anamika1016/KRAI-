@@ -165,20 +165,37 @@
   <%# ── FILTER BAR ───────────────────────────────────────────────────── %>
   <%= form_with url: dashboard_path, method: :get, local: true,
         id: "dashboard-filter-form", class: "dashboard-filter-bar" do |f| %>
+    <% if params[:training_month].present? %>
+      <%= hidden_field_tag :training_month, params[:training_month] %>
+    <% end %>
+    <% if params[:training_sub_activity].present? %>
+      <%= hidden_field_tag :training_sub_activity, params[:training_sub_activity] %>
+    <% end %>
     <div class="dashboard-filter-grid">
 
 
       <%# Activity %>
-      <div class="dashboard-filter-field">
+      <div class="dashboard-filter-field dashboard-filter-field--activity">
         <label for="dash_activity">Activity</label>
-        <%= f.select :activity,
-              options_for_select(
-                [["All Activities", ""]] + (@filter_activity_options || []).map { |a| [a, a] },
-                params[:activity]
-              ),
-              {},
-              id: "dash_activity", class: "form-select dashboard-filter-select",
-              data: { dashboard_filter_select: true } %>
+        <details class="dashboard-activity-picker" data-dashboard-activity-picker>
+          <summary class="dashboard-activity-picker-summary">
+            <span data-activity-label><%= params[:activity].presence || "All Activities" %></span>
+          </summary>
+          <div class="dashboard-activity-picker-menu" role="listbox">
+            <button type="button"
+                    class="dashboard-activity-option <%= "is-selected" if params[:activity].blank? %>"
+                    data-activity-value=""
+                    role="option">All Activities</button>
+            <% (@filter_activity_options || []).each do |activity_name| %>
+              <button type="button"
+                      class="dashboard-activity-option <%= "is-selected" if params[:activity].to_s == activity_name.to_s %>"
+                      data-activity-value="<%= activity_name %>"
+                      title="<%= activity_name %>"
+                      role="option"><%= activity_name %></button>
+            <% end %>
+          </div>
+        </details>
+        <input type="hidden" name="activity" id="dash_activity" value="<%= params[:activity] %>" data-activity-input>
       </div>
 
       <%# FCO %>
@@ -299,6 +316,60 @@
   <% training_rows = @farmer_training_dashboard_rows || [] %>
   <%= render "farmer_training_dashboard", training_rows: training_rows, participation: participation %>
 
+  <%# ── COMPLETION DATE / MONTHLY EXPORT ─────────────────────────────── %>
+  <% completion_rows = @dashboard_completion_rows || [] %>
+  <section class="module-card" id="dashboard_completion_dates">
+    <div class="module-card-header">
+      <div>
+        <h2>Target Completion Dates</h2>
+        <p>Filter-wise monthly target list with Completion Date for export.</p>
+      </div>
+      <button type="button" class="list-btn export" data-export-table="dashboard_completion_dates_table" data-export-include-all="true">Export</button>
+    </div>
+
+    <div class="table-shell">
+      <table class="module-table compact-table" id="dashboard_completion_dates_table" data-paginated-table data-page-size="20">
+        <thead>
+          <tr>
+            <th>Month</th>
+            <th>Completion Date</th>
+            <th>Activity</th>
+            <th>Sub Activity</th>
+            <th>FCO</th>
+            <th>Cluster Incharge</th>
+            <th>Post-wise Name</th>
+            <th>VRP Name</th>
+            <th>Farmers</th>
+            <th>Target</th>
+          </tr>
+        </thead>
+        <tbody>
+          <% if completion_rows.any? %>
+            <% completion_rows.each do |row| %>
+              <tr>
+                <td><%= row[:month] %></td>
+                <td><%= row[:completion_date] %></td>
+                <td class="dashboard-activity-cell"><%= row[:main_activity] %></td>
+                <td class="dashboard-activity-cell"><%= row[:activity] %></td>
+                <td><%= row[:fco] %></td>
+                <td><%= row[:cluster_incharge] %></td>
+                <td><%= row[:post] %></td>
+                <td><%= row[:vrp] %></td>
+                <td><%= row[:farmers] %></td>
+                <td><%= row[:target_quantity] %></td>
+              </tr>
+            <% end %>
+          <% else %>
+            <tr>
+              <td colspan="10">No target data found for selected filters.</td>
+            </tr>
+          <% end %>
+        </tbody>
+      </table>
+    </div>
+    <div class="table-pagination" data-pagination-for="dashboard_completion_dates_table"></div>
+  </section>
+
   <%# ── DASHBOARD REPORTS ────────────────────────────────────────────── %>
   <section class="module-card">
     <div class="module-card-header">
@@ -367,43 +438,5 @@
       <% end %>
     </div>
   </section>
-
-  <%# ── CURRENT STATUS & PREVIOUS STATUS SECTION AT BOTTOM ── %>
-  <% status_vrps = (@filtered_vrps || []).first(50) %>
-  <% if status_vrps.any? %>
-    <div class="vrp-status-grid" style="margin-top: 32px; padding: 0 0 24px 0;">
-      <% status_vrps.each do |vrp| %>
-        <% current_st  = dashboard_vrp_status_label(vrp) %>
-        <% previous_st = dashboard_vrp_previous_status(vrp) %>
-        <% status_css  = if current_st.include?("Final Approved") then "status-approved"
-                         elsif current_st.include?("Rejected")    then "status-rejected"
-                         elsif current_st.include?("Pending")     then "status-pending"
-                         else "status-submitted"
-                         end %>
-        <article class="vrp-status-card">
-          <div class="vrp-status-name">
-            <%= link_to(vrp.name.presence || "VRP ##{vrp.id}", vrp_path(vrp)) %>
-            <% if vrp.role.present? %>
-              <small class="vrp-status-role"><%= vrp.role %></small>
-            <% end %>
-            <% if vrp.cluster_incharge.present? %>
-              <small class="vrp-status-role" style="color:var(--vrp-accent)"><%= vrp.cluster_incharge %></small>
-            <% end %>
-          </div>
-
-          <div class="vrp-status-row">
-            <div class="vrp-status-box current <%= status_css %>">
-              <span class="status-box-label">Current Status</span>
-              <strong class="status-box-value"><%= current_st %></strong>
-            </div>
-            <div class="vrp-status-box previous">
-              <span class="status-box-label">Previous Status</span>
-              <strong class="status-box-value"><%= previous_st %></strong>
-            </div>
-          </div>
-        </article>
-      <% end %>
-    </div>
-  <% end %>
 </section>
 <% end %>

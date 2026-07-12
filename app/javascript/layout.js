@@ -279,6 +279,42 @@ function initDeferredLayoutPage() {
     });
   });
 
+  document.querySelectorAll("[data-dashboard-activity-picker]").forEach((picker) => {
+    if (picker.dataset.dashboardActivityBound === "true") return;
+    picker.dataset.dashboardActivityBound = "true";
+
+    const form = picker.closest("form");
+    const input = form?.querySelector("[data-activity-input]");
+    const label = picker.querySelector("[data-activity-label]");
+    if (!form || !input || !label) return;
+
+    picker.querySelectorAll("[data-activity-value]").forEach((option) => {
+      option.addEventListener("click", (event) => {
+        event.preventDefault();
+        const value = option.getAttribute("data-activity-value") || "";
+        input.value = value;
+        label.textContent = value || option.textContent.trim() || "All Activities";
+        if (!value) label.textContent = "All Activities";
+        picker.removeAttribute("open");
+        picker.querySelectorAll(".dashboard-activity-option").forEach((btn) => {
+          btn.classList.toggle("is-selected", (btn.getAttribute("data-activity-value") || "") === value);
+        });
+
+        if (typeof form.requestSubmit === "function") {
+          form.requestSubmit();
+          return;
+        }
+        form.submit();
+      });
+    });
+
+    document.addEventListener("click", (event) => {
+      if (!picker.hasAttribute("open")) return;
+      if (picker.contains(event.target)) return;
+      picker.removeAttribute("open");
+    });
+  });
+
   const trainingDrilldown = document.querySelector("[data-training-participation-drilldown]");
   if (trainingDrilldown) {
     const drilldownTitle = trainingDrilldown.querySelector("[data-training-participation-drilldown-title]");

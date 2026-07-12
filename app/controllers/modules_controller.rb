@@ -522,10 +522,6 @@ class ModulesController < ApplicationController
     unfiltered_vrps = dashboard_vrps
     unfiltered_targets = dashboard_target_mappings
 
-    # 1. Load unfiltered VRPs and Targets in the user's visible scope first
-    unfiltered_vrps = dashboard_vrps
-    unfiltered_targets = dashboard_target_mappings
-
     # Start with all targets and VRPs in user scope
     t_scope = unfiltered_targets.to_a
     v_scope = unfiltered_vrps.to_a
@@ -608,13 +604,27 @@ class ModulesController < ApplicationController
 
     # ─── BILL FILTERING ───
     filtered_vrp_ids = @filtered_vrps.map { |v| v.id.to_s }
+    dashboard_filters_active = [
+      params[:search], params[:activity], params[:fcoc], params[:cluster_incharge],
+      params[:month], params[:post], params[:vrp_id]
+    ].any?(&:present?)
+
     bill_records = ModuleRecord.where(module_slug: "jeevika-jankar-bill-process").to_a
     unless admin_dashboard_user?
       bill_records = bill_records.select { |r| jeevika_jankar_bill_record_visible?(r) }
     end
 
-    # Restrict bills to the filtered VRPs
-    bill_records = bill_records.select { |r| r.data.present? && filtered_vrp_ids.include?(r.data["select_vrp"].to_s) }
+    bill_records = bill_records.select do |r|
+      next false unless r.data.present?
+
+      # Keep bills mapped to currently visible/filtered VRPs.
+      next true if filtered_vrp_ids.include?(r.data["select_vrp"].to_s)
+
+      # Approver/creator bills must still count even when VRP is outside dashboard VRP scope.
+      next true unless dashboard_filters_active
+
+      false
+    end
 
     # Restrict bills by Selected Activity
     if params[:activity].present?
@@ -649,6 +659,7 @@ class ModulesController < ApplicationController
     @training_target_status_cards = training_target_status_cards(training_targets, month_name: selected_month, sub_activity_name: selected_sub_activity)
     @training_participation = training_participation_summary(training_targets, month_name: selected_month)
     @farmer_training_dashboard_rows = farmer_training_dashboard_rows(training_targets, month_name: selected_month)
+    @dashboard_completion_rows = dashboard_completion_date_rows(@filtered_targets)
     @dashboard_cards = dashboard_cards
     @dashboard_reports = dashboard_reports
     @dashboard_generated_at = Time.current
@@ -1844,9 +1855,9 @@ class ModulesController < ApplicationController
       .uniq
       .size
 
-    # Count approved and pending bills
-    approved_bills = (@filtered_bills || []).select { |r| r.data["status"].to_s.downcase.include?("final approved") }.size
-    pending_bills = (@filtered_bills || []).select { |r| r.data["status"].to_s.downcase.include?("pending") || r.data["status"].to_s.downcase.include?("submitted") || r.data["status"].blank? }.size
+    # Count approved and pending bills (same visibility rules as bill list)
+    approved_bills = (@filtered_bills || []).count { |r| dashboard_bill_approved?(r) }
+    pending_bills = (@filtered_bills || []).count { |r| dashboard_bill_pending?(r) }
 
     cards = [
       dashboard_card("Total Registered VRP", vrps.size, admin_dashboard_user? ? "All VRP records saved in registration" : "VRP records visible to you", vrps_path),
@@ -1894,6 +1905,48 @@ class ModulesController < ApplicationController
       caption: caption,
       path: path.presence || dashboard_path
     }
+  end
+
+  def dashboard_bill_approved?(record)
+    record.data["status"].to_s.downcase.include?("final approved")
+  end
+
+  def dashboard_bill_pending?(record)
+    return false if dashboard_bill_approved?(record)
+
+    status = record.data["status"].to_s.downcase
+    return false if status.include?("rejected") || status.include?("inactive") || status.include?("returned")
+
+    status.include?("pending") ||
+      status.include?("submitted") ||
+      status.blank? ||
+      jeevika_bill_pending_for_current_approver?(record)
+  end
+
+  def dashboard_completion_date_rows(targets)
+    Array(targets).map do |target|
+      {
+        month: target.month_name.presence || "-",
+        completion_date: target.completion_date&.strftime("%d-%m-%Y") || "-",
+        completion_date_sort: target.completion_date,
+        fco: target.vrp&.fcoc.presence || "-",
+        cluster_incharge: target.vrp&.cluster_incharge.presence || "-",
+        post: target.vrp&.role.presence || "-",
+        vrp: target.vrp&.name.presence || "VRP ##{target.vrp_id}",
+        main_activity: target.main_activity_name.presence || "-",
+        activity: target.activity_name.presence || "-",
+        farmers: target.farmer_count.to_i,
+        target_quantity: dashboard_quantity(target.target_quantity)
+      }
+    end.sort_by do |row|
+      [
+        dashboard_month_index(row[:month]) || 99,
+        row[:completion_date_sort].presence || Date.new(9999, 12, 31),
+        row[:vrp].to_s.downcase,
+        row[:main_activity].to_s.downcase,
+        row[:activity].to_s.downcase
+      ]
+    end
   end
 
   def dashboard_participation_targets
@@ -2930,13 +2983,14 @@ class ModulesController < ApplicationController
   end
 
   def dashboard_vrps
-    return [] unless model_ready?(:Vrp)
-    return Vrp.all.to_a if current_app_user.blank? || current_app_user["user_type"].to_s.casecmp("admin").zero?
+    return @dashboard_vrps if defined?(@dashboard_vrps)
+    return @dashboard_vrps = [] unless model_ready?(:Vrp)
+    return @dashboard_vrps = Vrp.all.to_a if current_app_user.blank? || current_app_user["user_type"].to_s.casecmp("admin").zero?
 
     mapped_vrps = module_cluster_visible_vrps
-    return mapped_vrps if module_mapped_vrp_scope_active?
+    return @dashboard_vrps = mapped_vrps if module_mapped_vrp_scope_active?
 
-    (dashboard_own_vrps.to_a + dashboard_hierarchy_vrps + dashboard_approval_related_vrps).uniq
+    @dashboard_vrps = (dashboard_own_vrps_list + dashboard_hierarchy_vrps + dashboard_approval_related_vrps).uniq
   end
 
   def dashboard_approved_vrps(vrps)
@@ -2954,19 +3008,24 @@ class ModulesController < ApplicationController
   end
 
   def dashboard_user_owns_vrp?(vrp)
-    dashboard_own_vrps.to_a.any? { |own_vrp| own_vrp.id == vrp.id }
+    dashboard_own_vrps_list.any? { |own_vrp| own_vrp.id == vrp.id }
+  end
+
+  def dashboard_own_vrps_list
+    @dashboard_own_vrps_list ||= dashboard_own_vrps.to_a
   end
 
   def dashboard_target_mappings
-    return [] unless model_ready?(:TargetMapping)
+    return @dashboard_target_mappings if defined?(@dashboard_target_mappings)
+    return @dashboard_target_mappings = [] unless model_ready?(:TargetMapping)
 
     scope = TargetMapping.includes(:vrp).order(updated_at: :desc)
-    return scope.to_a if admin_dashboard_user?
+    return @dashboard_target_mappings = scope.to_a if admin_dashboard_user?
 
     visible_vrp_ids = dashboard_vrps.map(&:id)
-    return [] if visible_vrp_ids.blank?
+    return @dashboard_target_mappings = [] if visible_vrp_ids.blank?
 
-    scope.where(vrp_id: visible_vrp_ids).to_a
+    @dashboard_target_mappings = scope.where(vrp_id: visible_vrp_ids).to_a
   end
 
   def dashboard_target_summary_rows(targets)
@@ -3173,7 +3232,7 @@ class ModulesController < ApplicationController
       if username.blank? && emails.blank?
         []
       else
-        ModuleRecord.where(module_slug: "new-user").select do |record|
+        new_user_module_records.select do |record|
           record.data["user_name"].to_s == username ||
             emails.include?(record.data["email"].to_s.strip.downcase)
         end.map(&:id)
@@ -3186,7 +3245,8 @@ class ModulesController < ApplicationController
       emails = [current_app_user&.dig("email")]
 
       if model_ready?(:User)
-        user = User.find_by(user_name: current_app_user&.dig("username")) || User.find_by(id: current_app_user&.dig("id"))
+        user = cached_user_find_by(user_name: current_app_user&.dig("username")) ||
+          cached_user_find_by(id: current_app_user&.dig("id"))
         emails << user&.email
       end
 
@@ -3279,11 +3339,15 @@ class ModulesController < ApplicationController
   def vrp_approval_steps_for(vrp)
     return [] unless model_ready?(:ModuleRecord)
 
+    @vrp_approval_steps_for_cache ||= {}
+    cache_key = vrp.id
+    return @vrp_approval_steps_for_cache[cache_key] if @vrp_approval_steps_for_cache.key?(cache_key)
+
     identities = vrp_creator_identities_for_dashboard(vrp)
-    return [] if identities.blank?
+    return @vrp_approval_steps_for_cache[cache_key] = [] if identities.blank?
 
     @dashboard_approval_steps ||= ModuleRecord.where(module_slug: "approval-master").order(created_at: :asc).to_a
-    @dashboard_approval_steps
+    @vrp_approval_steps_for_cache[cache_key] = @dashboard_approval_steps
       .select do |record|
         record.data["status"].to_s != "Inactive" &&
           approval_registration_module?(record.data["module_name"]) &&
@@ -3307,29 +3371,35 @@ class ModulesController < ApplicationController
   end
 
   def vrp_creator_identities_for_dashboard(vrp)
+    return [] unless vrp
+
+    @vrp_creator_identities_for_dashboard_cache ||= {}
+    cache_key = vrp.id
+    return @vrp_creator_identities_for_dashboard_cache[cache_key] if @vrp_creator_identities_for_dashboard_cache.key?(cache_key)
+
     identities = []
 
     if vrp.created_by_id.present? && model_ready?(:User)
-      user = User.find_by(id: vrp.created_by_id)
+      user = cached_user_find_by(id: vrp.created_by_id)
       identities << user_dashboard_identity(user) if user
     end
 
     if model_ready?(:User)
       matched_users = []
-      matched_users << User.find_by(email: vrp.email) if vrp.email.present?
-      matched_users << User.find_by(mobile_no: vrp.mobile_no) if vrp.mobile_no.present?
+      matched_users << cached_user_find_by(email: vrp.email) if vrp.email.present?
+      matched_users << cached_user_find_by(mobile_no: vrp.mobile_no) if vrp.mobile_no.present?
       matched_users.compact.uniq.each do |user|
         identities << user_dashboard_identity(user)
       end
     end
 
     if vrp.created_by_id.present? && model_ready?(:ModuleRecord)
-      record = ModuleRecord.find_by(id: vrp.created_by_id)
+      record = cached_module_record_find_by_id(vrp.created_by_id)
       identities << record_dashboard_identity(record) if record
     end
 
     if model_ready?(:ModuleRecord)
-      matched_records = ModuleRecord.where(module_slug: "new-user").select do |record|
+      matched_records = new_user_module_records.select do |record|
         (vrp.email.present? && record.data["email"].to_s.casecmp(vrp.email.to_s).zero?) ||
           (vrp.mobile_no.present? && record.data["mobile_no"].to_s == vrp.mobile_no.to_s)
       end
@@ -3351,9 +3421,62 @@ class ModulesController < ApplicationController
       user_names: [current_app_user&.dig("username"), current_app_user&.dig("user_name"), current_app_user&.dig("name")]
     } if vrp.created_by_id.blank?
 
-    identities
+    @vrp_creator_identities_for_dashboard_cache[cache_key] = identities
       .select { |identity| identity[:stakeholder].present? && (identity[:role].present? || identity_user_name_values(identity).present?) }
       .uniq
+  end
+
+  def new_user_module_records
+    return [] unless model_ready?(:ModuleRecord)
+
+    @new_user_module_records ||= ModuleRecord.where(module_slug: "new-user").to_a
+  end
+
+  def cached_module_record_find_by_id(id)
+    return if id.blank? || !model_ready?(:ModuleRecord)
+
+    @cached_module_record_find_by_id ||= {}
+    key = id.to_s
+    return @cached_module_record_find_by_id[key] if @cached_module_record_find_by_id.key?(key)
+
+    @cached_module_record_find_by_id[key] = ModuleRecord.find_by(id: id)
+  end
+
+  def cached_user_find_by(**attrs)
+    return unless model_ready?(:User)
+
+    @cached_user_find_by ||= {}
+    cache_key = attrs.map { |key, value| "#{key}=#{value}" }.join("&")
+    return @cached_user_find_by[cache_key] if @cached_user_find_by.key?(cache_key)
+
+    @cached_user_find_by[cache_key] = User.find_by(attrs)
+  end
+
+  def cached_vrps_by_id
+    return {} unless model_ready?(:Vrp)
+
+    @cached_vrps_by_id ||= Vrp.includes(:vrp_bank_master).index_by { |vrp| vrp.id.to_s }
+  end
+
+  def cached_vrp_lookup(vrp_id)
+    return if vrp_id.blank? || !model_ready?(:Vrp)
+
+    key = vrp_id.to_s
+    @cached_vrp_lookup ||= {}
+    return @cached_vrp_lookup[key] if @cached_vrp_lookup.key?(key)
+
+    vrp = cached_vrps_by_id[key]
+    unless vrp
+      normalized_vrp = normalize_dashboard_text(vrp_id)
+      vrp = cached_vrps_by_id.values.find do |candidate|
+        candidate.name.to_s == vrp_id.to_s ||
+          candidate.user_name.to_s == vrp_id.to_s ||
+          candidate.mobile_no.to_s == vrp_id.to_s ||
+          candidate.name.to_s.downcase == normalized_vrp.downcase
+      end
+    end
+
+    @cached_vrp_lookup[key] = vrp
   end
 
   def user_dashboard_identity(user)
@@ -3544,9 +3667,9 @@ class ModulesController < ApplicationController
     return unless model_ready?(:Vrp)
 
     vrp_id = record.data["jeevika_jankar_id"].presence || record.data["vrp_id"].presence || record.data["select_vrp"].presence
-    return Vrp.find_by(id: vrp_id) if vrp_id.present?
+    return cached_vrp_lookup(vrp_id) if vrp_id.present?
 
-    Vrp.all.find { |vrp| target_record_matches_vrp?(record, vrp) }
+    cached_vrps_by_id.values.find { |vrp| target_record_matches_vrp?(record, vrp) }
   end
 
   def target_record_matches_vrp?(record, vrp)
@@ -3998,8 +4121,9 @@ class ModulesController < ApplicationController
         (selected_month.blank? || record.data["bill_month"].to_s.strip.casecmp(selected_month.to_s.strip).zero?)
     end
 
+    filtered_by_id = filtered_records.index_by(&:id)
     jeevika_bill_rows(filtered_records).map do |row|
-      record = filtered_records.find { |candidate| candidate.id == row[:id] }
+      record = filtered_by_id[row[:id]]
       vrp = jeevika_bill_vrp(record)
       bank_row = jeevika_bill_bank_rows(record).first || {}
 
@@ -4161,12 +4285,11 @@ class ModulesController < ApplicationController
   def jeevika_bill_approval_steps(record)
     return [] unless model_ready?(:ModuleRecord)
 
-    steps = ModuleRecord
-      .where(module_slug: "approval-master")
-      .order(created_at: :asc)
-      .select { |step| active_module_record?(step) }
-      .select { |step| ["Jeevika Jankar Bill", "VRP Bill"].any? { |name| dashboard_value_matches?(step.data["module_name"], name) } }
-      .sort_by { |step| [approval_sequence_from_level(step.data["approval_level"]), step.created_at&.to_i || 0, step.id || 0] }
+    @jeevika_bill_approval_steps_cache ||= {}
+    cache_key = record.id
+    return @jeevika_bill_approval_steps_cache[cache_key] if @jeevika_bill_approval_steps_cache.key?(cache_key)
+
+    steps = jeevika_bill_approval_master_steps
 
     matching_channel_keys = steps
       .select { |step| jeevika_bill_approval_step_matches_bill?(step, record) }
@@ -4180,7 +4303,16 @@ class ModulesController < ApplicationController
       .map { |records| ordered_approval_channel_steps(records) }
       .reject(&:blank?)
 
-    matching_channels.max_by { |records| approval_channel_priority(records) } || []
+    @jeevika_bill_approval_steps_cache[cache_key] = matching_channels.max_by { |records| approval_channel_priority(records) } || []
+  end
+
+  def jeevika_bill_approval_master_steps
+    @jeevika_bill_approval_master_steps ||= ModuleRecord
+      .where(module_slug: "approval-master")
+      .order(created_at: :asc)
+      .select { |step| active_module_record?(step) }
+      .select { |step| ["Jeevika Jankar Bill", "VRP Bill"].any? { |name| dashboard_value_matches?(step.data["module_name"], name) } }
+      .sort_by { |step| [approval_sequence_from_level(step.data["approval_level"]), step.created_at&.to_i || 0, step.id || 0] }
   end
 
   def ordered_approval_channel_steps(records)
@@ -4228,11 +4360,15 @@ class ModulesController < ApplicationController
   end
 
   def jeevika_bill_approval_identities(record)
+    @jeevika_bill_approval_identities_cache ||= {}
+    cache_key = record.id
+    return @jeevika_bill_approval_identities_cache[cache_key] if @jeevika_bill_approval_identities_cache.key?(cache_key)
+
     identities = []
     vrp = jeevika_bill_vrp(record)
     identities.concat(vrp_creator_identities_for_dashboard(vrp)) if vrp
     identities << current_bill_creator_identity(record)
-    identities.compact.uniq
+    @jeevika_bill_approval_identities_cache[cache_key] = identities.compact.uniq
   end
 
   def current_bill_creator_identity(record)
@@ -4261,16 +4397,16 @@ class ModulesController < ApplicationController
   def bill_creator_user(data)
     return unless model_ready?(:User)
 
-    User.find_by(id: data["created_by_id"]) ||
-      User.find_by(user_name: data["created_by_username"]) ||
-      User.find_by(email: data["created_by_email"])
+    cached_user_find_by(id: data["created_by_id"]) ||
+      cached_user_find_by(user_name: data["created_by_username"]) ||
+      cached_user_find_by(email: data["created_by_email"])
   end
 
   def bill_creator_module_record(data)
     return unless model_ready?(:ModuleRecord)
 
-    ModuleRecord.where(module_slug: "new-user").find_by(id: data["created_by_id"]) ||
-      ModuleRecord.where(module_slug: "new-user").detect do |record|
+    (data["created_by_id"].present? && new_user_module_records.find { |record| record.id.to_s == data["created_by_id"].to_s }) ||
+      new_user_module_records.detect do |record|
         record.data["user_name"].to_s == data["created_by_username"].to_s ||
           record.data["email"].to_s.casecmp(data["created_by_email"].to_s).zero?
       end
@@ -4279,19 +4415,29 @@ class ModulesController < ApplicationController
   def jeevika_bill_approval_history(record)
     return [] unless model_ready?(:ModuleRecord)
 
-    ModuleRecord
+    jeevika_bill_approval_history_by_bill_id[record.id.to_s] || []
+  end
+
+  def jeevika_bill_approval_history_by_bill_id
+    @jeevika_bill_approval_history_by_bill_id ||= ModuleRecord
       .where(module_slug: "jeevika-jankar-bill-approval-history")
       .order(created_at: :asc)
-      .select { |history| history.data["bill_id"].to_s == record.id.to_s }
+      .group_by { |history| history.data["bill_id"].to_s }
   end
 
   def jeevika_bill_current_approval_step(record)
+    @jeevika_bill_current_approval_step_cache ||= {}
+    cache_key = record.id
+    return @jeevika_bill_current_approval_step_cache[cache_key] if @jeevika_bill_current_approval_step_cache.key?(cache_key)
+
     sequence = record.data["approval_current_sequence"].to_i
     sequence = 1 if sequence.zero?
     steps = jeevika_bill_approval_steps(record)
-    return steps.first if jeevika_bill_approved_sequences(record).blank?
-
-    steps.find { |step| approval_sequence_from_level(step.data["approval_level"]) == sequence }
+    @jeevika_bill_current_approval_step_cache[cache_key] = if jeevika_bill_approved_sequences(record).blank?
+      steps.first
+    else
+      steps.find { |step| approval_sequence_from_level(step.data["approval_level"]) == sequence }
+    end
   end
 
   def jeevika_bill_approved_sequences(record)
@@ -4434,7 +4580,8 @@ class ModulesController < ApplicationController
   def user_model_cluster_labels
     return [] unless model_ready?(:User)
 
-    user = User.find_by(user_name: current_app_user&.dig("username")) || User.find_by(id: current_app_user&.dig("id"))
+    user = cached_user_find_by(user_name: current_app_user&.dig("username")) ||
+      cached_user_find_by(id: current_app_user&.dig("id"))
     return [] unless user
 
     full_name = user.respond_to?(:full_name) ? user.full_name : nil
@@ -5167,7 +5314,7 @@ class ModulesController < ApplicationController
   def jeevika_jankar_vrp_label(vrp_id)
     return "" if vrp_id.blank? || !model_ready?(:Vrp)
 
-    vrp = Vrp.find_by(id: vrp_id)
+    vrp = cached_vrp_lookup(vrp_id)
     return "" unless vrp
 
     vrp&.name.presence || vrp&.user_name.presence || "Jeevika Jankar ##{vrp.id}"
@@ -5199,7 +5346,7 @@ class ModulesController < ApplicationController
   def jeevika_bill_vrp(record)
     return nil unless model_ready?(:Vrp)
 
-    Vrp.find_by(id: record&.data&.[]("select_vrp"))
+    cached_vrp_lookup(record&.data&.[]("select_vrp"))
   end
 
   def first_present_from_items(items, *keys)
@@ -5257,18 +5404,7 @@ class ModulesController < ApplicationController
     vrp_id = record.data["select_vrp"].presence || record.data["vrp_id"].presence || record.data["jeevika_jankar_id"].presence
     return if vrp_id.blank? || !model_ready?(:Vrp)
 
-    @jeevika_bill_visibility_vrp_cache ||= {}
-    @jeevika_bill_visibility_vrp_cache[vrp_id.to_s] ||= begin
-      vrp = Vrp.find_by(id: vrp_id)
-      unless vrp
-        normalized_vrp = normalize_dashboard_text(vrp_id)
-        vrp = Vrp.find_by(name: vrp_id) ||
-          Vrp.find_by(user_name: vrp_id) ||
-          Vrp.find_by(mobile_no: vrp_id) ||
-          Vrp.where("LOWER(name) = ?", normalized_vrp.downcase).first
-      end
-      vrp
-    end
+    cached_vrp_lookup(vrp_id)
   end
 
   def jeevika_bill_created_by_current_user?(record)
