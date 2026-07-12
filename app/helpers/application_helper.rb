@@ -115,15 +115,14 @@ module ApplicationHelper
     #     ["Bill List", :module, "vrp-bill-list"]
     #   ]
     # },
-    # {
-    #   title: "Weekly Target",
-    #   icon: "▨",
-    #   links: [
-    #     ["Target Entry", :module, "weekly-target-add"],
-    #     ["Target List", :module, "weekly-target-list"],
-    #     ["Progress Report", :module, "weekly-progress-report"]
-    #   ]
-    # },
+    {
+      title: "Weekly Target",
+      icon: "▨",
+      links: [
+        ["Weekly Activity Progress Report", :route, :weekly_activity_target_report_path],
+        ["Target Status List", :route, :farmer_training_target_status_path]
+      ]
+    },
     {
       title: "Target Mapping",
       icon: "▤",

@@ -21,6 +21,7 @@ Rails.application.routes.draw do
   delete "dashboard/vrp-mapped-villages/:id", to: "modules#destroy_vrp_mapped_village", as: :destroy_vrp_mapped_village
   get "dashboard/farmer-training-participation", to: "modules#farmer_training_participation", as: :farmer_training_participation
   get "dashboard/farmer-training-target-status", to: "modules#farmer_training_target_status", as: :farmer_training_target_status
+  get "dashboard/weekly-activity-target-report", to: "modules#weekly_activity_target_report", as: :weekly_activity_target_report
 
   resources :users, except: [:show] do
     patch :toggle_status, on: :member

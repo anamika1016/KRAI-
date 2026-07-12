@@ -316,58 +316,33 @@
   <% training_rows = @farmer_training_dashboard_rows || [] %>
   <%= render "farmer_training_dashboard", training_rows: training_rows, participation: participation %>
 
-  <%# ── COMPLETION DATE / MONTHLY EXPORT ─────────────────────────────── %>
-  <% completion_rows = @dashboard_completion_rows || [] %>
-  <section class="module-card" id="dashboard_completion_dates">
-    <div class="module-card-header">
+  <%# ── WEEKLY TARGET STATUS BOXES ONLY (full data on report page) ── %>
+  <% weekly_cards = @dashboard_weekly_target_cards || [] %>
+  <section class="module-card training-participation-status-card" id="dashboard_weekly_target_boxes">
+    <div class="module-card-header training-participation-status-header">
       <div>
-        <h2>Target Completion Dates</h2>
-        <p>Filter-wise monthly target list with Completion Date for export.</p>
+        <h2>Weekly Activity Target Status</h2>
+        <p>Dashboard pe sirf colour boxes. Full Activity / Sub Activity weekly report alag page pe dekho aur export karo.</p>
       </div>
-      <button type="button" class="list-btn export" data-export-table="dashboard_completion_dates_table" data-export-include-all="true">Export</button>
+      <div class="dashboard-actions">
+        <%= link_to "Open Weekly Report", weekly_activity_target_report_path(dashboard_weekly_report_filter_params), class: "list-btn active" %>
+      </div>
     </div>
 
-    <div class="table-shell">
-      <table class="module-table compact-table" id="dashboard_completion_dates_table" data-paginated-table data-page-size="20">
-        <thead>
-          <tr>
-            <th>Month</th>
-            <th>Completion Date</th>
-            <th>Activity</th>
-            <th>Sub Activity</th>
-            <th>FCO</th>
-            <th>Cluster Incharge</th>
-            <th>Post-wise Name</th>
-            <th>VRP Name</th>
-            <th>Farmers</th>
-            <th>Target</th>
-          </tr>
-        </thead>
-        <tbody>
-          <% if completion_rows.any? %>
-            <% completion_rows.each do |row| %>
-              <tr>
-                <td><%= row[:month] %></td>
-                <td><%= row[:completion_date] %></td>
-                <td class="dashboard-activity-cell"><%= row[:main_activity] %></td>
-                <td class="dashboard-activity-cell"><%= row[:activity] %></td>
-                <td><%= row[:fco] %></td>
-                <td><%= row[:cluster_incharge] %></td>
-                <td><%= row[:post] %></td>
-                <td><%= row[:vrp] %></td>
-                <td><%= row[:farmers] %></td>
-                <td><%= row[:target_quantity] %></td>
-              </tr>
-            <% end %>
-          <% else %>
-            <tr>
-              <td colspan="10">No target data found for selected filters.</td>
-            </tr>
+    <div class="training-participation-boxes">
+      <% if weekly_cards.any? %>
+        <% weekly_cards.each do |card| %>
+          <%= link_to card[:path], class: "training-participation-box #{card[:status]}", data: { dashboard_card: true } do %>
+            <span><%= card[:title] %></span>
+            <strong><%= card[:value].to_i %></strong>
+            <small><%= card[:caption] %></small>
+            <b>View Report</b>
           <% end %>
-        </tbody>
-      </table>
+        <% end %>
+      <% else %>
+        <div class="training-empty-state">No target data found for selected filters.</div>
+      <% end %>
     </div>
-    <div class="table-pagination" data-pagination-for="dashboard_completion_dates_table"></div>
   </section>
 
   <%# ── DASHBOARD REPORTS ────────────────────────────────────────────── %>

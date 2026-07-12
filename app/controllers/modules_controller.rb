@@ -25,7 +25,8 @@ class ModulesController < ApplicationController
                 :training_target_status_label, :training_target_status_caption,
                 :training_trainee_department_default, :seed_distribution_target_mappings,
                 :seed_distribution_target_month_options, :current_seed_target_vrp_option,
-                :add_farmer_form_mappings, :dashboard_vrp_previous_status, :dashboard_vrp_status_label
+                :add_farmer_form_mappings, :dashboard_vrp_previous_status, :dashboard_vrp_status_label,
+                :dashboard_weekly_report_filter_params
 
   APPROVAL_REGISTRATION_MODULES = ["Farmer Registration", "VRP Registration", "Jeevika Jankar Registration"].freeze
   OTHER_TARGET_MODULE_SLUGS = ["seed-distribution-target", "papl360-target"].freeze
@@ -659,7 +660,7 @@ class ModulesController < ApplicationController
     @training_target_status_cards = training_target_status_cards(training_targets, month_name: selected_month, sub_activity_name: selected_sub_activity)
     @training_participation = training_participation_summary(training_targets, month_name: selected_month)
     @farmer_training_dashboard_rows = farmer_training_dashboard_rows(training_targets, month_name: selected_month)
-    @dashboard_completion_rows = dashboard_completion_date_rows(@filtered_targets)
+    @dashboard_weekly_target_cards = weekly_activity_target_status_cards(@filtered_targets)
     @dashboard_cards = dashboard_cards
     @dashboard_reports = dashboard_reports
     @dashboard_generated_at = Time.current
@@ -736,6 +737,64 @@ class ModulesController < ApplicationController
           rows: training_target_status_rows_csv(@training_target_status_rows),
           filename: "farmer-training-target-#{selected_status}-#{Time.current.strftime("%Y%m%d%H%M")}.xlsx",
           sheet_name: "Training Target"
+        )
+      end
+    end
+  end
+
+  def weekly_activity_target_report
+    targets = dashboard_participation_targets
+    selected_month = params[:training_month].presence || params[:month].presence
+    selected_activity = params[:activity].presence || params[:main_activity].presence
+    selected_sub_activity = params[:training_sub_activity].presence || params[:sub_activity].presence
+    selected_status = normalize_training_target_status(params[:status])
+
+    filtered_targets = targets.to_a
+    filtered_targets = dashboard_targets_for_month(filtered_targets, selected_month) if selected_month.present?
+    if selected_activity.present?
+      filtered_targets = filtered_targets.select do |target|
+        normalize_dashboard_text(target.main_activity_name) == normalize_dashboard_text(selected_activity) ||
+          normalize_dashboard_text(target.activity_name) == normalize_dashboard_text(selected_activity)
+      end
+    end
+    if selected_sub_activity.present?
+      filtered_targets = filtered_targets.select do |target|
+        normalize_dashboard_text(target.activity_name) == normalize_dashboard_text(selected_sub_activity)
+      end
+    end
+
+    rows = weekly_activity_target_report_rows(filtered_targets)
+    rows = rows.select { |row| row[:status_class] == selected_status } if selected_status.present?
+
+    @weekly_report_rows = rows
+    @weekly_report_totals = training_target_status_counts(filtered_targets)
+    @weekly_report_status = selected_status
+    @weekly_selected_month = selected_month
+    @weekly_selected_activity = selected_activity
+    @weekly_selected_sub_activity = selected_sub_activity
+    @weekly_month_options = dashboard_month_options_for_targets(targets)
+    @weekly_activity_options = Array(targets).map(&:main_activity_name).uniq.compact_blank.sort
+    @weekly_sub_activity_options = Array(targets)
+      .select { |target| selected_activity.blank? || normalize_dashboard_text(target.main_activity_name) == normalize_dashboard_text(selected_activity) }
+      .map(&:activity_name)
+      .uniq
+      .compact_blank
+      .sort
+
+    respond_to do |format|
+      format.html
+      format.csv do
+        send_data(
+          weekly_activity_target_report_csv(@weekly_report_rows),
+          filename: "weekly-activity-target-report-#{Time.current.strftime("%Y%m%d%H%M")}.csv",
+          type: "text/csv"
+        )
+      end
+      format.xlsx do
+        send_xlsx(
+          rows: weekly_activity_target_report_csv(@weekly_report_rows),
+          filename: "weekly-activity-target-report-#{Time.current.strftime("%Y%m%d%H%M")}.xlsx",
+          sheet_name: "Weekly Activity Report"
         )
       end
     end
@@ -1923,29 +1982,97 @@ class ModulesController < ApplicationController
       jeevika_bill_pending_for_current_approver?(record)
   end
 
-  def dashboard_completion_date_rows(targets)
-    Array(targets).map do |target|
+  def weekly_activity_target_status_cards(targets)
+    counts = training_target_status_counts(targets)
+    filter_params = dashboard_weekly_report_filter_params
+
+    [
       {
-        month: target.month_name.presence || "-",
-        completion_date: target.completion_date&.strftime("%d-%m-%Y") || "-",
-        completion_date_sort: target.completion_date,
-        fco: target.vrp&.fcoc.presence || "-",
-        cluster_incharge: target.vrp&.cluster_incharge.presence || "-",
-        post: target.vrp&.role.presence || "-",
-        vrp: target.vrp&.name.presence || "VRP ##{target.vrp_id}",
-        main_activity: target.main_activity_name.presence || "-",
-        activity: target.activity_name.presence || "-",
-        farmers: target.farmer_count.to_i,
-        target_quantity: dashboard_quantity(target.target_quantity)
+        status: "total",
+        title: "Total Targets",
+        value: counts[:total].to_i,
+        caption: "All activity / sub-activity targets in current filter.",
+        path: weekly_activity_target_report_path(filter_params)
       }
-    end.sort_by do |row|
-      [
-        dashboard_month_index(row[:month]) || 99,
-        row[:completion_date_sort].presence || Date.new(9999, 12, 31),
-        row[:vrp].to_s.downcase,
-        row[:main_activity].to_s.downcase,
-        row[:activity].to_s.downcase
+    ] + %w[green yellow red].map do |status|
+      {
+        status: status,
+        title: training_target_status_label(status),
+        value: counts[status.to_sym].to_i,
+        caption: training_target_status_caption(status),
+        path: weekly_activity_target_report_path(filter_params.merge(status: status))
+      }
+    end
+  end
+
+  def dashboard_weekly_report_filter_params
+    {
+      training_month: params[:month].presence || params[:training_month].presence,
+      activity: params[:activity].presence,
+      training_sub_activity: params[:training_sub_activity].presence,
+      fcoc: params[:fcoc].presence,
+      cluster_incharge: params[:cluster_incharge].presence,
+      post: params[:post].presence,
+      vrp_id: params[:vrp_id].presence
+    }.compact_blank
+  end
+
+  def weekly_activity_target_report_rows(targets)
+    training_target_status_rows(targets).map do |row|
+      completion = row[:completion_date_sort]
+      week_label = if completion.present?
+        week_start = completion.beginning_of_week
+        week_end = completion.end_of_week
+        "Week #{completion.cweek} (#{week_start.strftime("%d-%m")} - #{week_end.strftime("%d-%m")})"
+      else
+        "-"
+      end
+
+      row.merge(week: week_label)
+    end
+  end
+
+  def weekly_activity_target_report_csv(rows)
+    CSV.generate(headers: true) do |csv|
+      csv << [
+        "Week",
+        "Month",
+        "Completion Date",
+        "VRP",
+        "FCO",
+        "Cluster Incharge",
+        "Post",
+        "Main Activity",
+        "Sub Activity",
+        "ICS",
+        "Village",
+        "Target",
+        "Completed",
+        "Pending",
+        "Progress %",
+        "Status"
       ]
+
+      Array(rows).each do |row|
+        csv << [
+          row[:week],
+          row[:month],
+          row[:completion_date],
+          row[:vrp],
+          row[:fco],
+          row[:cluster_incharge],
+          row[:post],
+          row[:main_activity],
+          row[:sub_activity],
+          row[:ics],
+          row[:village],
+          dashboard_quantity(row[:target_quantity]),
+          dashboard_quantity(row[:completed_quantity]),
+          dashboard_quantity(row[:pending_quantity]),
+          row[:progress_percent],
+          row[:status_label]
+        ]
+      end
     end
   end
 
@@ -2585,6 +2712,9 @@ class ModulesController < ApplicationController
       target_mapping_id: target.id.to_s,
       month: target.month_name.presence || "-",
       vrp: target.vrp&.name.presence || "VRP ##{target.vrp_id}",
+      fco: target.vrp&.fcoc.presence || "-",
+      cluster_incharge: target.vrp&.cluster_incharge.presence || "-",
+      post: target.vrp&.role.presence || "-",
       ics: target.ics_name.presence || target.ics_id.presence || "-",
       village: target.village_name.presence || target.village_id.presence || "-",
       main_activity: target.main_activity_name.presence || "Farmer Training",
