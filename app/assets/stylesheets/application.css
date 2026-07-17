@@ -2152,6 +2152,69 @@ body {
   gap: 18px;
 }
 
+.jeevika-payment-detail-card {
+  display: grid;
+  gap: 16px;
+  border: 1px solid var(--vrp-line);
+  border-radius: 8px;
+  padding: 16px;
+  margin-bottom: 18px;
+  background: #fff;
+}
+
+.jeevika-payment-detail-card h3 {
+  margin: 0;
+  font-size: 1.05rem;
+}
+
+.jeevika-payment-selector {
+  display: grid;
+  gap: 12px;
+}
+
+.jeevika-payment-select-table {
+  min-width: 980px;
+}
+
+.jeevika-payment-select-table input[type="checkbox"] {
+  width: 18px;
+  height: 18px;
+}
+
+.payment-select-all-head {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.jeevika-payment-summary-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(180px, 1fr));
+  gap: 14px;
+}
+
+.jeevika-payment-summary-grid label {
+  display: grid;
+  gap: 7px;
+  font-weight: 700;
+}
+
+.jeevika-payment-summary-grid input,
+.jeevika-payment-summary-grid select {
+  min-height: 42px;
+  border: 1px solid #d5e0e6;
+  border-radius: 6px;
+  padding: 8px 10px;
+  font: inherit;
+}
+
+.jeevika-payment-summary-grid input[readonly] {
+  background: #f7fafb;
+  font-weight: 800;
+}
+
 .bill-detail-summary {
   display: grid;
   grid-template-columns: repeat(4, minmax(160px, 1fr));
@@ -2635,6 +2698,13 @@ body {
 .compact-filter-form {
   max-width: 360px;
   margin-bottom: 12px;
+}
+
+.compact-filter-form.compact-filter-form-multi {
+  max-width: 720px;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 14px;
 }
 
 .compact-filter-form label {
@@ -3741,6 +3811,24 @@ body {
   padding: 18px;
 }
 
+#target_mapping_list .target-activity-column {
+  min-width: 10rem;
+}
+
+#target_mapping_list .target-training-column {
+  min-width: 7.5rem;
+  white-space: normal;
+  line-height: 1.25;
+}
+
+#target_mapping_list .target-activity-text {
+  min-width: 10rem;
+  max-width: 15rem;
+  white-space: normal;
+  overflow-wrap: anywhere;
+  line-height: 1.35;
+}
+
 .target-mapping-panel {
   display: grid;
   gap: 12px;
@@ -3748,6 +3836,24 @@ body {
   border-radius: 6px;
   background: #f8fbfc;
   padding: 12px;
+}
+
+.target-training-fields {
+  display: grid;
+  gap: 0.85rem;
+  margin-top: 0.35rem;
+  padding: 1rem;
+  border: 1px solid color-mix(in srgb, var(--border) 85%, transparent);
+  border-radius: 14px;
+  background: color-mix(in srgb, var(--surface) 92%, #edf6ef);
+}
+
+.target-training-fields[hidden] {
+  display: none !important;
+}
+
+.target-training-fields .target-mapping-toolbar {
+  margin-bottom: 0.15rem;
 }
 
 .target-farmer-panel {
@@ -3802,6 +3908,124 @@ body {
   max-height: 320px;
 }
 
+.target-weekly-summary {
+  display: grid;
+  gap: 12px;
+  margin-top: 14px;
+  border: 1px solid var(--vrp-line);
+  border-radius: 8px;
+  background: #f8fbfc;
+  padding: 12px;
+}
+
+.target-weekly-summary[hidden] {
+  display: none;
+}
+
+.target-weekly-table-shell {
+  border-radius: 6px;
+}
+
+.target-weekly-table {
+  min-width: 760px;
+}
+
+.target-weekly-table th:first-child,
+.target-weekly-table td:first-child {
+  width: 30%;
+  min-width: 240px;
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+
+.target-weekly-activity {
+  display: grid;
+  gap: 4px;
+  line-height: 1.35;
+}
+
+.target-weekly-activity span {
+  color: var(--vrp-muted);
+}
+
+.target-weekly-table td:not(:first-child),
+.target-weekly-table th:not(:first-child) {
+  text-align: center;
+}
+
+.target-weekly-input {
+  width: 86px;
+  min-height: 36px;
+  border: 1px solid var(--vrp-line);
+  border-radius: 6px;
+  background: var(--surface);
+  color: var(--vrp-text);
+  font: inherit;
+  font-weight: 800;
+  text-align: center;
+}
+
+.target-weekly-input:focus {
+  outline: 2px solid color-mix(in srgb, var(--vrp-primary) 35%, transparent);
+  outline-offset: 1px;
+}
+
+.target-farmer-dialog {
+  width: min(920px, calc(100% - 28px));
+  border: 0;
+  border-radius: 8px;
+  padding: 0;
+  box-shadow: 0 24px 60px rgba(16, 28, 35, 0.28);
+}
+
+.target-farmer-dialog::backdrop {
+  background: rgba(15, 24, 31, 0.52);
+}
+
+.target-farmer-dialog-inner {
+  display: grid;
+  gap: 14px;
+  padding: 16px;
+  background: var(--surface);
+  color: var(--vrp-text);
+}
+
+.target-farmer-dialog-header,
+.target-farmer-dialog-tools {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.target-farmer-dialog-header > div {
+  display: grid;
+  gap: 4px;
+}
+
+.target-farmer-dialog-header span {
+  color: var(--vrp-primary);
+  font-size: 0.9rem;
+  font-weight: 900;
+}
+
+.target-farmer-dialog-header button {
+  width: 34px;
+  height: 34px;
+  border: 0;
+  border-radius: 50%;
+  background: #eef4f6;
+  color: var(--vrp-text);
+  font-size: 1.45rem;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.target-dialog-farmer-list {
+  max-height: min(54vh, 460px);
+  overflow: auto;
+}
+
 @media (max-width: 1180px) {
   .vrp-ics-grid,
   .vrp-ics-farmer-list {
@@ -3831,6 +4055,12 @@ body {
 
   .target-farmer-search {
     width: 100%;
+  }
+
+  .target-farmer-dialog-header,
+  .target-farmer-dialog-tools {
+    align-items: stretch;
+    flex-direction: column;
   }
 }
 
@@ -4879,6 +5109,7 @@ body {
   }
 
   .module-form-grid.user-registration-grid,
+  .jeevika-payment-summary-grid,
   .access-top-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
@@ -4937,6 +5168,7 @@ body {
   .module-grid.two,
   .module-form-grid,
   .module-form-grid.user-registration-grid,
+  .jeevika-payment-summary-grid,
   .access-top-grid,
   .vrp-detail-grid,
   .document-grid,

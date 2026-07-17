@@ -95,15 +95,15 @@ module ApplicationHelper
       ]
     },
     {
-      title: "VRP Registration",
+      title: "Jeevika Jankar Registration",
       icon: "▥",
       links: [
         ["Add Jeevika Jankar Type", :module, "add-vrp-type"],
-        ["VRP Registration", :route, :new_vrp_path],
-        ["VRP List", :route, :vrps_path],
-        ["VRP Approval Queue", :route, :approvals_vrps_path],
-        ["VRP Approval Form", :module, "approval-master"],
-        ["VRP Approval List", :module, "approval-list"],
+        ["Jeevika Jankar Registration", :route, :new_vrp_path],
+        ["Jeevika Jankar List", :route, :vrps_path],
+        ["Jeevika Jankar Approval Queue", :route, :approvals_vrps_path],
+        ["Jeevika Jankar Approval Form", :module, "approval-master"],
+        ["Jeevika Jankar Approval List", :module, "approval-list"],
         ["Accepted Agreement by Jeevika Jankar", :route, :vrp_agreements_path]
       ]
     },
@@ -146,41 +146,43 @@ module ApplicationHelper
         ["Add Farmer Form", :module, "add-farmer-form"]
       ]
     },
-    {
-      title: "ICS MASTER",
-      icon: "▥",
-      links: [
-        ["ICS Master", :module, "ics-master"]
-      ]
-    },
-    {
-      title: "Farmer Farm Information",
-      icon: "▥",
-      links: [
-        ["Farmer Farm Information", :route, :farmer_farm_information_path],
-        ["All Basic Detail List", :route, :list_farmer_farm_information_path],
-        ["Farm Map (lat long gps)", :route, :farm_map_farmer_farm_information_path],
-        ["Crop Map Session Wise Farm Map (lat long gps)", :route, :crop_map_session_wise_farmer_farm_information_path],
-        ["Farm-Crop-Area Details", :route, :farm_crop_area_details_path],
-        ["Seed & Planting Material", :route, :seed_planting_materials_path],
-        ["Soil Conditioners & Fertility Input Records", :route, :soil_conditioner_fertility_input_records_path],
-        ["On Farm Input Records", :route, :on_farm_input_records_path],
-        ["Disease, Insects, Pests & Weed Management Record", :route, :disease_pest_weed_management_records_path],
-        ["Contamination Control Records", :route, :contamination_control_records_path],
-        ["Records of Production & Harvest Details", :route, :production_harvest_details_path],
-        ["Post Harvest, Handling & Storage Area", :route, :post_harvest_handling_storage_records_path],
-        ["Sale Record", :route, :sale_records_path],
-        ["Dispatch Record", :route, :dispatch_records_path],
-        ["Application Format for Exit of Farmer from ICS", :route, :ics_exit_declaration_farmer_farm_information_path]
-      ]
-    },
+    # {
+    #   title: "ICS MASTER",
+    #   icon: "▥",
+    #   links: [
+    #     ["ICS Master", :module, "ics-master"]
+    #   ]
+    # },
+    # {
+    #   title: "Farmer Farm Information",
+    #   icon: "▥",
+    #   links: [
+    #     ["Farmer Farm Information", :route, :farmer_farm_information_path],
+    #     ["All Basic Detail List", :route, :list_farmer_farm_information_path],
+    #     ["Farm Map (lat long gps)", :route, :farm_map_farmer_farm_information_path],
+    #     ["Crop Map Session Wise Farm Map (lat long gps)", :route, :crop_map_session_wise_farmer_farm_information_path],
+    #     ["Farm-Crop-Area Details", :route, :farm_crop_area_details_path],
+    #     ["Seed & Planting Material", :route, :seed_planting_materials_path],
+    #     ["Soil Conditioners & Fertility Input Records", :route, :soil_conditioner_fertility_input_records_path],
+    #     ["On Farm Input Records", :route, :on_farm_input_records_path],
+    #     ["Disease, Insects, Pests & Weed Management Record", :route, :disease_pest_weed_management_records_path],
+    #     ["Contamination Control Records", :route, :contamination_control_records_path],
+    #     ["Records of Production & Harvest Details", :route, :production_harvest_details_path],
+    #     ["Post Harvest, Handling & Storage Area", :route, :post_harvest_handling_storage_records_path],
+    #     ["Sale Record", :route, :sale_records_path],
+    #     ["Dispatch Record", :route, :dispatch_records_path],
+    #     ["Application Format for Exit of Farmer from ICS", :route, :ics_exit_declaration_farmer_farm_information_path]
+    #   ]
+    # },
     {
       title: "Jeevika Jankar Bill",
       icon: "▧",
       links: [
         ["Bill Process", :module, "jeevika-jankar-bill-process"],
         ["Bill List", :module, "jeevika-jankar-bill-list"],
-        ["Payment List", :module, "jeevika-jankar-payment-list"]
+        ["Payment List", :module, "jeevika-jankar-payment-list"],
+        ["Payment List Detail", :module, "jeevika-jankar-payment-list-detail"],
+        ["Completed Payment List", :module, "jeevika-jankar-completed-payment-list"]
       ]
     },
   ].freeze
@@ -221,7 +223,14 @@ module ApplicationHelper
 
   def sidebar_access_key(link)
     label, _type, _target = link
-    label.parameterize
+    {
+      "Jeevika Jankar Registration" => "vrp-registration",
+      "Jeevika Jankar List" => "vrp-list",
+      "Jeevika Jankar Approval Queue" => "vrp-approval-queue",
+      "Jeevika Jankar Approval Form" => "vrp-approval-form",
+      "Jeevika Jankar Approval List" => "vrp-approval-list",
+      "Jeevika Jankar Targets" => "vrp-targets"
+    }.fetch(label.to_s, label.parameterize)
   end
 
   def resource_person_label(label)
@@ -245,7 +254,16 @@ module ApplicationHelper
       "Activity Group Name" => "Main Activity Name",
       "Activity Name" => "Sub Activity Name",
       "VRP Activity" => "Sub Activity",
-      "Farmer Count" => "AFL Farmer Count"
+      "Farmer Count" => "AFL Farmer Count",
+      "VRP" => "Jeevika Jankar",
+      "Select VRP" => "Select Jeevika Jankar",
+      "VRP Name" => "Jeevika Jankar Name",
+      "VRP Registration" => "Jeevika Jankar Registration",
+      "VRP List" => "Jeevika Jankar List",
+      "VRP Approval Queue" => "Jeevika Jankar Approval Queue",
+      "VRP Approval Form" => "Jeevika Jankar Approval Form",
+      "VRP Approval List" => "Jeevika Jankar Approval List",
+      "VRP Targets" => "Jeevika Jankar Targets"
     }.fetch(label.to_s, label)
   end
 
@@ -302,8 +320,20 @@ module ApplicationHelper
 
   def sidebar_access_name_keys(name)
     keys = [name.presence&.parameterize].compact
-    keys << "vrp-approval-queue" if name.to_s.strip == "VRP Approval"
-    keys << "vrp-approval" if name.to_s.strip == "VRP Approval Queue"
+    keys << "vrp-approval-queue" if ["VRP Approval", "Jeevika Jankar Approval", "Jeevika Jankar Approval Queue"].include?(name.to_s.strip)
+    keys << "vrp-approval" if ["VRP Approval Queue", "Jeevika Jankar Approval Queue"].include?(name.to_s.strip)
+    if ["VRP Registration", "Jeevika Jankar Registration"].include?(name.to_s.strip)
+      keys.concat(["vrp-registration", "jeevika-jankar-registration"])
+    end
+    if ["VRP List", "Jeevika Jankar List"].include?(name.to_s.strip)
+      keys.concat(["vrp-list", "jeevika-jankar-list"])
+    end
+    if ["VRP Approval Form", "Jeevika Jankar Approval Form"].include?(name.to_s.strip)
+      keys.concat(["vrp-approval-form", "jeevika-jankar-approval-form", "approval-master"])
+    end
+    if ["VRP Approval List", "Jeevika Jankar Approval List"].include?(name.to_s.strip)
+      keys.concat(["vrp-approval-list", "jeevika-jankar-approval-list", "approval-list"])
+    end
     if ["VRP Type", "Add Jeevika Jankar Type", "Jeevika Jankar Type"].include?(name.to_s.strip)
       keys.concat(["vrp-type", "add-jeevika-jankar-type", "jeevika-jankar-type"])
     end
@@ -361,17 +391,23 @@ module ApplicationHelper
     if ["Contamination Control Records", "Contamination Control"].include?(name.to_s.strip)
       keys << "contamination-control-records"
     end
-    if ["Target Mapping Master", "Target Mapping", "VRP Targets"].include?(name.to_s.strip)
-      keys.concat(["target-mapping-master", "target-mapping", "vrp-targets"])
+    if ["Target Mapping Master", "Target Mapping", "VRP Targets", "Target Mapped JJ"].include?(name.to_s.strip)
+      keys.concat(["target-mapping-master", "target-mapping", "vrp-targets", "target-mapped-jj"])
     end
     if ["Bill Process", "Jeevika Jankar Bill", "Jeevika Jankar Bill Process"].include?(name.to_s.strip)
       keys.concat(["bill-process", "jeevika-jankar-bill", "jeevika-jankar-bill-process"])
     end
     if ["Bill List", "Jeevika Jankar Bill List"].include?(name.to_s.strip)
-      keys.concat(["bill-list", "jeevika-jankar-bill-list", "payment-list", "jeevika-jankar-payment-list"])
+      keys.concat(["bill-list", "jeevika-jankar-bill-list", "payment-list", "jeevika-jankar-payment-list", "payment-list-detail", "jeevika-jankar-payment-list-detail", "completed-payment-list", "jeevika-jankar-completed-payment-list"])
     end
     if ["Payment List", "Jeevika Jankar Payment List"].include?(name.to_s.strip)
-      keys.concat(["payment-list", "jeevika-jankar-payment-list"])
+      keys.concat(["payment-list", "jeevika-jankar-payment-list", "payment-list-detail", "jeevika-jankar-payment-list-detail", "completed-payment-list", "jeevika-jankar-completed-payment-list"])
+    end
+    if ["Payment List Detail", "Jeevika Jankar Payment List Detail"].include?(name.to_s.strip)
+      keys.concat(["payment-list-detail", "jeevika-jankar-payment-list-detail", "completed-payment-list", "jeevika-jankar-completed-payment-list"])
+    end
+    if ["Completed Payment List", "Jeevika Jankar Completed Payment List"].include?(name.to_s.strip)
+      keys.concat(["completed-payment-list", "jeevika-jankar-completed-payment-list"])
     end
     keys.uniq
   end
@@ -416,7 +452,7 @@ module ApplicationHelper
         title: "Target Mapping",
         icon: "▨",
         links: [
-          ["VRP Targets", :route, :target_mappings_path]
+          ["Target Mapped JJ", :route, :target_mappings_path]
         ]
       },
       {
@@ -438,7 +474,9 @@ module ApplicationHelper
         links: [
           ["Bill Process", :module, "jeevika-jankar-bill-process"],
           ["Bill List", :module, "jeevika-jankar-bill-list"],
-          ["Payment List", :module, "jeevika-jankar-payment-list"]
+          ["Payment List", :module, "jeevika-jankar-payment-list"],
+          ["Payment List Detail", :module, "jeevika-jankar-payment-list-detail"],
+          ["Completed Payment List", :module, "jeevika-jankar-completed-payment-list"]
         ]
       }
     ]
@@ -446,9 +484,15 @@ module ApplicationHelper
 
   def visible_vrp_sidebar_sections
     allowed_keys = allowed_sidebar_keys
-    return [] if allowed_keys.blank?
+    sections = vrp_sidebar_sections
 
-    SIDEBAR_SECTIONS.filter_map do |section|
+    sections.filter_map do |section|
+      if section[:links].any? { |link| link.first == "Target Mapped JJ" }
+        next section
+      end
+
+      next if allowed_keys.blank?
+
       allowed_links = section[:links].select { |link| allowed_keys.include?(sidebar_access_key(link)) }
       section.merge(links: allowed_links) if allowed_links.any?
     end

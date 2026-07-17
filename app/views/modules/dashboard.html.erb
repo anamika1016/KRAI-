@@ -155,10 +155,10 @@
         <span>⌕</span>
         <input type="search" placeholder="Search dashboard" data-dashboard-search>
       </div>
-      <label class="import-btn">
-        Import Data
-        <input type="file" accept=".csv,.xlsx,.xls" data-import-file hidden>
-      </label>
+      <%= link_to "Export Excel",
+            dashboard_path(request.query_parameters.merge(format: :xlsx)),
+            class: "list-btn export",
+            title: "Current filters ke hisaab se dashboard data export" %>
     </div>
   </div>
 

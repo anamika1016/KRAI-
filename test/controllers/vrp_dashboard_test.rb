@@ -707,6 +707,18 @@ class VrpDashboardTest < ActionDispatch::IntegrationTest
         farmer_name: "Blank FCO Farmer #{index + 1}"
       )
     end
+    VrpIcsMapping.create!(
+      vrp: vrp,
+      fco_id: "Bhabra",
+      fco_name: "Bhabra",
+      ics_id: "18",
+      ics_name: "BADGAON BHABHRA FARMERS PRODUCERS COMPANY LIMITED",
+      village_id: "116",
+      village_name: "Badgaon",
+      afl_ids: ["999999"],
+      created_by_type: "User",
+      created_by_id: 1
+    )
     User.create!(
       user_name: "blank_fco_admin",
       password: "secret",
@@ -737,6 +749,93 @@ class VrpDashboardTest < ActionDispatch::IntegrationTest
     }
     farmer_rows = JSON.parse(response.body).fetch("farmers")
     assert_equal farmers.map { |farmer| farmer.id.to_s }.sort, farmer_rows.map { |farmer| farmer["id"] }.sort
+  end
+
+  test "target mapping keeps training targets for mixed training and other activity selection" do
+    vrp = create_vrp(
+      name: "Mixed Target VRP",
+      user_name: "mixed_target_vrp",
+      mobile_no: "9876543666",
+      email: "mixed-target@example.com",
+      aadhar_no: "123456789066"
+    )
+    farmer = create_afl(farmer_name: "Mixed Target Farmer")
+    mapping = VrpIcsMapping.create!(
+      vrp: vrp,
+      fco_id: "FCO1",
+      fco_name: "FCO One",
+      ics_id: "ICS1",
+      ics_name: "ICS One",
+      village_id: "V1",
+      village_name: "Village One",
+      afl_ids: [farmer.id],
+      created_by_type: "User",
+      created_by_id: 1
+    )
+    ModuleRecord.create!(
+      module_slug: "add-activity-group",
+      data: {
+        "main_activity_name" => "Farmers' Training",
+        "main_activity_type" => "Training",
+        "status" => "Active"
+      }
+    )
+    ModuleRecord.create!(
+      module_slug: "add-activity-group",
+      data: {
+        "main_activity_name" => "Seed Packet Distribution 2026-27",
+        "main_activity_type" => "Other",
+        "status" => "Active"
+      }
+    )
+    ModuleRecord.create!(
+      module_slug: "add-vrp-activity",
+      data: {
+        "main_activity" => "Seed Packet Distribution 2026-27",
+        "sub_activity_name" => "Seed Packet Distribution",
+        "status" => "Active"
+      }
+    )
+    User.create!(
+      user_name: "mixed_target_admin",
+      password: "secret",
+      first_name: "Mixed Target Admin",
+      user_type: "admin",
+      status: "Active"
+    )
+
+    post login_path, params: { login: "mixed_target_admin", password: "secret" }
+    follow_redirect!
+
+    assert_difference("TargetMapping.count", 2) do
+      post target_mappings_path, params: {
+        target_mapping: {
+          vrp_id: vrp.id,
+          fco_id: mapping.fco_id,
+          ics_id: mapping.ics_id,
+          village_id: mapping.village_id,
+          month_name: "July",
+          completion_date: Date.new(2026, 7, 31),
+          main_activity_names: ["Farmers' Training", "Seed Packet Distribution 2026-27"],
+          activity_names: ["Seed Packet Distribution"],
+          target_quantity: 1,
+          afl_ids: [farmer.id],
+          training_targets: { week_wise_opg: "4" }
+        }
+      }
+    end
+
+    saved_targets = TargetMapping.where(vrp: vrp, month_name: "July").order(:id).to_a
+    other_target = saved_targets.find { |target| target.activity_name == "Seed Packet Distribution" }
+    training_target = saved_targets.find { |target| target.activity_name == "General Training/Meeting" }
+
+    assert_equal "Seed Packet Distribution 2026-27", other_target.main_activity_name
+    assert_equal [farmer.id.to_s], other_target.afl_ids
+    assert_equal 1, other_target.target_quantity.to_i
+    assert_equal "Farmers' Training", training_target.main_activity_name
+    assert_equal [], training_target.afl_ids
+    assert_equal 4, training_target.target_quantity.to_i
+    refute saved_targets.any? { |target| target.main_activity_name == "Seed Packet Distribution 2026-27" && target.activity_name == "General Training/Meeting" }
   end
 
   test "target mapping vrp dropdown shows only approved vrps registered by current user" do

@@ -1,6 +1,43 @@
 Rails.application.routes.draw do
   get "up" => "rails/health#show", as: :rails_health_check
 
+  namespace :api do
+    namespace :v1 do
+      post "login", to: "sessions#create"
+      post "login/otp/send", to: "otp_logins#send_otp"
+      post "login/otp/verify", to: "otp_logins#verify_otp"
+      post "forgot-password/send-otp", to: "password_resets#send_otp"
+      post "forgot-password/reset", to: "password_resets#reset"
+      get "me", to: "sessions#show"
+      delete "logout", to: "sessions#destroy"
+
+      # Jeevika Jankar (VRP) — React Native APIs; web /vrps routes unchanged
+      get "jeevika-jankars/form-options", to: "jeevika_jankars#form_options"
+      get "jeevika-jankars/approvals", to: "jeevika_jankar_approvals#index"
+      patch "jeevika-jankars/:id/approve", to: "jeevika_jankar_approvals#approve"
+      patch "jeevika-jankars/:id/reject", to: "jeevika_jankar_approvals#reject"
+      resources :jeevika_jankars, path: "jeevika-jankars", only: [ :index, :create, :show ] do
+        member do
+          patch :send_for_approval
+        end
+      end
+
+      # Farmer Target modules — React Native APIs; web /modules/* unchanged
+      get "farmer-trainings/form-options", to: "farmer_trainings#form_options"
+      resources :farmer_trainings, path: "farmer-trainings", only: [ :index, :create, :show ]
+
+      get "seed-distribution-targets/form-options", to: "seed_distribution_targets#form_options"
+      resources :seed_distribution_targets, path: "seed-distribution-targets", only: [ :index, :create, :show ]
+
+      get "papl360-targets/form-options", to: "papl360_targets#form_options"
+      resources :papl360_targets, path: "papl360-targets", only: [ :index, :create, :show ]
+
+      get "add-farmer-forms/form-options", to: "add_farmer_forms#form_options"
+      resources :add_farmer_forms, path: "add-farmer-forms", only: [ :index, :create, :show ]
+    end
+  end
+
+
   get    "login",  to: "sessions#new",     as: :login
   post   "login",  to: "sessions#create"
   get    "forgot-password", to: "sessions#forgot_password", as: :forgot_password
@@ -121,6 +158,7 @@ Rails.application.routes.draw do
 
   resources :modules, param: :slug, only: [:show], controller: :modules do
     post :records, action: :create, on: :member
+    post :payment_details, action: :create_payment_detail, on: :member
     post :import, action: :import, on: :member
     get :export, action: :export, on: :member
     patch :bulk_update, action: :bulk_update, on: :member

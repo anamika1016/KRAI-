@@ -1,11 +1,11 @@
-<% content_for :title, "VRP Approval Queue" %>
+<% content_for :title, "Jeevika Jankar Approval Queue" %>
 
 <main class="vrp-list-page">
   <section class="vrp-list-shell">
     <div class="vrp-list-header">
       <div>
-        <p class="vrp-eyebrow">VRP Registration</p>
-        <h1>VRP Approval Queue</h1>
+        <p class="vrp-eyebrow">Jeevika Jankar Registration</p>
+        <h1>Jeevika Jankar Approval Queue</h1>
       </div>
     </div>
 
@@ -52,7 +52,7 @@
                       <%= link_to "View", vrp_path(vrp), class: "table-action" %>
                       <% if row[:can_act] %>
                         <%= button_to "Approve", approve_vrp_path(vrp), method: :patch, class: "table-action" %>
-                        <%= button_to "Reject", reject_vrp_path(vrp), method: :patch, class: "table-action danger", form: { data: { turbo_confirm: "Reject this VRP?" } } %>
+                        <%= button_to "Reject", reject_vrp_path(vrp), method: :patch, class: "table-action danger", form: { data: { turbo_confirm: "Reject this Jeevika Jankar?" } } %>
                       <% end %>
                     </div>
                   </td>
@@ -60,7 +60,7 @@
               <% end %>
             <% else %>
               <tr>
-                <td colspan="8">No VRP approval records found.</td>
+                <td colspan="8">No Jeevika Jankar approval records found.</td>
               </tr>
             <% end %>
           </tbody>

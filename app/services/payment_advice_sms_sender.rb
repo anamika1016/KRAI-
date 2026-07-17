@@ -2,37 +2,15 @@ require "net/http"
 require "uri"
 require "json"
 
-class OtpSmsSender
+class PaymentAdviceSmsSender
   DEFAULT_API_URL = "https://sms.yoursmsbox.com/api/sendhttp.php".freeze
   DEFAULT_TIMEOUT_SECONDS = 10
 
-  # ASA / ACTFSA account (login OTP) — matches SmsOtpService credentials.
-  ASA_AUTH_KEY = "3230666f72736131353261".freeze
-  ASA_SENDER = "ACTFSA".freeze
-  ASA_TEMPLATE_ID = "1707174348305252031".freeze
-  ASA_MESSAGE_TEMPLATE = "Action For Social Advancement (ASA)-Login OTP: %<otp>s".freeze
-
-  # PAPL account (forgot-password OTP on web).
-  PAPL_AUTH_KEY = "37317061706c39353312".freeze
-  PAPL_SENDER = "PLOAPL".freeze
-  PAPL_TEMPLATE_ID = "1707178065575161459".freeze
-
-  TEMPLATES = {
-    forgot_password: {
-      auth_key: ASA_AUTH_KEY,
-      template_id: ASA_TEMPLATE_ID,
-      sender: ASA_SENDER,
-      unicode: true,
-      message: ->(otp) { format(ASA_MESSAGE_TEMPLATE, otp: otp) }
-    },
-    login: {
-      auth_key: ASA_AUTH_KEY,
-      template_id: ASA_TEMPLATE_ID,
-      sender: ASA_SENDER,
-      unicode: true,
-      message: ->(otp) { format(ASA_MESSAGE_TEMPLATE, otp: otp) }
-    }
-  }.freeze
+  AUTH_KEY = "37317061706c39353312".freeze
+  SENDER = "PLOAPL".freeze
+  TEMPLATE_ID = "1707175758077109741".freeze
+  MESSAGE_TEMPLATE =
+    "Payment Advice Notification:- Your NEFT Txn. with Ref. No. %<reference_number>s for Rs. %<amount>s has been credited to beneficiary : %<beneficiary_name>s on %<transaction_date>s . Ploughman Agro Private Limited".freeze
 
   Result = Struct.new(:success, :message, :response_code, :response_body, keyword_init: true) do
     def success?
@@ -40,18 +18,28 @@ class OtpSmsSender
     end
   end
 
-  attr_reader :mobile_number, :otp, :purpose
+  attr_reader :mobile_number, :reference_number, :amount, :beneficiary_name, :transaction_date
 
-  def initialize(mobile_number, otp, purpose: :forgot_password)
+  def initialize(mobile_number, reference_number:, amount:, beneficiary_name:, transaction_date:)
     @mobile_number = mobile_number.to_s
-    @otp = otp.to_s
-    @purpose = purpose.to_sym
+    @reference_number = reference_number.to_s.strip
+    @amount = format_amount(amount)
+    @beneficiary_name = beneficiary_name.to_s.strip
+    @transaction_date = format_transaction_date(transaction_date)
   end
 
   def deliver
-    if sms_auth_key.blank?
-      Rails.logger.warn("[OTP SMS] SMS auth key is not configured; OTP was not sent.")
+    if auth_key.blank?
+      Rails.logger.warn("[Payment SMS] SMS auth key is not configured; payment advice was not sent.")
       return Result.new(success: false, message: "SMS auth key is not configured.")
+    end
+
+    if provider_mobile_number.blank?
+      return Result.new(success: false, message: "Mobile number is missing.")
+    end
+
+    if [reference_number, amount, beneficiary_name, transaction_date].any?(&:blank?)
+      return Result.new(success: false, message: "Payment SMS details are incomplete.")
     end
 
     deliver_to_gateway
@@ -76,12 +64,16 @@ class OtpSmsSender
       response_body: response.body
     )
   rescue StandardError => e
-    Rails.logger.error("[OTP SMS] Gateway error: #{e.class} #{e.message}")
+    Rails.logger.error("[Payment SMS] Gateway error: #{e.class} #{e.message}")
     Result.new(success: false, message: "#{e.class}: #{e.message}")
   end
 
   def sms_api_url
     ENV["SMS_API_URL"].presence || DEFAULT_API_URL
+  end
+
+  def auth_key
+    ENV["SMS_PAYMENT_AUTH_KEY"].presence || AUTH_KEY
   end
 
   def request_with_redirects(uri, limit = 3)
@@ -91,7 +83,7 @@ class OtpSmsSender
     if response.is_a?(Net::HTTPRedirection)
       redirect_uri = URI.parse(response["location"].to_s)
       redirect_uri = uri.merge(response["location"].to_s) if redirect_uri.relative?
-      Rails.logger.info("[OTP SMS] Gateway redirected to #{redirect_uri}")
+      Rails.logger.info("[Payment SMS] Gateway redirected to #{redirect_uri}")
       return request_with_redirects(redirect_uri, limit - 1)
     end
 
@@ -107,38 +99,22 @@ class OtpSmsSender
     http.request(Net::HTTP::Get.new(uri.request_uri))
   end
 
-  def sms_auth_key
-    env_key = purpose == :login ? ENV["SMS_LOGIN_AUTH_KEY"] : ENV["SMS_AUTH_KEY"]
-    env_key.presence || template_config[:auth_key]
-  end
-
   def timeout_seconds
     seconds = ENV.fetch("SMS_API_TIMEOUT", DEFAULT_TIMEOUT_SECONDS).to_i
     seconds.positive? ? seconds : DEFAULT_TIMEOUT_SECONDS
   end
 
-  def log_gateway_response(response, success, parsed)
-    log_message = "[OTP SMS] Gateway response: #{response.code} #{response.body} parsed=#{parsed.inspect}"
-    success ? Rails.logger.info(log_message) : Rails.logger.warn(log_message)
-  end
-
-  def template_config
-    TEMPLATES[purpose] || TEMPLATES[:forgot_password]
-  end
-
   def payload
-    data = {
-      authkey: sms_auth_key,
+    {
+      authkey: auth_key,
       mobiles: provider_mobile_number,
       message: message,
-      sender: template_config[:sender].to_s,
+      sender: SENDER,
       route: 2,
       country: 0,
-      DLT_TE_ID: template_config[:template_id].to_s,
+      DLT_TE_ID: TEMPLATE_ID,
       response: "json"
     }
-    data[:unicode] = 1 if template_config[:unicode]
-    data
   end
 
   def provider_mobile_number
@@ -150,7 +126,34 @@ class OtpSmsSender
   end
 
   def message
-    template_config[:message].call(otp)
+    format(
+      MESSAGE_TEMPLATE,
+      reference_number: reference_number,
+      amount: amount,
+      beneficiary_name: beneficiary_name,
+      transaction_date: transaction_date
+    )
+  end
+
+  def format_amount(value)
+    number = BigDecimal(value.to_s)
+    number == number.to_i ? number.to_i.to_s : format("%.2f", number)
+  rescue ArgumentError
+    value.to_s.strip
+  end
+
+  def format_transaction_date(value)
+    date =
+      case value
+      when Date then value
+      when Time, ActiveSupport::TimeWithZone, DateTime then value.to_date
+      else
+        Date.parse(value.to_s)
+      end
+
+    date.strftime("%B #{date.day}, %Y")
+  rescue ArgumentError, TypeError
+    value.to_s.strip
   end
 
   def parse_gateway_body(body)
@@ -175,10 +178,15 @@ class OtpSmsSender
   end
 
   def gateway_result_message(success, response, parsed)
-    return parsed["Description"].presence || "Gateway accepted OTP request." if success
+    return parsed["Description"].presence || "Gateway accepted payment SMS request." if success
 
     parsed["Description"].presence ||
       parsed["message"].presence ||
       "Gateway returned #{response.code}."
+  end
+
+  def log_gateway_response(response, success, parsed)
+    log_message = "[Payment SMS] Gateway response: #{response.code} #{response.body} parsed=#{parsed.inspect}"
+    success ? Rails.logger.info(log_message) : Rails.logger.warn(log_message)
   end
 end

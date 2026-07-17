@@ -2833,6 +2833,10 @@ function initDeferredLayoutPage() {
     const monthSelect = shell.querySelector("select[name='target_mapping[month_name]']");
     const mainActivitySelect = shell.querySelector("[data-target-main-activity]");
     const subActivitySelect = shell.querySelector("[data-target-sub-activity]");
+    const subActivityField = shell.querySelector("[data-target-sub-activity-field]");
+    const standardQuantityFields = Array.from(shell.querySelectorAll("[data-target-standard-quantity-fields]"));
+    const trainingFieldsPanel = shell.querySelector("[data-target-training-fields]");
+    const trainingTargetInputs = () => Array.from(shell.querySelectorAll("[data-training-target-input]"));
     const targetInput = shell.querySelector("[data-target-quantity-input]");
     const newFarmerTargetInput = shell.querySelector("[data-new-farmer-target-input]");
     const registeredCountInput = shell.querySelector("[data-target-registered-count]");
@@ -2842,10 +2846,25 @@ function initDeferredLayoutPage() {
     const farmerSelectAll = shell.querySelector("[data-target-farmer-select-all]");
     const farmerSearchInput = shell.querySelector("[data-target-farmer-search]");
     const farmerSearchEmpty = shell.querySelector("[data-target-farmer-search-empty]");
+    const weeklySummary = shell.querySelector("[data-target-weekly-summary]");
+    const weeklyRows = shell.querySelector("[data-target-weekly-rows]");
+    const weeklySelectedTotal = shell.querySelector("[data-target-weekly-selected-total]");
+    const farmerDialog = shell.querySelector("[data-target-farmer-dialog]");
+    const farmerDialogTitle = shell.querySelector("[data-target-farmer-dialog-title]");
+    const farmerDialogTotal = shell.querySelector("[data-target-farmer-dialog-total]");
+    const farmerDialogList = shell.querySelector("[data-target-dialog-farmer-list]");
+    const farmerDialogSearch = shell.querySelector("[data-target-dialog-farmer-search]");
+    const farmerDialogEmpty = shell.querySelector("[data-target-dialog-farmer-empty]");
+    const farmerDialogSelectAll = shell.querySelector("[data-target-dialog-select-all]");
+    const farmerDialogClear = shell.querySelector("[data-target-dialog-clear]");
     const form = shell.querySelector("form");
     let editTarget = {};
     let targetSubActivityRows = [];
+    let mainActivityTypeRows = [];
     let targetLoadRequestId = 0;
+    let activeFarmerDialogRowKey = "";
+    const weeklyPlanValues = {};
+    const weeklyPlanFarmerIds = {};
     try {
       editTarget = JSON.parse(shell.dataset.editTarget || "{}");
     } catch (_error) {
@@ -2855,6 +2874,11 @@ function initDeferredLayoutPage() {
       targetSubActivityRows = JSON.parse(shell.dataset.targetSubActivityMap || "[]");
     } catch (_error) {
       targetSubActivityRows = [];
+    }
+    try {
+      mainActivityTypeRows = JSON.parse(shell.dataset.mainActivityTypeMap || "[]");
+    } catch (_error) {
+      mainActivityTypeRows = [];
     }
 
     const escapeHtml = (value) => String(value || "")
@@ -2948,8 +2972,22 @@ function initDeferredLayoutPage() {
       villageSelect.dispatchEvent(new Event("chip:refresh"));
     };
 
+    const selectedMainActivityNames = () => targetSelectedValues(mainActivitySelect);
+    const selectedSubActivityNames = () => targetSelectedValues(subActivitySelect);
+    const mainActivityTypeFor = (mainActivityName) => {
+      const match = mainActivityTypeRows.find((row) => normalizeOption(row.main_activity) === normalizeOption(mainActivityName));
+      return normalizeOption(match?.main_activity_type || "Training");
+    };
+    const trainingActivityTypeSelected = () => {
+      const selected = selectedMainActivityNames();
+      if (!selected.length) return false;
+
+      return selected.some((name) => mainActivityTypeFor(name) === normalizeOption("Training"));
+    };
+    const filledTrainingTargets = () => trainingTargetInputs().filter((input) => String(input.value || "").trim() !== "");
+
     const targetSubActivityOptionsForMain = () => {
-      const selectedMainActivities = targetSelectedValues(mainActivitySelect).map((value) => normalizeOption(value));
+      const selectedMainActivities = selectedMainActivityNames().map((value) => normalizeOption(value));
       if (!selectedMainActivities.length) return [];
 
       return uniqueOptions(
@@ -2957,6 +2995,48 @@ function initDeferredLayoutPage() {
           .filter((row) => selectedMainActivities.includes(normalizeOption(row.main_activity)))
           .map((row) => makeOption(row.sub_activity, row.sub_activity))
       );
+    };
+
+    const syncTargetActivityMode = () => {
+      const trainingMode = trainingActivityTypeSelected();
+
+      // Sub Activity always stays visible and enabled (loads from selected Main Activity).
+      if (subActivityField) {
+        subActivityField.hidden = false;
+        subActivityField.removeAttribute("hidden");
+      }
+      if (subActivitySelect) {
+        subActivitySelect.required = true;
+        // Keep enabled unless options are empty — refreshTargetSubActivities manages that.
+      }
+
+      // Keep the source farmer list hidden in the form. Its checkboxes feed the
+      // Activity Wise Plan farmer dialog and are still submitted with the form.
+      if (farmerPanel) {
+        farmerPanel.hidden = true;
+      }
+
+      standardQuantityFields.forEach((field) => {
+        field.hidden = false;
+        field.removeAttribute("hidden");
+        field.querySelectorAll("input").forEach((input) => {
+          // Do not disable these fields for Training mode.
+          // if (trainingMode) { input.disabled = true; ... }
+          if (input.matches("[data-target-quantity-input]")) {
+            // target stays readonly (auto from farmer selection) — only toggle via New Farmer Target mode
+            input.required = true;
+          }
+        });
+      });
+
+      if (trainingFieldsPanel) trainingFieldsPanel.hidden = !trainingMode;
+
+      trainingTargetInputs().forEach((input) => {
+        input.disabled = !trainingMode;
+        if (!trainingMode && !editTarget.id) input.value = "";
+      });
+
+      syncNewFarmerTargetMode();
     };
 
     const refreshTargetSubActivities = (resetSelection = false) => {
@@ -2970,7 +3050,7 @@ function initDeferredLayoutPage() {
         subActivitySelect.dataset.selectionDirty = "true";
       }
 
-      if (!targetSelectedValues(mainActivitySelect).length) {
+      if (!selectedMainActivityNames().length) {
         subActivitySelect.innerHTML = '<option value="">Select Main Activity first</option>';
         subActivitySelect.disabled = true;
         subActivitySelect.dispatchEvent(new Event("chip:refresh"));
@@ -2978,6 +3058,216 @@ function initDeferredLayoutPage() {
       }
 
       fillTargetSelect(subActivitySelect, targetSubActivityOptionsForMain(), "Select Sub Activity");
+    };
+
+    const selectedFarmerMonthlyCount = () => {
+      const manualTarget = Number(newFarmerTargetInput?.value || 0);
+      if (Number.isInteger(manualTarget) && manualTarget > 0) return manualTarget;
+
+      return selectedTargetBoxes().length;
+    };
+
+    const weeklyCountsFor = (monthlyCount) => {
+      const count = Number(monthlyCount || 0);
+      if (!Number.isInteger(count) || count <= 0) return [0, 0, 0, 0];
+
+      const base = Math.floor(count / 4);
+      const remainder = count % 4;
+      return [0, 1, 2, 3].map((index) => base + (index < remainder ? 1 : 0));
+    };
+
+    const trainingMonthlyTargetFor = (row) => {
+      const activityText = `${row.subActivity || ""} ${row.label || ""}`.toLowerCase();
+      const matchingInput = trainingTargetInputs().find((input) => {
+        const trainingName = String(input.dataset.trainingActivityName || "").trim().toLowerCase();
+        return trainingName && activityText.includes(trainingName);
+      });
+      return matchingInput?.value || "";
+    };
+
+    const activityLabelHtml = (row) => {
+      const mainActivity = escapeHtml(row.mainActivity || row.label);
+      const subActivity = row.subActivity ? `<span>${escapeHtml(row.subActivity)}</span>` : "";
+      return `<div class="target-weekly-activity"><strong>${mainActivity}</strong>${subActivity}</div>`;
+    };
+
+    const targetActivitySummaryRows = () => {
+      const mainActivities = selectedMainActivityNames();
+      if (!mainActivities.length) return [];
+
+      const subActivities = selectedSubActivityNames();
+      if (!subActivities.length) return mainActivities.map((mainActivity) => ({ mainActivity, label: mainActivity }));
+
+      const mappedPairs = targetSubActivityRows.map((row) => ({
+        mainActivity: row.main_activity,
+        subActivity: row.sub_activity
+      }));
+
+      return mainActivities.flatMap((mainActivity) => {
+        const matches = subActivities.filter((subActivity) => (
+          mappedPairs.length === 0 ||
+          mappedPairs.some((pair) => (
+            normalizeOption(pair.mainActivity) === normalizeOption(mainActivity) &&
+            normalizeOption(pair.subActivity) === normalizeOption(subActivity)
+          ))
+        ));
+
+        if (!matches.length) return [{ mainActivity, label: mainActivity }];
+
+        return matches.map((subActivity) => ({
+          mainActivity,
+          subActivity,
+          label: `${mainActivity} - ${subActivity}`
+        }));
+      });
+    };
+
+    const weeklyRowKey = (row) => `${row.mainActivity || ""}||${row.subActivity || ""}`;
+    const farmerIdsForRow = (rowKey) => {
+      weeklyPlanFarmerIds[rowKey] ||= new Set();
+      return weeklyPlanFarmerIds[rowKey];
+    };
+    const selectedFarmerIdsForActiveRow = () => farmerIdsForRow(activeFarmerDialogRowKey);
+    const totalActivityFarmerSelections = () => Object.values(weeklyPlanFarmerIds).reduce((total, ids) => total + ids.size, 0);
+    const weeklyPlanValue = (row, field, fallback = "") => {
+      const savedValue = weeklyPlanValues[weeklyRowKey(row)]?.[field];
+      return savedValue === undefined ? fallback : savedValue;
+    };
+    const weeklyMonthlyLimit = (rowKey) => {
+      const savedValue = weeklyPlanValues[rowKey]?.monthly;
+      if (savedValue !== undefined) return Number(savedValue || 0);
+
+      const monthlyInput = weeklyRows?.querySelector(`[data-weekly-row-key="${CSS.escape(rowKey)}"][data-weekly-field="monthly"]`);
+      return Number(monthlyInput?.value || 0);
+    };
+    const activeFarmerLimit = () => weeklyMonthlyLimit(activeFarmerDialogRowKey);
+    const farmerLimitMessage = (limit) => `Monthly target ${limit} hai. Aap maximum ${limit} farmers hi select kar sakte hain.`;
+    const weeklyPlanInput = (row, index, field, fallback = "") => `
+      <input
+        type="number"
+        min="0"
+        step="1"
+        class="target-weekly-input"
+        name="target_mapping[weekly_plan][${index}][${field}]"
+        value="${escapeHtml(weeklyPlanValue(row, field, fallback))}"
+        data-target-weekly-input
+        data-weekly-row-key="${escapeHtml(weeklyRowKey(row))}"
+        data-weekly-field="${escapeHtml(field)}">
+    `;
+
+    const renderTargetWeeklySummary = () => {
+      if (!weeklySummary || !weeklyRows) return;
+
+      const rows = targetActivitySummaryRows();
+      const monthlyCount = selectedFarmerMonthlyCount();
+      const selectedLabel = `${totalActivityFarmerSelections()} total farmer selections`;
+      if (weeklySelectedTotal) weeklySelectedTotal.textContent = selectedLabel;
+
+      weeklySummary.hidden = rows.length === 0;
+      if (!rows.length) {
+        weeklyRows.innerHTML = '<tr><td colspan="8">Select Main Activity to view weekly plan.</td></tr>';
+        return;
+      }
+
+      weeklyRows.innerHTML = rows.map((row, index) => {
+        const rowKey = weeklyRowKey(row);
+        const selectedIds = farmerIdsForRow(rowKey);
+        const rowMonthlyCount = trainingMonthlyTargetFor(row) || monthlyCount;
+        const rowWeeklyCounts = weeklyCountsFor(rowMonthlyCount);
+        const farmerInputs = Array.from(selectedIds).map((id) => `<input type="hidden" name="target_mapping[weekly_plan][${index}][afl_ids][]" value="${escapeHtml(id)}">`).join("");
+        return `
+        <tr>
+          <td>
+            ${activityLabelHtml(row)}
+            <input type="hidden" name="target_mapping[weekly_plan][${index}][main_activity]" value="${escapeHtml(row.mainActivity)}">
+            <input type="hidden" name="target_mapping[weekly_plan][${index}][sub_activity]" value="${escapeHtml(row.subActivity || row.mainActivity)}">
+          </td>
+          <td>${weeklyPlanInput(row, index, "monthly", rowMonthlyCount)}</td>
+          <td>${weeklyPlanInput(row, index, "week_1", rowWeeklyCounts[0])}</td>
+          <td>${weeklyPlanInput(row, index, "week_2", rowWeeklyCounts[1])}</td>
+          <td>${weeklyPlanInput(row, index, "week_3", rowWeeklyCounts[2])}</td>
+          <td>${weeklyPlanInput(row, index, "week_4", rowWeeklyCounts[3])}</td>
+          <td><strong data-target-weekly-farmer-total>${selectedIds.size}</strong>${farmerInputs}</td>
+          <td><button type="button" class="table-action" data-target-weekly-view="${index}" data-weekly-row-key="${escapeHtml(weeklyRowKey(row))}" data-activity-label="${escapeHtml(row.label)}">View</button></td>
+        </tr>
+      `;
+      }).join("");
+    };
+
+    const dialogFarmerSearchTerm = () => (farmerDialogSearch?.value || "").trim().toLowerCase();
+
+    const syncDialogFarmerTotals = () => {
+      const limit = activeFarmerLimit();
+      const selectedCount = activeFarmerDialogRowKey ? selectedFarmerIdsForActiveRow().size : 0;
+      const selectedLabel = activeFarmerDialogRowKey && Number.isInteger(limit) && limit >= 0
+        ? `${selectedCount} / ${limit} farmer selected`
+        : `${selectedCount} farmer selected`;
+      if (farmerDialogTotal) farmerDialogTotal.textContent = selectedLabel;
+      if (weeklySelectedTotal) weeklySelectedTotal.textContent = `${totalActivityFarmerSelections()} total farmer selections`;
+    };
+
+    const renderDialogFarmers = () => {
+      if (!farmerDialogList) return;
+
+      const boxes = targetBoxes();
+      const selectedIds = selectedFarmerIdsForActiveRow();
+      if (!boxes.length) {
+        farmerDialogList.textContent = farmerList?.textContent || "Select FCO Name, ICS and Village to load farmers.";
+        if (farmerDialogEmpty) farmerDialogEmpty.hidden = true;
+        syncDialogFarmerTotals();
+        return;
+      }
+
+      const term = dialogFarmerSearchTerm();
+      let visibleCount = 0;
+      farmerDialogList.innerHTML = boxes.map((box) => {
+        const item = box.closest(".vrp-ics-farmer-item");
+        const text = item?.innerText || "";
+        const visible = !term || text.toLowerCase().includes(term);
+        if (visible) visibleCount += 1;
+
+        return `
+          <label class="vrp-ics-farmer-item${box.disabled ? " disabled" : ""}"${visible ? "" : " hidden"}>
+            <input type="checkbox" value="${escapeHtml(box.value)}" data-target-dialog-farmer-checkbox${box.disabled ? " disabled" : ""}${selectedIds.has(String(box.value)) ? " checked" : ""}>
+            <span>${item?.querySelector("span")?.innerHTML || escapeHtml(text)}</span>
+          </label>
+        `;
+      }).join("");
+
+      farmerDialogList.querySelectorAll("[data-target-dialog-farmer-checkbox]").forEach((dialogBox) => {
+        dialogBox.addEventListener("change", () => {
+          const sourceBox = targetBoxes().find((box) => String(box.value) === String(dialogBox.value));
+          if (!sourceBox || sourceBox.disabled) return;
+
+          const limit = activeFarmerLimit();
+          const selectedIds = selectedFarmerIdsForActiveRow();
+          if (dialogBox.checked && Number.isInteger(limit) && limit >= 0 && selectedIds.size >= limit) {
+            dialogBox.checked = false;
+            window.alert(farmerLimitMessage(limit));
+            return;
+          }
+
+          if (dialogBox.checked) selectedIds.add(String(dialogBox.value));
+          else selectedIds.delete(String(dialogBox.value));
+          syncDialogFarmerTotals();
+          renderTargetWeeklySummary();
+        });
+      });
+
+      if (farmerDialogEmpty) farmerDialogEmpty.hidden = visibleCount > 0;
+      syncDialogFarmerTotals();
+    };
+
+    const openTargetFarmerDialog = (activityLabel, rowKey) => {
+      if (!farmerDialog) return;
+
+      activeFarmerDialogRowKey = rowKey || "";
+      if (farmerDialogTitle) farmerDialogTitle.textContent = activityLabel || "Farmer List";
+      if (farmerDialogSearch) farmerDialogSearch.value = "";
+      renderDialogFarmers();
+
+      if (typeof farmerDialog.showModal === "function") farmerDialog.showModal();
+      else farmerDialog.setAttribute("open", "open");
     };
 
     const updateTargetFarmerCount = () => {
@@ -2996,6 +3286,8 @@ function initDeferredLayoutPage() {
         farmerSelectAll.indeterminate = visibleSelectedCount > 0 && visibleSelectedCount < availableCount;
         farmerSelectAll.disabled = availableCount === 0;
       }
+      syncDialogFarmerTotals();
+      renderTargetWeeklySummary();
     };
 
     const applyTargetFarmerSearch = () => {
@@ -3055,7 +3347,10 @@ function initDeferredLayoutPage() {
       applyTargetFarmerSearch();
 
       farmerList.querySelectorAll("[data-target-farmer-checkbox]").forEach((checkbox) => {
-        checkbox.addEventListener("change", updateTargetFarmerCount);
+        checkbox.addEventListener("change", () => {
+          updateTargetFarmerCount();
+          if (farmerDialog?.open) renderDialogFarmers();
+        });
       });
       updateTargetFarmerCount();
     };
@@ -3109,14 +3404,102 @@ function initDeferredLayoutPage() {
     });
 
     farmerSearchInput?.addEventListener("input", applyTargetFarmerSearch);
+    weeklyRows?.addEventListener("click", (event) => {
+      const button = event.target.closest("[data-target-weekly-view]");
+      if (!button) return;
+
+      openTargetFarmerDialog(button.dataset.activityLabel || "Farmer List", button.dataset.weeklyRowKey);
+    });
+    weeklyRows?.addEventListener("input", (event) => {
+      const input = event.target.closest("[data-target-weekly-input]");
+      if (!input) return;
+
+      weeklyPlanValues[input.dataset.weeklyRowKey] ||= {};
+      weeklyPlanValues[input.dataset.weeklyRowKey][input.dataset.weeklyField] = input.value;
+
+      if (input.dataset.weeklyField === "monthly") {
+        const limit = Number(input.value || 0);
+        const selectedIds = farmerIdsForRow(input.dataset.weeklyRowKey);
+        if (Number.isInteger(limit) && limit >= 0 && selectedIds.size > limit) {
+          Array.from(selectedIds).slice(limit).forEach((id) => selectedIds.delete(id));
+          renderTargetWeeklySummary();
+          window.alert(farmerLimitMessage(limit));
+        }
+      }
+    });
+    farmerDialog?.querySelector("[data-target-farmer-dialog-close]")?.addEventListener("click", () => {
+      if (typeof farmerDialog.close === "function") farmerDialog.close();
+      else farmerDialog.removeAttribute("open");
+    });
+    farmerDialogSearch?.addEventListener("input", renderDialogFarmers);
+    farmerDialogSearch?.addEventListener("keydown", (event) => {
+      if (event.key === "Enter") event.preventDefault();
+    });
+    farmerDialogSelectAll?.addEventListener("click", () => {
+      const limit = activeFarmerLimit();
+      const available = availableTargetBoxes();
+      const selectedIds = selectedFarmerIdsForActiveRow();
+      selectedIds.clear();
+      available.forEach((checkbox, index) => {
+        if (!Number.isInteger(limit) || limit < 0 || index < limit) selectedIds.add(String(checkbox.value));
+      });
+      renderTargetWeeklySummary();
+      renderDialogFarmers();
+      if (Number.isInteger(limit) && limit >= 0 && available.length > limit) {
+        window.alert(farmerLimitMessage(limit));
+      }
+    });
+    farmerDialogClear?.addEventListener("click", () => {
+      selectedFarmerIdsForActiveRow().clear();
+      renderTargetWeeklySummary();
+      renderDialogFarmers();
+    });
     newFarmerTargetInput?.addEventListener("input", () => {
       syncNewFarmerTargetMode();
       updateTargetFarmerCount();
+    });
+    trainingTargetInputs().forEach((input) => {
+      input.addEventListener("input", renderTargetWeeklySummary);
     });
 
     form?.addEventListener("submit", (event) => {
       syncTargetVillageHidden();
       syncNewFarmerTargetMode();
+
+      const weeklyInputs = Array.from(weeklyRows?.querySelectorAll("[data-target-weekly-input]") || []);
+      const weeklyRowKeys = [...new Set(weeklyInputs.map((input) => input.dataset.weeklyRowKey))];
+      for (const rowKey of weeklyRowKeys) {
+        const rowInputs = weeklyInputs.filter((input) => input.dataset.weeklyRowKey === rowKey);
+        const valueFor = (field) => Number(rowInputs.find((input) => input.dataset.weeklyField === field)?.value || 0);
+        const monthly = valueFor("monthly");
+        const weeklyTotal = ["week_1", "week_2", "week_3", "week_4"].reduce((total, field) => total + valueFor(field), 0);
+
+        if (!Number.isInteger(monthly) || monthly <= 0 || weeklyTotal !== monthly) {
+          event.preventDefault();
+          window.alert(`Week 1, Week 2, Week 3 aur Week 4 ka total Monthly target (${monthly}) ke equal hona chahiye.`);
+          return;
+        }
+
+        if (!newFarmerTargetMode() && farmerIdsForRow(rowKey).size !== monthly) {
+          event.preventDefault();
+          window.alert(`Monthly target ${monthly} hai, isliye exactly ${monthly} farmers select karein.`);
+          return;
+        }
+      }
+
+      if (trainingActivityTypeSelected()) {
+        const filled = filledTrainingTargets();
+        const invalid = filled.find((input) => {
+          const value = Number(input.value || 0);
+          return !Number.isInteger(value) || value <= 0;
+        });
+        if (invalid) {
+          event.preventDefault();
+          window.alert("Training target values must be whole numbers greater than 0.");
+          return;
+        }
+      }
+
       if (newFarmerTargetMode()) {
         const manualTargetCount = Number(newFarmerTargetInput.value || 0);
         if (!Number.isInteger(manualTargetCount) || manualTargetCount <= 0) {
@@ -3125,6 +3508,8 @@ function initDeferredLayoutPage() {
         }
         return;
       }
+
+      if (weeklyRowKeys.length) return;
 
       const selectedCount = selectedTargetBoxes().length;
       const targetCount = Number(targetInput.value || 0);
@@ -3168,13 +3553,20 @@ function initDeferredLayoutPage() {
     monthSelect?.addEventListener("change", loadTargetData);
     mainActivitySelect?.addEventListener("change", () => {
       refreshTargetSubActivities(true);
+      syncTargetActivityMode();
+      renderTargetWeeklySummary();
       loadTargetData();
     });
-    subActivitySelect?.addEventListener("change", loadTargetData);
+    subActivitySelect?.addEventListener("change", () => {
+      renderTargetWeeklySummary();
+      loadTargetData();
+    });
 
     refreshTargetSubActivities(false);
+    syncTargetActivityMode();
     syncTargetVillageHidden();
     syncNewFarmerTargetMode();
+    renderTargetWeeklySummary();
     loadTargetData();
   });
 
@@ -3440,6 +3832,10 @@ function initDeferredLayoutPage() {
         return Array.from(row.children)
           .slice(startColumn)
           .map((cell) => {
+            if (Object.prototype.hasOwnProperty.call(cell.dataset, "exportValue")) {
+              return String(cell.dataset.exportValue || "").trim();
+            }
+
             const value = cell.matches("th") ? (cell.querySelector(".column-filter-label")?.innerText || cell.innerText) : cell.innerText;
             return value.trim();
           });
@@ -4118,6 +4514,105 @@ function initDeferredLayoutPage() {
     });
   });
 
+  document.querySelectorAll("[data-jeevika-payment-detail]").forEach((paymentForm) => {
+    const dateSelect = paymentForm.querySelector("[data-payment-date-select]");
+    const rows = Array.from(paymentForm.querySelectorAll("[data-payment-user-row]"));
+    const checkboxes = Array.from(paymentForm.querySelectorAll("[data-payment-user-checkbox]"));
+    const selectAllButton = paymentForm.querySelector("[data-payment-select-all]");
+    const selectAllCheckbox = paymentForm.querySelector("[data-payment-select-all-checkbox]");
+    const clearButton = paymentForm.querySelector("[data-payment-clear-selection]");
+    const selectedCountInput = paymentForm.querySelector("[data-payment-selected-count]");
+    const totalAmountInput = paymentForm.querySelector("[data-payment-total-amount]");
+    const submitButton = paymentForm.querySelector("button[type='submit']");
+    const paymentRate = Number(paymentForm.dataset.paymentRate || "5000") || 5000;
+
+    const money = (value) => value.toFixed(2);
+    const selectedDate = () => String(dateSelect?.value || "");
+    const rowMatchesSelectedDate = (row) => selectedDate() && row.dataset.paymentBillDate === selectedDate();
+    const selectableRows = () => rows.filter(rowMatchesSelectedDate);
+    const selectableCheckboxes = () => selectableRows()
+      .map((row) => row.querySelector("[data-payment-user-checkbox]"))
+      .filter((checkbox) => checkbox && !checkbox.disabled);
+
+    const recalculatePaymentTotal = () => {
+      const activeCheckboxes = selectableCheckboxes();
+      const checkedCount = activeCheckboxes.filter((checkbox) => checkbox.checked).length;
+      if (selectedCountInput) selectedCountInput.value = String(checkedCount);
+      if (totalAmountInput) totalAmountInput.value = money(checkedCount * paymentRate);
+      if (submitButton) submitButton.disabled = checkedCount === 0;
+      if (clearButton) clearButton.disabled = checkedCount === 0;
+      if (selectAllButton) selectAllButton.disabled = activeCheckboxes.length === 0;
+      if (selectAllCheckbox) {
+        selectAllCheckbox.disabled = activeCheckboxes.length === 0;
+        selectAllCheckbox.checked = activeCheckboxes.length > 0 && checkedCount === activeCheckboxes.length;
+        selectAllCheckbox.indeterminate = checkedCount > 0 && checkedCount < activeCheckboxes.length;
+      }
+    };
+
+    const syncPaymentRows = () => {
+      const date = selectedDate();
+
+      rows.forEach((row) => {
+        const matches = date && row.dataset.paymentBillDate === date;
+        row.style.display = matches ? "" : "none";
+        const checkbox = row.querySelector("[data-payment-user-checkbox]");
+        if (!checkbox) return;
+
+        checkbox.disabled = !matches;
+        checkbox.checked = false;
+      });
+
+      recalculatePaymentTotal();
+    };
+
+    checkboxes.forEach((checkbox) => {
+      checkbox.addEventListener("change", recalculatePaymentTotal);
+    });
+
+    const setAllPaymentRows = (checked) => {
+      selectableCheckboxes().forEach((checkbox) => {
+        checkbox.checked = checked;
+      });
+      recalculatePaymentTotal();
+    };
+
+    selectAllButton?.addEventListener("click", () => {
+      if (!selectedDate()) {
+        window.alert("Approval Date select karein.");
+        dateSelect?.focus();
+        return;
+      }
+
+      setAllPaymentRows(true);
+    });
+
+    selectAllCheckbox?.addEventListener("change", () => {
+      if (!selectedDate()) {
+        selectAllCheckbox.checked = false;
+        window.alert("Approval Date select karein.");
+        dateSelect?.focus();
+        return;
+      }
+
+      setAllPaymentRows(selectAllCheckbox.checked);
+    });
+
+    clearButton?.addEventListener("click", () => {
+      setAllPaymentRows(false);
+    });
+
+    paymentForm.querySelector("form")?.addEventListener("submit", (event) => {
+      const checkedCount = selectableCheckboxes().filter((checkbox) => checkbox.checked).length;
+      if (checkedCount > 0) return;
+
+      event.preventDefault();
+      window.alert(dateSelect?.value ? "Kam se kam ek Jeevika Jankar select karein." : "Approval Date select karein.");
+    });
+
+    dateSelect?.addEventListener("change", syncPaymentRows);
+    syncPaymentRows();
+  });
+
   document.querySelectorAll("[data-jeevika-jankar-bill]").forEach((billForm) => {
     const vrpSelect = billForm.querySelector("[data-jeevika-vrp-select]");
     const monthSelect = billForm.querySelector("[data-jeevika-month-select]");
@@ -4788,6 +5283,7 @@ function initDeferredLayoutPage() {
       "Training Topic": "प्रशिक्षण टॉपिक",
       "Training Subject": "प्रशिक्षण विषय",
       "Training Description": "प्रशिक्षण विवरण",
+      "Training Method": "प्रशिक्षण विधि",
       "Farmer Count": "किसान संख्या",
       "Selected Farmers": "चुने गए किसान",
       "Male Count": "पुरुष संख्या",
@@ -5224,6 +5720,12 @@ function initDeferredLayoutPage() {
       });
 
       if (language === "en" && !window.__vrpHadNonEnglishLanguage) {
+        root.querySelectorAll("*").forEach((element) => {
+          translateAttributes(element, language);
+          element.childNodes.forEach((node) => {
+            if (node.nodeType === Node.TEXT_NODE) translateTextNode(node, language);
+          });
+        });
         languageApplying = false;
         return;
       }

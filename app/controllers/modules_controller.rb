@@ -18,8 +18,12 @@ class ModulesController < ApplicationController
                 :jeevika_bill_description_rows, :jeevika_bill_bank_rows,
                 :jeevika_bill_prepared_by, :jeevika_bill_approved_by_rows,
                 :jeevika_bill_payment_month_options, :jeevika_bill_payment_rows,
+                :jeevika_payment_bill_date_options, :jeevika_payment_selectable_rows,
+                :jeevika_payment_detail_rows, :jeevika_completed_payment_rows,
+                :jeevika_completed_payment_month_options, :jeevika_completed_payment_date_options,
+                :jeevika_payment_transaction_types,
                 :jeevika_bill_vrp, :bill_display_date, :bill_display_datetime,
-                :approval_sequence_from_level, :module_record_field_value,
+                :approval_sequence_from_level, :module_record_field_value, :module_upload_public_url,
                 :approval_level_display_label, :approval_level_label_for_sequence,
                 :training_participation_status_label, :training_participation_status_caption,
                 :training_target_status_label, :training_target_status_caption,
@@ -32,6 +36,8 @@ class ModulesController < ApplicationController
   OTHER_TARGET_MODULE_SLUGS = ["seed-distribution-target", "papl360-target"].freeze
   TARGET_RECORD_MODULE_SLUGS = (["training-form", "add-farmer-form"] + OTHER_TARGET_MODULE_SLUGS).freeze
   JEEVIKA_JANKAR_BILL_FIXED_TOTAL = 5000.0
+  JEEVIKA_JANKAR_PAYMENT_DETAIL_SLUG = "jeevika-jankar-payment-detail".freeze
+  JEEVIKA_PAYMENT_TRANSACTION_TYPES = ["NEFT", "RTGS", "IMPS"].freeze
   DASHBOARD_CARDS = [
     ["Total VRP", "0", "Registered field resources"],
     ["Active VRP", "0", "Currently active"],
@@ -113,6 +119,7 @@ class ModulesController < ApplicationController
         "Training Location",
         "Main Activity",
         "Sub Activity",
+        "Training Method",
         "Training Description",
         "Farmer Count",
         "Male Count",
@@ -136,12 +143,15 @@ class ModulesController < ApplicationController
         "Training Location",
         "Main Activity",
         "Sub Activity",
+        "Training Method",
         "Farmer Count",
         "Total Farmer Count",
         "Selected Farmers",
         "Male Count",
         "Female Count",
-        "Next Farmer Training Date"
+        "Next Farmer Training Date",
+        "Training Register Upload",
+        "Training Photo Upload with Geo Tag"
       ]
     },
     "seed-distribution-target" => {
@@ -387,6 +397,18 @@ class ModulesController < ApplicationController
       purpose: "Month wise Jeevika Jankar bills aur bank payment details dekhne ke liye.",
       fields: ["Jeevika Jankar ID", "Status", "Name", "Financial Year", "Bill Month", "Activity Group", "Total Payment", "Activity Name", "Total Target", "Total Achievement", "Bank Name", "IFSC Code", "Account Number", "Bank Passbook", "Download Bill"]
     },
+    "jeevika-jankar-payment-list-detail" => {
+      title: "Jeevika Jankar Payment List Detail",
+      group: "Jeevika Jankar Bill",
+      purpose: "Approval date wise Jeevika Jankar payment detail submit karne ke liye.",
+      fields: ["Approval Date", "Jeevika Jankar", "Payment Amount", "Transaction ID", "Transaction Type", "Transaction Date", "Transaction File", "Excel File"]
+    },
+    "jeevika-jankar-completed-payment-list" => {
+      title: "Completed Payment List",
+      group: "Jeevika Jankar Bill",
+      purpose: "Submitted Jeevika Jankar payment details dekhne ke liye.",
+      fields: ["Bill Month", "Approval Date", "Jeevika Jankar ID", "Name", "Mobile", "Financial Year", "Amount", "Transaction ID", "Transaction Type", "Transaction Date", "Transaction File", "Excel File"]
+    },
     "weekly-target-add" => {
       title: "Add Weekly Target",
       group: "Weekly Target Allocation",
@@ -506,6 +528,8 @@ class ModulesController < ApplicationController
     "vrp-bill-list" => "vrp-bill-add",
     "jeevika-jankar-bill-list" => "jeevika-jankar-bill-process",
     "jeevika-jankar-payment-list" => "jeevika-jankar-bill-process",
+    "jeevika-jankar-payment-list-detail" => "jeevika-jankar-bill-process",
+    "jeevika-jankar-completed-payment-list" => "jeevika-jankar-payment-detail",
     "training-form-list" => "training-form",
     "seed-distribution-target-list" => "seed-distribution-target",
     "papl360-target-list" => "papl360-target",
@@ -664,6 +688,17 @@ class ModulesController < ApplicationController
     @dashboard_cards = dashboard_cards
     @dashboard_reports = dashboard_reports
     @dashboard_generated_at = Time.current
+
+    respond_to do |format|
+      format.html
+      format.xlsx do
+        send_xlsx(
+          rows: dashboard_filter_export_rows,
+          filename: "dashboard-export-#{Time.current.strftime("%Y%m%d%H%M")}.xlsx",
+          sheet_name: "Dashboard Export"
+        )
+      end
+    end
   end
 
 
@@ -906,6 +941,46 @@ class ModulesController < ApplicationController
       flash.now[:alert] = record.errors.full_messages.to_sentence
       render :show, status: :unprocessable_entity
     end
+  end
+
+  def create_payment_detail
+    load_module!
+    unless @slug == "jeevika-jankar-payment-list-detail" && jeevika_jankar_payment_list_user?
+      redirect_to module_path(@slug), alert: "You are not allowed to submit payment details."
+      return
+    end
+
+    raw_data = module_record_params.to_h
+    selected_bill_ids = Array(raw_data["selected_bill_ids"]).map(&:to_s).map(&:strip).reject(&:blank?).uniq
+    selected_records = ModuleRecord
+      .where(module_slug: "jeevika-jankar-bill-process", id: selected_bill_ids)
+      .index_by { |record| record.id.to_s }
+      .values_at(*selected_bill_ids)
+      .compact
+
+    paid_ids = jeevika_paid_bill_ids
+    selected_records = selected_records.select do |record|
+      jeevika_bill_final_approved?(record) &&
+        jeevika_jankar_bill_downloadable?(record) &&
+        !paid_ids.include?(record.id.to_s)
+    end
+
+    data_errors = jeevika_payment_detail_error_messages(raw_data, selected_bill_ids, selected_records)
+    if data_errors.any?
+      redirect_to module_path("jeevika-jankar-payment-list-detail"), alert: data_errors.to_sentence
+      return
+    end
+
+    ModuleRecord.create!(
+      module_slug: JEEVIKA_JANKAR_PAYMENT_DETAIL_SLUG,
+      data: normalized_jeevika_payment_detail_data(raw_data, selected_records)
+    )
+
+    sms_summary = send_jeevika_payment_advice_sms(raw_data, selected_records)
+    notice = "Jeevika Jankar payment detail saved successfully."
+    notice = "#{notice} #{sms_summary}" if sms_summary.present?
+
+    redirect_to module_path("jeevika-jankar-payment-list-detail"), notice: notice
   end
 
   def update
@@ -2927,6 +3002,86 @@ class ModulesController < ApplicationController
     end
   end
 
+  def module_upload_public_url(value)
+    path = case value
+           when Array then value.find { |item| item.to_s.strip.present? }.to_s.strip
+           when Hash then value.values.find { |item| item.to_s.strip.present? }.to_s.strip
+           else value.to_s.strip
+           end
+    return "" if path.blank?
+    return path if path.match?(/\Ahttps?:\/\//i)
+
+    path = "/#{path}" unless path.start_with?("/")
+    "#{request.base_url}#{path}"
+  end
+
+  def dashboard_filter_export_rows
+    rows = []
+    rows << ["Dashboard Filter Export"]
+    rows << ["Generated At", @dashboard_generated_at&.strftime("%d-%m-%Y %I:%M %p")]
+    rows << []
+    rows << ["Active Filters"]
+    rows << ["Search", params[:search].presence || "All"]
+    rows << ["Activity", params[:activity].presence || "All"]
+    rows << ["FCO", params[:fcoc].presence || "All"]
+    rows << ["Cluster Incharge", params[:cluster_incharge].presence || "All"]
+    rows << ["Month", params[:month].presence || "All"]
+    rows << ["Post", params[:post].presence || "All"]
+    rows << ["VRP", params[:vrp_id].presence || "All"]
+    rows << []
+
+    rows << ["Dashboard Cards"]
+    rows << ["Title", "Value", "Caption"]
+    Array(@dashboard_cards).each do |card|
+      title = card.is_a?(Hash) ? card[:title] : card[0]
+      value = card.is_a?(Hash) ? card[:value] : card[1]
+      caption = card.is_a?(Hash) ? card[:caption] : card[2]
+      rows << [title, value, caption]
+    end
+    rows << []
+
+    Array(@dashboard_reports).each do |report|
+      next if report[:clock]
+      next if Array(report[:headers]).blank?
+
+      rows << [report[:title].to_s]
+      rows << Array(report[:headers])
+      Array(report[:rows]).each do |row|
+        rows << Array(row).map { |cell| dashboard_detail_cell_text(cell) }
+      end
+      rows << []
+    end
+
+    if Array(@farmer_training_dashboard_rows).any?
+      rows << ["Farmer Training Targets"]
+      rows << ["Month", "ICS", "Village", "Main Activity", "Sub Activity", "Target", "Completed", "Pending", "Progress %"]
+      Array(@farmer_training_dashboard_rows).each do |row|
+        rows << [
+          row[:month] || "-",
+          row[:ics] || "-",
+          row[:village] || "-",
+          row[:activity] || "-",
+          row[:sub_activity] || "-",
+          row[:target_quantity] || "-",
+          row[:completed_quantity] || "-",
+          row[:pending_quantity] || "-",
+          row[:progress_percent] || "-"
+        ]
+      end
+      rows << []
+    end
+
+    if Array(@dashboard_weekly_target_cards).any?
+      rows << ["Weekly Activity Target Status"]
+      rows << ["Status", "Title", "Value", "Caption"]
+      Array(@dashboard_weekly_target_cards).each do |card|
+        rows << [card[:status], card[:title], card[:value], card[:caption]]
+      end
+    end
+
+    rows
+  end
+
   def dashboard_month_index(month_name)
     Date::MONTHNAMES.index(month_name.to_s.strip.capitalize) || 13
   end
@@ -3752,7 +3907,7 @@ class ModulesController < ApplicationController
 
     records = ModuleRecord.where(module_slug: record_source_slug).to_a
     if record_source_slug == "jeevika-jankar-bill-process"
-      records = if @slug == "jeevika-jankar-payment-list" && jeevika_jankar_payment_list_user?
+      records = if ["jeevika-jankar-payment-list", "jeevika-jankar-payment-list-detail"].include?(@slug) && jeevika_jankar_payment_list_user?
         records.select { |record| jeevika_bill_final_approved?(record) }
       else
         records.select { |record| jeevika_jankar_bill_record_visible?(record) }
@@ -4086,7 +4241,14 @@ class ModulesController < ApplicationController
     CSV.generate(headers: true) do |csv|
       csv << fields
       records.each do |record|
-        csv << field_keys.map { |key| record.data[key].to_s }
+        csv << fields.zip(field_keys).map do |field, key|
+          value = record.data[key].to_s
+          if field == "Training Register Upload" || field == "Training Photo Upload with Geo Tag" || field.downcase.include?("upload") || field.downcase.include?("file")
+            module_upload_public_url(value)
+          else
+            value
+          end
+        end
       end
     end
   end
@@ -4264,6 +4426,170 @@ class ModulesController < ApplicationController
         passbook_attachment: vrp&.bank_passbook_upload
       )
     end
+  end
+
+  def jeevika_payment_transaction_types
+    JEEVIKA_PAYMENT_TRANSACTION_TYPES
+  end
+
+  def jeevika_payment_bill_date_options(records)
+    Array(records)
+      .select { |record| jeevika_bill_final_approved?(record) }
+      .reject { |record| jeevika_paid_bill_ids.include?(record.id.to_s) }
+      .filter_map { |record| jeevika_bill_final_approval_date(record).presence }
+      .uniq
+      .sort
+      .reverse
+  end
+
+  def jeevika_payment_selectable_rows(records)
+    paid_ids = jeevika_paid_bill_ids
+    Array(records)
+      .select { |record| jeevika_bill_final_approved?(record) }
+      .reject { |record| paid_ids.include?(record.id.to_s) }
+      .map do |record|
+        vrp = jeevika_bill_vrp(record)
+        {
+          id: record.id,
+          approval_date: jeevika_bill_final_approval_date(record),
+          approval_date_label: bill_display_date(jeevika_bill_final_approval_date(record)),
+          vrp_id: record.data["select_vrp"].presence || "-",
+          name: jeevika_jankar_display_name(record.data["select_vrp_name"].presence || jeevika_jankar_vrp_label(record.data["select_vrp"])).presence || "-",
+          mobile_no: vrp&.mobile_no.presence || "-",
+          bill_month: record.data["bill_month"].presence || "-",
+          financial_year: record.data["financial_year"].presence || "-",
+          amount: format("%.2f", JEEVIKA_JANKAR_BILL_FIXED_TOTAL)
+        }
+      end
+  end
+
+  def jeevika_payment_detail_rows
+    jeevika_payment_detail_records.map do |record|
+      items = Array(record.data["payment_items"])
+      {
+        id: record.id,
+        approval_date: record.data["approval_date"].presence || record.data["payment_bill_date"].presence || "-",
+        transaction_date: record.data["transaction_date"].presence || "-",
+        transaction_type: record.data["transaction_type"].presence || "-",
+        transaction_id: record.data["transaction_id"].presence || "-",
+        selected_count: record.data["selected_count"].presence || items.size,
+        amount: record.data["jeevika_jankar_payment_amount"].presence || "0.00",
+        transaction_file: record.data["transaction_file"].presence,
+        excel_file: record.data["excel_file"].presence
+      }
+    end
+  end
+
+  def jeevika_completed_payment_rows
+    jeevika_payment_detail_records.flat_map do |record|
+      Array(record.data["payment_items"]).map do |item|
+        next unless item.respond_to?(:[])
+        next unless jeevika_completed_payment_item_visible?(item)
+
+        vrp = cached_vrp_lookup(item["jeevika_jankar_id"]) if item["jeevika_jankar_id"].present?
+        {
+          jeevika_jankar_id: item["jeevika_jankar_id"].presence || "-",
+          name: item["jeevika_jankar_name"].presence || vrp&.name.presence || "-",
+          mobile_no: vrp&.mobile_no.presence || "-",
+          financial_year: item["financial_year"].presence || "-",
+          bill_month: item["bill_month"].presence || "-",
+          approval_date: item["approval_date"].presence || record.data["approval_date"].presence || "-",
+          amount: item["amount"].presence || format("%.2f", JEEVIKA_JANKAR_BILL_FIXED_TOTAL),
+          transaction_id: record.data["transaction_id"].presence || "-",
+          transaction_type: record.data["transaction_type"].presence || "-",
+          transaction_date: record.data["transaction_date"].presence || "-",
+          transaction_file: record.data["transaction_file"].presence,
+          excel_file: record.data["excel_file"].presence
+        }
+      end.compact
+    end
+  end
+
+  def jeevika_completed_payment_month_options(rows = nil)
+    Array(rows || jeevika_completed_payment_rows)
+      .filter_map { |row| row[:bill_month].to_s.strip.presence }
+      .reject { |month| month == "-" }
+      .uniq
+      .sort_by { |month| [Date::MONTHNAMES.find_index { |name| name.to_s.casecmp(month).zero? }.presence || 99, month] }
+  end
+
+  def jeevika_completed_payment_date_options(rows = nil, selected_month = nil)
+    filtered_rows = Array(rows || jeevika_completed_payment_rows)
+    if selected_month.present?
+      filtered_rows = filtered_rows.select do |row|
+        row[:bill_month].to_s.strip.casecmp(selected_month.to_s.strip).zero?
+      end
+    end
+
+    filtered_rows
+      .filter_map { |row| row[:approval_date].to_s.strip.presence }
+      .reject { |date| date == "-" }
+      .uniq
+      .sort
+      .reverse
+  end
+
+  def jeevika_completed_payment_item_visible?(item)
+    return true if admin_dashboard_user?
+
+    bill_record = jeevika_payment_bill_record_for_item(item)
+    return jeevika_jankar_bill_record_visible?(bill_record) if bill_record.present?
+
+    vrp = cached_vrp_lookup(item["jeevika_jankar_id"]) if item["jeevika_jankar_id"].present?
+    return false unless vrp
+
+    return vrp.id.to_s == current_vrp_record&.id.to_s if vrp_login_user?
+    return true if jeevika_bill_vrp_registered_by_current_user?(vrp)
+    return true if jeevika_bill_vrp_office_visible?(vrp)
+    return true if module_cluster_visible_vrp_ids.map(&:to_s).include?(vrp.id.to_s)
+
+    false
+  end
+
+  def jeevika_payment_bill_record_for_item(item)
+    bill_id = item["bill_id"].to_s.strip
+    return nil if bill_id.blank?
+
+    jeevika_payment_bill_record_cache[bill_id]
+  end
+
+  def jeevika_payment_bill_record_cache
+    @jeevika_payment_bill_record_cache ||= begin
+      bill_ids = jeevika_payment_detail_records.flat_map do |record|
+        Array(record.data["selected_bill_ids"]) +
+          Array(record.data["payment_items"]).filter_map { |item| item["bill_id"] if item.respond_to?(:[]) }
+      end.map(&:to_s).reject(&:blank?).uniq
+
+      ModuleRecord
+        .where(module_slug: "jeevika-jankar-bill-process", id: bill_ids)
+        .index_by { |record| record.id.to_s }
+    end
+  end
+
+  def jeevika_paid_bill_ids
+    @jeevika_paid_bill_ids ||= jeevika_payment_details_by_bill_id.keys
+  end
+
+  def jeevika_payment_details_by_bill_id
+    @jeevika_payment_details_by_bill_id ||= begin
+      rows = {}
+      jeevika_payment_detail_records.each do |record|
+        Array(record.data["selected_bill_ids"]).each { |bill_id| rows[bill_id.to_s] ||= record }
+        Array(record.data["payment_items"]).each do |item|
+          rows[item["bill_id"].to_s] ||= record if item.respond_to?(:[])
+        end
+      end
+      rows
+    end
+  end
+
+  def jeevika_payment_detail_records
+    return [] unless model_ready?(:ModuleRecord)
+
+    @jeevika_payment_detail_records ||= ModuleRecord
+      .where(module_slug: JEEVIKA_JANKAR_PAYMENT_DETAIL_SLUG)
+      .order(created_at: :desc, id: :desc)
+      .to_a
   end
 
   def jeevika_bill_final_approved?(record)
@@ -5432,6 +5758,115 @@ class ModulesController < ApplicationController
     data
   end
 
+  def jeevika_payment_detail_error_messages(raw_data, selected_bill_ids, selected_records)
+    errors = missing_required_data_errors(
+      raw_data,
+      "approval_date" => "Approval Date",
+      "transaction_id" => "Transaction ID",
+      "transaction_type" => "Transaction Type",
+      "transaction_date" => "Transaction Date"
+    )
+
+    errors << "Kam se kam ek Jeevika Jankar select karein." if selected_bill_ids.blank?
+    errors << "Selected Jeevika Jankar final approved ya unpaid nahi hai." if selected_bill_ids.any? && selected_records.blank?
+    if selected_records.any? && selected_records.size != selected_bill_ids.size
+      errors << "Kuch selected Jeevika Jankar final approved ya unpaid nahi hain."
+    end
+
+    transaction_type = raw_data["transaction_type"].to_s.strip.upcase
+    if raw_data["transaction_type"].present? && !JEEVIKA_PAYMENT_TRANSACTION_TYPES.include?(transaction_type)
+      errors << "Transaction Type NEFT, RTGS ya IMPS me se select karein."
+    end
+
+    selected_dates = selected_records.map { |record| jeevika_bill_final_approval_date(record) }.uniq
+    if raw_data["approval_date"].present? && selected_dates.any? && selected_dates != [raw_data["approval_date"].to_s]
+      errors << "Selected Jeevika Jankar chosen approval date ke hone chahiye."
+    end
+
+    errors
+  end
+
+  def normalized_jeevika_payment_detail_data(raw_data, selected_records)
+    stamp_jeevika_jankar_bill_creator!(raw_data)
+
+    payment_items = selected_records.map do |record|
+      {
+        "bill_id" => record.id.to_s,
+        "jeevika_jankar_id" => record.data["select_vrp"].to_s,
+        "jeevika_jankar_name" => jeevika_jankar_display_name(record.data["select_vrp_name"].presence || jeevika_jankar_vrp_label(record.data["select_vrp"])),
+        "financial_year" => record.data["financial_year"].to_s,
+        "bill_month" => record.data["bill_month"].to_s,
+        "approval_date" => jeevika_bill_final_approval_date(record),
+        "amount" => format("%.2f", JEEVIKA_JANKAR_BILL_FIXED_TOTAL)
+      }
+    end
+
+    data = raw_data.except("selected_bill_ids", "transaction_file", "excel_file")
+    data["selected_bill_ids"] = selected_records.map { |record| record.id.to_s }
+    data["payment_items"] = payment_items
+    data["selected_count"] = selected_records.size.to_s
+    data["transaction_type"] = raw_data["transaction_type"].to_s.strip.upcase
+    data["jeevika_jankar_payment_amount"] = format("%.2f", selected_records.size * JEEVIKA_JANKAR_BILL_FIXED_TOTAL)
+    data["status"] = "Paid"
+    data["transaction_file"] = store_uploaded_module_file(raw_data["transaction_file"]) if raw_data["transaction_file"].respond_to?(:original_filename)
+    data["excel_file"] = store_uploaded_module_file(raw_data["excel_file"]) if raw_data["excel_file"].respond_to?(:original_filename)
+    data
+  end
+
+  def send_jeevika_payment_advice_sms(raw_data, selected_records)
+    reference_number = raw_data["transaction_id"].to_s.strip
+    transaction_date = raw_data["transaction_date"]
+    sent = 0
+    failed = 0
+    skipped = 0
+
+    selected_records.each do |record|
+      vrp = jeevika_bill_vrp(record)
+      mobile = vrp&.mobile_no.to_s.strip
+      beneficiary_name = jeevika_jankar_display_name(
+        record.data["select_vrp_name"].presence || jeevika_jankar_vrp_label(record.data["select_vrp"]) || vrp&.name
+      ).presence || vrp&.name.to_s
+
+      if mobile.blank? || beneficiary_name.blank?
+        skipped += 1
+        Rails.logger.warn("[Payment SMS] Skipped bill ##{record.id}: missing mobile or beneficiary name.")
+        next
+      end
+
+      result = PaymentAdviceSmsSender.new(
+        mobile,
+        reference_number: reference_number,
+        amount: JEEVIKA_JANKAR_BILL_FIXED_TOTAL,
+        beneficiary_name: beneficiary_name,
+        transaction_date: transaction_date
+      ).deliver
+
+      if result.success?
+        sent += 1
+      else
+        failed += 1
+        Rails.logger.warn("[Payment SMS] Failed for #{mobile}: #{result.message}")
+      end
+    end
+
+    parts = []
+    parts << "SMS sent: #{sent}." if sent.positive?
+    parts << "SMS failed: #{failed}." if failed.positive?
+    parts << "SMS skipped: #{skipped}." if skipped.positive?
+    parts.join(" ")
+  end
+
+  def jeevika_bill_final_approval_date(record)
+    approval_history = jeevika_bill_approval_history(record)
+      .select { |history| history.data["action"].to_s == "Approved" }
+      .sort_by { |history| parse_bill_datetime(history.data["action_at"]) || history.created_at }
+
+    value = approval_history.last&.data&.[]("action_at").presence || record&.data&.[]("final_approved_at").presence || record&.updated_at&.to_date || record&.created_at&.to_date
+    parse_bill_datetime(value)&.to_date&.to_s || parse_module_date(value)&.to_s || value.to_s
+  rescue ArgumentError, TypeError
+    record&.updated_at&.to_date&.to_s || record&.created_at&.to_date&.to_s
+  end
+
   def stamp_jeevika_jankar_bill_creator!(data)
     user = current_app_user || {}
     data["created_by_record_type"] = data["created_by_record_type"].presence || user["record_type"].to_s
@@ -5513,7 +5948,7 @@ class ModulesController < ApplicationController
     keys = helpers.allowed_sidebar_keys
     return false if keys.blank?
 
-    keys.intersect?(%w[payment-list jeevika-jankar-payment-list])
+    keys.intersect?(%w[payment-list jeevika-jankar-payment-list payment-list-detail jeevika-jankar-payment-list-detail completed-payment-list jeevika-jankar-completed-payment-list])
   end
 
   def jeevika_jankar_bill_downloadable?(record)
@@ -6201,6 +6636,7 @@ class ModulesController < ApplicationController
       "training_location" => "Training Location",
       "main_activity" => "Main Activity",
       "sub_activity" => "Sub Activity",
+      "training_method" => "Training Method",
       "training_description" => "Training Description",
       "male_count" => "Male Count",
       "female_count" => "Female Count",
@@ -7011,6 +7447,7 @@ class ModulesController < ApplicationController
       "Can Delete" => ["Yes", "No"],
       "Select Mandatory" => ["Yes", "No"],
       "Main Activity Type" => ["Training", "Other"],
+      "Training Method" => ["General Training/Meeting", "Input Demo INM", "Input Demo PM", "FFS", "OPG Training"],
       "Achievement Fill" => ["Auto Fill", "Self"],
       "Office Level" => ["State", "District", "Block", "Gram Panchayat", "Village"],
       "Parent Office Type" => ["Parent Office", "Sub Parent Office"],
