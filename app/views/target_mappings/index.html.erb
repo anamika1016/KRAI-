@@ -267,13 +267,12 @@
                   <td><%= Array(target.afl_ids).blank? && target.target_quantity.to_f.positive? ? "New Farmer Target" : target.farmer_count %></td>
                   <td><%= target.month_name %></td>
                   <td><%= target.completion_date&.strftime("%d-%m-%Y") || "-" %></td>
-                  <% normalized_activity = target.activity_name.to_s.strip.downcase %>
                   <td class="target-activity-text"><%= target.main_activity_name %></td>
                   <td class="target-activity-text"><%= target.activity_name %></td>
-                  <td><%= target.target_quantity if normalized_activity == "opg training" %></td>
-                  <td><%= target.target_quantity if normalized_activity == "general training/meeting" %></td>
-                  <td><%= target.target_quantity if normalized_activity == "input demo inm" %></td>
-                  <td><%= target.target_quantity if normalized_activity == "input demo pm" %></td>
+                  <td><%= target.opg_training_target %></td>
+                  <td><%= target.week_wise_opg_target %></td>
+                  <td><%= target.input_demo_inm_target %></td>
+                  <td><%= target.input_demo_pm_target %></td>
                   <td><%= target.target_quantity %></td>
 	                  <% if show_mapping_actions %>
 	                    <td>

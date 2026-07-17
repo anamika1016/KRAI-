@@ -3127,6 +3127,21 @@ function initDeferredLayoutPage() {
       weeklyPlanFarmerIds[rowKey] ||= new Set();
       return weeklyPlanFarmerIds[rowKey];
     };
+    const restoreEditFarmerSelections = (rows) => {
+      if (!editTarget.id || editTarget.farmerSelectionsRestored) return;
+
+      const savedFarmerIds = Array(editTarget.afl_ids || []).map((id) => String(id)).filter(Boolean);
+      if (!savedFarmerIds.length || !rows.length) return;
+
+      const matchingRow = rows.find((row) => (
+        normalizeOption(row.mainActivity) === normalizeOption(editTarget.main_activity_names?.[0]) &&
+        normalizeOption(row.subActivity || row.mainActivity) === normalizeOption(editTarget.activity_names?.[0])
+      ));
+      if (!matchingRow) return;
+
+      weeklyPlanFarmerIds[weeklyRowKey(matchingRow)] = new Set(savedFarmerIds);
+      editTarget.farmerSelectionsRestored = true;
+    };
     const selectedFarmerIdsForActiveRow = () => farmerIdsForRow(activeFarmerDialogRowKey);
     const totalActivityFarmerSelections = () => Object.values(weeklyPlanFarmerIds).reduce((total, ids) => total + ids.size, 0);
     const weeklyPlanValue = (row, field, fallback = "") => {
@@ -3159,6 +3174,7 @@ function initDeferredLayoutPage() {
       if (!weeklySummary || !weeklyRows) return;
 
       const rows = targetActivitySummaryRows();
+      restoreEditFarmerSelections(rows);
       const monthlyCount = selectedFarmerMonthlyCount();
       const selectedLabel = `${totalActivityFarmerSelections()} total farmer selections`;
       if (weeklySelectedTotal) weeklySelectedTotal.textContent = selectedLabel;

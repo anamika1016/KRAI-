@@ -57,7 +57,7 @@ class TargetMappingsController < ApplicationController
       TargetMapping.transaction { mappings.each(&:save!) }
       redirect_to target_mappings_path, notice: "#{mappings.size} target mapping(s) saved successfully."
     else
-      redirect_to target_mappings_path, alert: errors.presence&.to_sentence || "Please select at least one Main Activity and Sub Activity."
+      redirect_to target_mappings_path, alert: errors.presence&.to_sentence || training_target_mode_error_message
     end
   end
 
@@ -133,6 +133,7 @@ class TargetMappingsController < ApplicationController
     attrs[:main_activity_name] = target_activity_values(target_mapping_params[:main_activity_names]).first || attrs[:main_activity_name]
     attrs[:activity_name] = target_activity_values(target_mapping_params[:activity_names]).first || attrs[:activity_name]
     attrs[:target_quantity] = new_farmer_target_quantity if new_farmer_target_mode?
+    attrs.merge!(training_target_attributes)
     attrs
   end
 
@@ -182,6 +183,14 @@ class TargetMappingsController < ApplicationController
     end
   end
 
+  def training_target_attributes
+    submitted_targets = target_mapping_params[:training_targets]
+
+    TRAINING_TARGET_FIELDS.keys.index_with do |key|
+      submitted_targets.respond_to?(:[]) ? submitted_targets[key].to_s.strip.presence : nil
+    end.transform_keys { |key| "#{key}_target" }
+  end
+
   def weekly_plan_rows
     raw = target_mapping_params[:weekly_plan]
     rows = raw.respond_to?(:to_unsafe_h) ? raw.to_unsafe_h.values : Array(raw)
@@ -202,6 +211,14 @@ class TargetMappingsController < ApplicationController
   end
 
   def apply_weekly_plan_target(target_mapping)
+    training_target = selected_training_targets.find do |activity_name, _quantity|
+      activity_name.to_s.casecmp(target_mapping.activity_name.to_s).zero?
+    end
+    if training_target
+      target_mapping.target_quantity = training_target.last
+      return
+    end
+
     plan = weekly_plan_for(target_mapping.main_activity_name, target_mapping.activity_name)
     target_mapping.target_quantity = plan["monthly"] if plan&.dig("monthly").present?
   end
@@ -1084,7 +1101,9 @@ class TargetMappingsController < ApplicationController
       activity_names: [target.activity_name.to_s].reject(&:blank?),
       target_quantity: target.target_quantity.to_s,
       new_farmer_target_quantity: Array(target.afl_ids).blank? && !training_mode ? target.target_quantity.to_s : "",
-      training_targets: training_mode ? { training_key => target.target_quantity.to_s } : {},
+      training_targets: TRAINING_TARGET_FIELDS.keys.index_with do |key|
+        target.public_send("#{key}_target")&.to_s
+      end,
       afl_ids: Array(target.afl_ids).map(&:to_s)
     }
   end

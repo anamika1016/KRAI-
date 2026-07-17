@@ -10,15 +10,15 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2026_06_26_093000) do
+ActiveRecord::Schema[8.1].define(version: 2026_07_17_170000) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "pg_catalog.plpgsql"
 
   create_table "active_storage_attachments", force: :cascade do |t|
-    t.bigint "blob_id", null: false
+    t.integer "blob_id", null: false
     t.datetime "created_at", null: false
     t.string "name", null: false
-    t.bigint "record_id", null: false
+    t.integer "record_id", null: false
     t.string "record_type", null: false
     t.index ["blob_id"], name: "index_active_storage_attachments_on_blob_id"
     t.index ["record_type", "record_id", "name", "blob_id"], name: "index_active_storage_attachments_uniqueness", unique: true
@@ -37,7 +37,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_06_26_093000) do
   end
 
   create_table "active_storage_variant_records", force: :cascade do |t|
-    t.bigint "blob_id", null: false
+    t.integer "blob_id", null: false
     t.string "variation_digest", null: false
     t.index ["blob_id", "variation_digest"], name: "index_active_storage_variant_records_uniqueness", unique: true
   end
@@ -147,15 +147,11 @@ ActiveRecord::Schema[8.1].define(version: 2026_06_26_093000) do
     t.decimal "area_hectares", precision: 18, scale: 4
     t.datetime "created_at", null: false
     t.string "crop_name"
-    t.text "farm_crop_area_rows", default: "[]", null: false
     t.bigint "farmer_farm_information_id"
-    t.text "on_farm_input_rows", default: "[]", null: false
     t.string "perennial_age_plantation_time"
     t.string "production_method"
     t.string "record_title"
     t.string "remarks"
-    t.text "seed_planting_material_rows", default: "[]", null: false
-    t.text "soil_conditioner_rows", default: "[]", null: false
     t.string "status", default: "Active", null: false
     t.datetime "updated_at", null: false
     t.string "year_season_production"
@@ -371,16 +367,21 @@ ActiveRecord::Schema[8.1].define(version: 2026_06_26_093000) do
     t.integer "farmer_count", default: 0, null: false
     t.string "fco_id", null: false
     t.string "fco_name"
+    t.decimal "ffs_target", precision: 18, scale: 4
     t.string "ics_id", null: false
     t.string "ics_name"
+    t.decimal "input_demo_inm_target", precision: 18, scale: 4
+    t.decimal "input_demo_pm_target", precision: 18, scale: 4
     t.string "main_activity_name"
     t.string "month_name", null: false
+    t.decimal "opg_training_target", precision: 18, scale: 4
     t.decimal "target_quantity", precision: 18, scale: 4, null: false
     t.datetime "updated_at", null: false
     t.string "village_id", null: false
     t.string "village_name"
     t.bigint "vrp_ics_mapping_id"
     t.bigint "vrp_id", null: false
+    t.decimal "week_wise_opg_target", precision: 18, scale: 4
     t.index ["created_by_type", "created_by_id"], name: "index_target_mappings_on_creator"
     t.index ["fco_id", "ics_id", "village_id", "main_activity_name", "activity_name"], name: "index_target_mappings_on_activity_scope"
     t.index ["vrp_ics_mapping_id"], name: "index_target_mappings_on_vrp_ics_mapping_id"
@@ -460,7 +461,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_06_26_093000) do
     t.integer "state_id", null: false
     t.datetime "updated_at", null: false
     t.integer "village_id", null: false
-    t.bigint "vrp_id", null: false
+    t.integer "vrp_id", null: false
     t.index ["vrp_id"], name: "index_vrp_profiles_on_vrp_id"
   end
 
@@ -513,7 +514,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_06_26_093000) do
     t.string "user_management_role"
     t.string "user_name"
     t.text "village_ids"
-    t.bigint "vrp_bank_master_id"
+    t.integer "vrp_bank_master_id"
     t.text "vrp_type_ids"
     t.index ["aadhar_no"], name: "index_vrps_on_aadhar_no"
     t.index ["agreement_accepted_at"], name: "index_vrps_on_agreement_accepted_at"
