@@ -22,6 +22,21 @@ Rails.application.routes.draw do
         end
       end
 
+      # Jeevika Jankar master lookups for React clients. These routes are kept
+      # separate from the existing /modules/* web screens.
+      get "jeevika-jankar-types", to: "jeevika_jankar_masters#types"
+      post "jeevika-jankar-types", to: "jeevika_jankar_masters#create_type"
+      get "jeevika-jankar-masters/all-list", to: "jeevika_jankar_masters#all_list"
+      get "jeevika-jankar-masters/states", to: "jeevika_jankar_masters#states"
+      get "jeevika-jankar-masters/districts", to: "jeevika_jankar_masters#districts"
+      get "jeevika-jankar-masters/blocks", to: "jeevika_jankar_masters#blocks"
+      get "jeevika-jankar-masters/gram-panchayats", to: "jeevika_jankar_masters#gram_panchayats"
+      get "jeevika-jankar-masters/villages", to: "jeevika_jankar_masters#villages"
+      get "jeevika-jankar-masters/months", to: "jeevika_jankar_masters#months"
+      get "jeevika-jankar-masters/parent-offices", to: "jeevika_jankar_masters#parent_offices"
+      get "jeevika-jankar-masters/office-categories", to: "jeevika_jankar_masters#office_categories"
+      get "jeevika-jankar-masters/sub-offices", to: "jeevika_jankar_masters#sub_offices"
+
       # Farmer Target modules — React Native APIs; web /modules/* unchanged
       get "farmer-trainings/form-options", to: "farmer_trainings#form_options"
       resources :farmer_trainings, path: "farmer-trainings", only: [ :index, :create, :show ]
