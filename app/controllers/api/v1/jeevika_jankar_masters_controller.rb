@@ -1,6 +1,8 @@
 module Api
   module V1
     class JeevikaJankarMastersController < BaseController
+      include VrpAccess
+
       MASTER_CONFIG = {
         "all_list" => [ "lg-directory-list", %w[state_name state_code district_name district_code block_name block_code gram_name gram_code village_name village_code] ],
         "states" => [ "state-master", %w[state_name state_code status] ],
@@ -68,7 +70,30 @@ module Api
         end
       end
 
+      def cluster_incharges
+        rows = cluster_incharge_user_mappings.map do |mapping|
+          {
+            label: mapping[:label].to_s,
+            value: mapping[:value].to_s,
+            office_category: mapping[:office_category].to_s,
+            office_name: mapping[:office_name].to_s,
+            parent_office: mapping[:parent_office].to_s
+          }
+        end
+
+        render json: {
+          success: true,
+          message: "Cluster Incharges fetched successfully.",
+          cluster_incharges: rows,
+          count: rows.size
+        }, status: :ok
+      end
+
       private
+
+      def current_app_user
+        current_api_user_payload
+      end
 
       def render_master(resource_name)
         slug, fields = MASTER_CONFIG.fetch(resource_name)

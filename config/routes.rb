@@ -36,6 +36,7 @@ Rails.application.routes.draw do
       get "jeevika-jankar-masters/parent-offices", to: "jeevika_jankar_masters#parent_offices"
       get "jeevika-jankar-masters/office-categories", to: "jeevika_jankar_masters#office_categories"
       get "jeevika-jankar-masters/sub-offices", to: "jeevika_jankar_masters#sub_offices"
+      get "jeevika-jankar-masters/cluster-incharges", to: "jeevika_jankar_masters#cluster_incharges"
 
       # Farmer Target modules — React Native APIs; web /modules/* unchanged
       get "farmer-trainings/form-options", to: "farmer_trainings#form_options"

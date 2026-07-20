@@ -73,4 +73,12 @@ class Api::V1::JeevikaJankarMastersControllerTest < ActionDispatch::IntegrationT
     option = response.parsed_body.fetch("jeevika_jankar_types").find { |row| row["id"] == type.id }
     assert_equal "Jeevika Position Type", option["label"]
   end
+
+  test "cluster incharge endpoint returns dropdown collection" do
+    get "/api/v1/jeevika-jankar-masters/cluster-incharges", headers: @headers, as: :json
+
+    assert_response :success
+    assert_equal true, response.parsed_body["success"]
+    assert response.parsed_body["cluster_incharges"].is_a?(Array)
+  end
 end
