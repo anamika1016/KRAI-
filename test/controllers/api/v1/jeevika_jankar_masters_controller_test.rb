@@ -75,10 +75,18 @@ class Api::V1::JeevikaJankarMastersControllerTest < ActionDispatch::IntegrationT
   end
 
   test "cluster incharge endpoint returns dropdown collection" do
+    cluster_user = User.create!(
+      first_name: "Cluster", last_name: "Officer", user_name: "cluster_officer",
+      password: "secret", role: "Cluster Incharge", status: "Active",
+      office_category: "FCO", office: "Cluster Office"
+    )
+
     get "/api/v1/jeevika-jankar-masters/cluster-incharges", headers: @headers, as: :json
 
     assert_response :success
     assert_equal true, response.parsed_body["success"]
-    assert response.parsed_body["cluster_incharges"].is_a?(Array)
+    option = response.parsed_body["cluster_incharges"].find { |row| row["value"] == cluster_user.full_name }
+    assert_equal "Cluster Officer (Cluster Incharge)", option["label"]
+    assert_equal "FCO", option["office_category"]
   end
 end

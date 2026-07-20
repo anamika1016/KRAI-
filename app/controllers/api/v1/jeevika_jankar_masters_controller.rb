@@ -71,7 +71,7 @@ module Api
       end
 
       def cluster_incharges
-        rows = cluster_incharge_user_mappings.map do |mapping|
+        rows = api_cluster_incharge_mappings.map do |mapping|
           {
             label: mapping[:label].to_s,
             value: mapping[:value].to_s,
@@ -93,6 +93,31 @@ module Api
 
       def current_app_user
         current_api_user_payload
+      end
+
+      def api_cluster_incharge_mappings
+        hierarchy_mappings = cluster_incharge_user_mappings
+        return hierarchy_mappings if hierarchy_mappings.any?
+        return [] unless model_ready?(:User)
+
+        User.order(:first_name, :last_name, :user_name).filter_map do |user|
+          next unless user.active?
+
+          role = [user.role, user.role_name, user.user_management_role, user.person_type]
+            .compact_blank.join(" ")
+          next unless role.downcase.include?("cluster")
+
+          name = user.full_name.presence || user.user_name.to_s.strip
+          next if name.blank?
+
+          {
+            label: role.present? ? "#{name} (#{role})" : name,
+            value: name,
+            office_category: user_office_category(user),
+            office_name: user_office_name(user),
+            parent_office: user.parent_office.to_s.strip
+          }
+        end.uniq { |mapping| normalize_approver_label(mapping[:value]) }
       end
 
       def render_master(resource_name)
