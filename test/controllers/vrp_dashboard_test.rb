@@ -177,6 +177,12 @@ class VrpDashboardTest < ActionDispatch::IntegrationTest
     assert_includes response.body, "Pending Farmers"
     refute_includes response.body, "Select Month and Sub Activity to load training data."
 
+    get dashboard_path(format: :xlsx), params: { training_month: "June", training_sub_activity: "Farm Visit" }
+
+    assert_response :success
+    assert_equal XlsxExporter::MIME_TYPE, response.media_type
+    assert response.body.start_with?("PK"), "expected an XLSX zip archive"
+
     get target_mappings_path
 
     assert_response :success

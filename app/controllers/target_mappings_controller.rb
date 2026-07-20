@@ -19,6 +19,8 @@ class TargetMappingsController < ApplicationController
     @main_activity_type_map = main_activity_type_map
     @target_sub_activity_map = target_sub_activity_map
     @target_mappings = visible_target_mappings.includes(:vrp, :vrp_ics_mapping).order(updated_at: :desc).limit(100)
+    farmer_ids = @target_mappings.flat_map { |target| Array(target.afl_ids) }.map(&:to_s).reject(&:blank?).uniq
+    @target_farmers_by_id = Afl.where(id: farmer_ids).index_by { |farmer| farmer.id.to_s }
     @edit_target = visible_target_mappings.find_by(id: params[:edit_id]) if params[:edit_id].present? && @admin_mapping_actions
     @edit_payload = edit_payload(@edit_target)
     @sub_activity_options = target_sub_activity_options(@edit_target&.main_activity_name)

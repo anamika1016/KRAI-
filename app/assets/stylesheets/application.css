@@ -3821,6 +3821,30 @@ body {
   line-height: 1.25;
 }
 
+#target_mapping_list .target-farmer-view-column,
+#target_mapping_list .target-farmer-view-cell {
+  min-width: 7rem;
+  text-align: center;
+  white-space: nowrap;
+}
+
+#target_mapping_list .target-count-column,
+#target_mapping_list .target-count-cell {
+  min-width: 7rem;
+  text-align: center;
+  white-space: nowrap;
+}
+
+#target_mapping_list .target-farmer-view-cell .table-action {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+#target_mapping_list .target-no-farmers {
+  color: #87969e;
+}
+
 #target_mapping_list .target-activity-text {
   min-width: 10rem;
   max-width: 15rem;

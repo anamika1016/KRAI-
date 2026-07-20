@@ -114,6 +114,30 @@ document.addEventListener("turbo:click", () => {
 });
 
 function initDeferredLayoutPage() {
+  document.querySelectorAll("[data-saved-target-farmers-open]").forEach((button) => {
+    if (button.dataset.savedTargetFarmersBound === "true") return;
+
+    button.dataset.savedTargetFarmersBound = "true";
+    button.addEventListener("click", () => {
+      const dialog = document.getElementById(button.dataset.savedTargetFarmersOpen);
+      if (!dialog) return;
+
+      if (typeof dialog.showModal === "function") dialog.showModal();
+      else dialog.setAttribute("open", "open");
+    });
+  });
+
+  document.querySelectorAll("[data-saved-target-farmers-dialog]").forEach((dialog) => {
+    const closeButton = dialog.querySelector("[data-saved-target-farmers-close]");
+    if (!closeButton || closeButton.dataset.savedTargetFarmersBound === "true") return;
+
+    closeButton.dataset.savedTargetFarmersBound = "true";
+    closeButton.addEventListener("click", () => {
+      if (typeof dialog.close === "function") dialog.close();
+      else dialog.removeAttribute("open");
+    });
+  });
+
   document.querySelectorAll("[data-ics-exit-form]").forEach((form) => {
     const select = form.querySelector("[data-ics-exit-farmer-select]");
     const fieldFor = (name) => form.querySelector(`[data-ics-exit-field='${name}']`);

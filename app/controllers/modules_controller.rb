@@ -692,8 +692,10 @@ class ModulesController < ApplicationController
     respond_to do |format|
       format.html
       format.xlsx do
+        export_rows = dashboard_filter_export_rows
         send_xlsx(
-          rows: dashboard_filter_export_rows,
+          headers: export_rows.shift || [],
+          rows: export_rows,
           filename: "dashboard-export-#{Time.current.strftime("%Y%m%d%H%M")}.xlsx",
           sheet_name: "Dashboard Export"
         )
@@ -7447,7 +7449,7 @@ class ModulesController < ApplicationController
       "Can Delete" => ["Yes", "No"],
       "Select Mandatory" => ["Yes", "No"],
       "Main Activity Type" => ["Training", "Other"],
-      "Training Method" => ["General Training/Meeting", "Input Demo INM", "Input Demo PM", "FFS", "OPG Training"],
+      "Training Method" => ["General Training/Meeting", "Input Demo INM", "Input Demo PM", "FFS"],
       "Achievement Fill" => ["Auto Fill", "Self"],
       "Office Level" => ["State", "District", "Block", "Gram Panchayat", "Village"],
       "Parent Office Type" => ["Parent Office", "Sub Parent Office"],

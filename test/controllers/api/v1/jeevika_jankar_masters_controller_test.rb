@@ -46,4 +46,31 @@ class Api::V1::JeevikaJankarMastersControllerTest < ActionDispatch::IntegrationT
     assert_response :created
     assert_equal "Community Mobilizer", response.parsed_body.dig("jeevika_jankar_type", "jeevika_jankar_type_name")
   end
+
+  test "type list supports legacy name and returns dropdown fields" do
+    type = ModuleRecord.create!(
+      module_slug: "add-vrp-type",
+      data: { "vrp_type_name" => "Legacy Jankar Type", "status" => "Active" }
+    )
+
+    get "/api/v1/jeevika-jankar-types", headers: @headers, as: :json
+
+    assert_response :success
+    option = response.parsed_body.fetch("jeevika_jankar_types").find { |row| row["id"] == type.id }
+    assert_equal "Legacy Jankar Type", option["jeevika_jankar_type_name"]
+    assert_equal "Legacy Jankar Type", option["label"]
+    assert_equal type.id, option["value"]
+  end
+
+  test "type list supports position type name field" do
+    type = ModuleRecord.create!(
+      module_slug: "add-vrp-type",
+      data: { "position_type_name" => "Jeevika Position Type", "status" => "Active" }
+    )
+
+    get "/api/v1/jeevika-jankar-types", headers: @headers, as: :json
+
+    option = response.parsed_body.fetch("jeevika_jankar_types").find { |row| row["id"] == type.id }
+    assert_equal "Jeevika Position Type", option["label"]
+  end
 end
