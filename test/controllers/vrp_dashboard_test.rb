@@ -751,6 +751,37 @@ class VrpDashboardTest < ActionDispatch::IntegrationTest
     assert_equal farmers.map { |farmer| farmer.id.to_s }.sort, farmer_rows.map { |farmer| farmer["id"] }.sort
   end
 
+  test "target mapping fco dropdown removes null and duplicate name options" do
+    vrp = create_vrp(
+      name: "Unique FCO VRP",
+      user_name: "unique_fco_vrp",
+      mobile_no: "9876543889",
+      email: "unique-fco-vrp@example.com",
+      aadhar_no: "123456789089"
+    )
+    create_afl(fco_id: "1009", fco: "Bhabra", farmer_name: "Coded FCO Farmer")
+    create_afl(fco_id: "Bhabra", fco: "Bhabra", farmer_name: "Name FCO Farmer")
+    create_afl(fco_id: "1009", fco: "Bhabra - 1009", farmer_name: "Repeated Code Farmer")
+    create_afl(fco_id: "NULL", fco: "NULL", farmer_name: "Null FCO Farmer")
+
+    User.create!(
+      user_name: "unique_fco_admin",
+      password: "secret",
+      first_name: "Unique FCO Admin",
+      user_type: "admin",
+      status: "Active"
+    )
+    post login_path, params: { login: "unique_fco_admin", password: "secret" }
+    follow_redirect!
+
+    get vrp_mappings_target_mappings_path, params: { vrp_id: vrp.id }
+
+    assert_response :success
+    options = JSON.parse(response.body).fetch("fco_options")
+    assert_equal [ "Bhabra - 1009" ], options.filter_map { |option| option["label"] if option["label"].downcase.include?("bhabra") }
+    refute options.any? { |option| option["label"].to_s.casecmp("null").zero? }
+  end
+
   test "target mapping keeps training targets for mixed training and other activity selection" do
     vrp = create_vrp(
       name: "Mixed Target VRP",

@@ -543,7 +543,7 @@ class TargetMappingsController < ApplicationController
   end
 
   def fco_options(vrp_id = nil)
-    unique_location_options(afl_fco_options + saved_location_options(vrp_id, :fco_id, :fco_name))
+    unique_fco_options(afl_fco_options + saved_location_options(vrp_id, :fco_id, :fco_name))
   end
 
   def ics_options_for(fco_value, vrp_id = nil)
@@ -632,6 +632,28 @@ class TargetMappingsController < ApplicationController
 
   def unique_location_options(options)
     Array(options).uniq { |option| [option[:value].to_s, option[:label].to_s] }
+  end
+
+  def unique_fco_options(options)
+    Array(options).each_with_object({}) do |option, unique|
+      fco_id, fco_name = parse_location_value(option[:value])
+      fco_id = fco_id.to_s.strip
+      fco_name = fco_name.to_s.strip
+      fco_name = option[:label].to_s.strip if fco_name.blank?
+      fco_name = fco_name.sub(/\s*-\s*#{Regexp.escape(fco_id)}\s*\z/i, "").strip if fco_id.present?
+
+      next if fco_id.blank? || fco_name.blank?
+      next if [fco_id, fco_name].any? { |value| value.casecmp("null").zero? }
+
+      normalized = option_hash(fco_id, fco_name)
+      key = fco_name.downcase
+      current = unique[key]
+      current_id, current_name = parse_location_value(current&.dig(:value))
+      current_has_code = current.present? && current_id.present? && !current_id.casecmp(current_name.to_s).zero?
+      candidate_has_code = !fco_id.casecmp(fco_name).zero?
+
+      unique[key] = normalized if current.blank? || (!current_has_code && candidate_has_code)
+    end.values
   end
 
   def mapping_location_options(scope, id_column, name_column)
