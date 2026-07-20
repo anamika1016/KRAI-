@@ -114,6 +114,32 @@ document.addEventListener("turbo:click", () => {
 });
 
 function initDeferredLayoutPage() {
+  document.querySelectorAll("[data-participation-filter-form]").forEach((form) => {
+    if (form.dataset.participationFilterBound === "true") return;
+
+    form.dataset.participationFilterBound = "true";
+    const vrpSelect = form.querySelector("select[name='vrp_id']");
+    const fcocSelect = form.querySelector("select[name='fcoc']");
+    let vrpFcocMap = {};
+    try {
+      vrpFcocMap = JSON.parse(form.dataset.vrpFcocMap || "{}");
+    } catch (_error) {
+      vrpFcocMap = {};
+    }
+
+    const syncParticipationFcoc = (submitAfterSync = false) => {
+      const compatibleFcocs = vrpFcocMap[vrpSelect?.value] || [];
+      if (!fcocSelect || compatibleFcocs.length !== 1) return;
+      if (fcocSelect.value === compatibleFcocs[0]) return;
+
+      fcocSelect.value = compatibleFcocs[0];
+      if (submitAfterSync && typeof form.requestSubmit === "function") form.requestSubmit();
+    };
+
+    vrpSelect?.addEventListener("change", () => syncParticipationFcoc(false));
+    syncParticipationFcoc(true);
+  });
+
   document.querySelectorAll("[data-saved-target-farmers-open]").forEach((button) => {
     if (button.dataset.savedTargetFarmersBound === "true") return;
 
@@ -1848,14 +1874,11 @@ function initDeferredLayoutPage() {
       if (!monthSelect?.value || !selectedVillage || !selectedMainActivity) return [];
 
       const farmersById = new Map();
-      const completedFarmerIds = new Set();
       targetRowsForSelection({ requireMonth: true, requireVillage: true, requireMainActivity: true })
         .filter((mapping) => !selectedSubActivity || normalizeOption(mapping.sub_activity) === selectedSubActivity)
         .forEach((mapping) => {
-          (mapping.completed_farmer_ids || []).forEach((id) => completedFarmerIds.add(String(id)));
           (mapping.farmers || []).forEach((farmer) => {
             if (!farmer.id) return;
-	            if (completedFarmerIds.has(String(farmer.id)) && !selectedFarmerIds.has(String(farmer.id))) return;
 	            farmersById.set(String(farmer.id), farmer);
 	          });
 	        });
@@ -1963,7 +1986,7 @@ function initDeferredLayoutPage() {
       }
 
       if (!farmers.length) {
-        farmerList.textContent = "No pending target farmers found for selected activity.";
+        farmerList.textContent = "No target farmers found for selected activity.";
         if (farmerSelectAll) farmerSelectAll.checked = false;
 	        updateFarmerCount();
 	        return;

@@ -165,6 +165,18 @@ class VrpDashboardTest < ActionDispatch::IntegrationTest
     assert_equal 1, response.body.scan("VRP Dashboard").size
     assert_includes response.body, "VRP Targets"
 
+    get farmer_participation_report_path
+
+    assert_response :success
+    assert_includes response.body, "Farmer Participation Report"
+    refute_includes response.body, "Participation List"
+
+    get farmer_participation_report_path, params: { farmer_id: repeat_previous.id }
+
+    assert_response :success
+    assert_includes response.body, "Repeat Farmer"
+    assert_includes response.body, "Farm Visit"
+
     get dashboard_path, params: { training_month: "June", training_sub_activity: "Farm Visit" }
 
     assert_response :success

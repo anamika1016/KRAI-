@@ -3845,6 +3845,108 @@ body {
   color: #87969e;
 }
 
+.participation-filter-card {
+  padding: 16px;
+}
+
+.participation-filter-form {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(190px, 1fr));
+  gap: 14px;
+  align-items: end;
+}
+
+.participation-filter-form label {
+  display: grid;
+  gap: 6px;
+  color: var(--vrp-text);
+  font-size: 0.84rem;
+  font-weight: 800;
+}
+
+.participation-filter-form input,
+.participation-filter-form select {
+  width: 100%;
+  min-height: 42px;
+  border: 1px solid var(--vrp-line);
+  border-radius: 6px;
+  background: var(--surface);
+  color: var(--vrp-text);
+  padding: 8px 10px;
+  font: inherit;
+}
+
+.participation-filter-actions {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+
+.participation-filter-warning {
+  grid-column: 1 / -1;
+  margin: 12px 0 0;
+  border: 1px solid #e4b64f;
+  border-radius: 6px;
+  background: #fff8df;
+  color: #684b00;
+  padding: 10px 12px;
+  font-weight: 800;
+}
+
+.participation-summary-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(150px, 1fr));
+  gap: 12px;
+}
+
+.participation-summary-grid article {
+  display: grid;
+  gap: 6px;
+  border: 1px solid var(--vrp-line);
+  border-radius: 8px;
+  background: var(--surface);
+  padding: 16px;
+}
+
+.participation-summary-grid span {
+  color: #667780;
+  font-size: 0.8rem;
+  font-weight: 800;
+}
+
+.participation-summary-grid strong {
+  color: var(--vrp-primary);
+  font-size: 1.55rem;
+}
+
+#farmer_participation_list th,
+#farmer_participation_list td {
+  min-width: 8rem;
+  white-space: normal;
+  vertical-align: top;
+}
+
+#farmer_participation_list .participation-count {
+  color: var(--vrp-primary);
+  font-size: 1.05rem;
+  font-weight: 900;
+  text-align: center;
+}
+
+@media (max-width: 900px) {
+  .participation-filter-form,
+  .participation-summary-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 600px) {
+  .participation-filter-form,
+  .participation-summary-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
 #target_mapping_list .target-activity-text {
   min-width: 10rem;
   max-width: 15rem;

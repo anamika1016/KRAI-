@@ -139,6 +139,7 @@ module ApplicationHelper
         # ["Farmer Training Topic Mapping", :module, "training-topic-mapping"],
         ["Farmer Training Form", :module, "training-form"],
         ["Farmer Training Form List", :module, "training-form-list"],
+        ["Farmer Participation Report", :route, :farmer_participation_report_path],
         ["Seed Distribution Target", :module, "seed-distribution-target"],
         ["Seed Distribution Target List", :module, "seed-distribution-target-list"],
         ["PAPL360 Target", :module, "papl360-target"],
@@ -338,13 +339,13 @@ module ApplicationHelper
       keys.concat(["vrp-type", "add-jeevika-jankar-type", "jeevika-jankar-type"])
     end
     if ["Farmer Training", "Farmer Target"].include?(name.to_s.strip)
-      keys.concat(["farmer-training", "farmer-target", "seed-distribution-target", "papl360-target", "add-farmer-form"])
+      keys.concat(["farmer-training", "farmer-target", "farmer-participation-report", "seed-distribution-target", "papl360-target", "add-farmer-form"])
     end
     if ["Farmer Training Form", "Farmer Target Form"].include?(name.to_s.strip)
       keys.concat(["farmer-training-form", "farmer-target-form", "seed-distribution-target", "papl360-target"])
     end
     if ["Farmer Training Form List", "Farmer Target Form List"].include?(name.to_s.strip)
-      keys.concat(["farmer-training-form-list", "farmer-target-form-list", "seed-distribution-target-list", "papl360-target-list"])
+      keys.concat(["farmer-training-form-list", "farmer-target-form-list", "farmer-participation-report", "seed-distribution-target-list", "papl360-target-list"])
     end
     if ["Seed Distribution Target", "Seed Distribution Target Form"].include?(name.to_s.strip)
       keys.concat(["seed-distribution-target", "seed-distribution-target-form", "seed-distribution-target-list"])
@@ -461,6 +462,7 @@ module ApplicationHelper
       links: [
         ["Farmer Training Form", :module, "training-form"],
         ["Farmer Training Form List", :module, "training-form-list"],
+        ["Farmer Participation Report", :route, :farmer_participation_report_path],
         ["Seed Distribution Target", :module, "seed-distribution-target"],
         ["Seed Distribution Target List", :module, "seed-distribution-target-list"],
         ["PAPL360 Target", :module, "papl360-target"],

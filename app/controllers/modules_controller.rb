@@ -779,6 +779,71 @@ class ModulesController < ApplicationController
     end
   end
 
+  def farmer_participation_report
+    all_entries = farmer_participation_entries
+    entries = all_entries
+    @farmer_participation_filters_applied = %i[farmer_id month fcoc vrp_id].any? { |key| params[key].present? }
+
+    farmer_options = all_entries
+      .group_by { |entry| entry[:farmer_id] }
+      .map { |farmer_id, farmer_entries| [farmer_entries.map { |entry| entry[:farmer_label] }.find { |label| !label.start_with?("Farmer #") } || farmer_entries.first[:farmer_label], farmer_id] }
+      .sort_by { |label, _id| label.downcase }
+    month_options = participation_text_filter_options(all_entries, :month).sort_by { |month| [dashboard_month_index(month), month] }
+    fcoc_options = participation_text_filter_options(all_entries, :fcoc)
+    vrp_options = all_entries.map { |entry| [entry[:vrp_name], entry[:vrp_id]] }.reject { |label, id| label.blank? || id.blank? }.uniq.sort_by { |label, _id| label.downcase }
+
+    entries = entries.select { |entry| entry[:farmer_id] == params[:farmer_id].to_s } if params[:farmer_id].present?
+    entries = entries.select { |entry| entry[:month] == params[:month].to_s } if params[:month].present?
+    entries = entries.select { |entry| entry[:fcoc] == params[:fcoc].to_s } if params[:fcoc].present?
+    entries = entries.select { |entry| entry[:vrp_id] == params[:vrp_id].to_s } if params[:vrp_id].present?
+
+    @farmer_participation_selected_filters = {
+      farmer_id: params[:farmer_id].to_s,
+      month: params[:month].to_s,
+      fcoc: params[:fcoc].to_s,
+      vrp_id: params[:vrp_id].to_s
+    }
+
+    @farmer_participation_filter_options = {
+      farmers: farmer_options,
+      months: month_options,
+      fcocs: fcoc_options,
+      vrps: vrp_options
+    }
+    @farmer_participation_vrp_fcoc_map = all_entries
+      .reject { |entry| entry[:vrp_id].blank? || entry[:fcoc].blank? || entry[:fcoc] == "-" }
+      .group_by { |entry| entry[:vrp_id] }
+      .transform_values { |vrp_entries| vrp_entries.map { |entry| entry[:fcoc] }.uniq.sort }
+
+    if params[:vrp_id].present? && params[:fcoc].present?
+      compatible_fcocs = @farmer_participation_vrp_fcoc_map[params[:vrp_id].to_s] || []
+      unless compatible_fcocs.include?(params[:fcoc].to_s)
+        selected_vrp_name = vrp_options.find { |_label, id| id == params[:vrp_id].to_s }&.first || "Selected Jeevika Jankar"
+        @farmer_participation_filter_warning = "#{selected_vrp_name} ka FCOC #{compatible_fcocs.join(', ').presence || 'available nahi'} hai. Compatible FCOC select karke Apply Filters karein."
+      end
+    end
+
+    entries = [] unless @farmer_participation_filters_applied
+
+    @farmer_participation_rows = entries
+      .group_by { |entry| [entry[:farmer_id], entry[:month], entry[:main_activity], entry[:sub_activity], entry[:training_method], entry[:vrp_id]] }
+      .map do |_key, grouped|
+        first = grouped.first
+        first.merge(
+          participation_count: grouped.size,
+          training_dates: grouped.map { |entry| entry[:training_date] }.compact_blank.uniq.sort.join(", ").presence || "-"
+        )
+      end
+      .sort_by { |row| [row[:farmer_name].downcase, row[:main_activity].downcase, row[:sub_activity].downcase, row[:training_method].downcase] }
+
+    @farmer_participation_totals = {
+      farmers: entries.map { |entry| entry[:farmer_id] }.uniq.size,
+      participations: entries.size,
+      activities: entries.map { |entry| [entry[:main_activity], entry[:sub_activity]] }.uniq.size,
+      trainings: entries.map { |entry| entry[:training_method] }.reject { |value| ["-", "Not Recorded"].include?(value) }.uniq.size
+    }
+  end
+
   def weekly_activity_target_report
     targets = dashboard_participation_targets
     selected_month = params[:training_month].presence || params[:month].presence
@@ -2181,6 +2246,76 @@ class ModulesController < ApplicationController
     end
 
     records
+  end
+
+  def farmer_participation_entries
+    return [] unless model_ready?(:ModuleRecord) && model_ready?(:Afl)
+
+    visible_vrps = vrp_login_user? ? [current_vrp_record].compact : dashboard_vrps
+    visible_vrp_ids = visible_vrps.map { |vrp| vrp.id.to_s }
+    vrps_by_farmer_id = Hash.new { |hash, key| hash[key] = [] }
+    visible_targets = if model_ready?(:TargetMapping)
+      scope = TargetMapping.includes(:vrp)
+      admin_dashboard_user? ? scope.to_a : scope.where(vrp_id: visible_vrp_ids).to_a
+    else
+      []
+    end
+    visible_targets.each do |target|
+      next unless target.vrp
+
+      Array(target.afl_ids).each do |farmer_id|
+        vrps_by_farmer_id[farmer_id.to_s] |= [target.vrp]
+      end
+    end
+
+    records = ModuleRecord
+      .where(module_slug: "training-form")
+      .order(created_at: :desc)
+      .select { |record| active_module_record?(record) }
+      .select { |record| module_record_visible_for_current_context?(record) }
+      .select { |record| training_record_selected_farmer_ids(record).any? }
+
+    farmer_ids = records.flat_map { |record| training_record_selected_farmer_ids(record) }.uniq
+    farmers_by_id = Afl.where(id: farmer_ids).index_by { |farmer| farmer.id.to_s }
+
+    records.flat_map do |record|
+      summary = training_summary(record)
+      record_vrp_id = record.data["jeevika_jankar_id"].presence || record.data["vrp_id"].presence
+      explicitly_matched_vrp = visible_vrps.find { |vrp| vrp.id.to_s == record_vrp_id.to_s } if record_vrp_id.present?
+      explicitly_matched_vrp ||= visible_vrps.find { |vrp| training_record_matches_vrp?(record, vrp) }
+
+      selected_farmer_names = Array(record.data["selected_farmer_names"]).map(&:to_s)
+      training_record_selected_farmer_ids(record).each_with_index.filter_map do |farmer_id, farmer_index|
+        farmer = farmers_by_id[farmer_id]
+        vrp = explicitly_matched_vrp || vrps_by_farmer_id[farmer_id].find { |candidate| visible_vrp_ids.include?(candidate.id.to_s) }
+        next if !admin_dashboard_user? && vrp.blank?
+
+        farmer_name = farmer&.farmer_name.presence || selected_farmer_names[farmer_index].presence || "Farmer ##{farmer_id}"
+        farmer_context = [farmer&.tracenet_no.presence, farmer&.village_name.presence || record.data["gram_name"].presence].compact.join(" | ")
+
+        {
+          farmer_id: farmer_id,
+          farmer_name: farmer_name,
+          farmer_label: [farmer_name, farmer_context.presence].compact.join(" — "),
+          tracenet_no: farmer&.tracenet_no.presence || "-",
+          village: record.data["gram_name"].presence || farmer&.village_name.presence || "-",
+          main_activity: summary[:training_topic].presence || "-",
+          sub_activity: summary[:training_subject].presence || "-",
+          training_method: Array(record.data["training_method"]).map(&:to_s).compact_blank.join(", ").presence || "Not Recorded",
+          month: summary[:month].presence || parse_module_date(summary[:training_date])&.strftime("%B") || "-",
+          training_date: bill_display_date(summary[:training_date]).presence || bill_display_date(record.created_at),
+          fcoc: summary[:department].presence || vrp&.fcoc.presence || "-",
+          cluster_incharge: vrp&.cluster_incharge.presence || "-",
+          role: vrp&.role.presence || "-",
+          vrp_id: vrp&.id&.to_s,
+          vrp_name: record.data["trainer_name"].presence || record.data["jeevika_jankar_name"].presence || vrp&.name.presence || "-"
+        }
+      end
+    end
+  end
+
+  def participation_text_filter_options(entries, key)
+    entries.map { |entry| entry[key] }.compact_blank.reject { |value| value == "-" }.uniq.sort
   end
 
   def training_record_main_activity_type?(record)
@@ -6078,10 +6213,6 @@ class ModulesController < ApplicationController
     end
 
     selected_farmer_ids = Array(data["selected_farmer_ids"]).map(&:to_s).reject(&:blank?).uniq
-    if training_form_activity_scope_present?(data)
-      pending_farmer_ids = pending_training_farmer_ids_for(data)
-      selected_farmer_ids &= pending_farmer_ids unless pending_farmer_ids.nil?
-    end
     data["selected_farmer_ids"] = selected_farmer_ids
     data["selected_farmer_names"] = training_farmer_names(selected_farmer_ids)
     data["farmer_count"] = selected_farmer_ids.size.to_s

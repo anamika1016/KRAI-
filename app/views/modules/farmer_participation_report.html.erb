@@ -1,0 +1,107 @@
+<% content_for :title, "Farmer Participation Report" %>
+
+<main class="vrp-list-page farmer-participation-page">
+  <section class="vrp-list-shell">
+    <div class="vrp-list-header">
+      <div>
+        <p class="vrp-eyebrow">Farmer Target</p>
+        <h1>Farmer Participation Report</h1>
+        <p>Farmer-wise activity, sub activity aur training method participation history.</p>
+      </div>
+    </div>
+
+    <section class="module-card participation-filter-card">
+      <%= form_with url: farmer_participation_report_path, method: :get, local: true, html: { class: "participation-filter-form", data: { participation_filter_form: true, vrp_fcoc_map: json_escape(@farmer_participation_vrp_fcoc_map.to_json) } } do |form| %>
+        <label>
+          <span>Farmer</span>
+          <%= form.select :farmer_id,
+            options_for_select([["All Farmers", ""]] + @farmer_participation_filter_options[:farmers], @farmer_participation_selected_filters[:farmer_id]),
+            {} %>
+        </label>
+        <label>
+          <span>Month</span>
+          <%= form.select :month, options_for_select([["All Months", ""]] + @farmer_participation_filter_options[:months].map { |value| [value, value] }, @farmer_participation_selected_filters[:month]) %>
+        </label>
+        <label>
+          <span>FCOC</span>
+          <%= form.select :fcoc, options_for_select([["All FCOC", ""]] + @farmer_participation_filter_options[:fcocs].map { |value| [value, value] }, @farmer_participation_selected_filters[:fcoc]) %>
+        </label>
+        <label>
+          <span>Jeevika Jankar</span>
+          <%= form.select :vrp_id, options_for_select([["All Jeevika Jankar", ""]] + @farmer_participation_filter_options[:vrps], @farmer_participation_selected_filters[:vrp_id]) %>
+        </label>
+        <div class="participation-filter-actions">
+          <%= form.submit "Apply Filters", class: "list-btn active" %>
+          <%= link_to "Clear", farmer_participation_report_path, class: "list-btn" %>
+        </div>
+      <% end %>
+      <% if @farmer_participation_filter_warning.present? %>
+        <p class="participation-filter-warning"><%= @farmer_participation_filter_warning %></p>
+      <% end %>
+    </section>
+
+    <% if @farmer_participation_filters_applied %>
+    <section class="participation-summary-grid">
+      <article><span>Farmers</span><strong><%= @farmer_participation_totals[:farmers] %></strong></article>
+      <article><span>Total Participations</span><strong><%= @farmer_participation_totals[:participations] %></strong></article>
+      <article><span>Activity / Sub Activity</span><strong><%= @farmer_participation_totals[:activities] %></strong></article>
+      <article><span>Training Methods</span><strong><%= @farmer_participation_totals[:trainings] %></strong></article>
+    </section>
+
+    <section class="vrp-list-card">
+      <div class="list-controls">
+        <strong>Participation List</strong>
+        <div class="list-search compact">
+          <span>⌕</span>
+          <input type="search" placeholder="List search karein" data-table-search="farmer_participation_list">
+        </div>
+      </div>
+      <div class="table-shell">
+        <table class="module-table vrp-list-table" id="farmer_participation_list" data-paginated-table data-page-size="20">
+          <thead>
+            <tr>
+              <th>Farmer Name</th>
+              <th>Tracenet No.</th>
+              <th>Village</th>
+              <th>Month</th>
+              <th>FCOC</th>
+              <th>Jeevika Jankar</th>
+              <th>Main Activity</th>
+              <th>Sub Activity</th>
+              <th>Training Method</th>
+              <th>Participation Count</th>
+              <th>Training Dates</th>
+            </tr>
+          </thead>
+          <tbody>
+            <% if @farmer_participation_rows.any? %>
+              <% @farmer_participation_rows.each do |row| %>
+                <tr>
+                  <td><strong><%= row[:farmer_name] %></strong></td>
+                  <td><%= row[:tracenet_no] %></td>
+                  <td><%= row[:village] %></td>
+                  <td><%= row[:month] %></td>
+                  <td><%= row[:fcoc] %></td>
+                  <td><%= row[:vrp_name] %></td>
+                  <td><%= row[:main_activity] %></td>
+                  <td><%= row[:sub_activity] %></td>
+                  <td><%= row[:training_method] %></td>
+                  <td class="participation-count"><%= row[:participation_count] %></td>
+                  <td><%= row[:training_dates] %></td>
+                </tr>
+              <% end %>
+            <% else %>
+              <tr><td colspan="11">Selected filters ke liye participation record nahi mila.</td></tr>
+            <% end %>
+          </tbody>
+        </table>
+      </div>
+      <div class="table-pagination" data-pagination-for="farmer_participation_list"></div>
+    </section>
+    <% else %>
+      <section class="module-card participation-filter-prompt">
+        Farmer ya organization filter select karke <strong>Apply Filters</strong> karein. Participation list filter lagane ke baad dikhegi.
+      </section>
+    <% end %>
+  </section>
+</main>
