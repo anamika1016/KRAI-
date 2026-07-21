@@ -2872,6 +2872,9 @@ function initDeferredLayoutPage() {
   });
 
   document.querySelectorAll("[data-target-mapping]").forEach((shell) => {
+    if (shell.dataset.targetMappingBound === "true") return;
+    shell.dataset.targetMappingBound = "true";
+
     const vrpSelect = shell.querySelector("[data-target-vrp]");
     const fcoSelect = shell.querySelector("[data-target-fco]");
     const icsSelect = shell.querySelector("[data-target-ics]");
@@ -2905,6 +2908,14 @@ function initDeferredLayoutPage() {
     const farmerDialogSelectAll = shell.querySelector("[data-target-dialog-select-all]");
     const farmerDialogClear = shell.querySelector("[data-target-dialog-clear]");
     const form = shell.querySelector("form");
+    const savedEditFarmerIds = () => {
+      const ids = Array.from(shell.querySelectorAll("[data-edit-saved-target-farmer-id]"))
+        .map((input) => String(input.value || ""))
+        .filter(Boolean);
+      if (ids.length) return [...new Set(ids)];
+
+      return Array(editTarget.afl_ids || []).map((id) => String(id)).filter(Boolean);
+    };
     let editTarget = {};
     let targetSubActivityRows = [];
     let mainActivityTypeRows = [];
@@ -2912,6 +2923,7 @@ function initDeferredLayoutPage() {
     let activeFarmerDialogRowKey = "";
     const weeklyPlanValues = {};
     const weeklyPlanFarmerIds = {};
+    const weeklyPlanFarmerIdsDirty = new Set();
     try {
       editTarget = JSON.parse(shell.dataset.editTarget || "{}");
     } catch (_error) {
@@ -3171,13 +3183,23 @@ function initDeferredLayoutPage() {
 
     const weeklyRowKey = (row) => `${row.mainActivity || ""}||${row.subActivity || ""}`;
     const farmerIdsForRow = (rowKey) => {
-      weeklyPlanFarmerIds[rowKey] ||= new Set();
+      const [mainActivity, subActivity] = String(rowKey || "").split("||");
+      const savedFarmerIds = savedEditFarmerIds();
+      const editRowMatches = editTarget.id &&
+        normalizeOption(mainActivity) === normalizeOption(editTarget.main_activity_names?.[0]) &&
+        normalizeOption(subActivity || mainActivity) === normalizeOption(editTarget.activity_names?.[0]);
+
+      if (editRowMatches && savedFarmerIds.length && !weeklyPlanFarmerIdsDirty.has(rowKey)) {
+        weeklyPlanFarmerIds[rowKey] = new Set(savedFarmerIds);
+      } else {
+        weeklyPlanFarmerIds[rowKey] ||= new Set();
+      }
       return weeklyPlanFarmerIds[rowKey];
     };
     const restoreEditFarmerSelections = (rows) => {
       if (!editTarget.id || editTarget.farmerSelectionsRestored) return;
 
-      const savedFarmerIds = Array(editTarget.afl_ids || []).map((id) => String(id)).filter(Boolean);
+      const savedFarmerIds = savedEditFarmerIds();
       if (!savedFarmerIds.length || !rows.length) return;
 
       const matchingRow = rows.find((row) => (
@@ -3312,6 +3334,7 @@ function initDeferredLayoutPage() {
 
           if (dialogBox.checked) selectedIds.add(String(dialogBox.value));
           else selectedIds.delete(String(dialogBox.value));
+          weeklyPlanFarmerIdsDirty.add(activeFarmerDialogRowKey);
           syncDialogFarmerTotals();
           renderTargetWeeklySummary();
         });
@@ -3485,6 +3508,7 @@ function initDeferredLayoutPage() {
         const selectedIds = farmerIdsForRow(input.dataset.weeklyRowKey);
         if (Number.isInteger(limit) && limit >= 0 && selectedIds.size > limit) {
           Array.from(selectedIds).slice(limit).forEach((id) => selectedIds.delete(id));
+          weeklyPlanFarmerIdsDirty.add(input.dataset.weeklyRowKey);
           renderTargetWeeklySummary();
           window.alert(farmerLimitMessage(limit));
         }
@@ -3506,6 +3530,7 @@ function initDeferredLayoutPage() {
       available.forEach((checkbox, index) => {
         if (!Number.isInteger(limit) || limit < 0 || index < limit) selectedIds.add(String(checkbox.value));
       });
+      weeklyPlanFarmerIdsDirty.add(activeFarmerDialogRowKey);
       renderTargetWeeklySummary();
       renderDialogFarmers();
       if (Number.isInteger(limit) && limit >= 0 && available.length > limit) {
@@ -3514,6 +3539,7 @@ function initDeferredLayoutPage() {
     });
     farmerDialogClear?.addEventListener("click", () => {
       selectedFarmerIdsForActiveRow().clear();
+      weeklyPlanFarmerIdsDirty.add(activeFarmerDialogRowKey);
       renderTargetWeeklySummary();
       renderDialogFarmers();
     });

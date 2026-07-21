@@ -19,6 +19,11 @@
         <%= form_with url: target_mappings_path, method: :post, local: true, html: { class: "module-entry-form" } do %>
           <% if @edit_target %>
             <input type="hidden" name="target_mapping[id]" value="<%= @edit_target.id %>">
+            <div hidden data-edit-saved-target-farmers>
+              <% Array(@edit_target.afl_ids).map(&:to_s).reject(&:blank?).uniq.each do |farmer_id| %>
+                <input type="hidden" value="<%= farmer_id %>" data-edit-saved-target-farmer-id>
+              <% end %>
+            </div>
           <% end %>
           <div class="module-form-grid user-registration-grid">
             <label>
