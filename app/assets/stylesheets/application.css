@@ -4425,6 +4425,21 @@ body {
   overflow: auto;
 }
 
+.target-farmer-dialog-footer {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 14px;
+  padding-top: 12px;
+  border-top: 1px solid var(--vrp-line);
+}
+
+.target-farmer-dialog-footer span {
+  margin-right: auto;
+  color: var(--vrp-muted);
+  font-size: 0.88rem;
+}
+
 @media (max-width: 1180px) {
   .vrp-ics-grid,
   .vrp-ics-farmer-list {
@@ -4457,7 +4472,8 @@ body {
   }
 
   .target-farmer-dialog-header,
-  .target-farmer-dialog-tools {
+  .target-farmer-dialog-tools,
+  .target-farmer-dialog-footer {
     align-items: stretch;
     flex-direction: column;
   }

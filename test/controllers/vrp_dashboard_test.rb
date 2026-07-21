@@ -392,6 +392,9 @@ class VrpDashboardTest < ActionDispatch::IntegrationTest
     assert_response :success
     assert_includes response.body, "Farmer Training Form"
     assert_includes response.body, "Target Farmers"
+    assert_includes response.body, "Save Farmers"
+    assert_includes response.body, "Search target farmers"
+    assert_includes response.body, "No target farmers matched your search."
     assert_includes response.body, "Training Farmer 1"
     assert_includes response.body, "Training Farmer 2"
     refute_includes response.body, "Training Farmer 3"

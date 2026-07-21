@@ -9,6 +9,7 @@ Rails.application.routes.draw do
       post "forgot-password/send-otp", to: "password_resets#send_otp"
       post "forgot-password/reset", to: "password_resets#reset"
       get "me", to: "sessions#show"
+      get "sidebar-menus", to: "sidebar_menus#index"
       delete "logout", to: "sessions#destroy"
 
       # Jeevika Jankar (VRP) — React Native APIs; web /vrps routes unchanged

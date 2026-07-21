@@ -921,6 +921,7 @@ class ModulesController < ApplicationController
 
     mappings = vrp_dashboard_mappings(@vrp)
     targets = vrp_dashboard_targets(@vrp)
+    targets = dashboard_targets_for_month(targets, params[:training_month]) if params[:training_month].present?
     bills = vrp_dashboard_bills(@vrp)
     @vrp_dashboard_detail = vrp_dashboard_detail_payload(params[:list_type], @vrp, mappings, targets, bills, params)
 
@@ -1318,7 +1319,6 @@ class ModulesController < ApplicationController
     @vrp_dashboard = true
     @dashboard_generated_at = Time.current
     @vrp = current_vrp_record
-    selected_month = dashboard_selected_training_month_name
     selected_sub_activity = dashboard_selected_training_sub_activity_name
 
     unless @vrp
@@ -1331,18 +1331,19 @@ class ModulesController < ApplicationController
 
     mappings = vrp_dashboard_mappings(@vrp)
     targets = vrp_dashboard_targets(@vrp)
+    @training_month_options = dashboard_month_options_for_targets(targets)
+    selected_month = dashboard_selected_training_month_name.presence || default_vrp_dashboard_month(@training_month_options)
     filtered_targets = dashboard_targets_for_month(targets, selected_month)
     training_targets = dashboard_targets_for_filters(targets, selected_month, selected_sub_activity)
     bills = vrp_dashboard_bills(@vrp)
     targeted_farmer_ids = vrp_targeted_farmer_ids(filtered_targets)
-    mapped_farmer_count = targeted_farmer_ids.any? ? targeted_farmer_ids.size : vrp_mapped_farmer_count(mappings)
+    mapped_farmer_count = targeted_farmer_ids.size
     main_activity_count = filtered_targets.map { |target| normalize_dashboard_text(target.main_activity_name) }.reject(&:blank?).uniq.size
     sub_activity_count = filtered_targets.map { |target| normalize_dashboard_text(target.activity_name) }.reject(&:blank?).uniq.size
     target_total = filtered_targets.sum { |target| target.target_quantity.to_f }
     @vrp_village_rows = vrp_dashboard_village_rows(@vrp, mappings, filtered_targets)
     @training_selected_month = selected_month
     @training_selected_sub_activity = selected_sub_activity
-    @training_month_options = dashboard_month_options_for_targets(targets)
     @training_sub_activity_options = dashboard_sub_activity_options_for_targets(filtered_targets, selected_month)
     participation_records = dashboard_training_participation_records(month_name: selected_month, sub_activity_name: selected_sub_activity)
     @training_participation_status_cards = training_participation_status_cards_from_records(participation_records, month_name: selected_month, sub_activity_name: selected_sub_activity)
@@ -1350,19 +1351,20 @@ class ModulesController < ApplicationController
     @training_participation = training_participation_summary(training_targets, month_name: selected_month)
     @farmer_training_dashboard_rows = farmer_training_dashboard_rows(training_targets, month_name: selected_month)
     village_count = @vrp_village_rows.size
-    @vrp_target_rows = vrp_dashboard_target_progress_rows(targets, bills)
+    @vrp_target_rows = vrp_dashboard_target_progress_rows(filtered_targets, bills)
     assigned_target_total = @vrp_target_rows.sum { |row| row[:target].to_f }
     achieved_target_total = @vrp_target_rows.sum { |row| row[:completed].to_f }
     pending_target_total = @vrp_target_rows.sum { |row| row[:pending].to_f }
+    month_caption = selected_month.presence || "selected month"
 
     @dashboard_cards = [
-      dashboard_card("Mapped Farmers", mapped_farmer_count, "Unique farmers linked to your target rows", vrp_dashboard_list_path("mapped_farmers")),
-      dashboard_card("Mapped Villages", village_count, "Villages assigned for field work", vrp_dashboard_list_path("mapped_villages")),
-      dashboard_card("Main Activities", main_activity_count, "Main activities mapped to your targets", vrp_dashboard_list_path("main_activities")),
-      dashboard_card("Sub Activities", sub_activity_count, "Sub activities mapped to your targets", vrp_dashboard_list_path("sub_activities")),
-      dashboard_card("Assigned Target", dashboard_quantity(assigned_target_total), "Total target quantity assigned to you", vrp_dashboard_list_path("assigned_target")),
-      dashboard_card("Achieved Target", dashboard_quantity(achieved_target_total), "Target completed so far", vrp_dashboard_list_path("achieved_target")),
-      dashboard_card("Pending Target", dashboard_quantity(pending_target_total), "Target left to complete", vrp_dashboard_list_path("pending_target"))
+      dashboard_card("Mapped Farmers", mapped_farmer_count, "Unique farmers linked to #{month_caption} target rows", vrp_dashboard_list_path("mapped_farmers", training_month: selected_month)),
+      dashboard_card("Mapped Villages", village_count, "Villages assigned in #{month_caption}", vrp_dashboard_list_path("mapped_villages", training_month: selected_month)),
+      dashboard_card("Main Activities", main_activity_count, "Main activities mapped in #{month_caption}", vrp_dashboard_list_path("main_activities", training_month: selected_month)),
+      dashboard_card("Sub Activities", sub_activity_count, "Sub activities mapped in #{month_caption}", vrp_dashboard_list_path("sub_activities", training_month: selected_month)),
+      dashboard_card("Assigned Target", dashboard_quantity(assigned_target_total), "Target quantity assigned in #{month_caption}", vrp_dashboard_list_path("assigned_target", training_month: selected_month)),
+      dashboard_card("Achieved Target", dashboard_quantity(achieved_target_total), "Target completed in #{month_caption}", vrp_dashboard_list_path("achieved_target", training_month: selected_month)),
+      dashboard_card("Pending Target", dashboard_quantity(pending_target_total), "Target pending in #{month_caption}", vrp_dashboard_list_path("pending_target", training_month: selected_month))
     ]
     @vrp_farmer_followup = empty_vrp_farmer_followup
   end
@@ -1571,7 +1573,7 @@ class ModulesController < ApplicationController
     when "target_farmers"
       vrp_dashboard_target_farmer_payload(targets, filters)
     when "mapped_farmers"
-      rows = vrp_dashboard_mapped_farmer_rows(mappings, targets)
+      rows = vrp_dashboard_mapped_farmer_rows(mappings, targets, include_mapping_fallback: filters[:training_month].blank?)
       dashboard_detail_payload(key, "Mapped Farmers", "Unique farmers linked to your target rows.", rows.size, ["Farmer", "Father Name", "Mobile", "TraceNet No", "ICS", "Village", "Status"], rows)
     when "mapped_villages"
       village_rows = vrp_dashboard_village_rows(vrp, mappings, targets)
@@ -1620,9 +1622,11 @@ class ModulesController < ApplicationController
     }
   end
 
-  def vrp_dashboard_mapped_farmer_rows(mappings, targets)
+  def vrp_dashboard_mapped_farmer_rows(mappings, targets, include_mapping_fallback: true)
     farmer_ids = vrp_targeted_farmer_ids(targets)
-    farmer_ids = mappings.flat_map { |mapping| Array(mapping.afl_ids).map(&:to_s) }.reject(&:blank?).uniq if farmer_ids.blank?
+    if farmer_ids.blank? && include_mapping_fallback
+      farmer_ids = mappings.flat_map { |mapping| Array(mapping.afl_ids).map(&:to_s) }.reject(&:blank?).uniq
+    end
     farmers_by_id = model_ready?(:Afl) && farmer_ids.any? ? Afl.where(id: farmer_ids).index_by { |farmer| farmer.id.to_s } : {}
 
     farmer_ids.map do |farmer_id|
@@ -3082,6 +3086,11 @@ class ModulesController < ApplicationController
 
   def dashboard_selected_training_month_name
     params[:training_month].presence || params[:dashboard_month].presence
+  end
+
+  def default_vrp_dashboard_month(month_options)
+    current_month = Date.current.strftime("%B")
+    Array(month_options).find { |month| normalize_dashboard_text(month) == normalize_dashboard_text(current_month) } || Array(month_options).last
   end
 
   def dashboard_selected_training_sub_activity_name

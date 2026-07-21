@@ -1749,6 +1749,8 @@ function initDeferredLayoutPage() {
 	    const farmerCount = formShell.querySelector("[data-training-farmer-count]");
 	    const farmerCountInput = formShell.querySelector("[data-training-farmer-count-input]");
 	    const totalFarmerCountInput = formShell.querySelector("[data-training-total-farmer-count-input]");
+	    const farmerSearchInput = formShell.querySelector("[data-training-farmer-search]");
+	    const farmerSearchEmpty = formShell.querySelector("[data-training-farmer-search-empty]");
 	    const maleCountInput = formShell.querySelector('input[name="module_record[male_count]"]');
 	    const femaleCountInput = formShell.querySelector('input[name="module_record[female_count]"]');
 	    const geoLatitudeInput = formShell.querySelector("[data-training-geo-latitude]");
@@ -1887,6 +1889,19 @@ function initDeferredLayoutPage() {
 
 	    const selectedFarmerBoxes = () => Array.from(formShell.querySelectorAll("[data-training-farmer-checkbox]:checked"));
 	    const farmerBoxes = () => Array.from(formShell.querySelectorAll("[data-training-farmer-checkbox]"));
+	    const applyTrainingFarmerSearch = () => {
+	      if (!farmerList) return;
+
+	      const term = (farmerSearchInput?.value || "").trim().toLowerCase();
+	      const items = Array.from(farmerList.querySelectorAll(".vrp-ics-farmer-item"));
+	      let visibleCount = 0;
+	      items.forEach((item) => {
+	        const visible = !term || item.innerText.toLowerCase().includes(term);
+	        item.hidden = !visible;
+	        if (visible) visibleCount += 1;
+	      });
+	      if (farmerSearchEmpty) farmerSearchEmpty.hidden = visibleCount > 0 || !items.length;
+	    };
 	    const numberValue = (input) => Number(input?.value || 0);
 
 	    const syncTotalFarmerCount = () => {
@@ -1951,6 +1966,7 @@ function initDeferredLayoutPage() {
 
 	    const renderTrainingFarmers = () => {
 	      if (!farmerList) return;
+	      if (farmerSearchEmpty) farmerSearchEmpty.hidden = true;
 	      const farmers = mappedFarmers();
 
 	      if (monthSelect && !monthSelect.value) {
@@ -2010,6 +2026,7 @@ function initDeferredLayoutPage() {
 	          </label>
 	        `;
 	      }).join("");
+	      applyTrainingFarmerSearch();
 
 	      farmerList.querySelectorAll("[data-training-farmer-checkbox]").forEach((checkbox) => {
 	        checkbox.addEventListener("change", () => {
@@ -2023,6 +2040,8 @@ function initDeferredLayoutPage() {
 	      });
 	      updateFarmerCount();
 	    };
+
+	    farmerSearchInput?.addEventListener("input", applyTrainingFarmerSearch);
 
 	    farmerSelectAll?.addEventListener("change", () => {
 	      farmerBoxes().forEach((checkbox) => {
@@ -2907,6 +2926,8 @@ function initDeferredLayoutPage() {
     const farmerDialogEmpty = shell.querySelector("[data-target-dialog-farmer-empty]");
     const farmerDialogSelectAll = shell.querySelector("[data-target-dialog-select-all]");
     const farmerDialogClear = shell.querySelector("[data-target-dialog-clear]");
+    const farmerDialogSave = shell.querySelector("[data-target-dialog-save]");
+    const farmerDialogSaveStatus = shell.querySelector("[data-target-dialog-save-status]");
     const form = shell.querySelector("form");
     const savedEditFarmerIds = () => {
       const ids = Array.from(shell.querySelectorAll("[data-edit-saved-target-farmer-id]"))
@@ -3357,6 +3378,8 @@ function initDeferredLayoutPage() {
       activeFarmerDialogRowKey = rowKey || "";
       if (farmerDialogTitle) farmerDialogTitle.textContent = activityLabel || "Farmer List";
       if (farmerDialogSearch) farmerDialogSearch.value = "";
+      if (farmerDialogSave) farmerDialogSave.textContent = "Save Farmers";
+      if (farmerDialogSaveStatus) farmerDialogSaveStatus.textContent = "Select farmers, then save the selection.";
       renderDialogFarmers();
 
       if (typeof farmerDialog.showModal === "function") farmerDialog.showModal();
@@ -3552,6 +3575,18 @@ function initDeferredLayoutPage() {
       weeklyPlanFarmerIdsDirty.add(activeFarmerDialogRowKey);
       renderTargetWeeklySummary();
       renderDialogFarmers();
+    });
+    farmerDialogSave?.addEventListener("click", () => {
+      const selectedCount = selectedFarmerIdsForActiveRow().size;
+      renderTargetWeeklySummary();
+      if (farmerDialogSave) farmerDialogSave.textContent = `Saved (${selectedCount})`;
+      if (farmerDialogSaveStatus) {
+        farmerDialogSaveStatus.textContent = "Farmer selection saved in the form. Submit Target to save the target.";
+      }
+      window.setTimeout(() => {
+        if (typeof farmerDialog?.close === "function") farmerDialog.close();
+        else farmerDialog?.removeAttribute("open");
+      }, 500);
     });
     newFarmerTargetInput?.addEventListener("input", () => {
       syncNewFarmerTargetMode();

@@ -26,9 +26,18 @@
       <div class="vrp-work-overview-header">
         <div>
           <h2>Work Overview</h2>
-          <p>Your assigned work area and current target progress.</p>
+          <p><%= @training_selected_month %> assigned work area and target progress.</p>
         </div>
-        <span>Click any number to open its detailed list</span>
+        <div class="dashboard-actions">
+          <%= form_with url: dashboard_path, method: :get, local: true do |form| %>
+            <%= form.label :training_month, "Month" %>
+            <%= form.select :training_month,
+                  options_for_select(@training_month_options.map { |month| [month, month] }, @training_selected_month),
+                  {},
+                  onchange: "this.form.submit()" %>
+          <% end %>
+          <span>Click any number to open its monthly detailed list</span>
+        </div>
       </div>
       <div class="vrp-work-overview-metrics">
         <% ["Mapped Farmers", "Mapped Villages", "Main Activities", "Sub Activities", "Assigned Target", "Achieved Target", "Pending Target"].each do |title| %>
