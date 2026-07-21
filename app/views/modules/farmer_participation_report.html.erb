@@ -51,9 +51,12 @@
     <section class="vrp-list-card">
       <div class="list-controls">
         <strong>Participation List</strong>
-        <div class="list-search compact">
-          <span>⌕</span>
-          <input type="search" placeholder="List search karein" data-table-search="farmer_participation_list">
+        <div class="list-control-actions">
+          <%= link_to "Export Excel", farmer_participation_report_path(@farmer_participation_selected_filters.merge(format: :xlsx)), class: "list-btn export" %>
+          <div class="list-search compact">
+            <span>⌕</span>
+            <input type="search" placeholder="List search karein" data-table-search="farmer_participation_list">
+          </div>
         </div>
       </div>
       <div class="table-shell">

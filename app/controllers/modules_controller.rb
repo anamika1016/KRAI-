@@ -842,6 +842,17 @@ class ModulesController < ApplicationController
       activities: entries.map { |entry| [entry[:main_activity], entry[:sub_activity]] }.uniq.size,
       trainings: entries.map { |entry| entry[:training_method] }.reject { |value| ["-", "Not Recorded"].include?(value) }.uniq.size
     }
+
+    respond_to do |format|
+      format.html
+      format.xlsx do
+        headers = ["Farmer Name", "Tracenet No.", "Village", "Month", "FCOC", "Jeevika Jankar", "Main Activity", "Sub Activity", "Training Method", "Participation Count", "Training Dates"]
+        rows = @farmer_participation_rows.map do |row|
+          [row[:farmer_name], row[:tracenet_no], row[:village], row[:month], row[:fcoc], row[:vrp_name], row[:main_activity], row[:sub_activity], row[:training_method], row[:participation_count], row[:training_dates]]
+        end
+        send_xlsx(headers: headers, rows: rows, filename: "farmer-participation-#{Time.current.strftime('%Y%m%d%H%M')}.xlsx", sheet_name: "Farmer Participation")
+      end
+    end
   end
 
   def weekly_activity_target_report
@@ -1522,6 +1533,7 @@ class ModulesController < ApplicationController
       )
       target_quantity = target.target_quantity.to_f
       pending = [target_quantity - completed, 0].max
+      week_targets = target.respond_to?(:weekly_target_values) ? target.weekly_target_values : [0, 0, 0, 0]
 
       {
         month: target.month_name,
@@ -1535,6 +1547,15 @@ class ModulesController < ApplicationController
         activity: target.activity_name,
         target_mapping_id: target.id.to_s,
         target: target_quantity,
+        week_1: week_targets[0],
+        week_2: week_targets[1],
+        week_3: week_targets[2],
+        week_4: week_targets[3],
+        opg_training: target.opg_training_target,
+        general_training: target.week_wise_opg_target,
+        input_demo_inm: target.input_demo_inm_target,
+        input_demo_pm: target.input_demo_pm_target,
+        ffs: target.ffs_target,
         completed: completed,
         pending: pending,
         progress: percentage(completed, target_quantity)
@@ -1737,7 +1758,7 @@ class ModulesController < ApplicationController
   end
 
   def vrp_target_detail_headers
-    ["Month", "Completion Date", "FCO", "ICS", "Village", "Farmers", "Main Activity", "Sub Activity", "Target", "Completed", "Pending", "Progress", "Farmer List"]
+    ["Month", "Completion Date", "FCO", "ICS", "Village", "Farmers", "Main Activity", "Sub Activity", "Target", "Week 1", "Week 2", "Week 3", "Week 4", "OPG Training", "General Training/Meeting", "Input Demo INM", "Input Demo PM", "FFS", "Completed", "Pending", "Progress", "Farmer List"]
   end
 
   def vrp_target_detail_rows(rows, farmer_scope:)
@@ -1752,6 +1773,15 @@ class ModulesController < ApplicationController
         row[:main_activity].presence || "-",
         row[:activity].presence || "-",
         dashboard_quantity(row[:target]),
+        dashboard_quantity(row[:week_1]),
+        dashboard_quantity(row[:week_2]),
+        dashboard_quantity(row[:week_3]),
+        dashboard_quantity(row[:week_4]),
+        row[:opg_training].present? ? dashboard_quantity(row[:opg_training]) : "-",
+        row[:general_training].present? ? dashboard_quantity(row[:general_training]) : "-",
+        row[:input_demo_inm].present? ? dashboard_quantity(row[:input_demo_inm]) : "-",
+        row[:input_demo_pm].present? ? dashboard_quantity(row[:input_demo_pm]) : "-",
+        row[:ffs].present? ? dashboard_quantity(row[:ffs]) : "-",
         dashboard_quantity(row[:completed]),
         dashboard_quantity(row[:pending]),
         row[:progress],
@@ -2238,6 +2268,11 @@ class ModulesController < ApplicationController
       .select { |record| training_record_selected_farmer_ids(record).any? }
       .select { |record| month_name.blank? || normalize_dashboard_text(training_record_month_name(record)) == normalize_dashboard_text(month_name) }
       .select { |record| sub_activity_name.blank? || normalize_dashboard_text(training_summary(record)[:training_subject]) == normalize_dashboard_text(sub_activity_name) }
+
+    if vrp_login_user?
+      vrp = current_vrp_record
+      records = vrp ? records.select { |record| training_record_matches_vrp?(record, vrp) } : []
+    end
 
     if @filtered_vrps.present?
       records = records.select do |record|
@@ -5533,8 +5568,11 @@ class ModulesController < ApplicationController
 
   def training_record_matches_vrp?(record, vrp)
     values = [
+      record.data["jeevika_jankar_id"],
+      record.data["vrp_id"],
       record.data["trainer_contact"],
       record.data["trainer_name"],
+      record.data["jeevika_jankar_name"],
       record.data["select_vrp"],
       record.data["vrp_name"]
     ].map { |value| normalize_dashboard_text(value) }.reject(&:blank?)

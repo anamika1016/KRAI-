@@ -15,11 +15,11 @@
   <div class="module-card-header training-participation-status-header">
     <div>
       <h2>Farmer Training Participation Status (Automatic)</h2>
-      <p>Farmer Target Form ke selected farmers ki training attendance count ke hisaab se status.</p>
+      <p>Total = farmers with training records; Green = 3 or more, Yellow = 1–2, Red = no training in a closed month, Pending = training due in an open month.</p>
     </div>
   </div>
 
-  <div class="training-participation-boxes">
+  <div class="training-participation-boxes compact">
     <% if status_cards.any? %>
       <%= link_to farmer_training_participation_path(total_status_path_params), class: "training-participation-box total", data: { dashboard_card: true } do %>
         <span>Total Training Farmer</span>

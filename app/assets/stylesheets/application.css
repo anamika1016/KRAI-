@@ -623,6 +623,184 @@ body {
   gap: 20px;
 }
 
+.vrp-compact-summary-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1.15fr) minmax(0, 0.85fr);
+  gap: 16px;
+}
+
+.vrp-work-overview {
+  display: grid;
+  gap: 0;
+  padding: 0;
+  overflow: hidden;
+}
+
+.vrp-work-overview-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 16px 18px;
+  border-bottom: 1px solid var(--vrp-line);
+  background: linear-gradient(120deg, rgba(89, 143, 64, 0.12), rgba(93, 140, 146, 0.08), var(--vrp-panel));
+}
+
+.vrp-work-overview-header h2,
+.vrp-work-overview-header p {
+  margin: 0;
+}
+
+.vrp-work-overview-header h2 {
+  font-size: 1.05rem;
+}
+
+.vrp-work-overview-header p,
+.vrp-work-overview-header > span {
+  margin-top: 3px;
+  color: var(--vrp-muted);
+  font-size: 0.76rem;
+  font-weight: 650;
+}
+
+.vrp-work-overview-metrics {
+  display: grid;
+  grid-template-columns: repeat(7, minmax(110px, 1fr));
+  gap: 0;
+  padding: 8px;
+}
+
+.vrp-work-overview-metrics a {
+  display: grid;
+  align-content: center;
+  min-height: 104px;
+  padding: 12px;
+  border-right: 1px solid var(--vrp-line);
+  color: inherit;
+  text-decoration: none;
+}
+
+.vrp-work-overview-metrics a:last-child {
+  border-right: 0;
+}
+
+.vrp-work-overview-metrics a:hover {
+  background: var(--vrp-panel-soft);
+}
+
+.vrp-work-overview-metrics span {
+  color: var(--vrp-muted);
+  font-size: 0.72rem;
+  font-weight: 850;
+  text-transform: uppercase;
+}
+
+.vrp-work-overview-metrics strong {
+  margin: 6px 0;
+  color: var(--vrp-accent);
+  font-size: 1.8rem;
+  line-height: 1;
+}
+
+.vrp-work-overview-metrics .achieved-target strong { color: var(--vrp-primary); }
+.vrp-work-overview-metrics .pending-target strong { color: #b7791f; }
+
+.vrp-work-overview-metrics small {
+  color: var(--vrp-muted);
+  font-size: 0.65rem;
+  line-height: 1.25;
+}
+
+@media (max-width: 1180px) {
+  .vrp-work-overview-metrics { grid-template-columns: repeat(4, minmax(120px, 1fr)); }
+  .vrp-work-overview-metrics a { border-bottom: 1px solid var(--vrp-line); }
+}
+
+@media (max-width: 680px) {
+  .vrp-work-overview-header { align-items: flex-start; flex-direction: column; }
+  .vrp-work-overview-metrics { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+
+.vrp-compact-summary-card {
+  display: grid;
+  gap: 14px;
+  padding: 0;
+  overflow: hidden;
+}
+
+.vrp-compact-summary-heading {
+  padding: 14px 16px 12px;
+  border-bottom: 1px solid var(--vrp-line);
+  background: linear-gradient(135deg, rgba(93, 140, 146, 0.12), var(--vrp-panel));
+}
+
+.vrp-compact-summary-card.target .vrp-compact-summary-heading {
+  background: linear-gradient(135deg, rgba(89, 143, 64, 0.14), var(--vrp-panel));
+}
+
+.vrp-compact-summary-heading span,
+.vrp-compact-summary-heading small {
+  display: block;
+}
+
+.vrp-compact-summary-heading span {
+  font-size: 1rem;
+  font-weight: 900;
+}
+
+.vrp-compact-summary-heading small {
+  margin-top: 3px;
+  color: var(--vrp-muted);
+  font-weight: 650;
+}
+
+.vrp-compact-metrics {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 8px;
+  padding: 0 14px 14px;
+}
+
+.vrp-compact-metrics.three {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.vrp-compact-metrics a {
+  display: grid;
+  gap: 5px;
+  min-width: 0;
+  padding: 14px 10px;
+  border: 1px solid var(--vrp-line);
+  border-radius: 8px;
+  color: inherit;
+  text-align: center;
+  text-decoration: none;
+  background: var(--vrp-panel-soft);
+  box-shadow: inset 0 3px 0 rgba(93, 140, 146, 0.42);
+}
+
+.vrp-compact-summary-card.target .vrp-compact-metrics a {
+  box-shadow: inset 0 3px 0 rgba(89, 143, 64, 0.48);
+}
+
+.vrp-compact-metrics a:hover {
+  border-color: var(--vrp-accent);
+  transform: translateY(-1px);
+}
+
+.vrp-compact-metrics strong {
+  color: var(--vrp-accent);
+  font-size: 1.7rem;
+  line-height: 1;
+}
+
+.vrp-compact-metrics span {
+  color: var(--vrp-text);
+  font-size: 0.76rem;
+  font-weight: 850;
+  line-height: 1.2;
+}
+
 .dashboard-topbar {
   position: relative;
   display: flex;
@@ -653,6 +831,73 @@ body {
 .dashboard-topbar p:last-child {
   margin: 8px 0 0;
   color: var(--vrp-muted);
+}
+
+.dashboard-header-clock {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  min-width: 176px;
+  padding: 9px 13px;
+  border: 1px solid rgba(93, 140, 146, 0.28);
+  border-radius: 999px;
+  background: linear-gradient(135deg, rgba(93, 140, 146, 0.12), var(--vrp-panel));
+  text-align: right;
+  box-shadow: 0 5px 14px rgba(23, 33, 38, 0.06);
+}
+
+.dashboard-header-clock span {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  background: var(--vrp-primary);
+  color: #fff;
+  font-size: 0.68rem;
+  font-weight: 900;
+  text-transform: uppercase;
+}
+
+.dashboard-header-clock strong {
+  margin-left: auto;
+  font-size: 0.9rem;
+  line-height: 1;
+}
+
+.dashboard-header-clock small {
+  color: var(--vrp-muted);
+  font-size: 0.68rem;
+  font-weight: 700;
+}
+
+.weekly-plan-header p {
+  margin: 4px 0 0;
+  color: var(--vrp-muted);
+  font-size: 0.82rem;
+}
+
+.weekly-plan-filter {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.weekly-plan-filter label {
+  color: var(--vrp-muted);
+  font-size: 0.76rem;
+  font-weight: 850;
+}
+
+.weekly-plan-filter select {
+  min-width: 130px;
+  min-height: 38px;
+  border: 1px solid var(--vrp-line);
+  border-radius: 7px;
+  background: var(--vrp-panel);
+  color: var(--vrp-text);
+  padding: 7px 28px 7px 10px;
 }
 
 .dashboard-actions,
@@ -1435,6 +1680,34 @@ body {
 
 .training-participation-boxes.compact {
   grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+}
+
+.training-participation-boxes.compact .training-participation-box {
+  min-height: 96px;
+  padding: 12px 14px;
+  gap: 5px;
+}
+
+.training-participation-boxes.compact .training-participation-box strong {
+  font-size: 1.65rem;
+}
+
+.training-participation-boxes.compact .training-participation-box small {
+  font-size: 0.72rem;
+}
+
+.training-participation-boxes.compact .training-participation-box b {
+  margin-top: auto;
+  font-size: 0.72rem;
+}
+
+@media (max-width: 900px) {
+  .vrp-compact-summary-grid { grid-template-columns: 1fr; }
+}
+
+@media (max-width: 620px) {
+  .vrp-compact-metrics,
+  .vrp-compact-metrics.three { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 }
 
 .training-participation-box {

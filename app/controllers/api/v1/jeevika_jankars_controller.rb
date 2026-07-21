@@ -32,6 +32,7 @@ module Api
 
         vrp = Vrp.new(attrs)
         vrp.created_by_id = current_app_user_id if vrp.respond_to?(:created_by_id=)
+        vrp.created_by_type = current_app_user&.dig("record_type") if vrp.respond_to?(:created_by_type=)
         vrp.status = 10 if vrp.respond_to?(:status=)
         apply_current_identity_to_vrp(vrp)
 

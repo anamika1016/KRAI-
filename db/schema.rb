@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2026_07_17_170000) do
+ActiveRecord::Schema[8.1].define(version: 2026_07_21_120000) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "pg_catalog.plpgsql"
 
@@ -381,6 +381,10 @@ ActiveRecord::Schema[8.1].define(version: 2026_07_17_170000) do
     t.string "village_name"
     t.bigint "vrp_ics_mapping_id"
     t.bigint "vrp_id", null: false
+    t.integer "week_1_target"
+    t.integer "week_2_target"
+    t.integer "week_3_target"
+    t.integer "week_4_target"
     t.decimal "week_wise_opg_target", precision: 18, scale: 4
     t.index ["created_by_type", "created_by_id"], name: "index_target_mappings_on_creator"
     t.index ["fco_id", "ics_id", "village_id", "main_activity_name", "activity_name"], name: "index_target_mappings_on_activity_scope"
@@ -484,6 +488,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_07_17_170000) do
     t.string "cluster_incharge"
     t.datetime "created_at", null: false
     t.integer "created_by_id"
+    t.string "created_by_type"
     t.date "date_of_birth", null: false
     t.date "date_of_joining", null: false
     t.string "email", null: false
@@ -519,6 +524,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_07_17_170000) do
     t.index ["aadhar_no"], name: "index_vrps_on_aadhar_no"
     t.index ["agreement_accepted_at"], name: "index_vrps_on_agreement_accepted_at"
     t.index ["created_by_id"], name: "index_vrps_on_created_by_id"
+    t.index ["created_by_type", "created_by_id"], name: "index_vrps_on_created_by_type_and_created_by_id"
     t.index ["email"], name: "index_vrps_on_email"
     t.index ["mobile_no"], name: "index_vrps_on_mobile_no"
     t.index ["user_id"], name: "index_vrps_on_user_id"

@@ -109,7 +109,7 @@
 
             <label data-target-standard-quantity-fields>
               <span>Target <em>*</em></span>
-              <input type="number" name="target_mapping[target_quantity]" min="1" step="1" placeholder="Selected farmer count" value="<%= @edit_target&.target_quantity %>" data-target-quantity-input readonly required>
+              <input type="number" name="target_mapping[target_quantity]" min="1" step="1" placeholder="Selected farmer count" value="<%= @edit_payload[:target_quantity] %>" data-target-quantity-input readonly required>
             </label>
 
             <label data-target-standard-quantity-fields>
@@ -256,6 +256,10 @@
               <th class="target-training-column">Input Demo PM</th>
               <th class="target-training-column">FFS</th>
               <th class="target-count-column">Farmer Target</th>
+              <th class="target-count-column">Week 1</th>
+              <th class="target-count-column">Week 2</th>
+              <th class="target-count-column">Week 3</th>
+              <th class="target-count-column">Week 4</th>
               <th class="target-farmer-view-column">View Farmers</th>
 	              <% if show_mapping_actions %>
 	                <th>Action</th>
@@ -274,12 +278,17 @@
                   <td><%= target.completion_date&.strftime("%d-%m-%Y") || "-" %></td>
                   <td class="target-activity-text"><%= target.main_activity_name %></td>
                   <td class="target-activity-text"><%= target.activity_name %></td>
-                  <td><%= target.opg_training_target %></td>
-                  <td><%= target.week_wise_opg_target %></td>
-                  <td><%= target.input_demo_inm_target %></td>
-                  <td><%= target.input_demo_pm_target %></td>
-                  <td><%= target.ffs_target %></td>
-                  <td class="target-count-cell"><%= target.target_quantity %></td>
+                  <td><%= number_with_precision(target.opg_training_target, precision: 4, strip_insignificant_zeros: true) if target.opg_training_target.present? %></td>
+                  <td><%= number_with_precision(target.week_wise_opg_target, precision: 4, strip_insignificant_zeros: true) if target.week_wise_opg_target.present? %></td>
+                  <td><%= number_with_precision(target.input_demo_inm_target, precision: 4, strip_insignificant_zeros: true) if target.input_demo_inm_target.present? %></td>
+                  <td><%= number_with_precision(target.input_demo_pm_target, precision: 4, strip_insignificant_zeros: true) if target.input_demo_pm_target.present? %></td>
+                  <td><%= number_with_precision(target.ffs_target, precision: 4, strip_insignificant_zeros: true) if target.ffs_target.present? %></td>
+                  <td class="target-count-cell"><%= number_with_precision(target.target_quantity, precision: 4, strip_insignificant_zeros: true) %></td>
+                  <% week_targets = target.weekly_target_values %>
+                  <td class="target-count-cell"><%= week_targets[0] %></td>
+                  <td class="target-count-cell"><%= week_targets[1] %></td>
+                  <td class="target-count-cell"><%= week_targets[2] %></td>
+                  <td class="target-count-cell"><%= week_targets[3] %></td>
                   <% target_farmer_ids = Array(target.afl_ids).map(&:to_s).reject(&:blank?) %>
                   <td class="target-farmer-view-cell">
                     <% if target_farmer_ids.any? %>
@@ -328,7 +337,7 @@
               <% end %>
             <% else %>
               <tr>
-	                <td colspan="<%= show_mapping_actions ? 16 : 15 %>">No target mapping saved yet.</td>
+	                <td colspan="<%= show_mapping_actions ? 20 : 19 %>">No target mapping saved yet.</td>
               </tr>
             <% end %>
           </tbody>

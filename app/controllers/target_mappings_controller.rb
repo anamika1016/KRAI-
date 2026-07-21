@@ -146,7 +146,7 @@ class TargetMappingsController < ApplicationController
         main_activity_name: main_activity,
         activity_name: sub_activity,
         target_quantity: plan&.fetch("monthly", nil).presence || single_target_mapping_attributes[:target_quantity]
-      ))
+      ).merge(weekly_target_attributes(plan)))
       target_mapping.vrp_ics_mapping_id = nil
       normalize_location_values(target_mapping)
       assign_afl_location_names(target_mapping)
@@ -223,6 +223,18 @@ class TargetMappingsController < ApplicationController
 
     plan = weekly_plan_for(target_mapping.main_activity_name, target_mapping.activity_name)
     target_mapping.target_quantity = plan["monthly"] if plan&.dig("monthly").present?
+    target_mapping.assign_attributes(weekly_target_attributes(plan)) if plan
+  end
+
+  def weekly_target_attributes(plan)
+    return {} unless plan
+
+    {
+      week_1_target: integer_plan_value(plan["week_1"]),
+      week_2_target: integer_plan_value(plan["week_2"]),
+      week_3_target: integer_plan_value(plan["week_3"]),
+      week_4_target: integer_plan_value(plan["week_4"])
+    }
   end
 
   def weekly_plan_error
@@ -1129,10 +1141,10 @@ class TargetMappingsController < ApplicationController
       main_activity_type: training_mode ? "Training" : main_activity_type_for(target.main_activity_name),
       main_activity_names: [target.main_activity_name.to_s].reject(&:blank?),
       activity_names: [target.activity_name.to_s].reject(&:blank?),
-      target_quantity: target.target_quantity.to_s,
-      new_farmer_target_quantity: Array(target.afl_ids).blank? && !training_mode ? target.target_quantity.to_s : "",
+      target_quantity: target_number_value(target.target_quantity),
+      new_farmer_target_quantity: Array(target.afl_ids).blank? && !training_mode ? target_number_value(target.target_quantity) : "",
       training_targets: TRAINING_TARGET_FIELDS.keys.index_with do |key|
-        target.public_send("#{key}_target")&.to_s
+        target_number_value(target.public_send("#{key}_target"))
       end,
       afl_ids: Array(target.afl_ids).map(&:to_s)
     }
@@ -1144,6 +1156,14 @@ class TargetMappingsController < ApplicationController
 
     match = main_activity_type_map.find { |row| row[:main_activity].to_s.strip.downcase == name }
     match&.dig(:main_activity_type).presence || "Training"
+  end
+
+  def target_number_value(value)
+    return "" if value.blank?
+
+    BigDecimal(value.to_s).to_s("F").sub(/\.0+\z/, "").sub(/(\.\d*?)0+\z/, '\\1')
+  rescue ArgumentError
+    value.to_s
   end
 
   def encoded_location_values(values, labels)
