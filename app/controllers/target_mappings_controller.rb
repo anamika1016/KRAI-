@@ -443,7 +443,13 @@ class TargetMappingsController < ApplicationController
   end
 
   def new_farmer_target_mode?
-    new_farmer_target_quantity.present?
+    new_farmer_target_quantity.present? && submitted_farmer_ids.blank?
+  end
+
+  def submitted_farmer_ids
+    direct_ids = normalized_afl_ids(target_mapping_params[:afl_ids])
+    planned_ids = weekly_plan_rows.flat_map { |row| normalized_afl_ids(row["afl_ids"]) }
+    (direct_ids + planned_ids).uniq
   end
 
   def new_farmer_target_quantity

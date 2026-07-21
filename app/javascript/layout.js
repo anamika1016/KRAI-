@@ -2953,6 +2953,12 @@ function initDeferredLayoutPage() {
     const visibleAvailableTargetBoxes = () => availableTargetBoxes().filter((checkbox) => !checkbox.closest(".vrp-ics-farmer-item")?.hidden);
     const targetFarmerSearchTerm = () => (farmerSearchInput?.value || "").trim().toLowerCase();
     const newFarmerTargetMode = () => (newFarmerTargetInput?.value || "").trim() !== "";
+    const clearNewFarmerTargetForSelection = () => {
+      if (!newFarmerTargetInput || !newFarmerTargetMode()) return;
+
+      newFarmerTargetInput.value = "";
+      syncNewFarmerTargetMode();
+    };
     const syncNewFarmerTargetMode = () => {
       if (!targetInput) return;
 
@@ -3334,6 +3340,7 @@ function initDeferredLayoutPage() {
 
           if (dialogBox.checked) selectedIds.add(String(dialogBox.value));
           else selectedIds.delete(String(dialogBox.value));
+          if (dialogBox.checked) clearNewFarmerTargetForSelection();
           weeklyPlanFarmerIdsDirty.add(activeFarmerDialogRowKey);
           syncDialogFarmerTotals();
           renderTargetWeeklySummary();
@@ -3434,6 +3441,7 @@ function initDeferredLayoutPage() {
 
       farmerList.querySelectorAll("[data-target-farmer-checkbox]").forEach((checkbox) => {
         checkbox.addEventListener("change", () => {
+          if (checkbox.checked) clearNewFarmerTargetForSelection();
           updateTargetFarmerCount();
           if (farmerDialog?.open) renderDialogFarmers();
         });
@@ -3486,6 +3494,7 @@ function initDeferredLayoutPage() {
       visibleAvailableTargetBoxes().forEach((checkbox) => {
         checkbox.checked = farmerSelectAll.checked;
       });
+      if (farmerSelectAll.checked) clearNewFarmerTargetForSelection();
       updateTargetFarmerCount();
     });
 
@@ -3530,6 +3539,7 @@ function initDeferredLayoutPage() {
       available.forEach((checkbox, index) => {
         if (!Number.isInteger(limit) || limit < 0 || index < limit) selectedIds.add(String(checkbox.value));
       });
+      if (selectedIds.size) clearNewFarmerTargetForSelection();
       weeklyPlanFarmerIdsDirty.add(activeFarmerDialogRowKey);
       renderTargetWeeklySummary();
       renderDialogFarmers();
