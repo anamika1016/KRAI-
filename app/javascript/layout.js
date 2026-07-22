@@ -5258,7 +5258,11 @@ function initDeferredLayoutPage() {
   });
 
   const initializeLanguageSwitcher = () => {
-    if (window.__vrpLanguageSwitcherInitialized) {
+    const unboundSignatureShell = document.querySelector(
+      "[data-agreement-signature-shell]:not([data-agreement-signature-bound])"
+    );
+
+    if (window.__vrpLanguageSwitcherInitialized && !unboundSignatureShell) {
       const language = localStorage.getItem("vrp_language") || "en";
       if (language !== "en" && typeof window.__vrpApplyLanguage === "function") {
         window.__vrpApplyLanguage(language, document.querySelector(".app-main") || document.body);
@@ -5893,6 +5897,8 @@ function initDeferredLayoutPage() {
     }
 
     document.querySelectorAll("[data-agreement-signature-shell]").forEach((shell) => {
+      if (shell.dataset.agreementSignatureBound === "true") return;
+
       const canvas = shell.querySelector("[data-agreement-signature-pad]");
       const input = document.querySelector("[data-agreement-signature-input]");
       const clearButton = shell.querySelector("[data-agreement-signature-clear]");
@@ -5903,6 +5909,7 @@ function initDeferredLayoutPage() {
       const context = canvas.getContext("2d");
       if (!context) return;
 
+      shell.dataset.agreementSignatureBound = "true";
       canvas.style.touchAction = "none";
 
       let drawing = false;
