@@ -16,6 +16,7 @@ Rails.application.routes.draw do
       get "jeevika-jankars/form-options", to: "jeevika_jankars#form_options"
       get "jeevika-jankars/approvals", to: "jeevika_jankar_approvals#index"
       patch "jeevika-jankars/:id/approve", to: "jeevika_jankar_approvals#approve"
+      patch "jeevika-jankars/:id/return", to: "jeevika_jankar_approvals#return_record"
       patch "jeevika-jankars/:id/reject", to: "jeevika_jankar_approvals#reject"
       resources :jeevika_jankars, path: "jeevika-jankars", only: [ :index, :create, :show ] do
         member do
