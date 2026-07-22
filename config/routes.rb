@@ -20,7 +20,7 @@ Rails.application.routes.draw do
       patch "jeevika-jankars/:id/approve", to: "jeevika_jankar_approvals#approve"
       patch "jeevika-jankars/:id/return", to: "jeevika_jankar_approvals#return_record"
       patch "jeevika-jankars/:id/reject", to: "jeevika_jankar_approvals#reject"
-      resources :jeevika_jankars, path: "jeevika-jankars", only: [ :index, :create, :show ] do
+      resources :jeevika_jankars, path: "jeevika-jankars", only: [ :index, :create, :show, :update ] do
         member do
           patch :send_for_approval
         end
