@@ -53,7 +53,7 @@ module GloballyUniqueUsername
     return false unless ModuleRecord.table_exists?
 
     scope = ModuleRecord.where(module_slug: "new-user")
-      .where("LOWER(TRIM(COALESCE(data->>'user_name', ''))) = ?", username.downcase)
+      .where("LOWER(TRIM(COALESCE(data::jsonb->>'user_name', ''))) = ?", username.downcase)
     scope = scope.where.not(id: id) if is_a?(ModuleRecord) && persisted?
     scope.exists?
   end
