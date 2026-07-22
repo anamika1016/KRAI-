@@ -11,6 +11,7 @@ Rails.application.routes.draw do
       post "forgot-password/reset", to: "password_resets#reset"
       get "me", to: "sessions#show"
       get "sidebar-menus", to: "sidebar_menus#index"
+      get "target-mappings/recent", to: "target_mappings#recent"
       delete "logout", to: "sessions#destroy"
 
       # Jeevika Jankar (VRP) — React Native APIs; web /vrps routes unchanged
