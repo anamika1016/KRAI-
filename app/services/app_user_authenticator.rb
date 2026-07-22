@@ -3,6 +3,10 @@ class AppUserAuthenticator
     new(login: login, password: password).authenticate
   end
 
+  def self.authenticate_vrp(login:, password:)
+    new(login: login, password: password).authenticate_vrp
+  end
+
   def initialize(login:, password:)
     @login = login.to_s.strip
     @password = password.to_s
@@ -26,6 +30,17 @@ class AppUserAuthenticator
     return vrp if vrp
 
     find_module_record_user_by_login(login_key, raw_login)
+  end
+
+  def authenticate_vrp
+    return if @login.blank? || @password.blank?
+
+    login_key = @login.downcase
+    raw_login = @login
+    find_model_user_by_login(Vrp, login_key, raw_login) do |scope|
+      scope = Vrp.column_names.include?("is_active") ? scope.where(is_active: true) : scope
+      Vrp.column_names.include?("is_deleted") ? scope.where(is_deleted: false) : scope
+    end
   end
 
   private

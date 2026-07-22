@@ -4,6 +4,7 @@ Rails.application.routes.draw do
   namespace :api do
     namespace :v1 do
       post "login", to: "sessions#create"
+      post "jeevika-jankar-login", to: "sessions#create_jeevika_jankar"
       post "login/otp/send", to: "otp_logins#send_otp"
       post "login/otp/verify", to: "otp_logins#verify_otp"
       post "forgot-password/send-otp", to: "password_resets#send_otp"
