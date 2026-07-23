@@ -11,6 +11,18 @@ class Api::V1::FarmerTargetApisControllerTest < ActionDispatch::IntegrationTest
     assert_response :unauthorized
   end
 
+  test "farmer training form data requires auth" do
+    get "/api/v1/farmer-trainings/form-data", as: :json
+
+    assert_response :unauthorized
+  end
+
+  test "farmer training farmer list requires auth" do
+    get "/api/v1/farmer-trainings/farmers", as: :json
+
+    assert_response :unauthorized
+  end
+
   test "farmer training list and form options work" do
     ModuleRecord.create!(
       module_slug: "training-form",

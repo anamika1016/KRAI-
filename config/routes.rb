@@ -44,6 +44,8 @@ Rails.application.routes.draw do
 
       # Farmer Target modules — React Native APIs; web /modules/* unchanged
       get "farmer-trainings/form-options", to: "farmer_trainings#form_options"
+      get "farmer-trainings/form-data", to: "farmer_trainings#form_data"
+      get "farmer-trainings/farmers", to: "farmer_trainings#farmers"
       resources :farmer_trainings, path: "farmer-trainings", only: [ :index, :create, :show ]
 
       get "seed-distribution-targets/form-options", to: "seed_distribution_targets#form_options"
