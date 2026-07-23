@@ -47,6 +47,7 @@ Rails.application.routes.draw do
       get "farmer-trainings/form-data", to: "farmer_trainings#form_data"
       get "farmer-trainings/months", to: "farmer_trainings#months"
       get "farmer-trainings/farmers", to: "farmer_trainings#farmers"
+      get "farmer-trainings/mapped-farmers", to: "farmer_trainings#mapped_farmers"
       resources :farmer_trainings, path: "farmer-trainings", only: [ :index, :create, :show ]
 
       get "seed-distribution-targets/form-options", to: "seed_distribution_targets#form_options"

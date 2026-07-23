@@ -77,6 +77,26 @@ module Api
         }, status: :ok
       end
 
+      def mapped_farmers
+        mappings = filter_form_mappings(Array(farmer_target_api.form_options[:target_mappings]))
+        farmers, _available_farmers, completed_farmer_ids = farmer_lists_for(mappings)
+        rows = farmers.map do |farmer|
+          completed = completed_farmer_ids.include?(farmer[:id].to_s)
+          farmer.merge(is_completed: completed, is_available: !completed)
+        end
+
+        render json: {
+          success: true,
+          message: "Mapped Farmer list fetched successfully.",
+          filters: form_filter_payload,
+          target_mapping_ids: mappings.map { |mapping| mapping[:target_mapping_id] }.compact.uniq,
+          mapped_farmers: rows,
+          count: rows.size,
+          available_count: rows.count { |farmer| farmer[:is_available] },
+          completed_count: rows.count { |farmer| farmer[:is_completed] }
+        }, status: :ok
+      end
+
       private
 
       def filter_form_mappings(mappings)
