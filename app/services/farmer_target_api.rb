@@ -532,7 +532,7 @@ class FarmerTargetApi
         activity_setting = activity_settings[normalize_text(target.main_activity_name)]
         next if activity_setting.blank? || !training_main_activity_type?(activity_setting[:main_activity_type])
 
-        farmer_ids = Array(target.afl_ids).map(&:to_s).reject(&:blank?).uniq
+        farmer_ids = training_target_farmer_ids(target)
         {
           target_mapping_id: target.id.to_s,
           vrp_id: target.vrp_id.to_s,
@@ -842,6 +842,42 @@ class FarmerTargetApi
         khasara_no: farmer.khasara_no.to_s
       }
     end
+  end
+
+  def training_target_farmer_ids(target)
+    saved_ids = Array(target.afl_ids).map(&:to_s).reject(&:blank?).uniq
+    return saved_ids if saved_ids.any?
+
+    mapped_ids = mapped_training_farmer_ids(target)
+    return mapped_ids if mapped_ids.any?
+
+    training_location_farmer_ids(target)
+  end
+
+  def mapped_training_farmer_ids(target)
+    return [] unless model_ready?(:VrpIcsMapping)
+
+    VrpIcsMapping.where(vrp_id: target.vrp_id).select do |mapping|
+      training_location_matches?(mapping.fco_id, mapping.fco_name, target.fco_id, target.fco_name) &&
+        training_location_matches?(mapping.ics_id, mapping.ics_name, target.ics_id, target.ics_name) &&
+        training_location_matches?(mapping.village_id, mapping.village_name, target.village_id, target.village_name)
+    end.flat_map { |mapping| Array(mapping.afl_ids).map(&:to_s) }.reject(&:blank?).uniq
+  end
+
+  def training_location_farmer_ids(target)
+    return [] unless model_ready?(:Afl)
+
+    Afl.all.select do |farmer|
+      training_location_matches?(farmer.fco_id, farmer.fco, target.fco_id, target.fco_name) &&
+        training_location_matches?(farmer.ics_id, farmer.ics_name, target.ics_id, target.ics_name) &&
+        training_location_matches?(farmer.village_id, farmer.village_name, target.village_id, target.village_name)
+    end.map { |farmer| farmer.id.to_s }.uniq
+  end
+
+  def training_location_matches?(left_id, left_name, right_id, right_name)
+    left = [left_id, left_name].compact_blank.flat_map { |value| value.to_s.split("||") }.map { |value| normalize_text(value) }.reject(&:blank?)
+    right = [right_id, right_name].compact_blank.flat_map { |value| value.to_s.split("||") }.map { |value| normalize_text(value) }.reject(&:blank?)
+    left.any? && right.any? && (left & right).any?
   end
 
   def training_farmer_names(farmer_ids)
