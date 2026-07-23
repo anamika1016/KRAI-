@@ -58,6 +58,7 @@ class Api::V1::FarmerTargetApisControllerTest < ActionDispatch::IntegrationTest
     assert_response :success
     assert_equal true, response.parsed_body["success"]
     assert response.parsed_body["options"].key?("target_mappings")
+    assert response.parsed_body["options"].key?("autofill")
   end
 
   test "seed distribution list and form options work" do
@@ -80,6 +81,7 @@ class Api::V1::FarmerTargetApisControllerTest < ActionDispatch::IntegrationTest
     get "/api/v1/seed-distribution-targets/form-options", headers: auth_headers, as: :json
     assert_response :success
     assert response.parsed_body["options"].key?("target_mappings")
+    assert response.parsed_body["options"].key?("autofill")
   end
 
   test "papl360 list and form options work" do

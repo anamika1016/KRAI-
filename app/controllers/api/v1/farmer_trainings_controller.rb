@@ -31,6 +31,7 @@ module Api
           success: true,
           message: "Farmer Training form data fetched successfully.",
           filters: form_filter_payload,
+          autofill: options[:autofill],
           options: {
             months: option_values(mappings, :month),
             fcos: named_options(mappings, :fco_id, :fco_name),

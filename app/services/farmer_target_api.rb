@@ -45,12 +45,15 @@ class FarmerTargetApi
     case @module_slug
     when "training-form"
       {
+        autofill: target_form_autofill,
+        current_vrp: current_seed_target_vrp_option,
         months: training_target_mappings.map { |m| m[:month] }.compact_blank.uniq,
         target_mappings: training_target_mappings,
         training_methods: ["Input Demo INM", "Input Demo PM", "FFS", "OPG Training"]
       }
     when *OTHER_TARGET_SLUGS
       {
+        autofill: target_form_autofill,
         months: seed_distribution_target_mappings.map { |m| m[:month] }.compact_blank.uniq,
         target_mappings: seed_distribution_target_mappings,
         current_vrp: current_seed_target_vrp_option
@@ -660,6 +663,19 @@ class FarmerTargetApi
       label: current_vrp_record.name.presence || current_vrp_record.user_name.presence || "Jeevika Jankar ##{current_vrp_record.id}",
       contact_number: current_vrp_record.mobile_no.to_s.gsub(/\D/, "").last(10),
       department: current_vrp_record.fcoc.to_s.strip
+    }
+  end
+
+  def target_form_autofill
+    vrp = current_vrp_record if vrp_login_user?
+
+    {
+      jeevika_jankar_id: vrp&.id&.to_s,
+      jeevika_jankar_name: vrp&.name.presence || current_app_user["name"].to_s,
+      contact_number: (vrp&.mobile_no.presence || current_app_user["mobile_no"]).to_s.gsub(/\D/, "").last(10),
+      department: vrp&.fcoc.presence || current_app_user["fcoc"].presence || current_app_user["fcoc_name"].to_s,
+      trainer_name: vrp&.name.presence || current_app_user["name"].to_s,
+      trainer_contact: (vrp&.mobile_no.presence || current_app_user["mobile_no"]).to_s.gsub(/\D/, "").last(10)
     }
   end
 
