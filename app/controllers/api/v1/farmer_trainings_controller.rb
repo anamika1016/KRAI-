@@ -65,6 +65,18 @@ module Api
         }, status: :ok
       end
 
+      def months
+        mappings = Array(farmer_target_api.form_options[:target_mappings])
+        values = option_values(mappings, :month)
+
+        render json: {
+          success: true,
+          message: "Farmer Training months fetched successfully.",
+          months: values.map { |month| { id: month, name: month } },
+          count: values.size
+        }, status: :ok
+      end
+
       private
 
       def filter_form_mappings(mappings)
