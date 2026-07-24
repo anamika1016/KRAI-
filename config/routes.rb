@@ -10,6 +10,7 @@ Rails.application.routes.draw do
       post "forgot-password/send-otp", to: "password_resets#send_otp"
       post "forgot-password/reset", to: "password_resets#reset"
       get "me", to: "sessions#show"
+      get "jeevika-jankar-dashboard", to: "jeevika_jankar_dashboard#show"
       get "sidebar-menus", to: "sidebar_menus#index"
       get "target-mappings/recent", to: "target_mappings#recent"
       delete "logout", to: "sessions#destroy"
