@@ -353,6 +353,7 @@ class FarmerTargetApi
       data["jeevika_jankar_id"] = mapping[:vrp_id]
       data["jeevika_jankar_name"] = mapping[:jeevika_jankar_name]
       data["jeevika_jankar_contact"] = mapping[:contact_number]
+      data["main_activity_type"] = mapping[:main_activity_type]
     end
 
     selected_farmer_ids = Array(data["selected_farmer_ids"]).map(&:to_s).reject(&:blank?).uniq
@@ -387,6 +388,7 @@ class FarmerTargetApi
       data["jeevika_jankar_contact"] = mapping[:contact_number]
       data["department"] = mapping[:department]
       data["fcoc_name"] = mapping[:department]
+      data["main_activity_type"] = mapping[:main_activity_type]
       data["target"] = mapping[:target].to_s if data["target"].blank?
       data["main_activity"] = mapping[:training_topic]
       data["sub_activity"] = mapping[:training_subject]
@@ -529,10 +531,11 @@ class FarmerTargetApi
     return @training_target_mappings = [] unless model_ready?(:TargetMapping)
 
     activity_settings = main_activity_settings
+    sub_activity_settings = sub_activity_settings_for(activity_settings)
     @training_target_mappings = training_target_scope
       .order(:ics_name, :ics_id, :village_name, :village_id, :id)
       .filter_map do |target|
-        activity_setting = activity_settings[normalize_text(target.main_activity_name)]
+        activity_setting = activity_setting_for(target, activity_settings, sub_activity_settings)
         next if activity_setting.blank? || !training_main_activity_type?(activity_setting[:main_activity_type])
 
         farmer_ids = training_target_farmer_ids(target)
@@ -549,7 +552,7 @@ class FarmerTargetApi
           month: target.month_name.to_s.strip,
           ics: target.ics_name.presence || target.ics_id,
           village: target.village_name.presence || target.village_id,
-          main_activity_type: "Training",
+          main_activity_type: activity_setting[:main_activity_type].presence || "Training",
           main_activity: target.main_activity_name.to_s.strip,
           sub_activity: target.activity_name.to_s.strip,
           new_farmer_target: new_farmer_target_mapping?(target),
@@ -584,7 +587,7 @@ class FarmerTargetApi
           month: target.month_name.to_s.strip,
           ics: target.ics_name.presence || target.ics_id,
           village: target.village_name.presence || target.village_id,
-          main_activity_type: "Other",
+          main_activity_type: activity_setting[:main_activity_type].presence || "Other",
           training_topic: target.main_activity_name.to_s.strip,
           training_subject: target.activity_name.to_s.strip,
           main_activity: target.main_activity_name.to_s.strip,
@@ -685,9 +688,11 @@ class FarmerTargetApi
     selected_village = normalize_text(data["gram_name"].presence || data["village"])
     selected_main_activity = normalize_text(data["main_activity"].presence || data["training_topic"])
     selected_sub_activity = normalize_text(data["sub_activity"].presence || data["training_subject"])
+    selected_main_activity_type = normalize_text(data["main_activity_type"])
 
     training_target_mappings.find do |mapping|
       normalize_text(mapping[:month]) == selected_month &&
+        (selected_main_activity_type.blank? || normalize_text(mapping[:main_activity_type]) == selected_main_activity_type) &&
         normalize_text(mapping[:ics]) == selected_ics &&
         normalize_text(mapping[:village]) == selected_village &&
         normalize_text(mapping[:main_activity]) == selected_main_activity &&
@@ -702,9 +707,11 @@ class FarmerTargetApi
     selected_village = normalize_text(data["village"])
     selected_topic = normalize_text(data["training_topic"].presence || data["main_activity"])
     selected_subject = normalize_text(data["training_subject"].presence || data["sub_activity"])
+    selected_main_activity_type = normalize_text(data["main_activity_type"])
 
     seed_distribution_target_mappings.find do |mapping|
       [mapping[:vrp_id], mapping[:jeevika_jankar_name]].any? { |value| normalize_text(value) == selected_vrp } &&
+        (selected_main_activity_type.blank? || normalize_text(mapping[:main_activity_type]) == selected_main_activity_type) &&
         normalize_text(mapping[:month]) == selected_month &&
         normalize_text(mapping[:ics]) == selected_ics &&
         normalize_text(mapping[:village]) == selected_village &&

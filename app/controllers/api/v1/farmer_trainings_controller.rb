@@ -103,6 +103,7 @@ module Api
       def filter_form_mappings(mappings)
         mappings.select do |mapping|
           filter_matches?(mapping[:month], params[:month]) &&
+            filter_matches?(mapping[:main_activity_type], params[:main_activity_type]) &&
             fco_filter_matches?(mapping) &&
             filter_matches?(mapping[:ics], params[:ics].presence || params[:ics_name]) &&
             filter_matches?(mapping[:village], params[:village].presence || params[:village_name]) &&
@@ -147,6 +148,7 @@ module Api
       def form_filter_payload
         {
           month: params[:month],
+          main_activity_type: params[:main_activity_type],
           fco_id: params[:fco_id].presence || params[:fpo_id],
           fco_name: params[:fco_name].presence || params[:fpo_name].presence || params[:fco].presence || params[:fpo],
           ics: params[:ics].presence || params[:ics_name],

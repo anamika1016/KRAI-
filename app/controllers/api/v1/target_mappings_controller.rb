@@ -69,6 +69,7 @@ module Api
           completion_date: mapping.completion_date&.iso8601,
           main_activity: mapping.main_activity_name,
           sub_activity: mapping.activity_name,
+          main_activity_type: target_main_activity_type(mapping),
           training_targets: {
             opg_training: mapping.opg_training_target,
             general_training_meeting: mapping.week_wise_opg_target,
@@ -99,6 +100,32 @@ module Api
           mobile_no: farmer&.mobile_no,
           village_name: farmer&.village_name
         }
+      end
+
+      def target_main_activity_type(mapping)
+        settings = target_activity_type_settings
+        main_key = mapping.main_activity_name.to_s.strip.downcase
+        sub_key = mapping.activity_name.to_s.strip.downcase
+        settings[:main][main_key].presence || settings[:main][sub_key].presence || settings[:sub][sub_key].presence || "Training"
+      end
+
+      def target_activity_type_settings
+        return @target_activity_type_settings if defined?(@target_activity_type_settings)
+
+        main = ModuleRecord.where(module_slug: "add-activity-group").order(created_at: :desc).each_with_object({}) do |record, values|
+          next if record.data["status"].to_s.casecmp("Inactive").zero?
+
+          name = (record.data["main_activity_name"].presence || record.data["activity_group_name"]).to_s.strip.downcase
+          values[name] ||= record.data["main_activity_type"].presence || "Training" if name.present?
+        end
+        sub = ModuleRecord.where(module_slug: "add-vrp-activity").order(created_at: :desc).each_with_object({}) do |record, values|
+          next if record.data["status"].to_s.casecmp("Inactive").zero?
+
+          main_name = (record.data["main_activity"].presence || record.data["activity_group"]).to_s.strip.downcase
+          sub_name = (record.data["sub_activity_name"].presence || record.data["activity_name"]).to_s.strip.downcase
+          values[sub_name] ||= main[main_name] if sub_name.present? && main[main_name].present?
+        end
+        @target_activity_type_settings = { main: main, sub: sub }
       end
     end
   end

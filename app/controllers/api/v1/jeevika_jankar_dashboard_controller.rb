@@ -2,6 +2,8 @@ module Api
   module V1
     class JeevikaJankarDashboardController < BaseController
       def show
+        return render_admin_dashboard if admin_dashboard_request?
+
         vrp = current_dashboard_vrp
         return render json: { success: false, message: "Valid Jeevika Jankar login required." }, status: :unprocessable_entity unless vrp
 
@@ -34,6 +36,154 @@ module Api
       end
 
       private
+
+      def admin_dashboard_request?
+        user = current_api_user_payload
+        user["user_type"].to_s.casecmp("admin").zero? && params[:vrp_id].blank?
+      end
+
+      def render_admin_dashboard
+        vrps = Vrp.where(is_deleted: false).to_a
+        targets = TargetMapping.includes(:vrp).order(updated_at: :desc).to_a
+        filter_options = admin_filter_options(vrps, targets)
+        vrps = filter_admin_vrps(vrps)
+        targets = targets.select { |target| vrps.any? { |vrp| vrp.id == target.vrp_id } } if admin_vrp_filters_present?
+        filtered_targets = filter_admin_targets(targets)
+        selected_month = params[:month].presence
+        progress = filtered_targets.map { |target| progress_payload(target) }
+        assigned = progress.sum { |row| row[:assigned].to_f }
+        achieved = progress.sum { |row| row[:achieved].to_f }
+        bills = ModuleRecord.where(module_slug: "vrp-bill-add").select { |record| active_record?(record) }
+
+        render json: {
+          success: true,
+          message: "Admin dashboard fetched successfully.",
+          dashboard_type: "admin",
+          filters: admin_filter_payload,
+          filter_options: filter_options,
+          months: filter_options[:months],
+          selected_month: selected_month,
+          cards: {
+            registered_users: User.count,
+            total_registered_jeevika_jankars: vrps.size,
+            final_approved_jeevika_jankars: vrps.count { |vrp| vrp.status.to_i == 55 },
+            pending_jeevika_jankar_approvals: vrps.count { |vrp| vrp.status.to_i.between?(25, 54) },
+            target_records: filtered_targets.size,
+            activities_assigned: filtered_targets.map { |target| [target.main_activity_name.to_s.downcase, target.activity_name.to_s.downcase] }.uniq.size,
+            mapped_farmers: filtered_targets.flat_map { |target| mapped_farmer_ids(target) }.uniq.size,
+            mapped_villages: filtered_targets.map { |target| [target.village_id.to_s, target.village_name.to_s.downcase] }.uniq.size,
+            assigned_target: number(assigned),
+            achieved_target: number(achieved),
+            pending_target: number([assigned - achieved, 0].max),
+            bills_approved: bills.count { |bill| approved_bill?(bill) },
+            bills_pending: bills.count { |bill| !approved_bill?(bill) }
+          },
+          monthly_target_summary: monthly_target_summary(targets),
+          farmer_training_participation_status: training_participation_status(filtered_targets),
+          target_dashboard: target_dashboard_payload(filtered_targets),
+          weekly_activity_target_status: weekly_target_status(progress),
+          recent_target_progress: progress.first(100),
+          generated_at: Time.current.iso8601
+        }, status: :ok
+      end
+
+      def admin_filter_options(vrps, targets)
+        {
+          activities: targets.filter_map { |target| target.main_activity_name.to_s.strip.presence }.uniq.sort,
+          fcos: vrps.filter_map { |vrp| vrp.fcoc.to_s.strip.presence }.uniq.sort,
+          cluster_incharges: vrps.filter_map { |vrp| vrp.cluster_incharge.to_s.strip.presence }.uniq.sort,
+          months: targets.filter_map { |target| target.month_name.to_s.strip.presence }.uniq.sort,
+          post_wise_names: vrps.filter_map { |vrp| vrp.role.to_s.strip.presence }.uniq.sort,
+          jeevika_jankars: vrps.map { |vrp| { id: vrp.id, name: vrp.name, user_name: vrp.user_name } }
+        }
+      end
+
+      def filter_admin_vrps(vrps)
+        vrps.select do |vrp|
+          filter_value_matches?(vrp.fcoc, params[:fco]) &&
+            filter_value_matches?(vrp.cluster_incharge, params[:cluster_incharge]) &&
+            filter_value_matches?(vrp.role, params[:post_wise_name]) &&
+            (params[:vrp_id].blank? || vrp.id.to_s == params[:vrp_id].to_s)
+        end
+      end
+
+      def filter_admin_targets(targets)
+        targets.select do |target|
+          filter_value_matches?(target.month_name, params[:month]) &&
+            filter_value_matches?(target.main_activity_name, params[:activity]) &&
+            filter_value_matches?(target.activity_name, params[:sub_activity])
+        end
+      end
+
+      def admin_vrp_filters_present?
+        %i[fco cluster_incharge post_wise_name vrp_id].any? { |key| params[key].present? }
+      end
+
+      def admin_filter_payload
+        {
+          activity: params[:activity],
+          fco: params[:fco],
+          cluster_incharge: params[:cluster_incharge],
+          month: params[:month],
+          post_wise_name: params[:post_wise_name],
+          vrp_id: params[:vrp_id],
+          sub_activity: params[:sub_activity]
+        }
+      end
+
+      def filter_value_matches?(actual, selected)
+        selected.blank? || same_text?(actual, selected)
+      end
+
+      def training_participation_status(targets)
+        farmer_ids = targets.flat_map { |target| mapped_farmer_ids(target) }.uniq
+        attendance = Hash.new(0)
+        ModuleRecord.where(module_slug: "training-form").select { |record| active_record?(record) }.each do |record|
+          Array(record.data["selected_farmer_ids"]).map(&:to_s).uniq.each { |farmer_id| attendance[farmer_id] += 1 }
+        end
+        green = farmer_ids.count { |id| attendance[id] >= 3 }
+        yellow = farmer_ids.count { |id| attendance[id].between?(1, 2) }
+        untrained = farmer_ids.select { |id| attendance[id].zero? }
+        closed_target = targets.any? { |target| target.completion_date.present? && target.completion_date < Date.current }
+        red = closed_target ? untrained.size : 0
+        pending = closed_target ? 0 : untrained.size
+        { total_training_farmers: farmer_ids.size, green: green, yellow: yellow, red: red, pending: pending }
+      end
+
+      def target_dashboard_payload(targets)
+        sub_activities = targets.filter_map { |target| target.activity_name.to_s.strip.presence }.uniq.sort
+        {
+          selected_month: params[:month],
+          selected_sub_activity: params[:sub_activity],
+          sub_activity_options: sub_activities,
+          rows: targets.map { |target| progress_payload(target) }
+        }
+      end
+
+      def weekly_target_status(progress)
+        percentages = progress.map { |row| row[:progress_percent].to_f }
+        {
+          total_targets: progress.size,
+          green: percentages.count { |value| value >= 100 },
+          yellow: percentages.count { |value| value >= 75 && value < 100 },
+          red: percentages.count { |value| value < 75 }
+        }
+      end
+
+      def monthly_target_summary(targets)
+        targets.group_by { |target| target.month_name.presence || "Not Set" }.map do |month, rows|
+          {
+            month: month,
+            target_records: rows.size,
+            target_quantity: number(rows.sum { |target| target.target_quantity.to_f })
+          }
+        end
+      end
+
+      def approved_bill?(bill)
+        status = bill.data["approval_status"].presence || bill.data["status"]
+        status.to_s.downcase.include?("approved") && !status.to_s.downcase.include?("pending")
+      end
 
       def current_dashboard_vrp
         user = current_api_user_payload
