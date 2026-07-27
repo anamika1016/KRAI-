@@ -87,16 +87,22 @@ class FarmerTargetApi
       key = key.to_s
       next if %w[controller action format token authenticity_token].include?(key)
 
-      data[key] =
-        if value.respond_to?(:original_filename)
-          store_uploaded_module_file(value)
-        elsif value.is_a?(ActionController::Parameters)
-          value.to_unsafe_h
-        else
-          value
-        end
+      data[key] = normalize_incoming_value(value)
     end
     data
+  end
+
+  def normalize_incoming_value(value)
+    case value
+    when Array
+      value.map { |item| normalize_incoming_value(item) }.compact_blank
+    when ActionController::Parameters
+      value.to_unsafe_h.transform_values { |item| normalize_incoming_value(item) }
+    when Hash
+      value.transform_values { |item| normalize_incoming_value(item) }
+    else
+      value.respond_to?(:original_filename) ? store_uploaded_module_file(value) : value
+    end
   end
 
   def normalize_for_slug(data)
@@ -1010,7 +1016,12 @@ class FarmerTargetApi
     filename = "#{Time.current.to_i}-#{SecureRandom.hex(4)}-#{basename}#{extension.downcase}"
     path = upload_dir.join(filename)
 
-    File.binwrite(path, upload.read)
+    if upload.respond_to?(:tempfile) && upload.tempfile
+      upload.tempfile.rewind
+      IO.copy_stream(upload.tempfile, path)
+    else
+      File.binwrite(path, upload.read)
+    end
     "/uploads/module_records/#{filename}"
   end
 

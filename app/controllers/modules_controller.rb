@@ -24,6 +24,7 @@ class ModulesController < ApplicationController
                 :jeevika_payment_transaction_types,
                 :jeevika_bill_vrp, :bill_display_date, :bill_display_datetime,
                 :approval_sequence_from_level, :module_record_field_value, :module_upload_public_url,
+                :module_upload_public_urls,
                 :approval_level_display_label, :approval_level_label_for_sequence,
                 :training_participation_status_label, :training_participation_status_caption,
                 :training_target_status_label, :training_target_status_caption,
@@ -3184,16 +3185,30 @@ class ModulesController < ApplicationController
   end
 
   def module_upload_public_url(value)
-    path = case value
-           when Array then value.find { |item| item.to_s.strip.present? }.to_s.strip
-           when Hash then value.values.find { |item| item.to_s.strip.present? }.to_s.strip
-           else value.to_s.strip
-           end
-    return "" if path.blank?
-    return path if path.match?(/\Ahttps?:\/\//i)
+    module_upload_public_urls(value).first.to_s
+  end
 
-    path = "/#{path}" unless path.start_with?("/")
-    "#{request.base_url}#{path}"
+  def module_upload_public_urls(value)
+    paths = case value
+            when Array then value.flat_map { |item| module_upload_paths(item) }
+            when Hash then value.values.flat_map { |item| module_upload_paths(item) }
+            else module_upload_paths(value)
+            end
+
+    paths.compact_blank.reject { |path| path == "-" }.uniq.map do |path|
+      next path if path.match?(/\Ahttps?:\/\//i)
+
+      path = "/#{path}" unless path.start_with?("/")
+      "#{request.base_url}#{path}"
+    end
+  end
+
+  def module_upload_paths(value)
+    case value
+    when Array then value.flat_map { |item| module_upload_paths(item) }
+    when Hash then value.values.flat_map { |item| module_upload_paths(item) }
+    else [value.to_s.strip]
+    end
   end
 
   def dashboard_filter_export_rows
@@ -5861,13 +5876,7 @@ class ModulesController < ApplicationController
   end
 
   def normalized_module_data
-    data = module_record_params.to_h.transform_values do |value|
-      if value.respond_to?(:original_filename)
-        store_uploaded_module_file(value)
-      else
-        value
-      end
-    end
+    data = module_record_params.to_h.transform_values { |value| normalize_module_param_value(value) }
 
     if record_source_slug == "access-control"
       data["module_names"] ||= []
@@ -5900,6 +5909,17 @@ class ModulesController < ApplicationController
     data = normalize_jeevika_jankar_bill_data(data) if record_source_slug == "jeevika-jankar-bill-process"
 
     data
+  end
+
+  def normalize_module_param_value(value)
+    case value
+    when Array
+      value.map { |item| normalize_module_param_value(item) }.compact_blank
+    when Hash, ActionController::Parameters
+      value.to_h.transform_values { |item| normalize_module_param_value(item) }
+    else
+      value.respond_to?(:original_filename) ? store_uploaded_module_file(value) : value
+    end
   end
 
   def normalize_jeevika_jankar_bill_data(data)
@@ -6941,7 +6961,12 @@ class ModulesController < ApplicationController
     filename = "#{Time.current.to_i}-#{SecureRandom.hex(4)}-#{basename}#{extension.downcase}"
     path = upload_dir.join(filename)
 
-    File.binwrite(path, upload.read)
+    if upload.respond_to?(:tempfile) && upload.tempfile
+      upload.tempfile.rewind
+      IO.copy_stream(upload.tempfile, path)
+    else
+      File.binwrite(path, upload.read)
+    end
     "/uploads/module_records/#{filename}"
   end
 

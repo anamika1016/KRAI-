@@ -1527,15 +1527,65 @@ function initDeferredLayoutPage() {
   document.querySelectorAll("[data-max-size-mb]").forEach((input) => {
     input.addEventListener("change", () => {
       const maxSizeMb = Number(input.dataset.maxSizeMb || 0);
-      const file = input.files?.[0];
-      if (!maxSizeMb || !file) return;
+      const files = Array.from(input.files || []);
+      if (!maxSizeMb || files.length === 0) return;
 
-      if (file.size > maxSizeMb * 1024 * 1024) {
-        window.alert(`Photo upload max ${maxSizeMb} MB allowed.`);
+      const oversizedFiles = files.filter((file) => file.size > maxSizeMb * 1024 * 1024);
+      if (oversizedFiles.length > 0) {
+        window.alert(`Each photo must be ${maxSizeMb} MB or smaller. Please reselect the photos.`);
         input.value = "";
       }
     });
   });
+
+  const uploadGalleryModal = document.querySelector("[data-upload-gallery-modal]");
+  const uploadGalleryGrid = uploadGalleryModal?.querySelector("[data-upload-gallery-grid]");
+  const uploadGalleryCount = uploadGalleryModal?.querySelector("[data-upload-gallery-count]");
+
+  const clearUploadGallery = () => {
+    if (uploadGalleryGrid) uploadGalleryGrid.replaceChildren();
+  };
+
+  document.querySelectorAll("[data-upload-gallery]").forEach((button) => {
+    button.addEventListener("click", () => {
+      if (!uploadGalleryModal || !uploadGalleryGrid) return;
+
+      let urls = [];
+      try {
+        urls = JSON.parse(button.dataset.uploadUrls || "[]");
+      } catch (_error) {
+        urls = [];
+      }
+
+      clearUploadGallery();
+      urls.forEach((url, index) => {
+        const link = document.createElement("a");
+        link.href = url;
+        link.target = "_blank";
+        link.rel = "noopener";
+        link.className = "module-gallery-item";
+
+        const image = document.createElement("img");
+        image.src = url;
+        image.alt = `Training photo ${index + 1}`;
+        image.loading = "lazy";
+        image.decoding = "async";
+        link.appendChild(image);
+        uploadGalleryGrid.appendChild(link);
+      });
+
+      if (uploadGalleryCount) uploadGalleryCount.textContent = `${urls.length} photo${urls.length === 1 ? "" : "s"}`;
+      uploadGalleryModal.showModal();
+    });
+  });
+
+  uploadGalleryModal?.querySelector("[data-upload-gallery-close]")?.addEventListener("click", () => {
+    uploadGalleryModal.close();
+  });
+  uploadGalleryModal?.addEventListener("click", (event) => {
+    if (event.target === uploadGalleryModal) uploadGalleryModal.close();
+  });
+  uploadGalleryModal?.addEventListener("close", clearUploadGallery);
 
   const locationLevels = ["state", "district", "block", "gram-panchayat", "village"];
   const locationKeys = {
