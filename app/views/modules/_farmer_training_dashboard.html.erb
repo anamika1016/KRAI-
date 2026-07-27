@@ -3,12 +3,13 @@
 <% sub_activity_options = Array(@training_sub_activity_options || []) %>
 <% selected_month = @training_selected_month.to_s %>
 <% selected_sub_activity = @training_selected_sub_activity.to_s %>
+<% participation_selected_month = @participation_selected_month.to_s %>
+<% participation_month_filter_value = @participation_month_filter_value.to_s %>
 <% filters_ready = selected_month.present? && selected_sub_activity.present? %>
 <% status_cards = Array(@training_participation_status_cards || []) %>
 <% status_total = status_cards.sum { |card| card[:value].to_i } %>
 <% total_status_path_params = { status: "total" } %>
-<% total_status_path_params[:training_month] = selected_month if selected_month.present? %>
-<% total_status_path_params[:training_sub_activity] = selected_sub_activity if selected_sub_activity.present? %>
+<% total_status_path_params[:training_month] = participation_selected_month if participation_selected_month.present? %>
 <% target_status_cards = Array(@training_target_status_cards || []) %>
 
 <section class="module-card training-participation-status-card">
@@ -17,6 +18,21 @@
       <h2>Farmer Training Participation Status (Automatic)</h2>
       <p>Total = farmers with training records; Green = 3 or more, Yellow = 1–2, Red = no training in a closed month, Pending = training due in an open month.</p>
     </div>
+    <%= form_with url: dashboard_path, method: :get, local: true, html: { class: "dashboard-month-filter" } do %>
+      <%= hidden_field_tag :weekly_target_month, @weekly_target_month_filter_value if @weekly_target_month_filter_value.present? %>
+      <label class="dashboard-month-select">
+        <span>Month</span>
+        <select name="participation_month" onchange="this.form.submit()">
+          <option value="all" <%= "selected" if participation_month_filter_value == "all" %>>All</option>
+          <% month_options.each do |option| %>
+            <option value="<%= option %>" <%= "selected" if participation_selected_month == option.to_s %>><%= option %></option>
+          <% end %>
+        </select>
+      </label>
+    <% end %>
+    <%= link_to "Export Excel",
+          farmer_training_participation_path(total_status_path_params.merge(status: "total", format: :xlsx)),
+          class: "list-btn export" %>
   </div>
 
   <div class="training-participation-boxes compact">

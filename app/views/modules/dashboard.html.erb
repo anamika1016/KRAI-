@@ -373,6 +373,8 @@
 
   <%# ── WEEKLY TARGET STATUS BOXES ONLY (full data on report page) ── %>
   <% weekly_cards = @dashboard_weekly_target_cards || [] %>
+  <% weekly_selected_month = @weekly_dashboard_selected_month.to_s %>
+  <% weekly_month_filter_value = @weekly_target_month_filter_value.to_s %>
   <section class="module-card training-participation-status-card" id="dashboard_weekly_target_boxes">
     <div class="module-card-header training-participation-status-header">
       <div>
@@ -380,7 +382,23 @@
         <p>Dashboard pe sirf colour boxes. Full Activity / Sub Activity weekly report alag page pe dekho aur export karo.</p>
       </div>
       <div class="dashboard-actions">
-        <%= link_to "Open Weekly Report", weekly_activity_target_report_path(dashboard_weekly_report_filter_params), class: "list-btn active" %>
+        <%= form_with url: dashboard_path, method: :get, local: true, html: { class: "dashboard-month-filter" } do %>
+          <%= hidden_field_tag :participation_month, @participation_month_filter_value if @participation_month_filter_value.present? %>
+          <label class="dashboard-month-select">
+            <span>Month</span>
+            <select name="weekly_target_month" onchange="this.form.submit()">
+              <option value="all" <%= "selected" if weekly_month_filter_value == "all" %>>All</option>
+              <% Array(@training_month_options).each do |option| %>
+                <option value="<%= option %>" <%= "selected" if weekly_selected_month == option.to_s %>><%= option %></option>
+              <% end %>
+            </select>
+          </label>
+        <% end %>
+        <% weekly_report_params = dashboard_weekly_report_filter_params %>
+        <% weekly_report_params.delete(:training_month) %>
+        <% weekly_report_params[:training_month] = weekly_selected_month if weekly_selected_month.present? %>
+        <%= link_to "Open Weekly Report", weekly_activity_target_report_path(weekly_report_params), class: "list-btn active" %>
+        <%= link_to "Export Excel", weekly_activity_target_report_path(weekly_report_params.merge(format: :xlsx)), class: "list-btn export" %>
       </div>
     </div>
 

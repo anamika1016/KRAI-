@@ -202,7 +202,7 @@ class VrpDashboardTest < ActionDispatch::IntegrationTest
     assert_includes response.body, "Farmer Training Dashboard"
     assert_includes response.body, "Select Month"
     assert_includes response.body, "Select Sub Activity"
-    assert_includes response.body, "Select Month and Sub Activity to load training data."
+    refute_includes response.body, "Select Month and Sub Activity to load training data."
     refute_includes response.body, "Farmer Training Participation Status"
     refute_includes response.body, "Sessions"
     refute_includes response.body, "Photos"

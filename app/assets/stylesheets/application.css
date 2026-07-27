@@ -6376,6 +6376,103 @@ body {
   line-height: 1.35;
 }
 
+/* Shared overflow protection for every report/list table. Database labels can
+   contain long comma-separated activities or unbroken identifiers; keep them
+   inside their own cell instead of allowing visible overflow into neighbours. */
+.table-shell .module-table th,
+.table-shell .module-table td {
+  box-sizing: border-box;
+  max-width: 320px;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+  white-space: normal;
+  vertical-align: top;
+}
+
+.table-shell .module-table td > a,
+.table-shell .module-table td > span,
+.table-shell .module-table td > div {
+  max-width: 100%;
+  overflow-wrap: anywhere;
+}
+
+.table-shell .module-table input,
+.table-shell .module-table select,
+.table-shell .module-table textarea {
+  box-sizing: border-box;
+  max-width: 100%;
+}
+
+.table-shell .module-table .table-action,
+.table-shell .module-table .list-btn,
+.table-shell .module-table .grid-status,
+.table-shell .module-table .training-status-pill {
+  white-space: nowrap;
+}
+
+/* Weekly report has several descriptive columns. Give every column a stable
+   width and allow long activity names to grow the row instead of painting over
+   the neighbouring cells. */
+#weekly_activity_target_report_table {
+  width: 2360px;
+  min-width: 2360px;
+  table-layout: fixed;
+}
+
+#weekly_activity_target_report_table th,
+#weekly_activity_target_report_table td {
+  box-sizing: border-box;
+  overflow-wrap: anywhere;
+  vertical-align: top;
+  white-space: normal;
+}
+
+#weekly_activity_target_report_table th:nth-child(1),
+#weekly_activity_target_report_table td:nth-child(1) { width: 180px; }
+#weekly_activity_target_report_table th:nth-child(2),
+#weekly_activity_target_report_table td:nth-child(2) { width: 85px; }
+#weekly_activity_target_report_table th:nth-child(3),
+#weekly_activity_target_report_table td:nth-child(3) { width: 125px; }
+#weekly_activity_target_report_table th:nth-child(4),
+#weekly_activity_target_report_table td:nth-child(4) { width: 150px; }
+#weekly_activity_target_report_table th:nth-child(5),
+#weekly_activity_target_report_table td:nth-child(5) { width: 250px; }
+#weekly_activity_target_report_table th:nth-child(6),
+#weekly_activity_target_report_table td:nth-child(6) { width: 350px; }
+#weekly_activity_target_report_table th:nth-child(7),
+#weekly_activity_target_report_table td:nth-child(7) { width: 140px; }
+#weekly_activity_target_report_table th:nth-child(8),
+#weekly_activity_target_report_table td:nth-child(8) { width: 150px; }
+#weekly_activity_target_report_table th:nth-child(9),
+#weekly_activity_target_report_table td:nth-child(9) { width: 110px; }
+#weekly_activity_target_report_table th:nth-child(10),
+#weekly_activity_target_report_table td:nth-child(10) { width: 80px; }
+#weekly_activity_target_report_table th:nth-child(11),
+#weekly_activity_target_report_table td:nth-child(11),
+#weekly_activity_target_report_table th:nth-child(12),
+#weekly_activity_target_report_table td:nth-child(12),
+#weekly_activity_target_report_table th:nth-child(13),
+#weekly_activity_target_report_table td:nth-child(13),
+#weekly_activity_target_report_table th:nth-child(14),
+#weekly_activity_target_report_table td:nth-child(14) { width: 115px; }
+#weekly_activity_target_report_table th:nth-child(15),
+#weekly_activity_target_report_table td:nth-child(15),
+#weekly_activity_target_report_table th:nth-child(16),
+#weekly_activity_target_report_table td:nth-child(16) { width: 90px; }
+#weekly_activity_target_report_table th:nth-child(17),
+#weekly_activity_target_report_table td:nth-child(17) { width: 100px; }
+
+#weekly_activity_target_report_table td:nth-child(10),
+#weekly_activity_target_report_table td:nth-child(11),
+#weekly_activity_target_report_table td:nth-child(12),
+#weekly_activity_target_report_table td:nth-child(13),
+#weekly_activity_target_report_table td:nth-child(14),
+#weekly_activity_target_report_table td:nth-child(15),
+#weekly_activity_target_report_table td:nth-child(16),
+#weekly_activity_target_report_table td:nth-child(17) {
+  white-space: nowrap;
+}
+
 /* ─── Active Filter Chips ─────────────────────────────────────────────────── */
 
 .dashboard-filter-chips {

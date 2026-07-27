@@ -27,7 +27,7 @@ class ModulesController < ApplicationController
                 :module_upload_public_urls,
                 :approval_level_display_label, :approval_level_label_for_sequence,
                 :training_participation_status_label, :training_participation_status_caption,
-                :training_target_status_label, :training_target_status_caption,
+                :training_target_status_label, :training_target_status_caption, :training_target_status_for_percent,
                 :training_trainee_department_default, :seed_distribution_target_mappings,
                 :seed_distribution_target_month_options, :current_seed_target_vrp_option,
                 :add_farmer_form_mappings, :dashboard_vrp_previous_status, :dashboard_vrp_status_label,
@@ -670,22 +670,31 @@ class ModulesController < ApplicationController
     @filtered_bills = bill_records
 
     targets = @filtered_targets
-    selected_month = dashboard_selected_training_month_name
-    selected_sub_activity = dashboard_selected_training_sub_activity_name
+    @training_month_options = dashboard_month_options_for_targets(targets)
+    selected_month = dashboard_selected_training_month_name.presence || default_vrp_dashboard_month(@training_month_options)
     month_targets = dashboard_targets_for_month(targets, selected_month)
+    @training_sub_activity_options = dashboard_sub_activity_options_for_targets(month_targets, selected_month)
+    requested_sub_activity = dashboard_selected_training_sub_activity_name
+    selected_sub_activity = @training_sub_activity_options.find do |option|
+      normalize_dashboard_text(option) == normalize_dashboard_text(requested_sub_activity)
+    end || @training_sub_activity_options.first
     training_targets = dashboard_targets_for_filters(targets, selected_month, selected_sub_activity)
     @dashboard_title = admin_dashboard_user? ? "Admin Dashboard" : dashboard_current_user_title
     @dashboard_caption = admin_dashboard_user? ? "Live complete system summary." : "Live summary for your mapped records."
     @training_selected_month = selected_month
     @training_selected_sub_activity = selected_sub_activity
-    @training_month_options = dashboard_month_options_for_targets(targets)
-    @training_sub_activity_options = dashboard_sub_activity_options_for_targets(month_targets, selected_month)
-    participation_records = dashboard_training_participation_records(month_name: selected_month, sub_activity_name: selected_sub_activity)
-    @training_participation_status_cards = training_participation_status_cards_from_records(participation_records, month_name: selected_month, sub_activity_name: selected_sub_activity)
+    default_status_month = default_vrp_dashboard_month(@training_month_options)
+    @participation_month_filter_value = params[:participation_month].presence || default_status_month
+    @participation_selected_month = @participation_month_filter_value == "all" ? nil : @participation_month_filter_value
+    participation_records = dashboard_training_participation_records(month_name: @participation_selected_month)
+    @training_participation_status_cards = training_participation_status_cards_from_records(participation_records, month_name: @participation_selected_month)
     @training_target_status_cards = training_target_status_cards(training_targets, month_name: selected_month, sub_activity_name: selected_sub_activity)
     @training_participation = training_participation_summary(training_targets, month_name: selected_month)
     @farmer_training_dashboard_rows = farmer_training_dashboard_rows(training_targets, month_name: selected_month)
-    @dashboard_weekly_target_cards = weekly_activity_target_status_cards(@filtered_targets)
+    @weekly_target_month_filter_value = params[:weekly_target_month].presence || default_status_month
+    @weekly_dashboard_selected_month = @weekly_target_month_filter_value == "all" ? nil : @weekly_target_month_filter_value
+    weekly_dashboard_targets = dashboard_targets_for_month(@filtered_targets, @weekly_dashboard_selected_month)
+    @dashboard_weekly_target_cards = weekly_activity_target_status_cards(weekly_dashboard_targets, month_name: @weekly_dashboard_selected_month)
     @dashboard_cards = dashboard_cards
     @dashboard_reports = dashboard_reports
     @dashboard_generated_at = Time.current
@@ -1335,6 +1344,11 @@ class ModulesController < ApplicationController
     @training_month_options = dashboard_month_options_for_targets(targets)
     selected_month = dashboard_selected_training_month_name.presence || default_vrp_dashboard_month(@training_month_options)
     filtered_targets = dashboard_targets_for_month(targets, selected_month)
+    @training_sub_activity_options = dashboard_sub_activity_options_for_targets(filtered_targets, selected_month)
+    requested_sub_activity = dashboard_selected_training_sub_activity_name
+    selected_sub_activity = @training_sub_activity_options.find do |option|
+      normalize_dashboard_text(option) == normalize_dashboard_text(requested_sub_activity)
+    end || @training_sub_activity_options.first
     training_targets = dashboard_targets_for_filters(targets, selected_month, selected_sub_activity)
     bills = vrp_dashboard_bills(@vrp)
     targeted_farmer_ids = vrp_targeted_farmer_ids(filtered_targets)
@@ -1345,9 +1359,10 @@ class ModulesController < ApplicationController
     @vrp_village_rows = vrp_dashboard_village_rows(@vrp, mappings, filtered_targets)
     @training_selected_month = selected_month
     @training_selected_sub_activity = selected_sub_activity
-    @training_sub_activity_options = dashboard_sub_activity_options_for_targets(filtered_targets, selected_month)
-    participation_records = dashboard_training_participation_records(month_name: selected_month, sub_activity_name: selected_sub_activity)
-    @training_participation_status_cards = training_participation_status_cards_from_records(participation_records, month_name: selected_month, sub_activity_name: selected_sub_activity)
+    @participation_month_filter_value = params[:participation_month].presence || default_vrp_dashboard_month(@training_month_options)
+    @participation_selected_month = @participation_month_filter_value == "all" ? nil : @participation_month_filter_value
+    participation_records = dashboard_training_participation_records(month_name: @participation_selected_month)
+    @training_participation_status_cards = training_participation_status_cards_from_records(participation_records, month_name: @participation_selected_month)
     @training_target_status_cards = training_target_status_cards(training_targets, month_name: selected_month, sub_activity_name: selected_sub_activity)
     @training_participation = training_participation_summary(training_targets, month_name: selected_month)
     @farmer_training_dashboard_rows = farmer_training_dashboard_rows(training_targets, month_name: selected_month)
@@ -2168,9 +2183,11 @@ class ModulesController < ApplicationController
       jeevika_bill_pending_for_current_approver?(record)
   end
 
-  def weekly_activity_target_status_cards(targets)
+  def weekly_activity_target_status_cards(targets, month_name: nil)
     counts = training_target_status_counts(targets)
     filter_params = dashboard_weekly_report_filter_params
+    filter_params.delete(:training_month)
+    filter_params[:training_month] = month_name if month_name.present?
 
     [
       {
@@ -2233,6 +2250,10 @@ class ModulesController < ApplicationController
         "ICS",
         "Village",
         "Target",
+        "Week 1 Achieved / Target",
+        "Week 2 Achieved / Target",
+        "Week 3 Achieved / Target",
+        "Week 4 Achieved / Target",
         "Completed",
         "Pending",
         "Progress %",
@@ -2253,6 +2274,10 @@ class ModulesController < ApplicationController
           row[:ics],
           row[:village],
           dashboard_quantity(row[:target_quantity]),
+          weekly_progress_export_value(row, 0),
+          weekly_progress_export_value(row, 1),
+          weekly_progress_export_value(row, 2),
+          weekly_progress_export_value(row, 3),
           dashboard_quantity(row[:completed_quantity]),
           dashboard_quantity(row[:pending_quantity]),
           row[:progress_percent],
@@ -2260,6 +2285,12 @@ class ModulesController < ApplicationController
         ]
       end
     end
+  end
+
+  def weekly_progress_export_value(row, index)
+    achieved = Array(row[:weekly_achievements])[index].to_f
+    target = Array(row[:weekly_targets])[index].to_f
+    "#{dashboard_quantity(achieved)} / #{dashboard_quantity(target)}"
   end
 
   def dashboard_participation_targets
@@ -2968,6 +2999,8 @@ class ModulesController < ApplicationController
     pending_quantity = [target_quantity - completed_quantity, 0].max
     progress_percent = target_quantity.positive? ? ((completed_quantity / target_quantity) * 100).round : 0
     status_class = training_target_status_for_percent(progress_percent)
+    weekly_targets = target.respond_to?(:weekly_target_values) ? target.weekly_target_values.map(&:to_f) : [0, 0, 0, 0]
+    weekly_achievements = training_weekly_achievement_values(target, farmer_ids)
 
     {
       target_mapping_id: target.id.to_s,
@@ -2983,6 +3016,8 @@ class ModulesController < ApplicationController
       completion_date: target.completion_date&.strftime("%d-%m-%Y") || "-",
       completion_date_sort: target.completion_date,
       target_quantity: target_quantity,
+      weekly_targets: weekly_targets,
+      weekly_achievements: weekly_achievements,
       completed_quantity: completed_quantity,
       pending_quantity: pending_quantity,
       progress_percent: progress_percent,
@@ -2991,6 +3026,28 @@ class ModulesController < ApplicationController
       completed_farmers: training_farmers_for_ids(completed_farmer_ids).map { |farmer| farmer.merge(status_label: "Completed", status_class: "green") },
       pending_farmers: training_farmers_for_ids(pending_farmer_ids).map { |farmer| farmer.merge(status_label: "Pending", status_class: "red") }
     }
+  end
+
+  def training_weekly_achievement_values(target, farmer_ids)
+    farmer_ids = Array(farmer_ids).map(&:to_s).reject(&:blank?).uniq
+    return [0, 0, 0, 0] if farmer_ids.blank? || !model_ready?(:ModuleRecord)
+
+    weekly_farmer_ids = Array.new(4) { [] }
+    ModuleRecord
+      .where(module_slug: "training-form")
+      .order(created_at: :desc)
+      .select { |record| active_module_record?(record) }
+      .select { |record| training_record_matches_dashboard_target?(record, target, farmer_ids) }
+      .select { |record| training_record_within_completion_date?(record, target.completion_date) }
+      .each do |record|
+        training_date = parse_module_date(training_summary(record)[:training_date]) || record.created_at&.to_date
+        next unless training_date
+
+        week_index = [((training_date.day - 1) / 7), 3].min
+        weekly_farmer_ids[week_index] |= training_record_selected_farmer_ids(record) & farmer_ids
+      end
+
+    weekly_farmer_ids.map(&:size)
   end
 
   def training_target_status_counts_for_rows(rows)

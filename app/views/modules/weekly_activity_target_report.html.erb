@@ -126,6 +126,10 @@
             <th>Cluster Incharge</th>
             <th>Post</th>
             <th>Target</th>
+            <th>Week 1<br><small>Done / Target</small></th>
+            <th>Week 2<br><small>Done / Target</small></th>
+            <th>Week 3<br><small>Done / Target</small></th>
+            <th>Week 4<br><small>Done / Target</small></th>
             <th>Completed</th>
             <th>Pending</th>
             <th>Status</th>
@@ -145,6 +149,15 @@
                 <td><%= row[:cluster_incharge] %></td>
                 <td><%= row[:post] %></td>
                 <td><%= quantity.call(row[:target_quantity]) %></td>
+                <% 4.times do |week_index| %>
+                  <% week_target = Array(row[:weekly_targets])[week_index].to_f %>
+                  <% week_done = Array(row[:weekly_achievements])[week_index].to_f %>
+                  <% week_percent = week_target.positive? ? ((week_done / week_target) * 100).round : 0 %>
+                  <% week_status = training_target_status_for_percent(week_percent) %>
+                  <td class="weekly-progress-cell">
+                    <span class="training-status-pill <%= week_status %>"><%= quantity.call(week_done) %> / <%= quantity.call(week_target) %></span>
+                  </td>
+                <% end %>
                 <td><%= quantity.call(row[:completed_quantity]) %></td>
                 <td><%= quantity.call(row[:pending_quantity]) %></td>
                 <td><span class="training-status-pill <%= row[:status_class] %>"><%= row[:status_label] %></span></td>
@@ -152,7 +165,7 @@
             <% end %>
           <% else %>
             <tr>
-              <td colspan="13">No weekly target data found for selected filters.</td>
+              <td colspan="17">No weekly target data found for selected filters.</td>
             </tr>
           <% end %>
         </tbody>
