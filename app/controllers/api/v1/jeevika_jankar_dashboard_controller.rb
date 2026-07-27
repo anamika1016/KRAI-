@@ -9,9 +9,9 @@ module Api
 
         targets = TargetMapping.where(vrp_id: vrp.id).order(:month_name, :main_activity_name, :activity_name, :id).to_a
         months = targets.filter_map { |target| target.month_name.to_s.strip.presence }.uniq
-        selected_month = params[:month].presence || default_month(months)
+        selected_month = params[:month].presence || params[:training_month].presence || default_month(months)
         targets = targets.select { |target| same_text?(target.month_name, selected_month) } if selected_month.present?
-        progress = targets.map { |target| progress_payload(target) }
+        progress = web_parity_progress(targets, vrp)
         assigned = progress.sum { |row| row[:assigned].to_f }
         achieved = progress.sum { |row| row[:achieved].to_f }
 
@@ -217,6 +217,42 @@ module Api
           pending: number([assigned - achieved, 0].max),
           progress_percent: assigned.positive? ? ((achieved / assigned) * 100).round(2) : 0
         }
+      end
+
+      # Keep the mobile dashboard totals identical to the existing VRP web dashboard.
+      # The web calculation handles Main Activity Type, farmer/activity/month matching,
+      # completion deadlines, approved Other targets, and the bill fallback.
+      def web_parity_progress(targets, vrp)
+        calculator = ModulesController.new
+        bills = calculator.send(:vrp_dashboard_bills, vrp)
+        rows = calculator.send(:vrp_dashboard_target_progress_rows, targets, bills)
+
+        rows.map do |row|
+          assigned = row[:target].to_f
+          achieved = [row[:completed].to_f, assigned].min
+          {
+            target_mapping_id: row[:target_mapping_id],
+            month: row[:month],
+            fco: row[:fco],
+            ics: row[:ics],
+            village: row[:village],
+            main_activity: row[:main_activity],
+            sub_activity: row[:activity],
+            completion_date: parse_dashboard_date(row[:completion_date]),
+            assigned: number(assigned),
+            achieved: number(achieved),
+            pending: number([assigned - achieved, 0].max),
+            progress_percent: assigned.positive? ? ((achieved / assigned) * 100).round(2) : 0
+          }
+        end
+      end
+
+      def parse_dashboard_date(value)
+        return if value.blank? || value == "-"
+
+        Date.strptime(value.to_s, "%d-%m-%Y").iso8601
+      rescue ArgumentError
+        value
       end
 
       def target_achievement(target)
