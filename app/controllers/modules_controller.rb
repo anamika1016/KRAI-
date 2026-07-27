@@ -1886,17 +1886,20 @@ class ModulesController < ApplicationController
     if activity_setting.present? && !training_main_activity_type?(activity_setting[:main_activity_type])
       other_target_achievement = other_target_achievement_index&.dig(target.id.to_s) ||
         approved_other_target_achievement_index[target.id.to_s]
-      return other_target_achievement[:achievement].to_f if other_target_achievement.present?
-    elsif activity_setting.present?
+      return capped_target_achievement(target, other_target_achievement[:achievement]) if other_target_achievement.present?
+    elsif activity_setting.blank? || training_main_activity_type?(activity_setting[:main_activity_type])
+      # Older/renamed activity-master rows may not resolve to a setting. Matching
+      # training submissions are still authoritative completion evidence and must
+      # keep the dashboard's achieved/pending figures live.
       completed_farmer_count = completed_training_farmer_ids_for_target_deadline(target, target_farmer_ids(target)).size
-      return completed_farmer_count.to_f if completed_farmer_count.positive?
+      return capped_target_achievement(target, completed_farmer_count) if completed_farmer_count.positive?
     end
 
     relevant_bills = bills.select do |record|
       target.month_name.blank? || normalize_dashboard_text(record.data["select_bill_month"]) == normalize_dashboard_text(target.month_name)
     end
 
-    relevant_bills.sum do |record|
+    bill_achievement = relevant_bills.sum do |record|
       matching_items = vrp_bill_items(record).select do |item|
         normalize_dashboard_text(item["activity"]) == normalize_dashboard_text(target.activity_name)
       end
@@ -1909,6 +1912,12 @@ class ModulesController < ApplicationController
         0
       end
     end
+
+    capped_target_achievement(target, bill_achievement)
+  end
+
+  def capped_target_achievement(target, achievement)
+    [[achievement.to_f, 0].max, target.target_quantity.to_f].min
   end
 
   def vrp_bill_items(record)

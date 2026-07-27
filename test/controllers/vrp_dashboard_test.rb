@@ -1,6 +1,63 @@
 require "test_helper"
 
 class VrpDashboardTest < ActionDispatch::IntegrationTest
+  test "dashboard derives achieved and pending values from training submissions without activity master configuration" do
+    vrp = create_vrp(user_name: "dynamic_progress_vrp", password: "secret", agreement_accepted_at: Time.current)
+    farmers = 3.times.map do |index|
+      create_afl(farmer_name: "Progress Farmer #{index + 1}", mobile_no: "900000001#{index}")
+    end
+    mapping = VrpIcsMapping.create!(
+      vrp: vrp,
+      fco_id: "FCO-DYNAMIC",
+      ics_id: "ICS-DYNAMIC",
+      village_id: "V-DYNAMIC",
+      village_name: "Dynamic Village",
+      afl_ids: farmers.map(&:id),
+      created_by_type: "User",
+      created_by_id: 1
+    )
+    TargetMapping.create!(
+      vrp: vrp,
+      vrp_ics_mapping: mapping,
+      fco_id: mapping.fco_id,
+      ics_id: mapping.ics_id,
+      village_id: mapping.village_id,
+      village_name: mapping.village_name,
+      farmer_count: farmers.size,
+      afl_ids: farmers.map(&:id),
+      month_name: "July",
+      completion_date: Date.new(2026, 7, 31),
+      main_activity_name: "Unconfigured Training",
+      activity_name: "Dynamic Training",
+      target_quantity: 3,
+      created_by_type: "User",
+      created_by_id: 1
+    )
+    ModuleRecord.create!(
+      module_slug: "training-form",
+      data: {
+        "month" => "July",
+        "training_date" => "2026-07-20",
+        "main_activity" => "Unconfigured Training",
+        "sub_activity" => "Dynamic Training",
+        "selected_farmer_ids" => farmers.first(2).map { |farmer| farmer.id.to_s },
+        "vrp_id" => vrp.id.to_s
+      }
+    )
+
+    post login_path, params: { login: "dynamic_progress_vrp", password: "secret" }
+    get dashboard_path, params: { training_month: "July" }
+
+    assert_response :success
+    assert_select ".achieved-target strong", text: "2"
+    assert_select ".pending-target strong", text: "1"
+    assert_select "#vrp_target_progress_table tbody tr" do
+      assert_select "td", text: "2"
+      assert_select "td", text: "1"
+      assert_select ".grid-status", text: "67%"
+    end
+  end
+
   test "vrp sees own dashboard data and read only targets" do
     vrp = create_vrp(
       user_name: "dashboard_vrp",
