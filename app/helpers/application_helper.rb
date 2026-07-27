@@ -154,27 +154,27 @@ module ApplicationHelper
     #     ["ICS Master", :module, "ics-master"]
     #   ]
     # },
-    # {
-    #   title: "Farmer Farm Information",
-    #   icon: "▥",
-    #   links: [
-    #     ["Farmer Farm Information", :route, :farmer_farm_information_path],
-    #     ["All Basic Detail List", :route, :list_farmer_farm_information_path],
-    #     ["Farm Map (lat long gps)", :route, :farm_map_farmer_farm_information_path],
-    #     ["Crop Map Session Wise Farm Map (lat long gps)", :route, :crop_map_session_wise_farmer_farm_information_path],
-    #     ["Farm-Crop-Area Details", :route, :farm_crop_area_details_path],
-    #     ["Seed & Planting Material", :route, :seed_planting_materials_path],
-    #     ["Soil Conditioners & Fertility Input Records", :route, :soil_conditioner_fertility_input_records_path],
-    #     ["On Farm Input Records", :route, :on_farm_input_records_path],
-    #     ["Disease, Insects, Pests & Weed Management Record", :route, :disease_pest_weed_management_records_path],
-    #     ["Contamination Control Records", :route, :contamination_control_records_path],
-    #     ["Records of Production & Harvest Details", :route, :production_harvest_details_path],
-    #     ["Post Harvest, Handling & Storage Area", :route, :post_harvest_handling_storage_records_path],
-    #     ["Sale Record", :route, :sale_records_path],
-    #     ["Dispatch Record", :route, :dispatch_records_path],
-    #     ["Application Format for Exit of Farmer from ICS", :route, :ics_exit_declaration_farmer_farm_information_path]
-    #   ]
-    # },
+    {
+      title: "Farmer Farm Information",
+      icon: "▥",
+      links: [
+        ["Farmer Farm Information", :route, :farmer_farm_information_path],
+        ["All Basic Detail List", :route, :list_farmer_farm_information_path],
+        ["Farm Map (lat long gps)", :route, :farm_map_farmer_farm_information_path],
+        ["Crop Map Session Wise Farm Map (lat long gps)", :route, :crop_map_session_wise_farmer_farm_information_path],
+        ["Farm-Crop-Area Details", :route, :farm_crop_area_details_path],
+        ["Seed & Planting Material", :route, :seed_planting_materials_path],
+        ["Soil Conditioners & Fertility Input Records", :route, :soil_conditioner_fertility_input_records_path],
+        ["On Farm Input Records", :route, :on_farm_input_records_path],
+        ["Disease, Insects, Pests & Weed Management Record", :route, :disease_pest_weed_management_records_path],
+        ["Contamination Control Records", :route, :contamination_control_records_path],
+        ["Records of Production & Harvest Details", :route, :production_harvest_details_path],
+        ["Post Harvest, Handling & Storage Area", :route, :post_harvest_handling_storage_records_path],
+        ["Sale Record", :route, :sale_records_path],
+        ["Dispatch Record", :route, :dispatch_records_path],
+        ["Application Format for Exit of Farmer from ICS", :route, :ics_exit_declaration_farmer_farm_information_path]
+      ]
+    },
     {
       title: "Jeevika Jankar Bill",
       icon: "▧",
