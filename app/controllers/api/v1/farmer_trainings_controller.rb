@@ -14,6 +14,29 @@ module Api
         render_show
       end
 
+      def photos
+        record = farmer_target_api.find(params[:id])
+        unless record
+          return render json: { success: false, message: "Farmer Training Form record not found." }, status: :not_found
+        end
+
+        paths = Array(record.data["training_photo_upload_with_geo_tag"]).compact_blank
+        photos = paths.map.with_index do |path, index|
+          {
+            id: index + 1,
+            url: path.to_s.match?(/\Ahttps?:\/\//i) ? path : "#{request.base_url}#{path}",
+            filename: File.basename(path.to_s)
+          }
+        end
+
+        render json: {
+          success: true,
+          farmer_training_id: record.id,
+          photo_count: photos.size,
+          photos: photos
+        }, status: :ok
+      end
+
       def create
         render_create
       end

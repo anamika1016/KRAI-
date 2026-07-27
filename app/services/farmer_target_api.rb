@@ -3,6 +3,8 @@
 # Farmer Target module APIs for React Native.
 # Stores ModuleRecord rows with the same slugs as the web UI (ModulesController untouched).
 class FarmerTargetApi
+  MAX_TRAINING_PHOTO_SIZE = 5.megabytes
+  TRAINING_PHOTO_CONTENT_TYPES = %w[image/jpeg image/png image/webp image/heic image/heif].freeze
   OTHER_TARGET_SLUGS = %w[seed-distribution-target papl360-target].freeze
   TARGET_SLUGS = (%w[training-form add-farmer-form] + OTHER_TARGET_SLUGS).freeze
 
@@ -28,6 +30,9 @@ class FarmerTargetApi
   end
 
   def create(raw_attrs)
+    upload_errors = training_photo_upload_errors(raw_attrs)
+    return { success: false, errors: upload_errors } if upload_errors.any?
+
     data = normalize_incoming(raw_attrs)
     data = normalize_for_slug(data)
     errors = validation_errors(data)
@@ -68,13 +73,17 @@ class FarmerTargetApi
   end
 
   def record_payload(record)
-    {
+    payload = {
       id: record.id,
       module_slug: record.module_slug,
       created_at: record.created_at,
       updated_at: record.updated_at,
       data: record.data
     }
+    if record.module_slug == "training-form"
+      payload[:photo_count] = Array(record.data["training_photo_upload_with_geo_tag"]).compact_blank.size
+    end
+    payload
   end
 
   private
@@ -1023,6 +1032,23 @@ class FarmerTargetApi
       File.binwrite(path, upload.read)
     end
     "/uploads/module_records/#{filename}"
+  end
+
+  def training_photo_upload_errors(raw_attrs)
+    return [] unless @module_slug == "training-form"
+
+    raw = raw_attrs.respond_to?(:to_unsafe_h) ? raw_attrs.to_unsafe_h : Hash(raw_attrs)
+    uploads = Array(raw["training_photo_upload_with_geo_tag"] || raw[:training_photo_upload_with_geo_tag]).compact_blank
+    uploads.each_with_object([]) do |upload, errors|
+      next unless upload.respond_to?(:original_filename)
+
+      unless TRAINING_PHOTO_CONTENT_TYPES.include?(upload.content_type.to_s.downcase)
+        errors << "Training photos must be JPEG, PNG, WEBP, HEIC, or HEIF images."
+      end
+      if upload.respond_to?(:size) && upload.size.to_i > MAX_TRAINING_PHOTO_SIZE
+        errors << "Each training photo must be 5 MB or smaller."
+      end
+    end.uniq
   end
 
   def model_ready?(name)
