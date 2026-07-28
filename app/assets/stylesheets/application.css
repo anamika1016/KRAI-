@@ -4088,6 +4088,39 @@ body {
   min-width: 10rem;
 }
 
+/* This list has up to twenty columns. Let it use horizontal scrolling instead
+   of squeezing the identifying columns until every word breaks per letter. */
+#target_mapping_list {
+  width: max-content;
+  min-width: 100%;
+}
+
+#target_mapping_list th,
+#target_mapping_list td {
+  min-width: 7rem;
+}
+
+#target_mapping_list th:nth-child(1),
+#target_mapping_list td:nth-child(1) {
+  min-width: 10rem;
+}
+
+#target_mapping_list th:nth-child(4),
+#target_mapping_list td:nth-child(4) {
+  min-width: 9rem;
+}
+
+#target_mapping_list th:nth-child(6),
+#target_mapping_list td:nth-child(6) {
+  min-width: 8rem;
+}
+
+#target_mapping_list th:nth-child(-n + 6),
+#target_mapping_list td:nth-child(-n + 6) {
+  overflow-wrap: normal;
+  word-break: normal;
+}
+
 #target_mapping_list .target-training-column {
   min-width: 7.5rem;
   white-space: normal;
