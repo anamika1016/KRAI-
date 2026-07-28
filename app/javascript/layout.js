@@ -24,6 +24,33 @@ const replaceVrpUiText = (value) => `${value || ""}`
   .replace(/व्हीआरपी/g, vrpUiLabel)
   .replace(/ଭିଆରପି/g, vrpUiLabel);
 
+const initAflFarmerMapping = () => {
+  document.querySelectorAll("[data-afl-farmer-mapping]").forEach((form) => {
+    if (form.dataset.aflFarmerMappingReady === "true") return;
+
+    const farmerSelect = form.querySelector("[data-afl-farmer-select]");
+    if (!farmerSelect) return;
+
+    const mappedField = (name) => form.querySelector(`[data-afl-mapped-field='${name}']`);
+    farmerSelect.addEventListener("change", () => {
+      const option = farmerSelect.selectedOptions[0];
+      const values = {
+        farm_id: option?.dataset.aflFarmId || "",
+        ics_name: option?.dataset.aflIcsName || "",
+        tracenet_no: option?.dataset.aflTracenetNo || "",
+        crop_year: option?.dataset.aflCropYear || "",
+        aadhar_number: option?.dataset.aflAadharNumber || ""
+      };
+
+      Object.entries(values).forEach(([name, value]) => {
+        const field = mappedField(name);
+        if (field) field.value = value;
+      });
+    });
+    form.dataset.aflFarmerMappingReady = "true";
+  });
+};
+
 const initFastNavigation = () => {
   const path = window.location.pathname;
   document.querySelectorAll(".side-nav a[href]").forEach((link) => {
@@ -6078,5 +6105,6 @@ function initDeferredLayoutPage() {
 
 document.addEventListener("turbo:load", () => {
   initFastNavigation();
+  initAflFarmerMapping();
   scheduleDeferredLayoutInit();
 });
