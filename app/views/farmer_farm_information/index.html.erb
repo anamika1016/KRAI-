@@ -208,3 +208,31 @@
     </section>
   </section>
 </main>
+
+<script>
+  (() => {
+    const form = document.querySelector("[data-afl-farmer-mapping]");
+    const farmerSelect = form?.querySelector("[data-afl-farmer-select]");
+    if (!form || !farmerSelect || farmerSelect.dataset.mappingReady === "true") return;
+
+    const applySelectedFarmer = () => {
+      const option = farmerSelect.selectedOptions[0];
+      const values = {
+        farm_id: option?.dataset.aflFarmId || "",
+        ics_name: option?.dataset.aflIcsName || "",
+        tracenet_no: option?.dataset.aflTracenetNo || "",
+        crop_year: option?.dataset.aflCropYear || "",
+        aadhar_number: option?.dataset.aflAadharNumber || ""
+      };
+
+      Object.entries(values).forEach(([name, value]) => {
+        const field = form.querySelector(`[data-afl-mapped-field='${name}']`);
+        if (field) field.value = value;
+      });
+    };
+
+    farmerSelect.addEventListener("change", applySelectedFarmer);
+    if (form.dataset.aflNewRecord === "true" && farmerSelect.value) applySelectedFarmer();
+    farmerSelect.dataset.mappingReady = "true";
+  })();
+</script>
