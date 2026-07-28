@@ -28,7 +28,7 @@
     </div>
 
     <section class="module-card">
-      <%= form_with model: form_record, url: form_url, method: form_method, local: true, html: { class: "module-entry-form", data: { afl_farmer_mapping: true } } do |f| %>
+      <%= form_with model: form_record, url: form_url, method: form_method, local: true, html: { class: "module-entry-form", data: { afl_farmer_mapping: true, afl_new_record: form_record.new_record? } } do |f| %>
         <div class="module-form-grid user-registration-grid">
           <label>
             <span>Farm ID <em>*</em></span>

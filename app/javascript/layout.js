@@ -32,7 +32,7 @@ const initAflFarmerMapping = () => {
     if (!farmerSelect) return;
 
     const mappedField = (name) => form.querySelector(`[data-afl-mapped-field='${name}']`);
-    farmerSelect.addEventListener("change", () => {
+    const applySelectedFarmer = () => {
       const option = farmerSelect.selectedOptions[0];
       const values = {
         farm_id: option?.dataset.aflFarmId || "",
@@ -46,7 +46,10 @@ const initAflFarmerMapping = () => {
         const field = mappedField(name);
         if (field) field.value = value;
       });
-    });
+    };
+
+    farmerSelect.addEventListener("change", applySelectedFarmer);
+    if (form.dataset.aflNewRecord === "true" && farmerSelect.value) applySelectedFarmer();
     form.dataset.aflFarmerMappingReady = "true";
   });
 };
