@@ -7,7 +7,7 @@ module Api
 
       def bills
         records = bill_records.select { |record| calculator.send(:jeevika_jankar_bill_record_visible?, record) }
-        all_rows = calculator.send(:jeevika_bill_rows, records).map { |row| bill_payload(row) }
+        all_rows = records.map { |record| bill_payload_for(record) }
         rows = filter_month(all_rows)
 
         render json: {
@@ -24,8 +24,11 @@ module Api
 
         months = calculator.send(:jeevika_bill_payment_month_options, bill_records)
         month = selected_month.presence || months.first
-        rows = calculator.send(:jeevika_bill_payment_rows, bill_records, month)
-          .map { |row| payment_payload(row) }
+        records = bill_records.select do |record|
+          calculator.send(:jeevika_bill_final_approved?, record) &&
+            (month.blank? || same_text?(record.data["bill_month"], month))
+        end
+        rows = records.map { |record| payment_payload_for(record) }
 
         render json: {
           success: true,
@@ -114,21 +117,41 @@ module Api
           .reject { |month| month == "-" }.uniq
       end
 
-      def bill_payload(row)
-        row.slice(
-          :id, :bill_id, :vrp_id, :name, :financial_year, :bill_month,
-          :activity_groups, :activity_names, :target, :achievement, :amount,
-          :status, :status_class, :record_state, :current_approver, :approval_remarks
-        )
+      def bill_payload_for(record)
+        data = record.data
+        summary = calculator.send(:jeevika_bill_summary, record)
+        history = calculator.send(:jeevika_bill_approval_history, record)
+        vrp_label = data["select_vrp_name"].presence || calculator.send(:jeevika_jankar_vrp_label, data["select_vrp"])
+
+        {
+          id: record.id,
+          bill_id: record.id,
+          vrp_id: data["select_vrp"],
+          name: calculator.send(:jeevika_jankar_display_name, vrp_label),
+          financial_year: data["financial_year"].presence || "-",
+          bill_month: data["bill_month"].presence || "-",
+          activity_groups: summary[:activity_groups].presence || "-",
+          activity_names: summary[:activity_names].presence || "-",
+          target: data["total_target"].presence || "0",
+          achievement: data["total_achievement"].presence || "0",
+          amount: calculator.send(:jeevika_jankar_bill_total_payment, record),
+          status: calculator.send(:jeevika_bill_status_label, record),
+          status_class: calculator.send(:jeevika_bill_status_class, record),
+          record_state: data["record_state"].presence || "Active",
+          current_approver: calculator.send(:jeevika_bill_current_approver?, record),
+          approval_remarks: calculator.send(:bill_approval_remarks_text, history)
+        }
       end
 
-      def payment_payload(row)
-        payload = bill_payload(row).merge(
-          bank_name: row[:bank_name],
-          ifsc_code: row[:ifsc_code],
-          account_number: row[:account_number]
+      def payment_payload_for(record)
+        bank_row = calculator.send(:jeevika_bill_bank_rows, record).first || {}
+        vrp = calculator.send(:jeevika_bill_vrp, record)
+        payload = bill_payload_for(record).merge(
+          bank_name: bank_row[:bank_name].presence || "-",
+          ifsc_code: bank_row[:ifsc_code].presence || "-",
+          account_number: bank_row[:account_number].presence || "-"
         )
-        attachment = row[:passbook_attachment]
+        attachment = vrp&.bank_passbook_upload
         payload[:passbook_url] = attachment_url(attachment) if attachment&.attached?
         payload
       end
