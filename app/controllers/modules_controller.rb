@@ -3212,9 +3212,19 @@ class ModulesController < ApplicationController
     target_topic = normalize_dashboard_text(target.main_activity_name)
     target_subject = normalize_dashboard_text(target.activity_name)
 
-    topic_matches = topic.blank? || target_topic.blank? || topic == target_topic
-    subject_matches = subject.blank? || target_subject.blank? || subject == target_subject
+    topic_matches = dashboard_training_activity_text_matches?(topic, target_topic)
+    subject_matches = dashboard_training_activity_text_matches?(subject, target_subject)
     topic_matches && subject_matches
+  end
+
+  # A target mapping can contain several configured training modules in one
+  # activity label, while each training form saves only the module delivered in
+  # that session. Treat the individual module as belonging to that combined
+  # target without allowing an unrelated activity to complete it.
+  def dashboard_training_activity_text_matches?(record_value, target_value)
+    return true if record_value.blank? || target_value.blank?
+
+    record_value == target_value || target_value.include?(record_value)
   end
 
   def training_record_vrp_scope_matches?(record, vrp)
@@ -7317,9 +7327,21 @@ class ModulesController < ApplicationController
   def completed_training_farmer_ids_for(target, farmer_ids)
     farmer_ids = Array(farmer_ids).map(&:to_s).reject(&:blank?).uniq
     return [] if farmer_ids.blank?
+    return [] unless model_ready?(:ModuleRecord)
 
-    key = training_activity_key(target.month_name, target.main_activity_name, target.activity_name)
-    Array(training_completion_index[key]) & farmer_ids
+    dashboard_training_completion_records
+      .select { |record| training_record_matches_dashboard_target?(record, target, farmer_ids) }
+      .flat_map { |record| training_record_selected_farmer_ids(record) & farmer_ids }
+      .uniq
+  end
+
+  def dashboard_training_completion_records
+    return @dashboard_training_completion_records if defined?(@dashboard_training_completion_records)
+
+    @dashboard_training_completion_records = ModuleRecord
+      .where(module_slug: "training-form")
+      .order(created_at: :desc)
+      .select { |record| active_module_record?(record) }
   end
 
   def completed_training_farmer_ids_for_target_deadline(target, farmer_ids)

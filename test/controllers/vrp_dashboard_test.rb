@@ -28,7 +28,7 @@ class VrpDashboardTest < ActionDispatch::IntegrationTest
       month_name: "July",
       completion_date: Date.new(2026, 7, 20),
       main_activity_name: "Farmers' Training",
-      activity_name: "Organic Introduction",
+      activity_name: "1. Organic Introduction (M1), 2. Soil Preparation (M3)",
       target_quantity: farmers.size,
       created_by_type: "User",
       created_by_id: 1
@@ -39,7 +39,7 @@ class VrpDashboardTest < ActionDispatch::IntegrationTest
         "month" => "July",
         "training_date" => "2026-07-25",
         "main_activity" => target.main_activity_name,
-        "sub_activity" => target.activity_name,
+        "sub_activity" => "Organic Introduction (M1)",
         "selected_farmer_ids" => farmers.map { |farmer| farmer.id.to_s },
         "vrp_id" => vrp.id.to_s
       }
