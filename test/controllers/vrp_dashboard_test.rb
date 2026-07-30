@@ -1,6 +1,62 @@
 require "test_helper"
 
 class VrpDashboardTest < ActionDispatch::IntegrationTest
+  test "dashboard counts training submitted after the target completion date" do
+    vrp = create_vrp(user_name: "late_completion_vrp", password: "secret", agreement_accepted_at: Time.current)
+    farmers = 2.times.map do |index|
+      create_afl(farmer_name: "Late Completion Farmer #{index + 1}", mobile_no: "900000009#{index}")
+    end
+    mapping = VrpIcsMapping.create!(
+      vrp: vrp,
+      fco_id: "FCO-LATE",
+      ics_id: "ICS-LATE",
+      village_id: "V-LATE",
+      village_name: "Late Village",
+      afl_ids: farmers.map(&:id),
+      created_by_type: "User",
+      created_by_id: 1
+    )
+    target = TargetMapping.create!(
+      vrp: vrp,
+      vrp_ics_mapping: mapping,
+      fco_id: mapping.fco_id,
+      ics_id: mapping.ics_id,
+      village_id: mapping.village_id,
+      village_name: mapping.village_name,
+      farmer_count: farmers.size,
+      afl_ids: farmers.map(&:id),
+      month_name: "July",
+      completion_date: Date.new(2026, 7, 20),
+      main_activity_name: "Farmers' Training",
+      activity_name: "Organic Introduction",
+      target_quantity: farmers.size,
+      created_by_type: "User",
+      created_by_id: 1
+    )
+    ModuleRecord.create!(
+      module_slug: "training-form",
+      data: {
+        "month" => "July",
+        "training_date" => "2026-07-25",
+        "main_activity" => target.main_activity_name,
+        "sub_activity" => target.activity_name,
+        "selected_farmer_ids" => farmers.map { |farmer| farmer.id.to_s },
+        "vrp_id" => vrp.id.to_s
+      }
+    )
+
+    post login_path, params: { login: vrp.user_name, password: "secret" }
+    get dashboard_path, params: { training_month: "July" }
+
+    assert_response :success
+    assert_select ".achieved-target strong", text: "2"
+    assert_select ".pending-target strong", text: "0"
+
+    get vrp_dashboard_list_path("pending_target"), params: { training_month: "July" }
+    assert_response :success
+    assert_includes response.body, "Total: 0"
+  end
+
   test "dashboard derives achieved and pending values from training submissions without activity master configuration" do
     vrp = create_vrp(user_name: "dynamic_progress_vrp", password: "secret", agreement_accepted_at: Time.current)
     farmers = 3.times.map do |index|
