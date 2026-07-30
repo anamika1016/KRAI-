@@ -1666,7 +1666,8 @@ class ModulesController < ApplicationController
 
     assigned_ids = target_farmer_ids(target)
     completed_ids = vrp_dashboard_completed_farmer_ids_for_target(target)
-    pending_ids = assigned_ids - completed_ids
+    pending_count = [target.target_quantity.to_i - completed_ids.size, 0].max
+    pending_ids = (assigned_ids - completed_ids).first(pending_count)
     farmer_ids = case scope
     when "completed" then completed_ids
     when "pending" then pending_ids
@@ -3202,9 +3203,10 @@ class ModulesController < ApplicationController
 
   def training_record_matches_dashboard_target?(record, target, target_farmer_ids)
     selected_farmer_ids = training_record_selected_farmer_ids(record)
-    return false if (selected_farmer_ids & target_farmer_ids).blank?
+    return false if selected_farmer_ids.blank?
     return false unless training_record_matches_month?(record, target.month_name)
     return false unless training_record_vrp_scope_matches?(record, target.vrp)
+    return false unless training_record_target_location_matches?(record, target)
 
     summary = training_summary(record)
     topic = normalize_dashboard_text(summary[:training_topic])
@@ -3215,6 +3217,17 @@ class ModulesController < ApplicationController
     topic_matches = dashboard_training_activity_text_matches?(topic, target_topic)
     subject_matches = dashboard_training_activity_text_matches?(subject, target_subject)
     topic_matches && subject_matches
+  end
+
+  def training_record_target_location_matches?(record, target)
+    record_ics = normalize_dashboard_text(record.data["ics_block"].presence || record.data["ics"])
+    record_village = normalize_dashboard_text(record.data["gram_name"].presence || record.data["village"])
+    target_ics_values = [target.ics_id, target.ics_name].map { |value| normalize_dashboard_text(value) }.reject(&:blank?)
+    target_village_values = [target.village_id, target.village_name].map { |value| normalize_dashboard_text(value) }.reject(&:blank?)
+
+    ics_matches = record_ics.blank? || target_ics_values.blank? || target_ics_values.include?(record_ics)
+    village_matches = record_village.blank? || target_village_values.blank? || target_village_values.include?(record_village)
+    ics_matches && village_matches
   end
 
   # A target mapping can contain several configured training modules in one
@@ -6460,8 +6473,8 @@ class ModulesController < ApplicationController
       normalize_dashboard_text(mapping[:month]) == selected_month &&
         normalize_dashboard_text(mapping[:ics]) == selected_ics &&
         normalize_dashboard_text(mapping[:village]) == selected_village &&
-        normalize_dashboard_text(mapping[:main_activity]) == selected_main_activity &&
-        normalize_dashboard_text(mapping[:sub_activity]) == selected_sub_activity
+        dashboard_training_activity_text_matches?(selected_main_activity, normalize_dashboard_text(mapping[:main_activity])) &&
+        dashboard_training_activity_text_matches?(selected_sub_activity, normalize_dashboard_text(mapping[:sub_activity]))
     end
   end
 
@@ -7331,7 +7344,7 @@ class ModulesController < ApplicationController
 
     dashboard_training_completion_records
       .select { |record| training_record_matches_dashboard_target?(record, target, farmer_ids) }
-      .flat_map { |record| training_record_selected_farmer_ids(record) & farmer_ids }
+      .flat_map { |record| training_record_selected_farmer_ids(record) }
       .uniq
   end
 

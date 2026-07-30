@@ -33,6 +33,9 @@ class VrpDashboardTest < ActionDispatch::IntegrationTest
       created_by_type: "User",
       created_by_id: 1
     )
+    completed_farmers = 2.times.map do |index|
+      create_afl(farmer_name: "Selected July Farmer #{index + 1}", mobile_no: "900000008#{index}")
+    end
     ModuleRecord.create!(
       module_slug: "training-form",
       data: {
@@ -40,7 +43,9 @@ class VrpDashboardTest < ActionDispatch::IntegrationTest
         "training_date" => "2026-07-25",
         "main_activity" => target.main_activity_name,
         "sub_activity" => "Organic Introduction (M1)",
-        "selected_farmer_ids" => farmers.map { |farmer| farmer.id.to_s },
+        "ics" => mapping.ics_id,
+        "village" => mapping.village_name,
+        "selected_farmer_ids" => completed_farmers.map { |farmer| farmer.id.to_s },
         "vrp_id" => vrp.id.to_s
       }
     )
