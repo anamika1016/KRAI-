@@ -72,9 +72,41 @@ module Api
           message: "Jeevika Jankar payment list fetched successfully.",
           months: months,
           selected_month: month,
+          export_url: payment_export_url(month),
           payments: rows,
           count: rows.size
         }, status: :ok
+      end
+
+      def export_payments
+        return payment_access_denied unless payment_list_user?
+
+        month = selected_month
+        records = bill_records.select do |record|
+          calculator.send(:jeevika_bill_final_approved?, record) &&
+            (month.blank? || same_text?(record.data["bill_month"], month))
+        end
+        rows = records.map { |record| payment_payload_for(record) }
+        headers = ["Bill ID", "Jeevika Jankar", "Financial Year", "Bill Month", "Activity Groups", "Activity Names", "Target", "Achievement", "Amount", "Status"]
+        data_rows = rows.map do |row|
+          [row[:bill_id], row[:name], row[:financial_year], row[:bill_month], row[:activity_groups], row[:activity_names], row[:target], row[:achievement], row[:amount], row[:status]]
+        end
+        file = XlsxExporter.generate(headers: headers, rows: data_rows, sheet_name: "Payment List")
+
+        send_data file,
+          filename: "jeevika-jankar-payments-#{month.presence || 'all'}-#{Date.current}.xlsx",
+          type: XlsxExporter::MIME_TYPE,
+          disposition: "attachment"
+      end
+
+      def download_bill
+        record = visible_bill
+        return bill_not_found unless record
+
+        send_data bill_download_html(bill_detail_payload(record)),
+          filename: "jeevika-jankar-bill-#{record.id}.html",
+          type: "text/html; charset=utf-8",
+          disposition: "attachment"
       end
 
       def payment_details
@@ -413,7 +445,42 @@ module Api
         )
         attachment = vrp&.bank_passbook_upload
         payload[:passbook_url] = attachment_url(attachment) if attachment&.attached?
+        payload[:download_bill_url] = "#{request.base_url}/api/v1/jeevika-jankar-bills/#{record.id}/download"
         payload
+      end
+
+      def payment_export_url(month)
+        url = "#{request.base_url}/api/v1/jeevika-jankar-payments/export"
+        month.present? ? "#{url}?month=#{ERB::Util.url_encode(month)}" : url
+      end
+
+      def bill_download_html(detail)
+        summary = detail[:summary]
+        activities = detail[:activities].map do |row|
+          values = [row[:serial_number], row[:ics], row[:village], row[:main_activity], row[:sub_activity], row[:target], row[:achievement], row[:pending], row[:rate], row[:total]]
+          "<tr>#{values.map { |value| "<td>#{h(value)}</td>" }.join}</tr>"
+        end.join
+        farmers = detail[:farmers].map do |row|
+          values = [row[:name], row[:mobile_no], row[:village], row[:main_activity], row[:sub_activity], row[:training_date]]
+          "<tr>#{values.map { |value| "<td>#{h(value)}</td>" }.join}</tr>"
+        end.join
+
+        <<~HTML
+          <!doctype html><html><head><meta charset="utf-8"><title>Bill #{h(summary[:bill_id])}</title>
+          <style>body{font-family:Arial,sans-serif;margin:28px;color:#172026}h1{color:#2f6f3e}table{width:100%;border-collapse:collapse;margin:18px 0;font-size:12px}th,td{border:1px solid #ccd6cc;padding:7px;text-align:left}.summary{display:grid;grid-template-columns:repeat(2,1fr);gap:8px}.box{border:1px solid #ccd6cc;padding:10px}</style></head><body>
+          <h1>Jeevika Jankar Bill</h1><div class="summary">
+          <div class="box"><b>Bill ID:</b> #{h(summary[:bill_id])}</div><div class="box"><b>VRP:</b> #{h(summary[:vrp_name])}</div>
+          <div class="box"><b>FCO:</b> #{h(summary[:fco])}</div><div class="box"><b>Month:</b> #{h(summary[:bill_month])}</div>
+          <div class="box"><b>Financial Year:</b> #{h(summary[:financial_year])}</div><div class="box"><b>Status:</b> #{h(summary[:status])}</div>
+          <div class="box"><b>Total Amount:</b> #{h(summary[:total_amount])}</div><div class="box"><b>Total Payable:</b> #{h(summary[:total_payable])}</div></div>
+          <h2>Activities</h2><table><thead><tr><th>#</th><th>ICS</th><th>Village</th><th>Main Activity</th><th>Sub Activity</th><th>Target</th><th>Achievement</th><th>Pending</th><th>Rate</th><th>Total</th></tr></thead><tbody>#{activities}</tbody></table>
+          <h2>Farmers</h2><table><thead><tr><th>Farmer</th><th>Mobile</th><th>Village</th><th>Main Activity</th><th>Sub Activity</th><th>Training Date</th></tr></thead><tbody>#{farmers}</tbody></table>
+          </body></html>
+        HTML
+      end
+
+      def h(value)
+        ERB::Util.html_escape(value.to_s)
       end
 
       def completed_payment_payload(row)
