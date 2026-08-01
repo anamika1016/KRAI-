@@ -1911,7 +1911,7 @@ class ModulesController < ApplicationController
       # Older/renamed activity-master rows may not resolve to a setting. Matching
       # training submissions are still authoritative completion evidence and must
       # keep the dashboard's achieved/pending figures live.
-      completed_farmer_count = completed_training_farmer_ids_for(target, target_farmer_ids(target)).size
+      completed_farmer_count = completed_training_farmer_ids_for_target_deadline(target, target_farmer_ids(target)).size
       return capped_target_achievement(target, completed_farmer_count) if completed_farmer_count.positive?
     end
 
