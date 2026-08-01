@@ -1540,22 +1540,15 @@ class ModulesController < ApplicationController
     activity_settings = jeevika_jankar_main_activity_settings
     sub_activity_settings = jeevika_jankar_sub_activity_settings(activity_settings)
     other_target_achievement_index = approved_other_target_achievement_index
-    monthly_training_achievements = vrp_monthly_training_achievements(
-      targets,
-      activity_settings,
-      sub_activity_settings
-    )
 
     Array(targets).map do |target|
-      completed = monthly_training_achievements.fetch(target.id.to_s) do
-        vrp_target_completed_quantity(
-          target,
-          bills,
-          activity_settings: activity_settings,
-          sub_activity_settings: sub_activity_settings,
-          other_target_achievement_index: other_target_achievement_index
-        )
-      end
+      completed = vrp_target_completed_quantity(
+        target,
+        bills,
+        activity_settings: activity_settings,
+        sub_activity_settings: sub_activity_settings,
+        other_target_achievement_index: other_target_achievement_index
+      )
       target_quantity = target.target_quantity.to_f
       pending = [target_quantity - completed, 0].max
       week_targets = target.respond_to?(:weekly_target_values) ? target.weekly_target_values : [0, 0, 0, 0]
@@ -1585,30 +1578,6 @@ class ModulesController < ApplicationController
         pending: pending,
         progress: percentage(completed, target_quantity)
       }
-    end
-  end
-
-  def vrp_monthly_training_achievements(targets, activity_settings, sub_activity_settings)
-    training_targets = Array(targets).select do |target|
-      setting = jeevika_jankar_activity_setting_for(target, activity_settings, sub_activity_settings)
-      setting.blank? || training_main_activity_type?(setting[:main_activity_type])
-    end
-
-    training_targets.group_by { |target| [target.vrp_id.to_s, normalize_dashboard_text(target.month_name)] }.each_with_object({}) do |((_vrp_id, _month), month_targets), achievements|
-      sample_target = month_targets.first
-      selected_farmer_count = dashboard_training_completion_records
-        .select { |record| training_record_matches_month?(record, sample_target.month_name) }
-        .select { |record| training_record_vrp_scope_matches?(record, sample_target.vrp) }
-        .flat_map { |record| training_record_selected_farmer_ids(record) }
-        .uniq
-        .size
-
-      remaining = selected_farmer_count
-      month_targets.each do |target|
-        completed = [target.target_quantity.to_f, remaining].min
-        achievements[target.id.to_s] = completed
-        remaining = [remaining - completed, 0].max
-      end
     end
   end
 

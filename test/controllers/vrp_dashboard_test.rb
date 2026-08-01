@@ -1,6 +1,61 @@
 require "test_helper"
 
 class VrpDashboardTest < ActionDispatch::IntegrationTest
+  test "dashboard counts the same farmer once for each completed training activity" do
+    vrp = create_vrp(user_name: "multi_activity_vrp", password: "secret", agreement_accepted_at: Time.current)
+    farmer = create_afl(farmer_name: "Multi Activity Farmer", mobile_no: "9000000070")
+    mapping = VrpIcsMapping.create!(
+      vrp: vrp,
+      fco_id: "FCO-MULTI",
+      ics_id: "ICS-MULTI",
+      village_id: "V-MULTI",
+      village_name: "Multi Village",
+      afl_ids: [farmer.id],
+      created_by_type: "User",
+      created_by_id: 1
+    )
+    ["Organic Introduction", "Soil Preparation"].each do |activity|
+      TargetMapping.create!(
+        vrp: vrp,
+        vrp_ics_mapping: mapping,
+        fco_id: mapping.fco_id,
+        ics_id: mapping.ics_id,
+        village_id: mapping.village_id,
+        village_name: mapping.village_name,
+        farmer_count: 1,
+        afl_ids: [farmer.id],
+        month_name: "July",
+        completion_date: Date.new(2026, 7, 31),
+        main_activity_name: "Farmers' Training",
+        activity_name: activity,
+        target_quantity: 1,
+        created_by_type: "User",
+        created_by_id: 1
+      )
+      ModuleRecord.create!(
+        module_slug: "training-form",
+        data: {
+          "month" => "July",
+          "main_activity" => "Farmers' Training",
+          "sub_activity" => activity,
+          "ics" => mapping.ics_id,
+          "village" => mapping.village_name,
+          "selected_farmer_ids" => [farmer.id.to_s],
+          "vrp_id" => vrp.id.to_s
+        }
+      )
+    end
+
+    post login_path, params: { login: vrp.user_name, password: "secret" }
+    get dashboard_path, params: { training_month: "July" }
+
+    assert_response :success
+    assert_select ".assigned-target strong", text: "2"
+    assert_select ".achieved-target strong", text: "2"
+    assert_select ".pending-target strong", text: "0"
+    assert_select "#vrp_target_progress_table .grid-status", text: "100%", count: 2
+  end
+
   test "dashboard counts training submitted after the target completion date" do
     vrp = create_vrp(user_name: "late_completion_vrp", password: "secret", agreement_accepted_at: Time.current)
     farmers = 2.times.map do |index|
