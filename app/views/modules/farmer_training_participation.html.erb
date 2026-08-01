@@ -1,7 +1,8 @@
 <% content_for :title, "#{@training_participation_title} Farmer Training List" %>
 <% filter_params = {
   training_month: @training_selected_month.presence,
-  training_sub_activity: @training_selected_sub_activity.presence
+  training_sub_activity: @training_selected_sub_activity.presence,
+  training_fcoc: @training_selected_fcoc.presence
 }.compact_blank %>
 <% status_counts = @training_participation_totals || { green: 0, yellow: 0, red: 0, pending: 0, total: 0 } %>
 
@@ -22,14 +23,14 @@
   <section class="module-card training-participation-status-card">
     <div class="training-participation-boxes compact">
       <%= link_to farmer_training_participation_path(filter_params.merge(status: "total")), class: "training-participation-box total #{'is-active' if @training_participation_status == 'total'}" do %>
-        <span>Total Training Farmer</span>
+        <span>Total Unique Farmers</span>
         <strong><%= status_counts[:total].to_i %></strong>
-        <small>Farmer Training Form ke selected farmers.</small>
+        <small>Overall unique farmers in selected filters.</small>
       <% end %>
       <%= link_to farmer_training_participation_path(filter_params.merge(status: "total")), class: "training-participation-box total #{'is-active' if @training_participation_status == 'total'}" do %>
-        <span>Total Unique Farmers</span>
+        <span>Unique Key Count</span>
         <strong><%= @training_unique_farmer_count.to_i %></strong>
-        <small>Selected filters me har farmer ID sirf ek baar count hua hai.</small>
+        <small>Har farmer sirf ek baar; rejected/returned records excluded.</small>
       <% end %>
       <% %w[green yellow red pending].each do |status| %>
         <%= link_to farmer_training_participation_path(filter_params.merge(status: status)), class: "training-participation-box #{status} #{'is-active' if @training_participation_status == status}" do %>
@@ -52,6 +53,9 @@
           <% end %>
           <% if @training_selected_sub_activity.present? %>
             | Sub Activity: <%= @training_selected_sub_activity %>
+          <% end %>
+          <% if @training_selected_fcoc.present? %>
+            | FCOC: <%= @training_selected_fcoc %>
           <% end %>
         </p>
       </div>

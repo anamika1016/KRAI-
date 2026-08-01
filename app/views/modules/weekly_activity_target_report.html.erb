@@ -2,6 +2,7 @@
 <% quantity = ->(value) { value.to_f == value.to_i ? value.to_i : format("%.2f", value.to_f) } %>
 <% filter_params = {
   training_month: @weekly_selected_month.presence,
+  training_fcoc: @weekly_selected_fcoc.presence,
   activity: @weekly_selected_activity.presence,
   training_sub_activity: @weekly_selected_sub_activity.presence,
   status: @weekly_report_status.presence
@@ -27,7 +28,7 @@
     <div class="module-card-header">
       <div>
         <h2>Report Filters</h2>
-        <p>Month, Activity aur Sub Activity select karke weekly data fetch karo.</p>
+        <p>Month, FCOC, Activity aur Sub Activity select karke weekly data fetch karo.</p>
       </div>
     </div>
 
@@ -39,6 +40,16 @@
             <option value="">All Months</option>
             <% Array(@weekly_month_options).each do |month| %>
               <option value="<%= month %>" <%= "selected" if @weekly_selected_month.to_s == month.to_s %>><%= month %></option>
+            <% end %>
+          </select>
+        </div>
+
+        <div class="dashboard-filter-field">
+          <label for="weekly_fcoc">FCOC</label>
+          <select name="training_fcoc" id="weekly_fcoc" class="form-select dashboard-filter-select">
+            <option value="">All FCOC</option>
+            <% Array(@weekly_fcoc_options).each do |fcoc| %>
+              <option value="<%= fcoc %>" <%= "selected" if @weekly_selected_fcoc.to_s == fcoc.to_s %>><%= fcoc %></option>
             <% end %>
           </select>
         </div>
@@ -109,6 +120,7 @@
           <% end %>
           Total rows: <%= @weekly_report_rows.size %>
           <% if @weekly_selected_month.present? %> | Month: <%= @weekly_selected_month %><% end %>
+          <% if @weekly_selected_fcoc.present? %> | FCOC: <%= @weekly_selected_fcoc %><% end %>
           <% if @weekly_selected_activity.present? %> | Activity: <%= @weekly_selected_activity %><% end %>
           <% if @weekly_selected_sub_activity.present? %> | Sub Activity: <%= @weekly_selected_sub_activity %><% end %>
         </p>

@@ -686,8 +686,9 @@ class ModulesController < ApplicationController
     default_status_month = default_vrp_dashboard_month(@training_month_options)
     @participation_month_filter_value = params[:participation_month].presence || default_status_month
     @participation_selected_month = @participation_month_filter_value == "all" ? nil : @participation_month_filter_value
-    participation_records = dashboard_training_participation_records(month_name: @participation_selected_month)
-    @training_participation_status_cards = training_participation_status_cards_from_records(participation_records, month_name: @participation_selected_month)
+    @participation_fcoc_filter_value = params[:participation_fcoc].presence
+    participation_records = dashboard_training_participation_records(month_name: @participation_selected_month, fcoc_name: @participation_fcoc_filter_value)
+    @training_participation_status_cards = training_participation_status_cards_from_records(participation_records, month_name: @participation_selected_month, fcoc_name: @participation_fcoc_filter_value)
     @training_unique_farmer_count = training_unique_farmer_count_from_records(participation_records)
     if request.format.xlsx?
       @training_target_status_cards = training_target_status_cards(training_targets, month_name: selected_month, sub_activity_name: selected_sub_activity)
@@ -696,9 +697,19 @@ class ModulesController < ApplicationController
     end
     @weekly_target_month_filter_value = params[:weekly_target_month].presence || default_status_month
     @weekly_dashboard_selected_month = @weekly_target_month_filter_value == "all" ? nil : @weekly_target_month_filter_value
+    @weekly_target_fcoc_filter_value = params[:weekly_target_fcoc].presence
     weekly_dashboard_targets = dashboard_targets_for_month(@filtered_targets, @weekly_dashboard_selected_month)
+    if @weekly_target_fcoc_filter_value.present?
+      weekly_dashboard_targets = weekly_dashboard_targets.select do |target|
+        normalize_dashboard_text(target.vrp&.fcoc) == normalize_dashboard_text(@weekly_target_fcoc_filter_value)
+      end
+    end
     preload_training_farmers_for_targets!(weekly_dashboard_targets)
-    @dashboard_weekly_target_cards = weekly_activity_target_status_cards(weekly_dashboard_targets, month_name: @weekly_dashboard_selected_month)
+    @dashboard_weekly_target_cards = weekly_activity_target_status_cards(
+      weekly_dashboard_targets,
+      month_name: @weekly_dashboard_selected_month,
+      fcoc_name: @weekly_target_fcoc_filter_value
+    )
     @dashboard_cards = dashboard_cards
     @dashboard_reports = dashboard_reports
     @dashboard_generated_at = Time.current
@@ -721,8 +732,9 @@ class ModulesController < ApplicationController
   def farmer_training_participation
     selected_month = params[:training_month].presence
     selected_sub_activity = params[:training_sub_activity].presence
+    selected_fcoc = params[:training_fcoc].presence
     selected_status = normalize_training_participation_status(params[:status]) || "green"
-    training_records = dashboard_training_participation_records(month_name: selected_month, sub_activity_name: selected_sub_activity)
+    training_records = dashboard_training_participation_records(month_name: selected_month, sub_activity_name: selected_sub_activity, fcoc_name: selected_fcoc)
 
     @training_participation_status = selected_status
     @training_participation_title = training_participation_status_label(selected_status)
@@ -733,6 +745,7 @@ class ModulesController < ApplicationController
     @training_unique_farmer_count = training_unique_farmer_count_from_records(training_records)
     @training_selected_month = selected_month
     @training_selected_sub_activity = selected_sub_activity
+    @training_selected_fcoc = selected_fcoc
 
     respond_to do |format|
       format.html
@@ -893,6 +906,7 @@ class ModulesController < ApplicationController
     selected_month = params[:training_month].presence || params[:month].presence
     selected_activity = params[:activity].presence || params[:main_activity].presence
     selected_sub_activity = params[:training_sub_activity].presence || params[:sub_activity].presence
+    selected_fcoc = params[:training_fcoc].presence || params[:fcoc].presence
     requested_status = params[:status].to_s.downcase.presence
     selected_status = normalize_training_target_status(requested_status)
     selected_status_key = requested_status == "total" ? "total" : selected_status
@@ -908,6 +922,11 @@ class ModulesController < ApplicationController
     if selected_sub_activity.present?
       filtered_targets = filtered_targets.select do |target|
         normalize_dashboard_text(target.activity_name) == normalize_dashboard_text(selected_sub_activity)
+      end
+    end
+    if selected_fcoc.present?
+      filtered_targets = filtered_targets.select do |target|
+        normalize_dashboard_text(target.vrp&.fcoc) == normalize_dashboard_text(selected_fcoc)
       end
     end
 
@@ -927,8 +946,10 @@ class ModulesController < ApplicationController
     @weekly_selected_month = selected_month
     @weekly_selected_activity = selected_activity
     @weekly_selected_sub_activity = selected_sub_activity
+    @weekly_selected_fcoc = selected_fcoc
     @weekly_month_options = dashboard_month_options_for_targets(targets)
     @weekly_activity_options = Array(targets).map(&:main_activity_name).uniq.compact_blank.sort
+    @weekly_fcoc_options = Array(targets).filter_map { |target| target.vrp&.fcoc.to_s.strip.presence }.uniq.sort
     @weekly_sub_activity_options = Array(targets)
       .select { |target| selected_activity.blank? || normalize_dashboard_text(target.main_activity_name) == normalize_dashboard_text(selected_activity) }
       .map(&:activity_name)
@@ -1393,8 +1414,10 @@ class ModulesController < ApplicationController
     @training_selected_sub_activity = selected_sub_activity
     @participation_month_filter_value = params[:participation_month].presence || default_vrp_dashboard_month(@training_month_options)
     @participation_selected_month = @participation_month_filter_value == "all" ? nil : @participation_month_filter_value
-    participation_records = dashboard_training_participation_records(month_name: @participation_selected_month)
-    @training_participation_status_cards = training_participation_status_cards_from_records(participation_records, month_name: @participation_selected_month)
+    @participation_fcoc_filter_value = params[:participation_fcoc].presence
+    participation_records = dashboard_training_participation_records(month_name: @participation_selected_month, fcoc_name: @participation_fcoc_filter_value)
+    @training_participation_status_cards = training_participation_status_cards_from_records(participation_records, month_name: @participation_selected_month, fcoc_name: @participation_fcoc_filter_value)
+    @training_unique_farmer_count = training_unique_farmer_count_from_records(participation_records)
     village_count = @vrp_village_rows.size
     preload_training_farmers_for_targets!(filtered_targets)
     @vrp_target_rows = vrp_dashboard_target_progress_rows(filtered_targets, bills)
@@ -2254,11 +2277,12 @@ class ModulesController < ApplicationController
       jeevika_bill_pending_for_current_approver?(record)
   end
 
-  def weekly_activity_target_status_cards(targets, month_name: nil)
+  def weekly_activity_target_status_cards(targets, month_name: nil, fcoc_name: nil)
     counts = training_target_status_counts(targets)
     filter_params = dashboard_weekly_report_filter_params
     filter_params.delete(:training_month)
     filter_params[:training_month] = month_name if month_name.present?
+    filter_params[:training_fcoc] = fcoc_name if fcoc_name.present?
 
     [
       {
@@ -2284,7 +2308,7 @@ class ModulesController < ApplicationController
       training_month: params[:month].presence || params[:training_month].presence,
       activity: params[:activity].presence,
       training_sub_activity: params[:training_sub_activity].presence,
-      fcoc: params[:fcoc].presence,
+      training_fcoc: params[:weekly_target_fcoc].presence || params[:fcoc].presence,
       cluster_incharge: params[:cluster_incharge].presence,
       post: params[:post].presence,
       vrp_id: params[:vrp_id].presence
@@ -2376,7 +2400,7 @@ class ModulesController < ApplicationController
     end
   end
 
-  def dashboard_training_participation_records(month_name: nil, sub_activity_name: nil)
+  def dashboard_training_participation_records(month_name: nil, sub_activity_name: nil, fcoc_name: nil)
     return [] unless model_ready?(:ModuleRecord)
 
     records = ModuleRecord
@@ -2389,6 +2413,7 @@ class ModulesController < ApplicationController
       .select { |record| training_record_selected_farmer_ids(record).any? }
       .select { |record| month_name.blank? || normalize_dashboard_text(training_record_month_name(record)) == normalize_dashboard_text(month_name) }
       .select { |record| sub_activity_name.blank? || normalize_dashboard_text(training_summary(record)[:training_subject]) == normalize_dashboard_text(sub_activity_name) }
+      .select { |record| fcoc_name.blank? || training_record_matches_fcoc?(record, fcoc_name) }
 
     if vrp_login_user?
       vrp = current_vrp_record
@@ -2402,6 +2427,26 @@ class ModulesController < ApplicationController
     end
 
     records
+  end
+
+  def training_record_matches_fcoc?(record, fcoc_name)
+    selected_fcoc = normalize_dashboard_text(fcoc_name)
+    return true if selected_fcoc.blank?
+
+    summary = training_summary(record)
+    return true if normalize_dashboard_text(summary[:department]) == selected_fcoc
+
+    training_fcoc_vrps(fcoc_name).any? { |vrp| training_record_matches_vrp?(record, vrp) }
+  end
+
+  def training_fcoc_vrps(fcoc_name)
+    return [] unless model_ready?(:Vrp)
+
+    @training_fcoc_vrps_cache ||= {}
+    cache_key = normalize_dashboard_text(fcoc_name)
+    @training_fcoc_vrps_cache[cache_key] ||= Vrp
+      .all
+      .select { |vrp| normalize_dashboard_text(vrp.fcoc) == cache_key }
   end
 
   def farmer_participation_entries
@@ -2508,13 +2553,14 @@ class ModulesController < ApplicationController
     end
   end
 
-  def training_participation_status_cards_from_records(records, month_name: nil, sub_activity_name: nil)
+  def training_participation_status_cards_from_records(records, month_name: nil, sub_activity_name: nil, fcoc_name: nil)
     counts = training_participation_status_counts_from_records(records)
 
     %w[green yellow red pending].map do |status|
       path_params = { status: status }
       path_params[:training_month] = month_name if month_name.present?
       path_params[:training_sub_activity] = sub_activity_name if sub_activity_name.present?
+      path_params[:training_fcoc] = fcoc_name if fcoc_name.present?
 
       {
         status: status,

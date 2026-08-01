@@ -390,6 +390,7 @@
   <% weekly_cards = @dashboard_weekly_target_cards || [] %>
   <% weekly_selected_month = @weekly_dashboard_selected_month.to_s %>
   <% weekly_month_filter_value = @weekly_target_month_filter_value.to_s %>
+  <% weekly_fcoc_filter_value = @weekly_target_fcoc_filter_value.to_s %>
   <section class="module-card training-participation-status-card dashboard-status-panel weekly-status-panel" id="dashboard_weekly_target_boxes">
     <div class="module-card-header training-participation-status-header">
       <div>
@@ -399,6 +400,7 @@
       <div class="dashboard-actions">
         <%= form_with url: dashboard_path, method: :get, local: true, html: { class: "dashboard-month-filter" } do %>
           <%= hidden_field_tag :participation_month, @participation_month_filter_value if @participation_month_filter_value.present? %>
+          <%= hidden_field_tag :participation_fcoc, @participation_fcoc_filter_value if @participation_fcoc_filter_value.present? %>
           <label class="dashboard-month-select">
             <span>Month</span>
             <select name="weekly_target_month" onchange="this.form.submit()">
@@ -408,10 +410,20 @@
               <% end %>
             </select>
           </label>
+          <label class="dashboard-month-select">
+            <span>FCOC</span>
+            <select name="weekly_target_fcoc" onchange="this.form.submit()">
+              <option value="">All FCOC</option>
+              <% Array(@filter_fcoc_options).each do |option| %>
+                <option value="<%= option %>" <%= "selected" if weekly_fcoc_filter_value == option.to_s %>><%= option %></option>
+              <% end %>
+            </select>
+          </label>
         <% end %>
         <% weekly_report_params = dashboard_weekly_report_filter_params %>
         <% weekly_report_params.delete(:training_month) %>
         <% weekly_report_params[:training_month] = weekly_selected_month if weekly_selected_month.present? %>
+        <% weekly_report_params[:training_fcoc] = weekly_fcoc_filter_value if weekly_fcoc_filter_value.present? %>
         <%= link_to "Open Weekly Report", weekly_activity_target_report_path(weekly_report_params), class: "list-btn active" %>
         <%= link_to "Export Excel", weekly_activity_target_report_path(weekly_report_params.merge(format: :xlsx)), class: "list-btn export" %>
       </div>

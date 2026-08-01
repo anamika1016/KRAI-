@@ -5,11 +5,13 @@
 <% selected_sub_activity = @training_selected_sub_activity.to_s %>
 <% participation_selected_month = @participation_selected_month.to_s %>
 <% participation_month_filter_value = @participation_month_filter_value.to_s %>
+<% participation_fcoc_filter_value = @participation_fcoc_filter_value.to_s %>
 <% filters_ready = selected_month.present? && selected_sub_activity.present? %>
 <% status_cards = Array(@training_participation_status_cards || []) %>
-<% status_total = status_cards.sum { |card| card[:value].to_i } %>
+<% status_total = @training_unique_farmer_count.to_i %>
 <% total_status_path_params = { status: "total" } %>
 <% total_status_path_params[:training_month] = participation_selected_month if participation_selected_month.present? %>
+<% total_status_path_params[:training_fcoc] = participation_fcoc_filter_value if participation_fcoc_filter_value.present? %>
 <% target_status_cards = Array(@training_target_status_cards || []) %>
 
 <section class="module-card training-participation-status-card dashboard-status-panel training-status-panel">
@@ -26,6 +28,15 @@
           <option value="all" <%= "selected" if participation_month_filter_value == "all" %>>All</option>
           <% month_options.each do |option| %>
             <option value="<%= option %>" <%= "selected" if participation_selected_month == option.to_s %>><%= option %></option>
+          <% end %>
+        </select>
+      </label>
+      <label class="dashboard-month-select">
+        <span>FCOC</span>
+        <select name="participation_fcoc" onchange="this.form.submit()">
+          <option value="">All FCOC</option>
+          <% Array(@filter_fcoc_options).each do |option| %>
+            <option value="<%= option %>" <%= "selected" if participation_fcoc_filter_value == option.to_s %>><%= option %></option>
           <% end %>
         </select>
       </label>
