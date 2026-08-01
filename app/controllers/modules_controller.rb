@@ -1601,6 +1601,7 @@ class ModulesController < ApplicationController
     other_target_achievement_index = approved_other_target_achievement_index
 
     Array(targets).map do |target|
+      assigned_farmer_ids = target_farmer_ids(target)
       completed = vrp_target_completed_quantity(
         target,
         bills,
@@ -1609,7 +1610,9 @@ class ModulesController < ApplicationController
         other_target_achievement_index: other_target_achievement_index
       )
       target_quantity = target.target_quantity.to_f
-      pending = [target_quantity - completed, 0].max
+      effective_target = assigned_farmer_ids.any? ? assigned_farmer_ids.size.to_f : target_quantity
+      completed = [completed.to_f, effective_target].min if assigned_farmer_ids.any?
+      pending = [effective_target - completed, 0].max
       week_targets = target.respond_to?(:weekly_target_values) ? target.weekly_target_values : [0, 0, 0, 0]
 
       {
@@ -1619,11 +1622,11 @@ class ModulesController < ApplicationController
         fco: target.fco_name.presence || target.fco_id,
         ics: target.ics_name.presence || target.ics_id,
         village: target.village_name.presence || target.village_id,
-        farmers: target.farmer_count,
+        farmers: assigned_farmer_ids.any? ? assigned_farmer_ids.size : target.farmer_count,
         main_activity: target.main_activity_name,
         activity: target.activity_name,
         target_mapping_id: target.id.to_s,
-        target: target_quantity,
+        target: effective_target,
         week_1: week_targets[0],
         week_2: week_targets[1],
         week_3: week_targets[2],
@@ -1635,7 +1638,7 @@ class ModulesController < ApplicationController
         ffs: target.ffs_target,
         completed: completed,
         pending: pending,
-        progress: percentage(completed, target_quantity)
+        progress: percentage(completed, effective_target)
       }
     end
   end
@@ -1724,9 +1727,8 @@ class ModulesController < ApplicationController
     return dashboard_detail_payload("target_farmers", "Target Farmers", "Target record not found.", 0, vrp_target_farmer_headers, []) unless target
 
     assigned_ids = target_farmer_ids(target)
-    completed_ids = vrp_dashboard_completed_farmer_ids_for_target(target)
-    pending_count = [target.target_quantity.to_i - completed_ids.size, 0].max
-    pending_ids = (assigned_ids - completed_ids).first(pending_count)
+    completed_ids = vrp_dashboard_completed_farmer_ids_for_target(target) & assigned_ids
+    pending_ids = assigned_ids - completed_ids
     farmer_ids = case scope
     when "completed" then completed_ids
     when "pending" then pending_ids
@@ -1966,7 +1968,7 @@ class ModulesController < ApplicationController
       # Older/renamed activity-master rows may not resolve to a setting. Matching
       # training submissions are still authoritative completion evidence and must
       # keep the dashboard's achieved/pending figures live.
-      completed_farmer_count = completed_training_farmer_ids_for_target_deadline(target, target_farmer_ids(target)).size
+      completed_farmer_count = completed_training_farmer_ids_for(target, target_farmer_ids(target)).size
       return capped_target_achievement(target, completed_farmer_count) if completed_farmer_count.positive?
     end
 
@@ -3206,12 +3208,13 @@ class ModulesController < ApplicationController
 
   def training_target_detail_row(target)
     farmer_ids = target_farmer_ids(target)
-    matching_training_records = matching_training_records_for_target(target, farmer_ids)
-    completed_farmer_ids = completed_training_farmer_ids_for_target_deadline(target, farmer_ids)
+    matching_training_records = dashboard_training_completion_records
+      .select { |record| training_record_matches_dashboard_target?(record, target, farmer_ids) }
+    completed_farmer_ids = completed_training_farmer_ids_for(target, farmer_ids)
     pending_farmer_ids = farmer_ids - completed_farmer_ids
-    target_quantity = target.target_quantity.to_f
+    target_quantity = farmer_ids.any? ? farmer_ids.size.to_f : target.target_quantity.to_f
     completed_quantity = completed_farmer_ids.size.to_f
-    pending_quantity = [target_quantity - completed_quantity, 0].max
+    pending_quantity = farmer_ids.any? ? pending_farmer_ids.size.to_f : [target_quantity - completed_quantity, 0].max
     progress_percent = target_quantity.positive? ? ((completed_quantity / target_quantity) * 100).round : 0
     status_class = training_target_status_for_percent(progress_percent)
     weekly_targets = target.respond_to?(:weekly_target_values) ? target.weekly_target_values.map(&:to_f) : [0, 0, 0, 0]
@@ -3283,7 +3286,7 @@ class ModulesController < ApplicationController
     } if target_rows.blank?
 
     completed_farmer_ids = target_rows.flat_map do |target|
-      completed_training_farmer_ids_for_target_deadline(target, target_farmer_ids(target))
+      completed_training_farmer_ids_for(target, target_farmer_ids(target))
     end.uniq
     target_farmer_ids = target_rows.flat_map { |target| target_farmer_ids(target) }.uniq
     pending_farmer_ids = target_farmer_ids - completed_farmer_ids
@@ -7562,7 +7565,7 @@ class ModulesController < ApplicationController
 
     dashboard_training_completion_records
       .select { |record| training_record_matches_dashboard_target?(record, target, farmer_ids) }
-      .flat_map { |record| training_record_selected_farmer_ids(record) }
+      .flat_map { |record| training_record_selected_farmer_ids(record) & farmer_ids }
       .uniq
   end
 

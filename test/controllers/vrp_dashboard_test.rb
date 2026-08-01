@@ -88,9 +88,6 @@ class VrpDashboardTest < ActionDispatch::IntegrationTest
       created_by_type: "User",
       created_by_id: 1
     )
-    completed_farmers = 2.times.map do |index|
-      create_afl(farmer_name: "Selected July Farmer #{index + 1}", mobile_no: "900000008#{index}")
-    end
     ModuleRecord.create!(
       module_slug: "training-form",
       data: {
@@ -100,7 +97,7 @@ class VrpDashboardTest < ActionDispatch::IntegrationTest
         "sub_activity" => "Organic Introduction (M1)",
         "ics" => mapping.ics_id,
         "village" => mapping.village_name,
-        "selected_farmer_ids" => completed_farmers.map { |farmer| farmer.id.to_s },
+        "selected_farmer_ids" => farmers.map { |farmer| farmer.id.to_s },
         "vrp_id" => vrp.id.to_s
       }
     )
@@ -115,6 +112,11 @@ class VrpDashboardTest < ActionDispatch::IntegrationTest
     get vrp_dashboard_list_path("pending_target"), params: { training_month: "July" }
     assert_response :success
     assert_includes response.body, "Total: 0"
+
+    get vrp_dashboard_list_path("target_farmers"), params: { target_id: target.id, farmer_scope: "pending" }
+    assert_response :success
+    assert_includes response.body, "Total: 0"
+    assert_includes response.body, "No records found for this list."
   end
 
   test "dashboard derives achieved and pending values from training submissions without activity master configuration" do
