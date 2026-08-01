@@ -3220,15 +3220,21 @@ class ModulesController < ApplicationController
   end
 
   def training_record_selected_farmer_ids(record)
-    Array(record.data["selected_farmer_ids"]).map(&:to_s).reject(&:blank?).uniq
+    @training_record_farmer_ids_cache ||= {}
+    @training_record_farmer_ids_cache[record.id] ||= Array(record.data["selected_farmer_ids"])
+      .map(&:to_s).reject(&:blank?).uniq
   end
 
   def training_record_matches_dashboard_target?(record, target, target_farmer_ids)
+    @training_record_target_match_cache ||= {}
+    cache_key = [record.id, target.id]
+    return @training_record_target_match_cache[cache_key] if @training_record_target_match_cache.key?(cache_key)
+
     selected_farmer_ids = training_record_selected_farmer_ids(record)
-    return false if selected_farmer_ids.blank?
-    return false unless training_record_matches_month?(record, target.month_name)
-    return false unless training_record_vrp_scope_matches?(record, target.vrp)
-    return false unless training_record_target_location_matches?(record, target)
+    return @training_record_target_match_cache[cache_key] = false if selected_farmer_ids.blank?
+    return @training_record_target_match_cache[cache_key] = false unless training_record_matches_month?(record, target.month_name)
+    return @training_record_target_match_cache[cache_key] = false unless training_record_vrp_scope_matches?(record, target.vrp)
+    return @training_record_target_match_cache[cache_key] = false unless training_record_target_location_matches?(record, target)
 
     summary = training_summary(record)
     topic = normalize_dashboard_text(summary[:training_topic])
@@ -3238,7 +3244,7 @@ class ModulesController < ApplicationController
 
     topic_matches = dashboard_training_activity_text_matches?(topic, target_topic)
     subject_matches = dashboard_training_activity_text_matches?(subject, target_subject)
-    topic_matches && subject_matches
+    @training_record_target_match_cache[cache_key] = topic_matches && subject_matches
   end
 
   def training_record_target_location_matches?(record, target)
@@ -5742,7 +5748,8 @@ class ModulesController < ApplicationController
   end
 
   def training_summary(record)
-    {
+    @training_summary_cache ||= {}
+    @training_summary_cache[record.id] ||= {
       department: record.data["department"].presence || record.data["trainee_department"],
       month: record.data["month"].presence || parse_module_date(record.data["training_date"])&.strftime("%B"),
       training_topic: record.data["main_activity"].presence || record.data["training_topic"],
@@ -7393,14 +7400,18 @@ class ModulesController < ApplicationController
   end
 
   def training_record_within_completion_date?(record, completion_date)
+    @training_record_deadline_cache ||= {}
+    cache_key = [record.id, completion_date.to_s]
+    return @training_record_deadline_cache[cache_key] if @training_record_deadline_cache.key?(cache_key)
+
     deadline = parse_module_date(completion_date)
-    return true if deadline.blank?
+    return @training_record_deadline_cache[cache_key] = true if deadline.blank?
 
     record_date = parse_module_date(training_summary(record)[:training_date]) ||
       (record.created_at.to_date if record.respond_to?(:created_at) && record.created_at.present?)
-    return false if record_date.blank?
+    return @training_record_deadline_cache[cache_key] = false if record_date.blank?
 
-    record_date <= deadline
+    @training_record_deadline_cache[cache_key] = record_date <= deadline
   end
 
   def training_completion_index

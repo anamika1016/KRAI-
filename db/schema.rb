@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2026_08_01_090000) do
+ActiveRecord::Schema[8.1].define(version: 2026_08_01_113000) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "pg_catalog.plpgsql"
 
@@ -389,9 +389,12 @@ ActiveRecord::Schema[8.1].define(version: 2026_08_01_090000) do
     t.integer "week_3_target"
     t.integer "week_4_target"
     t.decimal "week_wise_opg_target", precision: 18, scale: 4
+    t.index ["created_by_type", "created_by_id", "updated_at"], name: "index_target_mappings_on_creator_and_updated_at", order: { updated_at: :desc }
     t.index ["created_by_type", "created_by_id"], name: "index_target_mappings_on_creator"
     t.index ["fco_id", "ics_id", "village_id", "main_activity_name", "activity_name"], name: "index_target_mappings_on_activity_scope"
+    t.index ["updated_at"], name: "index_target_mappings_on_updated_at", order: :desc
     t.index ["vrp_ics_mapping_id"], name: "index_target_mappings_on_vrp_ics_mapping_id"
+    t.index ["vrp_id", "updated_at"], name: "index_target_mappings_on_vrp_and_updated_at", order: { updated_at: :desc }
     t.index ["vrp_id", "vrp_ics_mapping_id", "month_name", "activity_name"], name: "index_target_mappings_on_scope"
     t.index ["vrp_id"], name: "index_target_mappings_on_vrp_id"
   end
