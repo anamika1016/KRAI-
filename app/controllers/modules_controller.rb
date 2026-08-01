@@ -2551,28 +2551,40 @@ class ModulesController < ApplicationController
         .join("|")
 
       training_record_selected_farmer_ids(record).each_with_index.map do |farmer_id, index|
-        farmer = farmers_by_id[farmer_id]
-        tracenet = normalize_dashboard_text(farmer&.tracenet_no)
-        saved_name = normalize_dashboard_text(saved_names[index])
-
-        if tracenet.present?
-          "tracenet:#{tracenet}"
-        elsif saved_name.present?
-          "name:#{saved_name}|#{location_key}"
-        else
-          "id:#{farmer_id}"
-        end
+        training_participation_farmer_unique_key(
+          farmer_id,
+          farmer: farmers_by_id[farmer_id],
+          saved_name: saved_names[index],
+          location_key: location_key
+        )
       end
     end.uniq.size
+  end
+
+  def training_participation_farmer_unique_key(farmer_id, farmer: nil, saved_name: nil, location_key: nil)
+    tracenet = normalize_dashboard_text(farmer&.tracenet_no)
+    normalized_name = normalize_dashboard_text(saved_name.presence || farmer&.farmer_name)
+    normalized_location = location_key.presence
+
+    if tracenet.present?
+      "tracenet:#{tracenet}"
+    elsif normalized_name.present?
+      "name:#{normalized_name}|#{normalized_location}"
+    else
+      "id:#{farmer_id}"
+    end
   end
 
   def training_participation_farmer_rows_from_records(records)
     records = Array(records)
     return [] if records.blank?
 
-    memberships = Hash.new do |hash, farmer_id|
-      hash[farmer_id] = {
-        farmer_id: farmer_id,
+    farmer_ids = records.flat_map { |record| training_record_selected_farmer_ids(record) }.uniq
+    farmers_by_id = training_farmers_by_id(farmer_ids)
+    memberships = Hash.new do |hash, farmer_key|
+      hash[farmer_key] = {
+        farmer_key: farmer_key,
+        farmer_id: nil,
         months: [],
         ics: [],
         village: [],
@@ -2589,8 +2601,22 @@ class ModulesController < ApplicationController
     records.each do |record|
       summary = training_summary(record)
       training_date = bill_display_date(summary[:training_date]).presence || bill_display_date(record.created_at)
-      training_record_selected_farmer_ids(record).each do |farmer_id|
-        membership = memberships[farmer_id]
+      saved_names = Array(record.data["selected_farmer_names"]).map(&:to_s)
+      location_key = [record.data["ics_block"], record.data["gram_name"]]
+        .map { |value| normalize_dashboard_text(value) }
+        .reject(&:blank?)
+        .join("|")
+
+      training_record_selected_farmer_ids(record).each_with_index do |farmer_id, index|
+        farmer = farmers_by_id[farmer_id]
+        farmer_key = training_participation_farmer_unique_key(
+          farmer_id,
+          farmer: farmer,
+          saved_name: saved_names[index],
+          location_key: location_key
+        )
+        membership = memberships[farmer_key]
+        membership[:farmer_id] ||= farmer_id
         membership[:months] |= [summary[:month].to_s.strip].reject(&:blank?)
         membership[:ics] |= [record.data["ics_block"].presence || record.data["ics"]].map(&:to_s).map(&:strip).reject(&:blank?)
         membership[:village] |= [record.data["gram_name"].presence || record.data["village"]].map(&:to_s).map(&:strip).reject(&:blank?)
@@ -2604,7 +2630,6 @@ class ModulesController < ApplicationController
       end
     end
 
-    farmers_by_id = training_farmers_by_id(memberships.keys)
     memberships.values.map do |membership|
       farmer_id = membership[:farmer_id]
       farmer = farmers_by_id[farmer_id]
