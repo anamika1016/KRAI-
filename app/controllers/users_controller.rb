@@ -97,7 +97,7 @@ class UsersController < ApplicationController
 
     version = ModuleRecord.where(module_slug: FORM_OPTION_SLUGS)
       .pick(Arel.sql("COUNT(*)"), Arel.sql("MAX(updated_at)"))
-    cache_key = ["users/form-options", version.first, version.last&.to_i]
+    cache_key = ["users/form-options", version.first, version.last&.utc&.iso8601(6)]
 
     Rails.cache.fetch(cache_key, expires_in: 1.hour) { build_user_form_options_payload }
   end
@@ -414,7 +414,14 @@ class UsersController < ApplicationController
         village: first_present_data(record, "village", "village_name"))
     end
 
-    states + districts + blocks + gram_panchayats + villages + lg_directory_rows
+    deduplicate_location_rows(states + districts + blocks + gram_panchayats + villages + lg_directory_rows)
+  end
+
+  def deduplicate_location_rows(rows)
+    rows.uniq do |row|
+      %i[state district block gram_panchayat village]
+        .map { |key| row[key].to_s.strip.downcase }
+    end
   end
 
   def active_records_for_location(module_slug)

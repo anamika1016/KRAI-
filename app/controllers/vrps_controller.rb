@@ -1654,7 +1654,14 @@ class VrpsController < ApplicationController
         village: first_present_data(record, "village", "village_name"))
     end
 
-    states + districts + blocks + gram_panchayats + villages + lg_directory_rows
+    deduplicate_location_rows(states + districts + blocks + gram_panchayats + villages + lg_directory_rows)
+  end
+
+  def deduplicate_location_rows(rows)
+    rows.uniq do |row|
+      %i[state district block gram_panchayat village]
+        .map { |key| row[key].to_s.strip.downcase }
+    end
   end
 
   def active_records_for_location(module_slug)
@@ -1808,7 +1815,7 @@ class VrpsController < ApplicationController
     bank = VrpBankMaster.find_or_initialize_by(name: name)
     bank.is_active = record.data["status"].to_s != "Inactive" if bank.respond_to?(:is_active=)
     bank.is_deleted = false if bank.respond_to?(:is_deleted=)
-    bank.save(validate: false)
+    bank.save(validate: false) if bank.new_record? || bank.changed?
   end
 
   def sync_vrp_type(record)
@@ -1820,7 +1827,7 @@ class VrpsController < ApplicationController
     vrp_type = VrpType.find_or_initialize_by(type_name: type_name)
     vrp_type.is_active = record.data["status"].to_s != "Inactive" if vrp_type.respond_to?(:is_active=)
     vrp_type.is_deleted = false if vrp_type.respond_to?(:is_deleted=)
-    vrp_type.save(validate: false)
+    vrp_type.save(validate: false) if vrp_type.new_record? || vrp_type.changed?
   end
 
   def model_ready?(name)
