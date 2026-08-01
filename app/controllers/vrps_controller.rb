@@ -9,6 +9,22 @@ class VrpsController < ApplicationController
 
   def index
     vrps = visible_vrps.to_a
+    if params[:target_assignment] == "unassigned"
+      assigned_vrp_ids = TargetMapping.where(vrp_id: vrps.map(&:id)).distinct.pluck(:vrp_id)
+      vrps = vrps.reject { |vrp| assigned_vrp_ids.include?(vrp.id) }
+    end
+    if params[:activity_assignment] == "unassigned"
+      activity_assigned_vrp_ids = TargetMapping
+        .where(vrp_id: vrps.map(&:id))
+        .where("COALESCE(main_activity_name, '') <> '' OR COALESCE(activity_name, '') <> ''")
+        .distinct
+        .pluck(:vrp_id)
+      vrps = vrps.reject { |vrp| activity_assigned_vrp_ids.include?(vrp.id) }
+    end
+    if params[:fcoc].present?
+      selected_fcoc = params[:fcoc].to_s.downcase
+      vrps = vrps.select { |vrp| vrp.fcoc.to_s.downcase.include?(selected_fcoc) }
+    end
     ActiveRecord::Associations::Preloader.new(records: vrps, associations: :vrp_bank_master).call
     preload_registered_by_users!(vrps)
 

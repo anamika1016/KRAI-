@@ -348,6 +348,21 @@
   <%# ── METRIC CARDS ─────────────────────────────────────────────────── %>
   <div class="dashboard-grid premium">
     <% @dashboard_cards.each_with_index do |card, index| %>
+      <% next if card.blank? %>
+      <% if card.is_a?(Hash) && card[:items].present? %>
+        <article class="metric-card metric-card-group metric-card-group-<%= card[:style] %>">
+          <span class="metric-card-group-title"><%= card[:title] %></span>
+          <div class="metric-card-group-items">
+            <% card[:items].each do |item| %>
+              <%= link_to item[:path], class: "metric-card-group-item", data: { dashboard_card: true } do %>
+                <span><%= item[:title] %></span>
+                <strong><%= item[:value] %></strong>
+              <% end %>
+            <% end %>
+          </div>
+        </article>
+        <% next %>
+      <% end %>
       <% title   = card.is_a?(Hash) ? card[:title]   : card[0] %>
       <% value   = card.is_a?(Hash) ? card[:value]   : card[1] %>
       <% caption = card.is_a?(Hash) ? card[:caption] : card[2] %>
@@ -375,7 +390,7 @@
   <% weekly_cards = @dashboard_weekly_target_cards || [] %>
   <% weekly_selected_month = @weekly_dashboard_selected_month.to_s %>
   <% weekly_month_filter_value = @weekly_target_month_filter_value.to_s %>
-  <section class="module-card training-participation-status-card" id="dashboard_weekly_target_boxes">
+  <section class="module-card training-participation-status-card dashboard-status-panel weekly-status-panel" id="dashboard_weekly_target_boxes">
     <div class="module-card-header training-participation-status-header">
       <div>
         <h2>Weekly Activity Target Status</h2>

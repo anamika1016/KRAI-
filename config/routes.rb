@@ -1,4 +1,13 @@
 Rails.application.routes.draw do
+  # Uploaded training evidence is stored under public/uploads/module_records.
+  # Keep an authenticated Rails fallback so links also work when the web server
+  # is not configured to serve the uploads directory directly.
+  get "uploads/module_records/:filename",
+    to: "uploads#module_record",
+    as: :module_record_upload,
+    constraints: { filename: /[^\/]+/ },
+    format: false
+
   get "up" => "rails/health#show", as: :rails_health_check
 
   namespace :api do

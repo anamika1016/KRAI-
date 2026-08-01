@@ -12,7 +12,7 @@
 <% total_status_path_params[:training_month] = participation_selected_month if participation_selected_month.present? %>
 <% target_status_cards = Array(@training_target_status_cards || []) %>
 
-<section class="module-card training-participation-status-card">
+<section class="module-card training-participation-status-card dashboard-status-panel training-status-panel">
   <div class="module-card-header training-participation-status-header">
     <div>
       <h2>Farmer Training Participation Status (Automatic)</h2>
@@ -41,6 +41,12 @@
         <span>Total Training Farmer</span>
         <strong><%= status_total %></strong>
         <small>Farmer Training Form ke selected farmers.</small>
+        <b>View List</b>
+      <% end %>
+      <%= link_to farmer_training_participation_path(total_status_path_params), class: "training-participation-box total", data: { dashboard_card: true } do %>
+        <span>Total Unique Farmers</span>
+        <strong><%= @training_unique_farmer_count.to_i %></strong>
+        <small>Selected month me har farmer sirf ek baar count hua hai.</small>
         <b>View List</b>
       <% end %>
       <% status_cards.each do |card| %>

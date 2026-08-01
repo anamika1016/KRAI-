@@ -688,6 +688,7 @@ class ModulesController < ApplicationController
     @participation_selected_month = @participation_month_filter_value == "all" ? nil : @participation_month_filter_value
     participation_records = dashboard_training_participation_records(month_name: @participation_selected_month)
     @training_participation_status_cards = training_participation_status_cards_from_records(participation_records, month_name: @participation_selected_month)
+    @training_unique_farmer_count = training_unique_farmer_count_from_records(participation_records)
     if request.format.xlsx?
       @training_target_status_cards = training_target_status_cards(training_targets, month_name: selected_month, sub_activity_name: selected_sub_activity)
       @training_participation = training_participation_summary(training_targets, month_name: selected_month)
@@ -729,6 +730,7 @@ class ModulesController < ApplicationController
     @training_participation_rows = training_participation_farmer_rows_from_records(training_records)
     @training_participation_rows = @training_participation_rows.select { |row| row[:status] == selected_status } unless selected_status == "total"
     @training_participation_totals = training_participation_status_counts_from_records(training_records)
+    @training_unique_farmer_count = training_unique_farmer_count_from_records(training_records)
     @training_selected_month = selected_month
     @training_selected_sub_activity = selected_sub_activity
 
@@ -875,7 +877,9 @@ class ModulesController < ApplicationController
     selected_month = params[:training_month].presence || params[:month].presence
     selected_activity = params[:activity].presence || params[:main_activity].presence
     selected_sub_activity = params[:training_sub_activity].presence || params[:sub_activity].presence
-    selected_status = normalize_training_target_status(params[:status])
+    requested_status = params[:status].to_s.downcase.presence
+    selected_status = normalize_training_target_status(requested_status)
+    selected_status_key = requested_status == "total" ? "total" : selected_status
 
     filtered_targets = targets.to_a
     filtered_targets = dashboard_targets_for_month(filtered_targets, selected_month) if selected_month.present?
@@ -893,11 +897,17 @@ class ModulesController < ApplicationController
 
     preload_training_farmers_for_targets!(filtered_targets)
     rows = weekly_activity_target_report_rows(filtered_targets)
-    rows = rows.select { |row| row[:status_class] == selected_status } if selected_status.present?
+    rows = if selected_status.present?
+      rows.select { |row| row[:status_class] == selected_status }
+    elsif selected_status_key == "total"
+      rows
+    else
+      []
+    end
 
     @weekly_report_rows = rows
     @weekly_report_totals = training_target_status_counts(filtered_targets)
-    @weekly_report_status = selected_status
+    @weekly_report_status = selected_status_key
     @weekly_selected_month = selected_month
     @weekly_selected_activity = selected_activity
     @weekly_selected_sub_activity = selected_sub_activity
@@ -2112,6 +2122,14 @@ class ModulesController < ApplicationController
   def dashboard_cards
     vrps = @filtered_vrps || dashboard_vrps
     targets = @filtered_targets || dashboard_target_mappings
+    assigned_vrp_ids = dashboard_target_mappings.filter_map { |target| target.vrp_id.to_s.presence }.uniq
+    unassigned_vrp_count = vrps.count { |vrp| !assigned_vrp_ids.include?(vrp.id.to_s) }
+    activity_assigned_vrp_ids = dashboard_target_mappings.filter_map do |target|
+      next if target.main_activity_name.blank? && target.activity_name.blank?
+
+      target.vrp_id.to_s.presence
+    end.uniq
+    activity_unassigned_vrp_count = vrps.count { |vrp| !activity_assigned_vrp_ids.include?(vrp.id.to_s) }
     hierarchy_summary = user_hierarchy_dashboard_summary
     approved_vrps = dashboard_approved_vrps(vrps).size
     pending_approvals = dashboard_pending_approval_vrps(vrps).size
@@ -2125,14 +2143,34 @@ class ModulesController < ApplicationController
     pending_bills = (@filtered_bills || []).count { |r| dashboard_bill_pending?(r) }
 
     cards = [
-      dashboard_card("Total Registered VRP", vrps.size, admin_dashboard_user? ? "All VRP records saved in registration" : "VRP records visible to you", vrps_path),
-      dashboard_card("Final Approved VRP", approved_vrps, "VRP records with final approval", vrps_path),
-      dashboard_card("VRP Pending Approval", pending_approvals, admin_dashboard_user? ? "All VRP records currently pending" : "VRP records pending in your visible approval scope", approvals_vrps_path),
-      dashboard_card("VRP Targets Assigned", targets.size, "Target records assigned in VRP Targets", target_mappings_path),
-      dashboard_card("Activities Assigned", activity_count, "Activities assigned in visible VRP targets", target_mappings_path),
-      dashboard_card("Bill Approved", approved_bills, "Jeevika Jankar bills final approved", module_path("jeevika-jankar-bill-list")),
-      dashboard_card("Bill Pending", pending_bills, "Jeevika Jankar bills pending approval", module_path("jeevika-jankar-bill-list"))
+      dashboard_group_card("Jeevika Jankar Registration", [
+        { title: "Total Registered", value: vrps.size, path: vrps_path },
+        { title: "Final Approved", value: approved_vrps, path: vrps_path },
+        { title: "Pending Approval", value: pending_approvals, path: approvals_vrps_path }
+      ], style: "registration"),
+      dashboard_group_card("Jeevika Jankar Target Assignment", [
+        { title: "Target Records", value: targets.size, path: target_mappings_path },
+        { title: "Without Target", value: unassigned_vrp_count, path: vrps_path(target_assignment: "unassigned") },
+        { title: "Activities Assigned", value: activity_count, path: target_mappings_path },
+        { title: "Without Activity", value: activity_unassigned_vrp_count, path: vrps_path(activity_assignment: "unassigned") }
+      ], style: "assignment"),
+      dashboard_group_card("Jeevika Jankar Billing", [
+        { title: "Bill Approved", value: approved_bills, path: module_path("jeevika-jankar-bill-list") },
+        { title: "Bill Pending", value: pending_bills, path: module_path("jeevika-jankar-bill-list") }
+      ], style: "billing")
     ]
+
+    fco_summary_items = %w[Sausar Turekela].map do |fco_name|
+      matching_vrps = vrps.select { |vrp| normalize_dashboard_text(vrp.fcoc).include?(normalize_dashboard_text(fco_name)) }
+      male_count = matching_vrps.count { |vrp| normalize_dashboard_text(vrp.gender) == "male" }
+      female_count = matching_vrps.count { |vrp| normalize_dashboard_text(vrp.gender) == "female" }
+      {
+        title: fco_name,
+        value: "#{male_count} Male · #{female_count} Female",
+        path: vrps_path(fcoc: fco_name)
+      }
+    end
+    cards << dashboard_group_card("FCO-wise Jeevika Jankar", fco_summary_items, style: "fco")
 
     cards.insert(0, dashboard_card("Level 2 Users", hierarchy_summary[:level_2_total], "Users directly mapped under you", dashboard_path(anchor: "user_hierarchy_report"))) if hierarchy_summary[:level_2_total].positive?
 
@@ -2172,6 +2210,14 @@ class ModulesController < ApplicationController
     }
   end
 
+  def dashboard_group_card(title, items, style: nil)
+    {
+      title: title,
+      items: items,
+      style: style
+    }
+  end
+
   def dashboard_bill_approved?(record)
     record.data["status"].to_s.downcase.include?("final approved")
   end
@@ -2200,7 +2246,7 @@ class ModulesController < ApplicationController
         title: "Total Targets",
         value: counts[:total].to_i,
         caption: "All activity / sub-activity targets in current filter.",
-        path: weekly_activity_target_report_path(filter_params)
+        path: weekly_activity_target_report_path(filter_params.merge(status: "total"))
       }
     ] + %w[green yellow red].map do |status|
       {
@@ -2262,7 +2308,9 @@ class ModulesController < ApplicationController
         "Completed",
         "Pending",
         "Progress %",
-        "Status"
+        "Status",
+        "Training Register Upload",
+        "Training Photo Upload with Geo Tag"
       ]
 
       Array(rows).each do |row|
@@ -2286,7 +2334,9 @@ class ModulesController < ApplicationController
           dashboard_quantity(row[:completed_quantity]),
           dashboard_quantity(row[:pending_quantity]),
           row[:progress_percent],
-          row[:status_label]
+          row[:status_label],
+          Array(row[:training_register_urls]).join(", "),
+          Array(row[:training_photo_urls]).join(", ")
         ]
       end
     end
@@ -2455,6 +2505,10 @@ class ModulesController < ApplicationController
     }
   end
 
+  def training_unique_farmer_count_from_records(records)
+    Array(records).flat_map { |record| training_record_selected_farmer_ids(record) }.uniq.size
+  end
+
   def training_participation_farmer_rows_from_records(records)
     records = Array(records)
     return [] if records.blank?
@@ -2469,6 +2523,8 @@ class ModulesController < ApplicationController
         main_activities: [],
         sub_activities: [],
         training_dates: [],
+        training_register_urls: [],
+        training_photo_urls: [],
         attendance_count: 0
       }
     end
@@ -2485,6 +2541,8 @@ class ModulesController < ApplicationController
         membership[:main_activities] |= [summary[:training_topic].to_s.strip].reject(&:blank?)
         membership[:sub_activities] |= [summary[:training_subject].to_s.strip].reject(&:blank?)
         membership[:training_dates] |= [training_date].reject(&:blank?)
+        membership[:training_register_urls] |= module_upload_public_urls(record.data["training_register_upload"])
+        membership[:training_photo_urls] |= module_upload_public_urls(record.data["training_photo_upload_with_geo_tag"])
         membership[:attendance_count] += 1
       end
     end
@@ -2514,7 +2572,9 @@ class ModulesController < ApplicationController
         status: status,
         status_label: training_participation_status_label(status),
         training_dates: dates.join(", ").presence || "-",
-        last_training_date: dates.last.presence || "-"
+        last_training_date: dates.last.presence || "-",
+        training_register_urls: membership[:training_register_urls],
+        training_photo_urls: membership[:training_photo_urls]
       }
     end.sort_by { |row| [row[:status], -row[:attendance_count], row[:farmer_name].to_s.downcase] }
   end
@@ -2720,7 +2780,9 @@ class ModulesController < ApplicationController
         "Training Count",
         "Status",
         "Training Dates",
-        "Last Training Date"
+        "Last Training Date",
+        "Training Register Upload",
+        "Training Photo Upload with Geo Tag"
       ]
 
       Array(rows).each do |row|
@@ -2739,7 +2801,9 @@ class ModulesController < ApplicationController
           row[:attendance_count],
           row[:status_label],
           row[:training_dates],
-          row[:last_training_date]
+          row[:last_training_date],
+          Array(row[:training_register_urls]).join(", "),
+          Array(row[:training_photo_urls]).join(", ")
         ]
       end
     end
@@ -2834,7 +2898,9 @@ class ModulesController < ApplicationController
         "Completed",
         "Pending",
         "Progress %",
-        "Status"
+        "Status",
+        "Training Register Upload",
+        "Training Photo Upload with Geo Tag"
       ]
 
       Array(rows).each do |row|
@@ -2851,7 +2917,9 @@ class ModulesController < ApplicationController
           dashboard_quantity(row[:completed_quantity]),
           dashboard_quantity(row[:pending_quantity]),
           row[:progress_percent],
-          row[:status_label]
+          row[:status_label],
+          Array(row[:training_register_urls]).join(", "),
+          Array(row[:training_photo_urls]).join(", ")
         ]
       end
     end
@@ -3018,6 +3086,7 @@ class ModulesController < ApplicationController
 
   def training_target_detail_row(target)
     farmer_ids = target_farmer_ids(target)
+    matching_training_records = matching_training_records_for_target(target, farmer_ids)
     completed_farmer_ids = completed_training_farmer_ids_for_target_deadline(target, farmer_ids)
     pending_farmer_ids = farmer_ids - completed_farmer_ids
     target_quantity = target.target_quantity.to_f
@@ -3049,6 +3118,8 @@ class ModulesController < ApplicationController
       progress_percent: progress_percent,
       status_label: training_target_status_label(status_class),
       status_class: status_class,
+      training_register_urls: matching_training_records.flat_map { |record| module_upload_public_urls(record.data["training_register_upload"]) }.uniq,
+      training_photo_urls: matching_training_records.flat_map { |record| module_upload_public_urls(record.data["training_photo_upload_with_geo_tag"]) }.uniq,
       completed_farmers: training_farmers_for_ids(completed_farmer_ids).map { |farmer| farmer.merge(status_label: "Completed", status_class: "green") },
       pending_farmers: training_farmers_for_ids(pending_farmer_ids).map { |farmer| farmer.merge(status_label: "Pending", status_class: "red") }
     }
@@ -3059,16 +3130,13 @@ class ModulesController < ApplicationController
     return [0, 0, 0, 0] if farmer_ids.blank? || !model_ready?(:ModuleRecord)
 
     weekly_farmer_ids = Array.new(4) { [] }
-    dashboard_training_completion_records
-      .select { |record| training_record_matches_dashboard_target?(record, target, farmer_ids) }
-      .select { |record| training_record_within_completion_date?(record, target.completion_date) }
-      .each do |record|
-        training_date = parse_module_date(training_summary(record)[:training_date]) || record.created_at&.to_date
-        next unless training_date
+    matching_training_records_for_target(target, farmer_ids).each do |record|
+      training_date = parse_module_date(training_summary(record)[:training_date]) || record.created_at&.to_date
+      next unless training_date
 
-        week_index = [((training_date.day - 1) / 7), 3].min
-        weekly_farmer_ids[week_index] |= training_record_selected_farmer_ids(record) & farmer_ids
-      end
+      week_index = [((training_date.day - 1) / 7), 3].min
+      weekly_farmer_ids[week_index] |= training_record_selected_farmer_ids(record) & farmer_ids
+    end
 
     weekly_farmer_ids.map(&:size)
   end
@@ -4227,6 +4295,8 @@ class ModulesController < ApplicationController
       end
     end
     records = records.select { |record| target_record_visible?(record) } if target_record_source?
+    return records.sort_by { |record| [record.created_at || Time.at(0), record.id.to_i] }.reverse if @slug == "training-form-list"
+
     records.sort_by { |record| module_record_sort_value(record) }
   end
 
@@ -7215,7 +7285,6 @@ class ModulesController < ApplicationController
     return [] unless model_ready?(:TargetMapping)
 
     activity_settings = jeevika_jankar_main_activity_settings
-
     training_target_scope
       .order(:ics_name, :ics_id, :village_name, :village_id, :id)
       .filter_map do |target|
@@ -7392,11 +7461,19 @@ class ModulesController < ApplicationController
     return completed_training_farmer_ids_for(target, farmer_ids) if target.completion_date.blank?
     return [] unless model_ready?(:ModuleRecord)
 
-    dashboard_training_completion_records
-      .select { |record| training_record_matches_dashboard_target?(record, target, farmer_ids) }
-      .select { |record| training_record_within_completion_date?(record, target.completion_date) }
+    matching_training_records_for_target(target, farmer_ids)
       .flat_map { |record| training_record_selected_farmer_ids(record) & farmer_ids }
       .uniq
+  end
+
+  def matching_training_records_for_target(target, farmer_ids)
+    @matching_training_records_for_target_cache ||= {}
+    cache_key = [target.id, target.completion_date.to_s]
+    return @matching_training_records_for_target_cache[cache_key] if @matching_training_records_for_target_cache.key?(cache_key)
+
+    @matching_training_records_for_target_cache[cache_key] = dashboard_training_completion_records
+      .select { |record| training_record_matches_dashboard_target?(record, target, farmer_ids) }
+      .select { |record| training_record_within_completion_date?(record, target.completion_date) }
   end
 
   def training_record_within_completion_date?(record, completion_date)
@@ -7449,9 +7526,9 @@ class ModulesController < ApplicationController
     farmer_ids = Array(farmer_ids).map(&:to_s).reject(&:blank?).uniq
     return [] if farmer_ids.blank?
 
-    training_farmers_by_id(farmer_ids)
+    farmers_by_id = training_farmers_by_id(farmer_ids)
+    resolved_farmers = farmers_by_id
       .values
-      .sort_by { |farmer| [farmer.farmer_name.to_s.downcase, farmer.id] }
       .map do |farmer|
         {
           id: farmer.id.to_s,
@@ -7462,6 +7539,25 @@ class ModulesController < ApplicationController
           khasara_no: dashboard_text_value(farmer.khasara_no)
         }
       end
+
+    # Older target mappings can retain valid target IDs after AFL master data is
+    # re-imported with new database IDs. Keep those original mapped IDs visible
+    # and selectable so training completion continues against the saved target.
+    missing_farmers = farmer_ids.reject { |farmer_id| farmers_by_id.key?(farmer_id) }.map do |farmer_id|
+      {
+        id: farmer_id,
+        farmer_name: "Mapped Farmer ##{farmer_id}",
+        father_name: nil,
+        tracenet_no: nil,
+        mobile_no: nil,
+        khasara_no: nil,
+        record_missing: true
+      }
+    end
+
+    (resolved_farmers + missing_farmers).sort_by do |farmer|
+      [farmer[:record_missing] ? 1 : 0, farmer[:farmer_name].to_s.downcase, farmer[:id].to_i]
+    end
   end
 
   def role_management_mappings

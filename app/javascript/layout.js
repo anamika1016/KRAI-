@@ -1957,11 +1957,17 @@ function initDeferredLayoutPage() {
 
       const farmersById = new Map();
       targetRowsForSelection({ requireMonth: true, requireVillage: true, requireMainActivity: true })
-        .filter((mapping) => !selectedSubActivity || normalizeOption(mapping.sub_activity) === selectedSubActivity)
-        .forEach((mapping) => {
-          (mapping.farmers || []).forEach((farmer) => {
-            if (!farmer.id) return;
-	            farmersById.set(String(farmer.id), farmer);
+	        .filter((mapping) => !selectedSubActivity || normalizeOption(mapping.sub_activity) === selectedSubActivity)
+	        .forEach((mapping) => {
+	          const includedFarmerIds = new Set((mapping.completed_farmer_ids || []).map(String));
+	          (mapping.farmers || []).forEach((farmer) => {
+	            if (!farmer.id) return;
+	            const farmerId = String(farmer.id);
+	            const existingFarmer = farmersById.get(farmerId);
+	            farmersById.set(farmerId, {
+	              ...farmer,
+	              already_included: Boolean(existingFarmer?.already_included || includedFarmerIds.has(farmerId))
+	            });
 	          });
 	        });
 	      return Array.from(farmersById.values());
@@ -2096,11 +2102,13 @@ function initDeferredLayoutPage() {
 	          farmer.khasara_no ? `Khasara: ${farmer.khasara_no}` : ""
 	        ].filter(Boolean).join(" | ");
 	        const checked = selectedFarmerIds.has(String(farmer.id)) ? " checked" : "";
+	        const includedClass = farmer.already_included ? " already-included" : "";
+	        const includedBadge = farmer.already_included ? '<b class="training-included-badge">Already Included</b>' : "";
 	        return `
-	          <label class="vrp-ics-farmer-item">
+	          <label class="vrp-ics-farmer-item${includedClass}">
 	            <input type="checkbox" name="module_record[selected_farmer_ids][]" value="${escapeHtml(farmer.id)}" data-training-farmer-checkbox${checked}>
 	            <span>
-	              <strong>${escapeHtml(farmer.farmer_name || `Farmer #${farmer.id}`)}</strong>
+	              <strong>${escapeHtml(farmer.farmer_name || `Farmer #${farmer.id}`)} ${includedBadge}</strong>
 	              <small>${escapeHtml(meta)}</small>
 	            </span>
 	          </label>
