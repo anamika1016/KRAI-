@@ -354,7 +354,7 @@
           <span class="metric-card-group-title"><%= card[:title] %></span>
           <div class="metric-card-group-items">
             <% card[:items].each do |item| %>
-              <%= link_to item[:path], class: "metric-card-group-item", data: { dashboard_card: true } do %>
+              <%= link_to item[:path], class: "metric-card-group-item metric-card-group-item-#{item[:title].to_s.parameterize}", data: { dashboard_card: true } do %>
                 <span><%= item[:title] %></span>
                 <strong><%= item[:value] %></strong>
               <% end %>

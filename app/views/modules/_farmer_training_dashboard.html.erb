@@ -38,15 +38,15 @@
   <div class="training-participation-boxes compact">
     <% if status_cards.any? %>
       <%= link_to farmer_training_participation_path(total_status_path_params), class: "training-participation-box total", data: { dashboard_card: true } do %>
-        <span>Total Training Farmer</span>
-        <strong><%= status_total %></strong>
-        <small>Farmer Training Form ke selected farmers.</small>
+        <span>Total Unique Farmers</span>
+        <strong><%= @training_unique_farmer_count.to_i %></strong>
+        <small>Har farmer sirf ek baar; rejected/returned records excluded.</small>
         <b>View List</b>
       <% end %>
       <%= link_to farmer_training_participation_path(total_status_path_params), class: "training-participation-box total", data: { dashboard_card: true } do %>
-        <span>Total Unique Farmers</span>
-        <strong><%= @training_unique_farmer_count.to_i %></strong>
-        <small>Selected month me har farmer sirf ek baar count hua hai.</small>
+        <span>Total Training Farmer</span>
+        <strong><%= status_total %></strong>
+        <small>Farmer Training Form ke selected farmers.</small>
         <b>View List</b>
       <% end %>
       <% status_cards.each do |card| %>

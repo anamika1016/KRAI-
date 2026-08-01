@@ -1122,6 +1122,13 @@ body {
   grid-template-columns: repeat(3, minmax(0, 1fr));
 }
 
+.dashboard-grid.premium .metric-card-group-billing .metric-card-group-item-level-2-users {
+  grid-column: 1 / -1;
+  min-height: 62px;
+  background: linear-gradient(120deg, #fff8eb, #fffdf8);
+  border-color: rgba(205, 145, 52, 0.3);
+}
+
 .metric-card-group-item {
   position: relative;
   display: grid;
@@ -3035,6 +3042,10 @@ body {
   cursor: pointer;
 }
 
+.chip-multi-control.open {
+  z-index: 2100;
+}
+
 .location-multi-label {
   display: flex;
   align-items: center;
@@ -3102,6 +3113,18 @@ body {
   line-height: 1;
 }
 
+.chip-selection-summary {
+  display: inline-flex;
+  align-items: center;
+  min-height: 28px;
+  border-radius: 999px;
+  background: #eaf4e7;
+  color: #376c2d;
+  padding: 4px 9px;
+  font-size: 0.78rem;
+  font-weight: 750;
+}
+
 .chip-multi-dropdown {
   position: absolute;
   z-index: 2000;
@@ -3146,6 +3169,28 @@ body {
 
 .chip-search-input:focus {
   box-shadow: inset 0 0 0 2px rgba(89, 143, 64, 0.18);
+}
+
+.chip-select-all-option {
+  position: sticky;
+  top: 38px;
+  z-index: 1;
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  border-bottom: 1px solid #d5e0e6;
+  background: #f5faf7;
+  color: #254d36;
+  padding: 9px 12px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.chip-select-all-option input {
+  width: 16px;
+  height: 16px;
+  margin: 0;
+  accent-color: var(--vrp-primary);
 }
 
 .chip-option {
@@ -4443,6 +4488,9 @@ body {
 }
 
 .participation-filter-card {
+  position: relative;
+  z-index: 20;
+  overflow: visible;
   padding: 16px;
 }
 

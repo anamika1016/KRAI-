@@ -11,24 +11,28 @@
     </div>
 
     <section class="module-card participation-filter-card">
-      <%= form_with url: farmer_participation_report_path, method: :get, local: true, html: { class: "participation-filter-form", data: { participation_filter_form: true, vrp_fcoc_map: json_escape(@farmer_participation_vrp_fcoc_map.to_json) } } do |form| %>
-        <label>
-          <span>Farmer</span>
-          <%= form.select :farmer_id,
-            options_for_select([["All Farmers", ""]] + @farmer_participation_filter_options[:farmers], @farmer_participation_selected_filters[:farmer_id]),
-            {} %>
-        </label>
+      <%= form_with url: farmer_participation_report_path, method: :get, local: true, html: { class: "participation-filter-form", data: { participation_filter_form: true, vrp_fcoc_map: json_escape(@farmer_participation_vrp_fcoc_map.to_json), farmer_filter_map: json_escape(@farmer_participation_farmer_filter_map.to_json) } } do |form| %>
         <label>
           <span>Month</span>
           <%= form.select :month, options_for_select([["All Months", ""]] + @farmer_participation_filter_options[:months].map { |value| [value, value] }, @farmer_participation_selected_filters[:month]) %>
         </label>
         <label>
           <span>FCOC</span>
-          <%= form.select :fcoc, options_for_select([["All FCOC", ""]] + @farmer_participation_filter_options[:fcocs].map { |value| [value, value] }, @farmer_participation_selected_filters[:fcoc]) %>
+          <%= select_tag "fcocs[]",
+            options_for_select(@farmer_participation_filter_options[:fcocs].map { |value| [value, value] }, @farmer_participation_selected_filters[:fcocs]),
+            multiple: true,
+            data: { chip_multiselect: true, chip_hover_open: true, placeholder: "Select FCOC" } %>
         </label>
         <label>
           <span>Jeevika Jankar</span>
           <%= form.select :vrp_id, options_for_select([["All Jeevika Jankar", ""]] + @farmer_participation_filter_options[:vrps], @farmer_participation_selected_filters[:vrp_id]) %>
+        </label>
+        <label>
+          <span>Farmer</span>
+          <%= select_tag "farmer_ids[]",
+            options_for_select(@farmer_participation_filter_options[:farmers], @farmer_participation_selected_filters[:farmer_ids]),
+            multiple: true,
+            data: { chip_multiselect: true, chip_hover_open: true, chip_compact_selection: true, placeholder: "Select Farmers" } %>
         </label>
         <div class="participation-filter-actions">
           <%= form.submit "Apply Filters", class: "list-btn active" %>
@@ -74,6 +78,8 @@
               <th>Training Method</th>
               <th>Participation Count</th>
               <th>Training Dates</th>
+              <th class="upload-report-column">Training Register Upload</th>
+              <th class="upload-report-column">Training Photo Upload with Geo Tag</th>
             </tr>
           </thead>
           <tbody>
@@ -91,10 +97,30 @@
                   <td><%= row[:training_method] %></td>
                   <td class="participation-count"><%= row[:participation_count] %></td>
                   <td><%= row[:training_dates] %></td>
+                  <td class="upload-report-column" data-export-value="<%= Array(row[:training_register_urls]).join(', ') %>">
+                    <% if Array(row[:training_register_urls]).any? %>
+                      <% Array(row[:training_register_urls]).each_with_index do |url, index| %>
+                        <%= link_to "Register #{index + 1}", url, target: "_blank", rel: "noopener", class: "grid-view-link" %>
+                      <% end %>
+                    <% else %>
+                      -
+                    <% end %>
+                  </td>
+                  <td class="upload-report-column" data-export-value="<%= Array(row[:training_photo_urls]).join(', ') %>">
+                    <% if Array(row[:training_photo_urls]).any? %>
+                      <% Array(row[:training_photo_urls]).each_with_index do |url, index| %>
+                        <%= link_to url, target: "_blank", rel: "noopener", class: "upload-thumbnail-link", title: "Open training photo #{index + 1}" do %>
+                          <%= image_tag url, alt: "Training photo #{index + 1}", class: "upload-thumbnail", loading: "lazy" %>
+                        <% end %>
+                      <% end %>
+                    <% else %>
+                      -
+                    <% end %>
+                  </td>
                 </tr>
               <% end %>
             <% else %>
-              <tr><td colspan="11">Selected filters ke liye participation record nahi mila.</td></tr>
+              <tr><td colspan="13">Selected filters ke liye participation record nahi mila.</td></tr>
             <% end %>
           </tbody>
         </table>

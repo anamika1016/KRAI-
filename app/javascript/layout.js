@@ -1,6 +1,8 @@
 const closeOpenChipMultiControls = (event) => {
+  const eventPath = typeof event.composedPath === "function" ? event.composedPath() : [];
   document.querySelectorAll(".chip-multi-control.open").forEach((control) => {
-    if (!control.contains(event.target)) control.classList.remove("open");
+    const clickedInside = eventPath.includes(control) || control.contains(event.target);
+    if (!clickedInside) control.classList.remove("open");
   });
 };
 
@@ -149,25 +151,73 @@ function initDeferredLayoutPage() {
 
     form.dataset.participationFilterBound = "true";
     const vrpSelect = form.querySelector("select[name='vrp_id']");
-    const fcocSelect = form.querySelector("select[name='fcoc']");
+    const fcocSelect = form.querySelector("select[name='fcocs[]']");
+    const farmerSelect = form.querySelector("select[name='farmer_ids[]']");
+    const monthSelect = form.querySelector("select[name='month']");
     let vrpFcocMap = {};
+    let farmerFilterMap = {};
     try {
       vrpFcocMap = JSON.parse(form.dataset.vrpFcocMap || "{}");
     } catch (_error) {
       vrpFcocMap = {};
     }
+    try {
+      farmerFilterMap = JSON.parse(form.dataset.farmerFilterMap || "{}");
+    } catch (_error) {
+      farmerFilterMap = {};
+    }
 
-    const syncParticipationFcoc = (submitAfterSync = false) => {
-      const compatibleFcocs = vrpFcocMap[vrpSelect?.value] || [];
-      if (!fcocSelect || compatibleFcocs.length !== 1) return;
-      if (fcocSelect.value === compatibleFcocs[0]) return;
+    const syncParticipationVrps = () => {
+      if (!vrpSelect || !fcocSelect) return;
 
-      fcocSelect.value = compatibleFcocs[0];
-      if (submitAfterSync && typeof form.requestSubmit === "function") form.requestSubmit();
+      const selectedFcocs = Array.from(fcocSelect.selectedOptions || [])
+        .map((option) => option.value)
+        .filter(Boolean);
+
+      Array.from(vrpSelect.options).forEach((option) => {
+        if (!option.value) {
+          option.hidden = false;
+          option.disabled = false;
+          return;
+        }
+
+        const compatibleFcocs = vrpFcocMap[option.value] || [];
+        const visible = !selectedFcocs.length || compatibleFcocs.some((fcoc) => selectedFcocs.includes(fcoc));
+        option.hidden = !visible;
+        option.disabled = !visible;
+      });
+
+      if (vrpSelect.selectedOptions[0]?.disabled) vrpSelect.value = "";
     };
 
-    vrpSelect?.addEventListener("change", () => syncParticipationFcoc(false));
-    syncParticipationFcoc(true);
+    const syncParticipationFarmers = () => {
+      if (!farmerSelect) return;
+
+      const selectedMonth = monthSelect?.value || "";
+      const selectedFcocs = Array.from(fcocSelect?.selectedOptions || [])
+        .map((option) => option.value)
+        .filter(Boolean);
+
+      Array.from(farmerSelect.options).forEach((option) => {
+        const metadata = farmerFilterMap[option.value] || { months: [], fcocs: [] };
+        const monthMatches = !selectedMonth || metadata.months.includes(selectedMonth);
+        const fcocMatches = !selectedFcocs.length || metadata.fcocs.some((fcoc) => selectedFcocs.includes(fcoc));
+        const visible = monthMatches && fcocMatches;
+        option.hidden = !visible;
+        option.disabled = !visible;
+        if (!visible) option.selected = false;
+      });
+      farmerSelect.dispatchEvent(new Event("chip:refresh"));
+    };
+
+    fcocSelect?.addEventListener("change", () => {
+      syncParticipationVrps();
+      syncParticipationFarmers();
+    });
+    fcocSelect?.addEventListener("chip:refresh", syncParticipationVrps);
+    monthSelect?.addEventListener("change", syncParticipationFarmers);
+    syncParticipationVrps();
+    syncParticipationFarmers();
   });
 
   document.querySelectorAll("[data-saved-target-farmers-open]").forEach((button) => {
@@ -4347,9 +4397,11 @@ function initDeferredLayoutPage() {
     control.appendChild(chips);
     control.appendChild(arrow);
     control.appendChild(dropdown);
+    dropdown.addEventListener("pointerdown", (event) => event.stopPropagation());
+    dropdown.addEventListener("click", (event) => event.stopPropagation());
 
     const selectableOptions = () => Array.from(select.options)
-      .filter((option) => option.value !== "")
+      .filter((option) => option.value !== "" && !option.disabled && !option.hidden)
       .sort((left, right) => left.textContent.localeCompare(right.textContent, undefined, { sensitivity: "base" }));
     const selectedOptions = () => selectableOptions().filter((option) => option.selected);
 
@@ -4378,7 +4430,8 @@ function initDeferredLayoutPage() {
         chips.appendChild(empty);
       }
 
-      selected.forEach((option) => {
+      const displayedSelections = select.dataset.chipCompactSelection === "true" ? selected.slice(0, 2) : selected;
+      displayedSelections.forEach((option) => {
         const chip = document.createElement("button");
         chip.type = "button";
         chip.className = "chip-token";
@@ -4394,6 +4447,13 @@ function initDeferredLayoutPage() {
         chips.appendChild(chip);
       });
 
+      if (displayedSelections.length < selected.length) {
+        const summary = document.createElement("span");
+        summary.className = "chip-selection-summary";
+        summary.textContent = `+${selected.length - displayedSelections.length} more selected`;
+        chips.appendChild(summary);
+      }
+
       const searchInput = document.createElement("input");
       searchInput.type = "search";
       searchInput.className = "chip-search-input";
@@ -4405,6 +4465,7 @@ function initDeferredLayoutPage() {
       searchInput.addEventListener("input", () => {
         chipSearchTerm = searchInput.value;
         render(true);
+        control.classList.add("open");
       });
       dropdown.appendChild(searchInput);
 
@@ -4413,6 +4474,36 @@ function initDeferredLayoutPage() {
       const visibleOptions = normalizedSearch
         ? options.filter((option) => option.textContent.toLowerCase().includes(normalizedSearch))
         : options;
+
+      if (visibleOptions.length) {
+        const selectAllRow = document.createElement("label");
+        const selectAllInput = document.createElement("input");
+        const selectAllText = document.createElement("span");
+        const selectedVisibleCount = visibleOptions.filter((option) => option.selected).length;
+
+        selectAllRow.className = "chip-select-all-option";
+        selectAllInput.type = "checkbox";
+        selectAllInput.checked = selectedVisibleCount === visibleOptions.length;
+        selectAllInput.indeterminate = selectedVisibleCount > 0 && selectedVisibleCount < visibleOptions.length;
+        selectAllInput.disabled = select.disabled;
+        selectAllText.textContent = normalizedSearch ? "Select all search results" : "Select all";
+
+        selectAllRow.addEventListener("click", (event) => event.stopPropagation());
+        selectAllInput.addEventListener("change", () => {
+          if (select.disabled) return;
+
+          visibleOptions.forEach((option) => {
+            option.selected = selectAllInput.checked;
+          });
+          select.dataset.selectionDirty = "true";
+          select.dispatchEvent(new Event("change", { bubbles: true }));
+          render(true);
+          control.classList.add("open");
+        });
+        selectAllRow.appendChild(selectAllInput);
+        selectAllRow.appendChild(selectAllText);
+        dropdown.appendChild(selectAllRow);
+      }
 
       if (!options.length) {
         const emptyOption = document.createElement("div");
@@ -4442,6 +4533,7 @@ function initDeferredLayoutPage() {
           select.dataset.selectionDirty = "true";
           select.dispatchEvent(new Event("change", { bubbles: true }));
           render();
+          control.classList.add("open");
         });
         dropdown.appendChild(item);
       });
@@ -4466,13 +4558,15 @@ function initDeferredLayoutPage() {
     });
     select.addEventListener("chip:refresh", () => render());
 
-    control.addEventListener("click", () => {
+    control.addEventListener("click", (event) => {
       if (select.disabled) return;
+      if (event.target.closest(".chip-multi-dropdown")) return;
 
       document.querySelectorAll(".chip-multi-control.open").forEach((openControl) => {
         if (openControl !== control) openControl.classList.remove("open");
       });
-      control.classList.toggle("open");
+      if (select.dataset.chipHoverOpen === "true") control.classList.add("open");
+      else control.classList.toggle("open");
     });
 
     control.addEventListener("focus", () => {
@@ -4480,6 +4574,17 @@ function initDeferredLayoutPage() {
 
       control.classList.add("open");
     });
+
+    if (select.dataset.chipHoverOpen === "true") {
+      control.addEventListener("pointerenter", () => {
+        if (select.disabled) return;
+
+        document.querySelectorAll(".chip-multi-control.open").forEach((openControl) => {
+          if (openControl !== control) openControl.classList.remove("open");
+        });
+        control.classList.add("open");
+      });
+    }
 
     control.addEventListener("keydown", (event) => {
       if (event.key !== "Enter" && event.key !== " ") return;
