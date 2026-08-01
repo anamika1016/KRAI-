@@ -509,13 +509,13 @@ module ApplicationHelper
   end
 
   def app_display_name
-    current_stakeholder&.data&.[]("stakeholder_name_in_english").presence ||
+    @app_display_name ||= current_stakeholder&.data&.[]("stakeholder_name_in_english").presence ||
       current_stakeholder&.data&.[]("stakeholder_name").presence ||
       ENV.fetch("APP_NAME", "VRP")
   end
 
   def app_logo_path
-    matching_stakeholder_record("stakeholder-master")&.data&.[]("logo_upload").presence ||
+    @app_logo_path ||= matching_stakeholder_record("stakeholder-master")&.data&.[]("logo_upload").presence ||
       matching_stakeholder_record("stakeholder-profile")&.data&.[]("logo_upload").presence ||
       current_stakeholder&.data&.[]("logo_upload").presence ||
       current_stakeholder_profile&.data&.[]("logo_upload").presence ||
@@ -525,22 +525,28 @@ module ApplicationHelper
   def active_stakeholder_records(module_slug)
     return [] unless defined?(ModuleRecord) && ModuleRecord.table_exists?
 
-    ModuleRecord
+    @active_stakeholder_records ||= {}
+    @active_stakeholder_records[module_slug] ||= ModuleRecord
       .where(module_slug: module_slug)
       .order(updated_at: :desc)
       .select { |record| record.data["status"].blank? || record.data["status"] == "Active" }
   end
 
   def matching_stakeholder_record(module_slug)
-    names = current_user_stakeholder_names
-    return if names.blank?
+    @matching_stakeholder_records ||= {}
+    return @matching_stakeholder_records[module_slug] if @matching_stakeholder_records.key?(module_slug)
 
-    active_stakeholder_records(module_slug).detect do |record|
+    names = current_user_stakeholder_names
+    return @matching_stakeholder_records[module_slug] = nil if names.blank?
+
+    @matching_stakeholder_records[module_slug] = active_stakeholder_records(module_slug).detect do |record|
       names.any? { |stakeholder_name| stakeholder_record_matches?(record, stakeholder_name) }
     end
   end
 
   def current_user_stakeholder_names
+    return @current_user_stakeholder_names if defined?(@current_user_stakeholder_names)
+
     names = [current_app_user&.dig("stakeholder")]
     username = current_app_user&.dig("username").to_s
 
@@ -552,12 +558,20 @@ module ApplicationHelper
     if defined?(ModuleRecord) && ModuleRecord.table_exists? && username.present?
       legacy_user = ModuleRecord
         .where(module_slug: "new-user")
+        .where("data::jsonb ->> 'user_name' = ?", username)
         .order(updated_at: :desc)
-        .detect { |record| record.data["user_name"].to_s == username }
+        .first
       names << legacy_user&.data&.[]("stakeholder")
     end
 
-    names.compact_blank.map { |name| name.to_s.strip }.uniq
+    @current_user_stakeholder_names = names.compact_blank.map { |name| name.to_s.strip }.uniq
+  rescue ActiveRecord::StatementInvalid
+    legacy_user = ModuleRecord
+      .where(module_slug: "new-user")
+      .order(updated_at: :desc)
+      .detect { |record| record.data["user_name"].to_s == username }
+    names << legacy_user&.data&.[]("stakeholder")
+    @current_user_stakeholder_names = names.compact_blank.map { |name| name.to_s.strip }.uniq
   end
 
   def stakeholder_record_matches?(record, stakeholder_name)

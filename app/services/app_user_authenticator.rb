@@ -68,6 +68,24 @@ class AppUserAuthenticator
   def find_module_record_user_by_login(login_key, raw_login)
     return unless authentication_model_ready?(ModuleRecord)
 
+    ModuleRecord
+      .where(module_slug: "new-user")
+      .where(<<~SQL.squish, login: login_key, raw_login: raw_login)
+        LOWER(data::jsonb ->> 'user_name') = :login OR
+        LOWER(data::jsonb ->> 'email') = :login OR
+        data::jsonb ->> 'mobile_no' = :raw_login
+      SQL
+      .where("COALESCE(LOWER(data::jsonb ->> 'status'), 'active') <> 'inactive'")
+      .find_by("data::jsonb ->> 'password' = ?", @password)
+  rescue StandardError => e
+    Rails.logger.warn("ModuleRecord login lookup failed: #{e.class} - #{e.message}")
+    find_module_record_user_with_legacy_scan(login_key, raw_login)
+  end
+
+  # Keep compatibility with any historic row whose data is not valid JSON. The
+  # indexed query above is the normal fast path; this only runs for malformed
+  # legacy data or a database adapter without PostgreSQL JSON operators.
+  def find_module_record_user_with_legacy_scan(login_key, raw_login)
     ModuleRecord.where(module_slug: "new-user").find_each do |record|
       next unless module_record_active_for_login?(record)
       next unless module_record_login_matches?(record, login_key, raw_login)
@@ -77,7 +95,7 @@ class AppUserAuthenticator
 
     nil
   rescue StandardError => e
-    Rails.logger.warn("ModuleRecord login lookup failed: #{e.class} - #{e.message}")
+    Rails.logger.warn("Legacy ModuleRecord login lookup failed: #{e.class} - #{e.message}")
     nil
   end
 

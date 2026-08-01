@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2026_07_21_120000) do
+ActiveRecord::Schema[8.1].define(version: 2026_08_01_090000) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "pg_catalog.plpgsql"
 
@@ -251,6 +251,9 @@ ActiveRecord::Schema[8.1].define(version: 2026_07_21_120000) do
     t.text "data", null: false
     t.string "module_slug", null: false
     t.datetime "updated_at", null: false
+    t.index "(((data)::jsonb ->> 'mobile_no'::text))", name: "index_module_records_new_users_on_mobile_no", where: "((module_slug)::text = 'new-user'::text)"
+    t.index "lower(((data)::jsonb ->> 'email'::text))", name: "index_module_records_new_users_on_lower_email", where: "((module_slug)::text = 'new-user'::text)"
+    t.index "lower(((data)::jsonb ->> 'user_name'::text))", name: "index_module_records_new_users_on_lower_user_name", where: "((module_slug)::text = 'new-user'::text)"
     t.index ["module_slug"], name: "index_module_records_on_module_slug"
   end
 
@@ -426,6 +429,8 @@ ActiveRecord::Schema[8.1].define(version: 2026_07_21_120000) do
     t.string "user_name", null: false
     t.string "user_type"
     t.string "village"
+    t.index "lower((email)::text)", name: "index_users_on_lower_email"
+    t.index "lower((user_name)::text)", name: "index_users_on_lower_user_name"
     t.index ["email"], name: "index_users_on_email"
     t.index ["mobile_no"], name: "index_users_on_mobile_no"
     t.index ["user_name"], name: "index_users_on_user_name"
@@ -521,6 +526,8 @@ ActiveRecord::Schema[8.1].define(version: 2026_07_21_120000) do
     t.text "village_ids"
     t.integer "vrp_bank_master_id"
     t.text "vrp_type_ids"
+    t.index "lower((email)::text)", name: "index_vrps_on_lower_email"
+    t.index "lower((user_name)::text)", name: "index_vrps_on_lower_user_name"
     t.index ["aadhar_no"], name: "index_vrps_on_aadhar_no"
     t.index ["agreement_accepted_at"], name: "index_vrps_on_agreement_accepted_at"
     t.index ["created_by_id"], name: "index_vrps_on_created_by_id"
