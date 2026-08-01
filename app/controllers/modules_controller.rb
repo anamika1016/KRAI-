@@ -768,9 +768,10 @@ class ModulesController < ApplicationController
     @training_target_status = selected_status
     @training_target_status_title = training_target_status_label(selected_status)
     @training_target_status_caption = training_target_status_caption(selected_status)
-    @training_target_status_rows = training_target_status_rows(filtered_targets)
+    all_status_rows = training_target_status_rows(filtered_targets)
+    @training_target_status_rows = all_status_rows
       .select { |row| row[:status_class] == selected_status }
-    @training_target_status_totals = training_target_status_counts(filtered_targets)
+    @training_target_status_totals = training_target_status_counts_for_rows(all_status_rows)
     @training_selected_month = selected_month
     @training_selected_sub_activity = selected_sub_activity
 
