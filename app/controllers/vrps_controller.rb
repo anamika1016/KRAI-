@@ -8,7 +8,11 @@ class VrpsController < ApplicationController
   before_action :set_edit_dependencies, only: [:edit, :update]
 
   def index
-    @data = visible_vrps.map do |vrp|
+    vrps = visible_vrps.to_a
+    ActiveRecord::Associations::Preloader.new(records: vrps, associations: :vrp_bank_master).call
+    preload_registered_by_users!(vrps)
+
+    @data = vrps.map do |vrp|
       {
         id: vrp.id,
         user_name: vrp.user_name,
@@ -361,29 +365,46 @@ class VrpsController < ApplicationController
     return @registered_by_user_cache[cache_key] if @registered_by_user_cache.key?(cache_key)
 
     if vrp.created_by_id.present? && vrp.respond_to?(:created_by_type) && vrp.created_by_type.present?
-      creator_class = { "User" => User, "ModuleRecord" => ModuleRecord }[vrp.created_by_type]
-      creator = creator_class.find_by(id: vrp.created_by_id) if creator_class&.respond_to?(:find_by)
+      creator = case vrp.created_by_type
+      when "User" then @preloaded_creator_users_by_id&.[](vrp.created_by_id)
+      when "ModuleRecord" then @preloaded_creator_records_by_id&.[](vrp.created_by_id)
+      end
       return @registered_by_user_cache[cache_key] = creator if creator
     end
 
     if vrp.created_by_id.present?
-      user = User.find_by(id: vrp.created_by_id) if model_ready?(:User)
-      record = ModuleRecord.find_by(id: vrp.created_by_id) if model_ready?(:ModuleRecord)
+      user = @preloaded_creator_users_by_id&.[](vrp.created_by_id)
+      record = @preloaded_creator_records_by_id&.[](vrp.created_by_id)
       creator = legacy_registered_by_candidate(vrp, user, record)
       return @registered_by_user_cache[cache_key] = creator if creator
     end
 
-    if model_ready?(:User)
-      user = User.find_by("LOWER(email) = ?", vrp.email.to_s.strip.downcase)
-      return @registered_by_user_cache[cache_key] = user if user
+    email_key = vrp.email.to_s.strip.downcase
+    user = @preloaded_creator_users_by_email&.[](email_key)
+    return @registered_by_user_cache[cache_key] = user if user
+
+    @registered_by_user_cache[cache_key] = @preloaded_creator_records_by_email&.[](email_key)
+  end
+
+  def preload_registered_by_users!(vrps)
+    creator_ids = vrps.filter_map(&:created_by_id).uniq
+    emails = vrps.filter_map { |vrp| vrp.email.to_s.strip.downcase.presence }.uniq
+
+    users = model_ready?(:User) ? User.where(id: creator_ids).or(User.where("LOWER(email) IN (?)", emails)).to_a : []
+    records = if model_ready?(:ModuleRecord)
+      ModuleRecord
+        .where(module_slug: "new-user")
+        .where("id IN (:ids) OR LOWER(COALESCE(data::jsonb->>'email', '')) IN (:emails)", ids: creator_ids.presence || [0], emails: emails.presence || [""])
+        .order(created_at: :desc)
+        .to_a
+    else
+      []
     end
 
-    return unless model_ready?(:ModuleRecord)
-
-    @registered_by_user_cache[cache_key] = ModuleRecord.where(module_slug: "new-user")
-      .where("LOWER(COALESCE(data->>'email', '')) = ?", vrp.email.to_s.strip.downcase)
-      .order(created_at: :desc)
-      .first
+    @preloaded_creator_users_by_id = users.index_by(&:id)
+    @preloaded_creator_records_by_id = records.index_by(&:id)
+    @preloaded_creator_users_by_email = users.index_by { |user| user.email.to_s.strip.downcase }
+    @preloaded_creator_records_by_email = records.reverse_each.to_a.index_by { |record| record.data["email"].to_s.strip.downcase }
   end
 
   def legacy_registered_by_candidate(vrp, user, record)

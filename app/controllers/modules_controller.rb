@@ -688,12 +688,15 @@ class ModulesController < ApplicationController
     @participation_selected_month = @participation_month_filter_value == "all" ? nil : @participation_month_filter_value
     participation_records = dashboard_training_participation_records(month_name: @participation_selected_month)
     @training_participation_status_cards = training_participation_status_cards_from_records(participation_records, month_name: @participation_selected_month)
-    @training_target_status_cards = training_target_status_cards(training_targets, month_name: selected_month, sub_activity_name: selected_sub_activity)
-    @training_participation = training_participation_summary(training_targets, month_name: selected_month)
-    @farmer_training_dashboard_rows = farmer_training_dashboard_rows(training_targets, month_name: selected_month)
+    if request.format.xlsx?
+      @training_target_status_cards = training_target_status_cards(training_targets, month_name: selected_month, sub_activity_name: selected_sub_activity)
+      @training_participation = training_participation_summary(training_targets, month_name: selected_month)
+      @farmer_training_dashboard_rows = farmer_training_dashboard_rows(training_targets, month_name: selected_month)
+    end
     @weekly_target_month_filter_value = params[:weekly_target_month].presence || default_status_month
     @weekly_dashboard_selected_month = @weekly_target_month_filter_value == "all" ? nil : @weekly_target_month_filter_value
     weekly_dashboard_targets = dashboard_targets_for_month(@filtered_targets, @weekly_dashboard_selected_month)
+    preload_training_farmers_for_targets!(weekly_dashboard_targets)
     @dashboard_weekly_target_cards = weekly_activity_target_status_cards(weekly_dashboard_targets, month_name: @weekly_dashboard_selected_month)
     @dashboard_cards = dashboard_cards
     @dashboard_reports = dashboard_reports
@@ -761,6 +764,7 @@ class ModulesController < ApplicationController
       targets
     end
 
+    preload_training_farmers_for_targets!(filtered_targets)
     @training_target_status = selected_status
     @training_target_status_title = training_target_status_label(selected_status)
     @training_target_status_caption = training_target_status_caption(selected_status)
@@ -886,6 +890,7 @@ class ModulesController < ApplicationController
       end
     end
 
+    preload_training_farmers_for_targets!(filtered_targets)
     rows = weekly_activity_target_report_rows(filtered_targets)
     rows = rows.select { |row| row[:status_class] == selected_status } if selected_status.present?
 
@@ -1363,10 +1368,8 @@ class ModulesController < ApplicationController
     @participation_selected_month = @participation_month_filter_value == "all" ? nil : @participation_month_filter_value
     participation_records = dashboard_training_participation_records(month_name: @participation_selected_month)
     @training_participation_status_cards = training_participation_status_cards_from_records(participation_records, month_name: @participation_selected_month)
-    @training_target_status_cards = training_target_status_cards(training_targets, month_name: selected_month, sub_activity_name: selected_sub_activity)
-    @training_participation = training_participation_summary(training_targets, month_name: selected_month)
-    @farmer_training_dashboard_rows = farmer_training_dashboard_rows(training_targets, month_name: selected_month)
     village_count = @vrp_village_rows.size
+    preload_training_farmers_for_targets!(filtered_targets)
     @vrp_target_rows = vrp_dashboard_target_progress_rows(filtered_targets, bills)
     assigned_target_total = @vrp_target_rows.sum { |row| row[:target].to_f }
     achieved_target_total = @vrp_target_rows.sum { |row| row[:completed].to_f }
@@ -2637,7 +2640,28 @@ class ModulesController < ApplicationController
     ids = Array(farmer_ids).map(&:to_s).reject(&:blank?).uniq
     return {} if ids.blank?
 
-    Afl.where(id: ids).index_by { |farmer| farmer.id.to_s }
+    @training_farmers_by_id_cache ||= {}
+    missing_ids = ids.reject { |id| @training_farmers_by_id_cache.key?(id) }
+    load_training_farmers_in_batches(missing_ids).each do |farmer|
+      @training_farmers_by_id_cache[farmer.id.to_s] = farmer
+    end
+    missing_ids.each { |id| @training_farmers_by_id_cache[id] = nil unless @training_farmers_by_id_cache.key?(id) }
+
+    ids.index_with { |id| @training_farmers_by_id_cache[id] }.compact
+  end
+
+  def preload_training_farmers_for_targets!(targets)
+    farmer_ids = Array(targets).flat_map { |target| target_farmer_ids(target) }.uniq
+    training_farmers_by_id(farmer_ids)
+  end
+
+  def load_training_farmers_in_batches(farmer_ids)
+    Array(farmer_ids).each_slice(5_000).flat_map do |ids|
+      Afl
+        .where(id: ids)
+        .select(:id, :farmer_name, :father_name, :mobile_no, :tracenet_no, :khasara_no, :ics_name, :ics_id, :village_name, :village_id)
+        .to_a
+    end
   end
 
   def training_participation_membership_key(farmer_id, month_name)
@@ -7413,8 +7437,9 @@ class ModulesController < ApplicationController
     farmer_ids = Array(farmer_ids).map(&:to_s).reject(&:blank?).uniq
     return [] if farmer_ids.blank?
 
-    Afl.where(id: farmer_ids)
-      .order(:farmer_name, :id)
+    training_farmers_by_id(farmer_ids)
+      .values
+      .sort_by { |farmer| [farmer.farmer_name.to_s.downcase, farmer.id] }
       .map do |farmer|
         {
           id: farmer.id.to_s,
