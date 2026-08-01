@@ -8,10 +8,11 @@
 <% participation_fcoc_filter_value = @participation_fcoc_filter_value.to_s %>
 <% filters_ready = selected_month.present? && selected_sub_activity.present? %>
 <% status_cards = Array(@training_participation_status_cards || []) %>
-<% status_total = @training_unique_farmer_count.to_i %>
+<% status_total = status_cards.sum { |card| card[:value].to_i } %>
 <% total_status_path_params = { status: "total" } %>
 <% total_status_path_params[:training_month] = participation_selected_month if participation_selected_month.present? %>
 <% total_status_path_params[:training_fcoc] = participation_fcoc_filter_value if participation_fcoc_filter_value.present? %>
+<% unique_status_path_params = total_status_path_params.merge(status: "unique") %>
 <% target_status_cards = Array(@training_target_status_cards || []) %>
 
 <section class="module-card training-participation-status-card dashboard-status-panel training-status-panel">
@@ -48,10 +49,10 @@
 
   <div class="training-participation-boxes compact">
     <% if status_cards.any? %>
-      <%= link_to farmer_training_participation_path(total_status_path_params), class: "training-participation-box total", data: { dashboard_card: true } do %>
+      <%= link_to farmer_training_participation_path(unique_status_path_params), class: "training-participation-box total", data: { dashboard_card: true } do %>
         <span>Total Unique Farmers</span>
         <strong><%= @training_unique_farmer_count.to_i %></strong>
-        <small>Har farmer sirf ek baar; rejected/returned records excluded.</small>
+        <small>Sirf wahi farmer jinki training selected month me ek hi baar hui.</small>
         <b>View List</b>
       <% end %>
       <%= link_to farmer_training_participation_path(total_status_path_params), class: "training-participation-box total", data: { dashboard_card: true } do %>
