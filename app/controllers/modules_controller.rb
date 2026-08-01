@@ -686,13 +686,11 @@ class ModulesController < ApplicationController
     default_status_month = default_vrp_dashboard_month(@training_month_options)
     @participation_month_filter_value = params[:participation_month].presence || default_status_month
     @participation_selected_month = @participation_month_filter_value == "all" ? nil : @participation_month_filter_value
-    if request.format.xlsx?
-      participation_records = dashboard_training_participation_records(month_name: @participation_selected_month)
-      @training_participation_status_cards = training_participation_status_cards_from_records(participation_records, month_name: @participation_selected_month)
-      @training_target_status_cards = training_target_status_cards(training_targets, month_name: selected_month, sub_activity_name: selected_sub_activity)
-      @training_participation = training_participation_summary(training_targets, month_name: selected_month)
-      @farmer_training_dashboard_rows = farmer_training_dashboard_rows(training_targets, month_name: selected_month)
-    end
+    participation_records = dashboard_training_participation_records(month_name: @participation_selected_month)
+    @training_participation_status_cards = training_participation_status_cards_from_records(participation_records, month_name: @participation_selected_month)
+    @training_target_status_cards = training_target_status_cards(training_targets, month_name: selected_month, sub_activity_name: selected_sub_activity)
+    @training_participation = training_participation_summary(training_targets, month_name: selected_month)
+    @farmer_training_dashboard_rows = farmer_training_dashboard_rows(training_targets, month_name: selected_month)
     @weekly_target_month_filter_value = params[:weekly_target_month].presence || default_status_month
     @weekly_dashboard_selected_month = @weekly_target_month_filter_value == "all" ? nil : @weekly_target_month_filter_value
     weekly_dashboard_targets = dashboard_targets_for_month(@filtered_targets, @weekly_dashboard_selected_month)
@@ -1363,6 +1361,11 @@ class ModulesController < ApplicationController
     @training_selected_sub_activity = selected_sub_activity
     @participation_month_filter_value = params[:participation_month].presence || default_vrp_dashboard_month(@training_month_options)
     @participation_selected_month = @participation_month_filter_value == "all" ? nil : @participation_month_filter_value
+    participation_records = dashboard_training_participation_records(month_name: @participation_selected_month)
+    @training_participation_status_cards = training_participation_status_cards_from_records(participation_records, month_name: @participation_selected_month)
+    @training_target_status_cards = training_target_status_cards(training_targets, month_name: selected_month, sub_activity_name: selected_sub_activity)
+    @training_participation = training_participation_summary(training_targets, month_name: selected_month)
+    @farmer_training_dashboard_rows = farmer_training_dashboard_rows(training_targets, month_name: selected_month)
     village_count = @vrp_village_rows.size
     @vrp_target_rows = vrp_dashboard_target_progress_rows(filtered_targets, bills)
     assigned_target_total = @vrp_target_rows.sum { |row| row[:target].to_f }
