@@ -6782,6 +6782,21 @@ body {
   white-space: nowrap;
 }
 
+/* Keep list headings readable. Wide tables must use the table shell's
+   horizontal scrollbar instead of shrinking headers to one character per
+   line. Body values may still wrap inside their capped-width cells. */
+.table-shell .module-table {
+  width: max-content;
+  min-width: 100%;
+}
+
+.table-shell .module-table th {
+  max-width: none;
+  overflow-wrap: normal;
+  word-break: normal;
+  white-space: nowrap;
+}
+
 /* Weekly report has several descriptive columns. Give every column a stable
    width and allow long activity names to grow the row instead of painting over
    the neighbouring cells. */
