@@ -147,9 +147,23 @@ class Api::V1::FarmerTargetApisControllerTest < ActionDispatch::IntegrationTest
   end
 
   test "web modules path still works after api addition" do
+    ModuleRecord.create!(
+      module_slug: "training-form",
+      data: {
+        "trainer_name" => "Lead Trainer",
+        "internal_trainer_name_1" => "Internal Trainer One",
+        "internal_trainer_name_2" => "Internal Trainer Two",
+        "created_by_id" => @user.id.to_s
+      }
+    )
+
     post login_path, params: { login: "api_farmer_admin", password: "secret" }
     get "/modules/training-form-list"
     assert_response :success
+    assert_includes response.body, "Internal Trainer Name 1"
+    assert_includes response.body, "Internal Trainer Name 2"
+    assert_includes response.body, "Internal Trainer One"
+    assert_includes response.body, "Internal Trainer Two"
   end
 
   private

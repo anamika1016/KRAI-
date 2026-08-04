@@ -433,13 +433,6 @@ class TargetMappingsController < ApplicationController
       return false
     end
 
-    already_selected_ids = normalized_afl_ids(target_mapping.afl_ids)
-    blocked_ids = (selected_ids - already_selected_ids) & assigned_farmer_ids_for(target_mapping)
-    if blocked_ids.any?
-      target_mapping.errors.add(:afl_ids, "#{blocked_ids.size} farmer already assigned for this activity")
-      return false
-    end
-
     target_mapping.afl_ids = selected_ids
     target_mapping.farmer_count = selected_ids.size
     true
@@ -486,6 +479,7 @@ class TargetMappingsController < ApplicationController
       activity_name: activity_name,
       edit_target: edit_target
     )
+    already_mapped_ids = visible_target_mappings.pluck(:afl_ids).flat_map { |ids| normalized_afl_ids(ids) }.uniq
     selected_ids = normalized_afl_ids(edit_target&.afl_ids)
 
     parsed_fco_id, parsed_fco_name = parse_location_value(fco_id)
@@ -505,6 +499,16 @@ class TargetMappingsController < ApplicationController
       .to_a
       .then do |afls|
         profiles_by_id = target_farmer_profiles_by_id(afls)
+        manual_full_target = manual_full_farmer_target_exists?(
+          vrp_id: vrp_id,
+          fco_id: fco_id,
+          ics_id: ics_id,
+          village_id: village_id,
+          month_name: month_name,
+          main_activity_name: main_activity_name,
+          activity_name: activity_name,
+          farmer_count: afls.size
+        )
 
         afls.map do |afl|
           profile = profiles_by_id[afl.id.to_s] || {}
@@ -515,11 +519,29 @@ class TargetMappingsController < ApplicationController
             tracenet_no: profile[:tracenet_no].presence || "-",
             mobile_no: profile[:mobile_no].presence || "-",
             khasara_no: profile[:khasara_no].presence || "-",
+            already_mapped: manual_full_target || already_mapped_ids.include?(afl.id.to_s),
             assigned_to_other: assigned_ids.include?(afl.id.to_s),
             selected: selected_ids.include?(afl.id.to_s)
           }
         end.sort_by { |row| [row[:farmer_name].to_s.downcase, row[:id].to_s] }
       end
+  end
+
+  def manual_full_farmer_target_exists?(vrp_id:, fco_id:, ics_id:, village_id:, month_name:, main_activity_name:, activity_name:, farmer_count:)
+    return false unless farmer_count.positive?
+
+    requested_village_ids = parse_location_values(village_id).map(&:first)
+    scope = filter_mapping_location(target_location_scope(vrp_id), :fco_id, :fco_name, fco_id)
+    scope = filter_mapping_location(scope, :ics_id, :ics_name, ics_id)
+    scope = scope.where("LOWER(TRIM(month_name)) = ?", month_name.to_s.strip.downcase)
+    scope = scope.where("LOWER(TRIM(main_activity_name)) = ?", main_activity_name.to_s.strip.downcase)
+    scope = scope.where("LOWER(TRIM(activity_name)) = ?", activity_name.to_s.strip.downcase)
+
+    scope.any? do |target|
+      target_village_ids = village_ids_for(target)
+      target.target_quantity.to_i >= farmer_count &&
+        (target_village_ids & requested_village_ids).any?
+    end
   end
 
   def assigned_farmer_ids_for(target_mapping)

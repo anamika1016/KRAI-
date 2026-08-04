@@ -566,6 +566,13 @@ class VrpDashboardTest < ActionDispatch::IntegrationTest
 
     assert_response :success
     assert_includes response.body, "Farmer Training Form"
+    assert_includes response.body, "Internal Trainer Name 1"
+    assert_includes response.body, "Internal Trainer Name 2"
+    assert_operator response.body.index("Trainer Contact"), :<, response.body.index("Internal Trainer Name 1")
+    assert_operator response.body.index("Internal Trainer Name 1"), :<, response.body.index("Internal Trainer Name 2")
+    assert_match(/name="module_record\[internal_trainer_name_1\]"[^>]*>/, response.body)
+    refute_match(/name="module_record\[internal_trainer_name_1\]"[^>]*required/, response.body)
+    refute_match(/name="module_record\[internal_trainer_name_2\]"[^>]*required/, response.body)
     assert_includes response.body, "Target Farmers"
     assert_includes response.body, "Save Farmers"
     assert_includes response.body, "Search target farmers"
@@ -820,6 +827,8 @@ class VrpDashboardTest < ActionDispatch::IntegrationTest
     }
     august_rows = JSON.parse(response.body).fetch("farmers")
     assert_empty august_rows.select { |farmer| farmer["assigned_to_other"] }
+    assert_equal farmers.first(2).map { |farmer| farmer.id.to_s }.sort,
+      august_rows.select { |farmer| farmer["already_mapped"] }.map { |farmer| farmer["id"] }.sort
 
     other_vrp = create_vrp(
       user_name: "second_target_vrp",
@@ -839,7 +848,7 @@ class VrpDashboardTest < ActionDispatch::IntegrationTest
       created_by_id: 1
     )
 
-    assert_no_difference("TargetMapping.count") do
+    assert_difference("TargetMapping.count", 1) do
       post target_mappings_path, params: {
         target_mapping: target_params(other_vrp, other_mapping, "July", 2, farmers.first(2).map(&:id))
       }

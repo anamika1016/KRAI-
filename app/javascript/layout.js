@@ -3449,7 +3449,7 @@ function initDeferredLayoutPage() {
     const syncDialogFarmerTotals = () => {
       const limit = activeFarmerLimit();
       const selectedCount = activeFarmerDialogRowKey ? selectedFarmerIdsForActiveRow().size : 0;
-      const selectedLabel = activeFarmerDialogRowKey && Number.isInteger(limit) && limit >= 0
+      const selectedLabel = activeFarmerDialogRowKey && Number.isInteger(limit) && limit > 0
         ? `${selectedCount} / ${limit} farmer selected`
         : `${selectedCount} farmer selected`;
       if (farmerDialogTotal) farmerDialogTotal.textContent = selectedLabel;
@@ -3473,11 +3473,12 @@ function initDeferredLayoutPage() {
       farmerDialogList.innerHTML = boxes.map((box) => {
         const item = box.closest(".vrp-ics-farmer-item");
         const text = item?.innerText || "";
+        const alreadyMapped = item?.classList.contains("already-mapped") || item?.classList.contains("already-included");
         const visible = !term || text.toLowerCase().includes(term);
         if (visible) visibleCount += 1;
 
         return `
-          <label class="vrp-ics-farmer-item${box.disabled ? " disabled" : ""}"${visible ? "" : " hidden"}>
+          <label class="vrp-ics-farmer-item${box.disabled ? " disabled" : ""}${alreadyMapped ? " already-included" : ""}"${visible ? "" : " hidden"}>
             <input type="checkbox" value="${escapeHtml(box.value)}" data-target-dialog-farmer-checkbox${box.disabled ? " disabled" : ""}${selectedIds.has(String(box.value)) ? " checked" : ""}>
             <span>${item?.querySelector("span")?.innerHTML || escapeHtml(text)}</span>
           </label>
@@ -3491,7 +3492,7 @@ function initDeferredLayoutPage() {
 
           const limit = activeFarmerLimit();
           const selectedIds = selectedFarmerIdsForActiveRow();
-          if (dialogBox.checked && Number.isInteger(limit) && limit >= 0 && selectedIds.size >= limit) {
+          if (dialogBox.checked && Number.isInteger(limit) && limit > 0 && selectedIds.size >= limit) {
             dialogBox.checked = false;
             window.alert(farmerLimitMessage(limit));
             return;
@@ -3584,16 +3585,15 @@ function initDeferredLayoutPage() {
           farmer.mobile_no ? `Mobile: ${farmer.mobile_no}` : "",
           farmer.khasara_no ? `Khasara: ${farmer.khasara_no}` : ""
         ].filter(Boolean).join(" | ");
-        const blocked = farmer.assigned_to_other && !farmer.selected;
-        const disabled = blocked ? " disabled" : "";
+        const alreadyMapped = farmer.already_mapped;
         const checked = farmer.selected ? " checked" : "";
 
         return `
-          <label class="vrp-ics-farmer-item${blocked ? " disabled" : ""}">
-            <input type="checkbox" name="target_mapping[afl_ids][]" value="${escapeHtml(farmer.id)}" data-target-farmer-checkbox${disabled}${checked}>
+          <label class="vrp-ics-farmer-item${alreadyMapped ? " already-included" : ""}">
+            <input type="checkbox" name="target_mapping[afl_ids][]" value="${escapeHtml(farmer.id)}" data-target-farmer-checkbox${checked}>
             <span>
               <strong>${escapeHtml(farmer.farmer_name || `Farmer #${farmer.id}`)}</strong>
-              <small>${escapeHtml(meta)}${blocked ? " | Already assigned" : ""}</small>
+              <small>${escapeHtml(meta)}</small>
             </span>
           </label>
         `;

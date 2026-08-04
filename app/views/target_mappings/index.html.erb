@@ -107,10 +107,7 @@
               <input type="text" value="0" data-target-registered-count readonly>
             </label>
 
-            <label data-target-standard-quantity-fields>
-              <span>Target <em>*</em></span>
-              <input type="number" name="target_mapping[target_quantity]" min="1" step="1" placeholder="Selected farmer count" value="<%= @edit_payload[:target_quantity] %>" data-target-quantity-input readonly required>
-            </label>
+            <input type="hidden" name="target_mapping[target_quantity]" value="<%= @edit_payload[:target_quantity] %>" data-target-quantity-input>
 
             <label data-target-standard-quantity-fields>
               <span>New Farmer Target</span>

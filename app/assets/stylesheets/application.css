@@ -4395,6 +4395,12 @@ body {
   background: #f3f5f6;
 }
 
+.vrp-ics-farmer-item.already-mapped {
+  border-color: #72b783;
+  background: #e8f7ec;
+  box-shadow: inset 4px 0 0 #3f9655;
+}
+
 .vrp-ics-farmer-item.already-included {
   border-color: #78b887;
   background: #eef9f1;
