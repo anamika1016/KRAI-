@@ -3478,8 +3478,8 @@ function initDeferredLayoutPage() {
         if (visible) visibleCount += 1;
 
         return `
-          <label class="vrp-ics-farmer-item${box.disabled ? " disabled" : ""}${alreadyMapped ? " already-included" : ""}"${visible ? "" : " hidden"}>
-            <input type="checkbox" value="${escapeHtml(box.value)}" data-target-dialog-farmer-checkbox${box.disabled ? " disabled" : ""}${selectedIds.has(String(box.value)) ? " checked" : ""}>
+          <label class="vrp-ics-farmer-item${alreadyMapped ? " already-included" : ""}"${visible ? "" : " hidden"}>
+            <input type="checkbox" value="${escapeHtml(box.value)}" data-target-dialog-farmer-checkbox${selectedIds.has(String(box.value)) ? " checked" : ""}>
             <span>${item?.querySelector("span")?.innerHTML || escapeHtml(text)}</span>
           </label>
         `;
@@ -3488,7 +3488,7 @@ function initDeferredLayoutPage() {
       farmerDialogList.querySelectorAll("[data-target-dialog-farmer-checkbox]").forEach((dialogBox) => {
         dialogBox.addEventListener("change", () => {
           const sourceBox = targetBoxes().find((box) => String(box.value) === String(dialogBox.value));
-          if (!sourceBox || sourceBox.disabled) return;
+          if (!sourceBox) return;
 
           const limit = activeFarmerLimit();
           const selectedIds = selectedFarmerIdsForActiveRow();
