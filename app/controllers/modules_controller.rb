@@ -4964,7 +4964,7 @@ class ModulesController < ApplicationController
           mobile_no: vrp&.mobile_no.presence || "-",
           bill_month: record.data["bill_month"].presence || "-",
           financial_year: record.data["financial_year"].presence || "-",
-          amount: format("%.2f", JEEVIKA_JANKAR_BILL_FIXED_TOTAL)
+          amount: format("%.2f", jeevika_jankar_bill_total_payment(record).to_f)
         }
       end
   end
@@ -5128,7 +5128,7 @@ class ModulesController < ApplicationController
   end
 
   def jeevika_jankar_bill_total_payment(record = nil)
-    return format("%.2f", JEEVIKA_JANKAR_BILL_FIXED_TOTAL) if record.blank? || record.module_slug == "jeevika-jankar-bill-process"
+    return format("%.2f", JEEVIKA_JANKAR_BILL_FIXED_TOTAL) if record.blank?
 
     record.data["grand_total"].presence || "0.00"
   end
@@ -6267,7 +6267,8 @@ class ModulesController < ApplicationController
     data["bill_items"] = bill_items
     data["total_target"] = dashboard_quantity(total_target)
     data["total_achievement"] = dashboard_quantity(total_achievement)
-    data["grand_total"] = format("%.2f", JEEVIKA_JANKAR_BILL_FIXED_TOTAL)
+    payment = decimal_value(data["grand_total"])
+    data["grand_total"] = payment ? format("%.2f", payment) : data["grand_total"].to_s
     data["status"] = data["status"].presence || "Submitted (Not sent for approval)"
     data["record_state"] = data["record_state"].presence || "Active"
     data
@@ -6312,7 +6313,7 @@ class ModulesController < ApplicationController
         "financial_year" => record.data["financial_year"].to_s,
         "bill_month" => record.data["bill_month"].to_s,
         "approval_date" => jeevika_bill_final_approval_date(record),
-        "amount" => format("%.2f", JEEVIKA_JANKAR_BILL_FIXED_TOTAL)
+        "amount" => format("%.2f", jeevika_jankar_bill_total_payment(record).to_f)
       }
     end
 
@@ -6321,7 +6322,8 @@ class ModulesController < ApplicationController
     data["payment_items"] = payment_items
     data["selected_count"] = selected_records.size.to_s
     data["transaction_type"] = raw_data["transaction_type"].to_s.strip.upcase
-    data["jeevika_jankar_payment_amount"] = format("%.2f", selected_records.size * JEEVIKA_JANKAR_BILL_FIXED_TOTAL)
+    total_payment = selected_records.sum { |record| jeevika_jankar_bill_total_payment(record).to_f }
+    data["jeevika_jankar_payment_amount"] = format("%.2f", total_payment)
     data["status"] = "Paid"
     data["transaction_file"] = store_uploaded_module_file(raw_data["transaction_file"]) if raw_data["transaction_file"].respond_to?(:original_filename)
     data["excel_file"] = store_uploaded_module_file(raw_data["excel_file"]) if raw_data["excel_file"].respond_to?(:original_filename)
@@ -6351,7 +6353,7 @@ class ModulesController < ApplicationController
       result = PaymentAdviceSmsSender.new(
         mobile,
         reference_number: reference_number,
-        amount: JEEVIKA_JANKAR_BILL_FIXED_TOTAL,
+        amount: jeevika_jankar_bill_total_payment(record).to_f,
         beneficiary_name: beneficiary_name,
         transaction_date: transaction_date
       ).deliver
@@ -7184,6 +7186,13 @@ class ModulesController < ApplicationController
       "select_vrp" => "Jeevika Jankar Name"
     )
     return errors if errors.any?
+
+    total_payment = decimal_value(data["grand_total"])
+    errors << "Total Payment valid amount hona chahiye." if total_payment.nil?
+    errors << "Total Payment zero se jyada hona chahiye." if total_payment && total_payment <= 0
+    if total_payment && total_payment > JEEVIKA_JANKAR_BILL_FIXED_TOTAL
+      errors << "Total Payment ₹#{JEEVIKA_JANKAR_BILL_FIXED_TOTAL.to_i} se jyada nahi ho sakta."
+    end
 
     duplicate = ModuleRecord
       .where(module_slug: "jeevika-jankar-bill-process")

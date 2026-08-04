@@ -4851,7 +4851,6 @@ function initDeferredLayoutPage() {
     const selectedCountInput = paymentForm.querySelector("[data-payment-selected-count]");
     const totalAmountInput = paymentForm.querySelector("[data-payment-total-amount]");
     const submitButton = paymentForm.querySelector("button[type='submit']");
-    const paymentRate = Number(paymentForm.dataset.paymentRate || "5000") || 5000;
 
     const money = (value) => value.toFixed(2);
     const selectedDate = () => String(dateSelect?.value || "");
@@ -4863,9 +4862,14 @@ function initDeferredLayoutPage() {
 
     const recalculatePaymentTotal = () => {
       const activeCheckboxes = selectableCheckboxes();
-      const checkedCount = activeCheckboxes.filter((checkbox) => checkbox.checked).length;
+      const checkedCheckboxes = activeCheckboxes.filter((checkbox) => checkbox.checked);
+      const checkedCount = checkedCheckboxes.length;
+      const selectedAmount = checkedCheckboxes.reduce((total, checkbox) => {
+        const row = checkbox.closest("[data-payment-user-row]");
+        return total + (Number(row?.dataset.paymentAmount || "0") || 0);
+      }, 0);
       if (selectedCountInput) selectedCountInput.value = String(checkedCount);
-      if (totalAmountInput) totalAmountInput.value = money(checkedCount * paymentRate);
+      if (totalAmountInput) totalAmountInput.value = money(selectedAmount);
       if (submitButton) submitButton.disabled = checkedCount === 0;
       if (clearButton) clearButton.disabled = checkedCount === 0;
       if (selectAllButton) selectAllButton.disabled = activeCheckboxes.length === 0;

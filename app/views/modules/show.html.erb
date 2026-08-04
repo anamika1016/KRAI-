@@ -887,7 +887,9 @@
         <div class="jeevika-bill-payment-total">
           <label>
             <span>Total Payment</span>
-            <input name="module_record[grand_total]" value="<%= format("%.2f", ModulesController::JEEVIKA_JANKAR_BILL_FIXED_TOTAL) %>" readonly>
+            <input name="module_record[grand_total]" type="number" min="0.01"
+              max="<%= ModulesController::JEEVIKA_JANKAR_BILL_FIXED_TOTAL.to_i %>" step="0.01"
+              value="<%= @record&.data&.[]("grand_total").presence || format("%.2f", ModulesController::JEEVIKA_JANKAR_BILL_FIXED_TOTAL) %>" required>
           </label>
         </div>
 
@@ -1400,7 +1402,7 @@
                 <tbody data-payment-user-rows>
                   <% if selectable_payment_rows.any? %>
                     <% selectable_payment_rows.each do |row| %>
-                      <tr data-payment-user-row data-payment-bill-date="<%= row[:approval_date] %>">
+                      <tr data-payment-user-row data-payment-bill-date="<%= row[:approval_date] %>" data-payment-amount="<%= row[:amount] %>">
                         <td><input type="checkbox" name="module_record[selected_bill_ids][]" value="<%= row[:id] %>" data-payment-user-checkbox disabled></td>
                         <td><%= row[:vrp_id] %></td>
                         <td><%= row[:name] %></td>
