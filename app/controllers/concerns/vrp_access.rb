@@ -1734,7 +1734,10 @@ module VrpAccess
       action: action,
       action_by: closing&.data&.[]("action_by"),
       remarks: closing&.data&.[]("remarks"),
-      action_at: closing&.created_at
+      action_at: closing&.created_at&.iso8601,
+      action_date: closing&.created_at&.in_time_zone("Asia/Kolkata")&.strftime("%d-%m-%Y"),
+      action_time: closing&.created_at&.in_time_zone("Asia/Kolkata")&.strftime("%I:%M %p"),
+      action_datetime: closing&.created_at&.in_time_zone("Asia/Kolkata")&.strftime("%d-%m-%Y %I:%M %p")
     }
   end
 
@@ -1764,7 +1767,10 @@ module VrpAccess
       remarks: record.data["remarks"],
       status: record.data["status"],
       action_by: record.data["action_by"],
-      created_at: record.created_at
+      created_at: record.created_at&.iso8601,
+      action_date: record.created_at&.in_time_zone("Asia/Kolkata")&.strftime("%d-%m-%Y"),
+      action_time: record.created_at&.in_time_zone("Asia/Kolkata")&.strftime("%I:%M %p"),
+      action_datetime: record.created_at&.in_time_zone("Asia/Kolkata")&.strftime("%d-%m-%Y %I:%M %p")
     }
   end
 
