@@ -8,7 +8,7 @@ class Afl < ApplicationRecord
   IMPORT_BATCH_SIZE = 2_000
 
   IMPORT_COLUMNS = %i[
-    fco_id fco fpo_id fpo_name ics_id ics_name village_id village_name ginning_id broker_id farmer_name father_name
+    farm_id fco_id fco fpo_id fpo_name ics_id ics_name village_id village_name ginning_id broker_id farmer_name father_name
     tracenet_no total_farm_area purchase_quantity_amount estimate_quantity purchase_quantity
     purchase_date dispoce ip date estimate_quantity_admin slip_no mobile_no purchase_product
     purchase_product_type khasara_no longitude lattitude aadhar reg_type fy qr_aadhar
@@ -16,7 +16,7 @@ class Afl < ApplicationRecord
   ].freeze
 
   LIST_COLUMNS = %i[
-    id fco_id fco fpo_id fpo_name ics_id ics_name village_id village_name farmer_name father_name tracenet_no total_farm_area
+    id farm_id fco_id fco fpo_id fpo_name ics_id ics_name village_id village_name farmer_name father_name tracenet_no total_farm_area
     purchase_quantity_amount estimate_quantity purchase_quantity purchase_date mobile_no purchase_product
     status created_at
   ].freeze
@@ -30,6 +30,7 @@ class Afl < ApplicationRecord
   DATETIME_COLUMNS = %i[qrcode_date].freeze
 
   HEADER_ALIASES = {
+    "Farm_ID" => :farm_id,
     "FCO_ID" => :fco_id,
     "FCO" => :fco,
     "FPO_ID" => :fpo_id,
@@ -185,6 +186,7 @@ class Afl < ApplicationRecord
     {
       row: row_number,
       reason: reason,
+      farm_id: attrs[:farm_id],
       tracenet_no: attrs[:tracenet_no],
       longitude: attrs[:longitude],
       lattitude: attrs[:lattitude],

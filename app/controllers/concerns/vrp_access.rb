@@ -1663,6 +1663,7 @@ module VrpAccess
 
   def detail_payload(vrp)
     profile = vrp.vrp_profile
+    progress = approval_progress_payload(vrp)
     list_row_payload(vrp).merge(
       aadhar_no_full: vrp.aadhar_no,
       branch: vrp.branch,
@@ -1674,9 +1675,10 @@ module VrpAccess
       person_type: vrp.person_type,
       can_approve: current_user_can_approve?(vrp),
       can_send_for_approval: own_vrps.exists?(id: vrp.id) && !approval_sent?(vrp) && ![31, 32, 55].include?(vrp.status.to_i),
-      approval_steps: approval_steps_for(vrp).map { |step| approval_step_payload(step, vrp) },
+      approval_steps: progress[:steps],
       approval_history: approval_history_for(vrp).map { |record| approval_history_payload(record) },
       current_approval_step: (step = current_approval_step(vrp)) && approval_step_payload(step, vrp),
+      approval_progress: progress,
       profile: profile && {
         id: profile.id,
         state_id: profile.state_id,
@@ -1709,12 +1711,47 @@ module VrpAccess
   end
 
   def approval_step_payload(step, vrp)
+    closing = closing_approval_history(vrp, step)
+    current = current_approval_step(vrp)
+    action = closing&.data&.[]("action")
+    state = if action == "Rejected"
+      "rejected"
+    elsif closing.present?
+      "approved"
+    elsif current&.id == step.id
+      "current"
+    else
+      "pending"
+    end
+
     {
       id: step.id,
       approval_level: step.data["approval_level"],
       approver: approval_approver_name(step),
       sequence: approval_sequence(step),
-      closed: approval_step_closed?(vrp, step)
+      closed: closing.present?,
+      state: state,
+      action: action,
+      action_by: closing&.data&.[]("action_by"),
+      remarks: closing&.data&.[]("remarks"),
+      action_at: closing&.created_at
+    }
+  end
+
+  def approval_progress_payload(vrp)
+    steps = approval_steps_for(vrp).map { |step| approval_step_payload(step, vrp) }
+    status_label = vrp_status_label(vrp)
+    final_approved = vrp.status.to_i == 55 || approval_complete?(vrp)
+    rejected = vrp.status.to_i == 99 || approval_rejected?(vrp)
+
+    {
+      status: status_label,
+      final_approved: final_approved,
+      rejected: rejected,
+      completed_steps: steps.count { |step| step[:state] == "approved" },
+      total_steps: steps.size,
+      current_step: steps.find { |step| step[:state] == "current" },
+      steps: steps
     }
   end
 

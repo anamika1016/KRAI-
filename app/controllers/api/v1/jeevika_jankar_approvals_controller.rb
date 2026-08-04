@@ -32,6 +32,7 @@ module Api
 
         update_vrp_status!(vrp, next_status)
         log_approval_history(vrp, step, "Approved", remarks)
+        reset_approval_caches!
 
         message = if next_sequence.present?
           next_step = current_approval_step(vrp)
@@ -62,6 +63,7 @@ module Api
         step = current_approval_step(vrp)
         update_vrp_status!(vrp, 99)
         log_approval_history(vrp, step, "Rejected", remarks)
+        reset_approval_caches!
 
         render json: {
           success: true,
@@ -85,6 +87,7 @@ module Api
         step = current_approval_step(vrp)
         update_vrp_status!(vrp, 10)
         log_approval_history(vrp, step, "Returned", remarks)
+        reset_approval_caches!
 
         render json: {
           success: true,
@@ -94,6 +97,16 @@ module Api
       end
 
       private
+
+      def reset_approval_caches!
+        %i[
+          @approval_steps_for_cache @approval_history_for_cache
+          @approval_history_records_by_vrp_id @approval_master_records
+          @approval_candidate_vrps @approval_new_user_records
+          @approval_new_users_by_id @approval_users_by_id
+          @approval_users_by_email @approval_users_by_mobile
+        ].each { |name| remove_instance_variable(name) if instance_variable_defined?(name) }
+      end
 
       def current_app_user
         current_api_user_payload

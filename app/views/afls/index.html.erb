@@ -43,6 +43,7 @@
             <tr>
               <th><input type="checkbox" data-afl-select-all></th>
               <th>ID</th>
+              <th>Farm ID</th>
               <th>FCO ID</th>
               <th>FCO</th>
               <th>FPO ID</th>
@@ -70,6 +71,7 @@
                 <tr>
                   <td><input type="checkbox" value="<%= afl_path(afl, q: @query.presence, page: @page) %>" data-afl-row-select></td>
                   <td><%= afl.id %></td>
+                  <td><%= afl.farm_id %></td>
                   <td><%= afl.fco_id %></td>
                   <td><%= afl.fco %></td>
                   <td><%= afl.fpo_id %></td>
@@ -93,7 +95,7 @@
               <% end %>
             <% else %>
               <tr>
-                <td colspan="21">No target mapping records uploaded yet.</td>
+                <td colspan="22">No target mapping records uploaded yet.</td>
               </tr>
             <% end %>
           </tbody>

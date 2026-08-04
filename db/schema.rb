@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2026_08_01_124500) do
+ActiveRecord::Schema[8.1].define(version: 2026_08_03_120000) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "pg_catalog.plpgsql"
 
@@ -50,6 +50,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_08_01_124500) do
     t.string "dispoce"
     t.decimal "estimate_quantity", precision: 18, scale: 4
     t.decimal "estimate_quantity_admin", precision: 18, scale: 4
+    t.string "farm_id"
     t.string "farmer_name"
     t.string "father_name"
     t.string "fco"
@@ -84,6 +85,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_08_01_124500) do
     t.string "village_id"
     t.string "village_name"
     t.index ["created_at"], name: "index_afls_on_created_at"
+    t.index ["farm_id"], name: "index_afls_on_farm_id"
     t.index ["farmer_name"], name: "index_afls_on_farmer_name"
     t.index ["fco_id", "ics_id", "village_id"], name: "index_afls_on_mapping_lookup"
     t.index ["mobile_no"], name: "index_afls_on_mobile_no"
