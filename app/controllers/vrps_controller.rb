@@ -103,7 +103,7 @@ class VrpsController < ApplicationController
     if @vrp
       @can_approve = current_user_can_approve?(@vrp)
       @approval_history = approval_history_for(@vrp)
-      @approval_steps = approval_steps_for(@vrp)
+      @approval_steps = approval_progress_steps_for(@vrp)
       @current_approval_step = current_approval_step(@vrp)
       @status_label = vrp_status_label(@vrp)
       return
@@ -444,14 +444,13 @@ class VrpsController < ApplicationController
   def visible_vrps
     return Vrp.all if current_app_user.blank? || admin_user?
 
-    mapped_vrps = cluster_mapped_vrps.to_a
-    base_vrps = if cluster_incharge_login? || mapped_vrps.any?
-      mapped_vrps
-    else
-      own_vrps.to_a
-    end
+    own_vrps
+  end
 
-    (base_vrps + approval_related_vrps).uniq
+  def approval_progress_steps_for(vrp)
+    approval_steps_for(vrp).uniq do |step|
+      normalize_approver_label(approval_approver_name(step))
+    end
   end
 
   def find_visible_vrp(id)

@@ -134,14 +134,7 @@ module VrpAccess
   def visible_vrps
     return Vrp.all if current_app_user.blank? || admin_user?
 
-    mapped_vrps = cluster_mapped_vrps.to_a
-    base_vrps = if cluster_incharge_login? || mapped_vrps.any?
-      mapped_vrps
-    else
-      own_vrps.to_a
-    end
-
-    (base_vrps + approval_related_vrps).uniq
+    own_vrps
   end
 
   def find_visible_vrp(id)

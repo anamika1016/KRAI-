@@ -4423,6 +4423,7 @@ class ModulesController < ApplicationController
     end
     records = records.select { |record| target_record_visible?(record) } if target_record_source?
     return records.sort_by { |record| [record.created_at || Time.at(0), record.id.to_i] }.reverse if @slug == "training-form-list"
+    return records.sort_by { |record| jeevika_bill_list_sort_value(record) } if @slug == "jeevika-jankar-bill-list"
 
     records.sort_by { |record| module_record_sort_value(record) }
   end
@@ -6093,6 +6094,44 @@ class ModulesController < ApplicationController
     module_record_field_value(record, sort_field).presence ||
       record.data[sort_key].presence ||
       record.data.values.find(&:present?).to_s
+  end
+
+  def jeevika_bill_list_sort_value(record)
+    status = record.data["status"].to_s.downcase
+    status_priority = if status.include?("pending") || status.include?("submitted (not sent for approval)")
+      0
+    elsif status.include?("final approved")
+      2
+    else
+      1
+    end
+
+    bill_date = jeevika_bill_month_date(record)
+    current_month = Date.current.beginning_of_month
+    month_priority = if bill_date == current_month
+      [0, 0]
+    elsif bill_date && bill_date < current_month
+      [1, -bill_date.jd]
+    elsif bill_date
+      [2, bill_date.jd]
+    else
+      [3, 0]
+    end
+
+    [status_priority, *month_priority, -(record.id || 0)]
+  end
+
+  def jeevika_bill_month_date(record)
+    month_number = Date::MONTHNAMES.index do |month_name|
+      month_name.to_s.casecmp(record.data["bill_month"].to_s.strip).zero?
+    end
+    financial_year_start = record.data["financial_year"].to_s[/\b(\d{4})\b/, 1]&.to_i
+    return if month_number.blank? || financial_year_start.blank?
+
+    year = month_number >= 4 ? financial_year_start : financial_year_start + 1
+    Date.new(year, month_number, 1)
+  rescue Date::Error
+    nil
   end
 
   def module_record_field_value(record, field)

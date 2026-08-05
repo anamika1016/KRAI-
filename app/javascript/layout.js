@@ -4299,6 +4299,7 @@ function initDeferredLayoutPage() {
   };
 
   const sortTableRowsAlphabetically = (table) => {
+    if (table.dataset.preserveOrder === "true") return;
     if (table.dataset.alphaSorted === "true") return;
     if (table.tBodies[0]?.rows.length > 80) {
       table.dataset.alphaSorted = "true";
