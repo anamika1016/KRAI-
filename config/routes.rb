@@ -33,6 +33,8 @@ Rails.application.routes.draw do
       get "jeevika-jankar-payment-details", to: "jeevika_jankar_payments#payment_details"
       get "jeevika-jankar-completed-payments", to: "jeevika_jankar_payments#completed_payments"
       get "sidebar-menus", to: "sidebar_menus#index"
+      get "access-controls", to: "access_controls#index"
+      get "access-controls/:id", to: "access_controls#show"
       get "target-mappings/recent", to: "target_mappings#recent"
       delete "logout", to: "sessions#destroy"
 
