@@ -20,6 +20,7 @@ Rails.application.routes.draw do
       post "forgot-password/reset", to: "password_resets#reset"
       get "me", to: "sessions#show"
       get "user-dashboard", to: "user_dashboard#show"
+      get "admin-dashboard", to: "jeevika_jankar_dashboard#show"
       get "jeevika-jankar-dashboard", to: "jeevika_jankar_dashboard#show"
       get "jeevika-jankar-bills", to: "jeevika_jankar_payments#bills"
       get "jeevika-jankar-bills/:id/download", to: "jeevika_jankar_payments#download_bill"

@@ -725,9 +725,19 @@ class ModulesController < ApplicationController
     @training_target_status_cards = training_target_status_cards(training_targets, month_name: selected_month, sub_activity_name: selected_sub_activity)
     @training_participation = training_participation_summary(participation_targets, month_name: @participation_selected_month)
     @farmer_training_dashboard_rows = farmer_training_dashboard_rows(training_targets, month_name: selected_month)
-    @ics_farmer_report_options = ics_farmer_report_options(participation_records, participation_targets)
+    @ics_farmer_report_month_value = params[:ics_report_month].presence || @participation_month_filter_value
+    @ics_farmer_report_selected_month = @ics_farmer_report_month_value == "all" ? nil : @ics_farmer_report_month_value
+    ics_report_targets = training_participation_targets_for_dashboard(
+      month_name: @ics_farmer_report_selected_month,
+      fcoc_name: @participation_fcoc_filter_value
+    )
+    ics_report_records = dashboard_training_participation_records(
+      month_name: @ics_farmer_report_selected_month,
+      fcoc_name: @participation_fcoc_filter_value
+    )
+    @ics_farmer_report_options = ics_farmer_report_options(ics_report_records, ics_report_targets)
     @ics_farmer_report_selected_ics = params[:ics_report_ics].to_s.presence
-    @ics_farmer_report_rows = @ics_farmer_report_selected_ics.present? ? ics_farmer_report_rows(participation_targets, participation_records, selected_ics: @ics_farmer_report_selected_ics) : []
+    @ics_farmer_report_rows = @ics_farmer_report_selected_ics.present? ? ics_farmer_report_rows(ics_report_targets, ics_report_records, selected_ics: @ics_farmer_report_selected_ics) : []
     @ics_farmer_report_summary = ics_farmer_report_summary(@ics_farmer_report_rows)
     @weekly_target_month_filter_value = params[:weekly_target_month].presence || default_status_month
     @weekly_dashboard_selected_month = @weekly_target_month_filter_value == "all" ? nil : @weekly_target_month_filter_value
@@ -2610,6 +2620,7 @@ class ModulesController < ApplicationController
         location_key: location_key
       )
       rows_by_key[farmer_key] ||= {
+        farmer_key: farmer_key,
         farmer_id: farmer.id.to_s,
         source_farmer_ids: [],
         farmer_name: dashboard_text_value(farmer.farmer_name).presence || "Farmer ##{farmer.id}",
@@ -2637,13 +2648,30 @@ class ModulesController < ApplicationController
 
   def training_participation_population_rows(month_name:, fcoc_name:, records:)
     rows = training_afl_farmer_rows_for_participation(month_name: month_name, fcoc_name: fcoc_name)
-    attendance_by_farmer_id = Hash.new(0)
+    record_farmer_ids = Array(records).flat_map { |record| training_record_selected_farmer_ids(record) }.uniq
+    farmers_by_id = training_farmers_by_id(record_farmer_ids)
+    attendance_by_farmer_key = Hash.new(0)
+
     Array(records).each do |record|
-      training_record_selected_farmer_ids(record).each { |farmer_id| attendance_by_farmer_id[farmer_id] += 1 }
+      saved_names = Array(record.data["selected_farmer_names"]).map(&:to_s)
+      location_key = [record.data["ics_block"], record.data["gram_name"]]
+        .map { |value| normalize_dashboard_text(value) }
+        .reject(&:blank?)
+        .join("|")
+
+      record_farmer_keys = training_record_selected_farmer_ids(record).each_with_index.map do |farmer_id, index|
+        training_participation_farmer_unique_key(
+          farmer_id,
+          farmer: farmers_by_id[farmer_id],
+          saved_name: saved_names[index],
+          location_key: location_key
+        )
+      end.uniq
+      record_farmer_keys.each { |farmer_key| attendance_by_farmer_key[farmer_key] += 1 }
     end
 
     rows.map do |row|
-      attendance_count = Array(row[:source_farmer_ids]).sum { |farmer_id| attendance_by_farmer_id[farmer_id] }
+      attendance_count = attendance_by_farmer_key[row[:farmer_key]].to_i
       status = training_participation_status_for_count(
         attendance_count,
         pending_available: training_participation_month_open?(month_name)
@@ -3429,10 +3457,12 @@ class ModulesController < ApplicationController
 
     farmer_ids = targets.flat_map { |target| target_farmer_ids(target) }.uniq
     farmers_by_id = training_farmers_by_id(farmer_ids)
+    farmer_profiles_by_id = dashboard_farmer_profiles_by_id(farmer_ids)
 
     rows = targets.flat_map do |target|
       target_farmer_ids(target).map do |farmer_id|
         farmer = farmers_by_id[farmer_id.to_s]
+        farmer_profile = farmer_profiles_by_id[farmer_id.to_s] || {}
         matching_records = records.select do |record|
           training_record_matches_dashboard_target?(record, target, [farmer_id.to_s])
         end
@@ -3444,10 +3474,11 @@ class ModulesController < ApplicationController
 
         {
           farmer_id: farmer_id.to_s,
-          farmer_name: dashboard_text_value(farmer&.farmer_name).presence || "Farmer ##{farmer_id}",
-          father_name: dashboard_text_value(farmer&.father_name),
-          mobile_no: dashboard_text_value(farmer&.mobile_no),
-          tracenet_no: dashboard_text_value(farmer&.tracenet_no),
+          farmer_name: dashboard_text_value(farmer_profile[:farmer_name]).presence || dashboard_text_value(farmer&.farmer_name).presence || "Farmer ##{farmer_id}",
+          father_name: dashboard_text_value(farmer_profile[:father_name]).presence || dashboard_text_value(farmer&.father_name),
+          mobile_no: dashboard_text_value(farmer_profile[:mobile_no]).presence || dashboard_text_value(farmer&.mobile_no),
+          tracenet_no: dashboard_text_value(farmer_profile[:tracenet_no]).presence || dashboard_text_value(farmer&.tracenet_no),
+          month: target.month_name.presence || "-",
           village: dashboard_text_value(farmer&.village_name).presence || target_village_label(target),
           ics: dashboard_text_value(farmer&.ics_name).presence || dashboard_text_value(farmer&.ics_id).presence || target_ics_label(target),
           vrp_name: target.vrp&.name.presence || "VRP ##{target.vrp_id}",

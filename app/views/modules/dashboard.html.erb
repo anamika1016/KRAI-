@@ -482,12 +482,13 @@
   <% ics_report_rows = Array(@ics_farmer_report_rows) %>
   <% ics_report_options = Array(@ics_farmer_report_options) %>
   <% selected_ics_report = @ics_farmer_report_selected_ics.to_s %>
+  <% selected_ics_report_month = @ics_farmer_report_month_value.to_s.presence || @participation_month_filter_value.to_s.presence || "all" %>
   <% ics_report_summary = @ics_farmer_report_summary || { farmers: 0, main_activities: 0, sub_activities: 0 } %>
   <section class="module-card training-participation-status-card dashboard-status-panel weekly-status-panel" id="dashboard_ics_farmer_report">
     <div class="module-card-header training-participation-status-header">
       <div>
         <h2>ICS Wise Farmer Report</h2>
-        <p>ICS wise farmer summary dekho, data fetch karo, aur export report nikalo.</p>
+        <p>View ICS-wise farmer summary, fetch data, and export the report.</p>
       </div>
       <div class="dashboard-actions">
         <%= form_with url: dashboard_path, method: :get, local: true, html: { class: "dashboard-month-filter" } do %>
@@ -501,6 +502,15 @@
           <%= hidden_field_tag :participation_fcoc, @participation_fcoc_filter_value if @participation_fcoc_filter_value.present? %>
           <%= hidden_field_tag :weekly_target_month, @weekly_target_month_filter_value if @weekly_target_month_filter_value.present? %>
           <%= hidden_field_tag :weekly_target_fcoc, @weekly_target_fcoc_filter_value if @weekly_target_fcoc_filter_value.present? %>
+          <label class="dashboard-month-select">
+            <span>Month</span>
+            <select name="ics_report_month" onchange="this.form.submit()">
+              <option value="all" <%= "selected" if selected_ics_report_month == "all" %>>All</option>
+              <% @training_month_options.each do |month_name| %>
+                <option value="<%= month_name %>" <%= "selected" if selected_ics_report_month == month_name.to_s %>><%= month_name %></option>
+              <% end %>
+            </select>
+          </label>
           <label class="dashboard-month-select">
             <span>ICS</span>
             <select name="ics_report_ics" onchange="this.form.submit()">
@@ -520,17 +530,17 @@
         <div class="training-participation-box total">
           <span>Farmer Count</span>
           <strong><%= ics_report_summary[:farmers].to_i %></strong>
-          <small>Selected ICS ke distinct farmers.</small>
+          <small>Distinct farmers in the selected ICS.</small>
         </div>
         <div class="training-participation-box total">
           <span>Main Activity Count</span>
           <strong><%= ics_report_summary[:main_activities].to_i %></strong>
-          <small>Selected ICS me main activity total.</small>
+          <small>Total main activities in the selected ICS.</small>
         </div>
         <div class="training-participation-box total">
           <span>Sub Activity Count</span>
           <strong><%= ics_report_summary[:sub_activities].to_i %></strong>
-          <small>Selected ICS me sub activity total.</small>
+          <small>Total sub activities in the selected ICS.</small>
         </div>
       </div>
     <% end %>
@@ -547,6 +557,7 @@
               <th>Tracenet No.</th>
               <th>Village</th>
               <th>Jeevika Jankar</th>
+              <th>Month</th>
               <th>Main Activity</th>
               <th>Sub Activity</th>
               <th>Training Date</th>
@@ -564,6 +575,7 @@
                 <td><%= row[:tracenet_no].presence || "-" %></td>
                 <td><%= row[:village].presence || "-" %></td>
                 <td><%= row[:vrp_name].presence || "-" %></td>
+                <td><%= row[:month].presence || "-" %></td>
                 <td><%= row[:main_activity].presence || "-" %></td>
                 <td><%= row[:sub_activity].presence || "-" %></td>
                 <td><%= row[:training_dates].presence || "-" %></td>
@@ -592,9 +604,9 @@
       </div>
       <div class="table-pagination" data-pagination-for="dashboard_ics_farmer_report_table"></div>
     <% elsif selected_ics_report.blank? %>
-      <div class="training-empty-state">Pehle ICS dropdown se ICS select karo, tabhi niche data show hoga.</div>
+      <div class="training-empty-state">Please select an ICS from the dropdown to view the data below.</div>
     <% else %>
-      <div class="training-empty-state">Selected ICS ke liye abhi koi farmer training data nahi mila.</div>
+      <div class="training-empty-state">No farmer training data was found for the selected ICS.</div>
     <% end %>
   </section>
 

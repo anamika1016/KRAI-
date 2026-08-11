@@ -2,6 +2,10 @@ module Api
   module V1
     class JeevikaJankarDashboardController < BaseController
       def show
+        if request.path.end_with?("/admin-dashboard") && !admin_dashboard_request?
+          return render json: { success: false, message: "Admin login required." }, status: :forbidden
+        end
+
         return render_admin_dashboard if admin_dashboard_request?
 
         vrp = current_dashboard_vrp
@@ -43,48 +47,224 @@ module Api
       end
 
       def render_admin_dashboard
-        vrps = Vrp.where(is_deleted: false).to_a
-        targets = TargetMapping.includes(:vrp).order(updated_at: :desc).to_a
-        filter_options = admin_filter_options(vrps, targets)
-        vrps = filter_admin_vrps(vrps)
-        targets = targets.select { |target| vrps.any? { |vrp| vrp.id == target.vrp_id } } if admin_vrp_filters_present?
-        filtered_targets = filter_admin_targets(targets)
-        selected_month = params[:month].presence
-        progress = filtered_targets.map { |target| progress_payload(target) }
-        assigned = progress.sum { |row| row[:assigned].to_f }
-        achieved = progress.sum { |row| row[:achieved].to_f }
-        bills = ModuleRecord.where(module_slug: "vrp-bill-add").select { |record| active_record?(record) }
+        dashboard = exact_admin_dashboard_data
 
         render json: {
           success: true,
           message: "Admin dashboard fetched successfully.",
           dashboard_type: "admin",
-          filters: admin_filter_payload,
-          filter_options: filter_options,
-          months: filter_options[:months],
-          selected_month: selected_month,
-          cards: {
-            registered_users: User.count,
-            total_registered_jeevika_jankars: vrps.size,
-            final_approved_jeevika_jankars: vrps.count { |vrp| vrp.status.to_i == 55 },
-            pending_jeevika_jankar_approvals: vrps.count { |vrp| vrp.status.to_i.between?(25, 54) },
-            target_records: filtered_targets.size,
-            activities_assigned: filtered_targets.map { |target| [target.main_activity_name.to_s.downcase, target.activity_name.to_s.downcase] }.uniq.size,
-            mapped_farmers: filtered_targets.flat_map { |target| mapped_farmer_ids(target) }.uniq.size,
-            mapped_villages: filtered_targets.map { |target| [target.village_id.to_s, target.village_name.to_s.downcase] }.uniq.size,
-            assigned_target: number(assigned),
-            achieved_target: number(achieved),
-            pending_target: number([assigned - achieved, 0].max),
-            bills_approved: bills.count { |bill| approved_bill?(bill) },
-            bills_pending: bills.count { |bill| !approved_bill?(bill) }
-          },
-          monthly_target_summary: monthly_target_summary(targets),
-          farmer_training_participation_status: training_participation_status(filtered_targets),
-          target_dashboard: target_dashboard_payload(filtered_targets),
-          weekly_activity_target_status: weekly_target_status(progress),
-          recent_target_progress: progress.first(100),
+          user: current_api_user_payload,
+          **dashboard,
           generated_at: Time.current.iso8601
         }, status: :ok
+      end
+
+      # Uses the same private calculation methods as ModulesController#dashboard.
+      # This keeps the Android JSON totals identical without changing any web action/view.
+      def exact_admin_dashboard_data
+        web = ModulesController.new
+        web.request = request
+        web.instance_variable_set(:@current_app_user, current_api_user_payload)
+
+        all_vrps = web.send(:dashboard_vrps).to_a
+        all_targets = web.send(:dashboard_target_mappings).to_a
+        vrps = all_vrps.dup
+        targets = all_targets.dup
+
+        if params[:search].present?
+          query = params[:search].to_s.downcase.strip
+          vrps.select! do |vrp|
+            [vrp.name, vrp.mobile_no, vrp.role, vrp.fcoc, vrp.cluster_incharge].any? do |value|
+              value.to_s.downcase.include?(query)
+            end
+          end
+          targets.select! do |target|
+            [target.vrp&.name, target.month_name, target.village_name, target.main_activity_name, target.activity_name].any? do |value|
+              value.to_s.downcase.include?(query)
+            end
+          end
+        end
+
+        options = {}
+        options[:activities] = targets.flat_map { |target| [target.main_activity_name, target.activity_name] }.compact_blank.uniq.sort
+        if params[:activity].present?
+          targets.select! { |target| target.main_activity_name == params[:activity] || target.activity_name == params[:activity] }
+          vrp_ids = targets.map(&:vrp_id).uniq
+          vrps.select! { |vrp| vrp_ids.include?(vrp.id) }
+        end
+
+        selected_fcoc = params[:fcoc].presence || params[:fco].presence
+        options[:fcos] = vrps.map(&:fcoc).compact_blank.uniq.sort
+        if selected_fcoc.present?
+          vrps.select! { |vrp| vrp.fcoc == selected_fcoc }
+          vrp_ids = vrps.map(&:id)
+          targets.select! { |target| target.vrp_id.present? && vrp_ids.include?(target.vrp_id) }
+        end
+
+        options[:cluster_incharges] = vrps.map(&:cluster_incharge).compact_blank.uniq.sort
+        if params[:cluster_incharge].present?
+          vrps.select! { |vrp| vrp.cluster_incharge == params[:cluster_incharge] }
+          vrp_ids = vrps.map(&:id)
+          targets.select! { |target| target.vrp_id.present? && vrp_ids.include?(target.vrp_id) }
+        end
+
+        options[:ics] = targets.map { |target| target.ics_name.presence || target.ics_id }.compact_blank.uniq.sort
+        if params[:ics].present?
+          targets.select! { |target| (target.ics_name.presence || target.ics_id).to_s == params[:ics].to_s }
+          vrp_ids = targets.map(&:vrp_id).uniq
+          vrps.select! { |vrp| vrp_ids.include?(vrp.id) }
+        end
+
+        options[:months] = (targets.map(&:month_name) + web.send(:month_master_month_options)).compact_blank.uniq
+          .sort_by { |month| web.send(:dashboard_month_index, month) || 0 }
+        if params[:month].present?
+          targets.select! { |target| target.month_name == params[:month] }
+          vrp_ids = targets.map(&:vrp_id).uniq
+          vrps.select! { |vrp| vrp_ids.include?(vrp.id) }
+        end
+
+        selected_post = params[:post].presence || params[:post_wise_name].presence
+        options[:posts] = vrps.map(&:role).compact_blank.uniq.sort
+        if selected_post.present?
+          vrps.select! { |vrp| vrp.role == selected_post }
+          vrp_ids = vrps.map(&:id)
+          targets.select! { |target| target.vrp_id.present? && vrp_ids.include?(target.vrp_id) }
+        end
+
+        options[:jeevika_jankars] = vrps.map { |vrp| { id: vrp.id, name: vrp.name, user_name: vrp.user_name } }
+          .uniq { |row| row[:id] }.sort_by { |row| row[:name].to_s.downcase }
+        if params[:vrp_id].present?
+          selected_vrp_id = params[:vrp_id].to_i
+          vrps.select! { |vrp| vrp.id == selected_vrp_id }
+          targets.select! { |target| target.vrp_id == selected_vrp_id }
+        end
+
+        web.instance_variable_set(:@filtered_vrps, vrps)
+        web.instance_variable_set(:@filtered_targets, targets)
+        bills = exact_dashboard_bills(web, vrps)
+        web.instance_variable_set(:@filtered_bills, bills)
+
+        months = web.send(:dashboard_month_options_for_targets, targets)
+        default_month = web.send(:default_vrp_dashboard_month, months)
+        participation_value = params[:participation_month].presence || default_month
+        participation_month = participation_value == "all" ? nil : participation_value
+        participation_fcoc = params[:participation_fcoc].presence
+        participation_records = web.send(:dashboard_training_participation_records, month_name: participation_month, fcoc_name: participation_fcoc)
+        population = web.send(:training_participation_population_rows,
+          month_name: participation_month, fcoc_name: participation_fcoc, records: participation_records)
+        participation_counts = web.send(:training_participation_status_counts_from_rows, population)
+
+        weekly_value = params[:weekly_target_month].presence || default_month
+        weekly_month = weekly_value == "all" ? nil : weekly_value
+        weekly_fcoc = params[:weekly_target_fcoc].presence
+        weekly_targets = web.send(:dashboard_targets_for_month, targets, weekly_month)
+        if weekly_fcoc.present?
+          normalized_fcoc = web.send(:normalize_dashboard_text, weekly_fcoc)
+          weekly_targets.select! { |target| web.send(:normalize_dashboard_text, target.vrp&.fcoc) == normalized_fcoc }
+        end
+        weekly_counts = web.send(:training_target_status_counts, weekly_targets)
+
+        ics_month_value = params[:ics_report_month].presence || participation_value
+        ics_month = ics_month_value == "all" ? nil : ics_month_value
+        ics_targets = web.send(:training_participation_targets_for_dashboard, month_name: ics_month, fcoc_name: participation_fcoc)
+        ics_records = web.send(:dashboard_training_participation_records, month_name: ics_month, fcoc_name: participation_fcoc)
+        ics_options = web.send(:ics_farmer_report_options, ics_records, ics_targets)
+        selected_ics = params[:ics_report_ics].to_s.presence
+        ics_rows = selected_ics ? web.send(:ics_farmer_report_rows, ics_targets, ics_records, selected_ics: selected_ics) : []
+
+        card_data = exact_admin_card_data(web, vrps, targets, all_targets, bills)
+        {
+          filters: admin_filter_payload.merge(fcoc: selected_fcoc, post: selected_post),
+          filter_options: options,
+          sections: card_data,
+          cards: card_data.values_at(:registration, :target_assignment, :billing).reduce({}, &:merge),
+          farmer_training_participation_status: {
+            selected_month: participation_value,
+            selected_fcoc: participation_fcoc,
+            month_options: ["all"] + months,
+            fco_options: options[:fcos],
+            total_unique_farmers_distinct: web.send(:training_afl_farmer_rows_for_participation, month_name: participation_month, fcoc_name: participation_fcoc).size,
+            total_training_farmer: web.send(:training_total_farmer_count_from_records, participation_records),
+            training_unique_farmers: web.send(:training_unique_farmer_count_from_records, participation_records),
+            green: participation_counts[:green].to_i,
+            yellow: participation_counts[:yellow].to_i,
+            red: participation_counts[:red].to_i,
+            pending: participation_counts[:pending].to_i
+          },
+          weekly_activity_target_status: weekly_counts.merge(
+            selected_month: weekly_value,
+            selected_fcoc: weekly_fcoc,
+            month_options: ["all"] + months,
+            fco_options: options[:fcos]
+          ),
+          ics_wise_farmer_report: {
+            selected_month: ics_month_value,
+            selected_ics: selected_ics,
+            month_options: ["all"] + months,
+            ics_options: ics_options,
+            summary: web.send(:ics_farmer_report_summary, ics_rows),
+            rows: ics_rows,
+            count: ics_rows.size
+          },
+          monthly_target_summary: monthly_target_summary(targets),
+          recent_target_progress: targets.first(100).map { |target| progress_payload(target) }
+        }
+      end
+
+      def exact_dashboard_bills(web, vrps)
+        filtered_vrp_ids = vrps.map { |vrp| vrp.id.to_s }
+        filters_active = %i[search activity fcoc fco cluster_incharge ics month post post_wise_name vrp_id].any? { |key| params[key].present? }
+        bills = ModuleRecord.where(module_slug: "jeevika-jankar-bill-process").to_a.select do |record|
+          record.data.present? && (filtered_vrp_ids.include?(record.data["select_vrp"].to_s) || !filters_active)
+        end
+        if params[:activity].present?
+          bills.select! do |record|
+            web.send(:jeevika_bill_detail_rows, record).any? do |item|
+              item["main_activity"] == params[:activity] || item["activity"] == params[:activity]
+            end
+          end
+        end
+        bills.select! { |record| record.data["bill_month"] == params[:month] } if params[:month].present?
+        bills
+      end
+
+      def exact_admin_card_data(web, vrps, targets, all_targets, bills)
+        assigned_vrp_ids = all_targets.filter_map { |target| target.vrp_id.to_s.presence }.uniq
+        activity_vrp_ids = all_targets.filter_map do |target|
+          target.vrp_id.to_s.presence if target.main_activity_name.present? || target.activity_name.present?
+        end.uniq
+        activities = targets.map do |target|
+          [web.send(:normalize_dashboard_text, target.main_activity_name), web.send(:normalize_dashboard_text, target.activity_name)]
+        end.reject { |main, sub| main.blank? && sub.blank? }.uniq.size
+
+        {
+          registration: {
+            total_registered: vrps.size,
+            final_approved: web.send(:dashboard_approved_vrps, vrps).size,
+            pending_approval: web.send(:dashboard_pending_approval_vrps, vrps).size
+          },
+          target_assignment: {
+            target_records: targets.size,
+            without_target: vrps.count { |vrp| !assigned_vrp_ids.include?(vrp.id.to_s) },
+            activities_assigned: activities,
+            without_activity: vrps.count { |vrp| !activity_vrp_ids.include?(vrp.id.to_s) }
+          },
+          billing: {
+            level_2_users: web.send(:user_hierarchy_dashboard_summary)[:level_2_total],
+            bill_approved: bills.count { |bill| web.send(:dashboard_bill_approved?, bill) },
+            bill_pending: bills.count { |bill| web.send(:dashboard_bill_pending?, bill) }
+          },
+          fco_wise_jeevika_jankar: %w[Sausar Turekela].map do |fco_name|
+            matching = vrps.select do |vrp|
+              web.send(:normalize_dashboard_text, vrp.fcoc).include?(web.send(:normalize_dashboard_text, fco_name))
+            end
+            {
+              fco: fco_name,
+              male: matching.count { |vrp| web.send(:normalize_dashboard_text, vrp.gender) == "male" },
+              female: matching.count { |vrp| web.send(:normalize_dashboard_text, vrp.gender) == "female" }
+            }
+          end
+        }
       end
 
       def admin_filter_options(vrps, targets)

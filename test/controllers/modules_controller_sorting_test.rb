@@ -2,6 +2,33 @@
 require "test_helper"
 
 class ModulesControllerSortingTest < ActiveSupport::TestCase
+  test "training population matches attendance by distinct farmer identity instead of AFL row id" do
+    controller = ModulesController.new
+    farmer = Struct.new(:farmer_name, :tracenet_no).new("Test Farmer", "TN-100")
+    record = Struct.new(:id, :data).new(1,
+      "selected_farmer_ids" => ["22"],
+      "selected_farmer_names" => ["Test Farmer"],
+      "ics_block" => "ICS One",
+      "gram_name" => "Village One"
+    )
+
+    controller.define_singleton_method(:training_afl_farmer_rows_for_participation) do |**|
+      [{ farmer_key: "tracenet:tn-100", farmer_id: "11", source_farmer_ids: ["11"] }]
+    end
+    controller.define_singleton_method(:training_farmers_by_id) { |_| { "22" => farmer } }
+    controller.define_singleton_method(:training_participation_month_open?) { |_| false }
+
+    row = controller.send(
+      :training_participation_population_rows,
+      month_name: "July",
+      fcoc_name: "FCO-C Sausar",
+      records: [record]
+    ).first
+
+    assert_equal 1, row[:attendance_count]
+    assert_equal "yellow", row[:status]
+  end
+
   test "Jeevika Jankar bill list puts submitted and pending bills before approved bills" do
     controller = ModulesController.new
     current_month = Date.current.beginning_of_month

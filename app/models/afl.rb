@@ -167,11 +167,27 @@ class Afl < ApplicationRecord
     query = query.to_s.strip
     return all if query.blank?
 
-    pattern = "%#{sanitize_sql_like(query)}%"
-    where(
-      searchable_columns.map { |column| "#{connection.quote_column_name(column)}::text ILIKE :query" }.join(" OR "),
-      query: pattern
-    )
+    adapter = connection.adapter_name.to_s.downcase
+    cast_type = adapter.include?("mysql") ? "CHAR" : "TEXT"
+
+    clauses = searchable_columns.map do |column|
+      quoted_column = connection.quote_column_name(column)
+      casted_column = "CAST(#{quoted_column} AS #{cast_type})"
+
+      if adapter.include?("postgres")
+        "#{casted_column} ILIKE :query"
+      else
+        "LOWER(#{casted_column}) LIKE :query"
+      end
+    end
+
+    pattern = if adapter.include?("postgres")
+      "%#{sanitize_sql_like(query)}%"
+    else
+      "%#{sanitize_sql_like(query.downcase)}%"
+    end
+
+    where(clauses.join(" OR "), query: pattern)
   end
 
   def self.normalized_coordinate(value)
