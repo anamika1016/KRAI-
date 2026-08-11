@@ -2461,13 +2461,12 @@ class ModulesController < ApplicationController
     records
   end
 
-  # The Unique Farmers card represents the AFL population for the FCOs mapped
-  # in the selected month. It must not be limited to farmers who already have
-  # a Training Form entry.
+  # The Unique Farmers card represents the AFL population for the mapped FCOs.
+  # It must stay month-independent so July / All / any month all use the same base population.
   def training_afl_farmer_rows_for_participation(month_name: nil, fcoc_name: nil)
     return [] unless model_ready?(:Afl)
 
-    targets = dashboard_targets_for_month(dashboard_participation_targets, month_name)
+    targets = dashboard_participation_targets
     normalized_fcoc = normalize_dashboard_text(fcoc_name)
     if normalized_fcoc.present?
       targets = targets.select { |target| normalize_dashboard_text(target.vrp&.fcoc) == normalized_fcoc }
