@@ -482,6 +482,7 @@
   <% ics_report_rows = Array(@ics_farmer_report_rows) %>
   <% ics_report_options = Array(@ics_farmer_report_options) %>
   <% selected_ics_report = @ics_farmer_report_selected_ics.to_s %>
+  <% ics_report_summary = @ics_farmer_report_summary || { farmers: 0, main_activities: 0, sub_activities: 0 } %>
   <section class="module-card training-participation-status-card dashboard-status-panel weekly-status-panel" id="dashboard_ics_farmer_report">
     <div class="module-card-header training-participation-status-header">
       <div>
@@ -514,7 +515,27 @@
       </div>
     </div>
 
-    <% if ics_report_rows.any? %>
+    <% if selected_ics_report.present? %>
+      <div class="training-participation-boxes compact" style="margin-bottom: 12px;">
+        <div class="training-participation-box total">
+          <span>Farmer Count</span>
+          <strong><%= ics_report_summary[:farmers].to_i %></strong>
+          <small>Selected ICS ke distinct farmers.</small>
+        </div>
+        <div class="training-participation-box total">
+          <span>Main Activity Count</span>
+          <strong><%= ics_report_summary[:main_activities].to_i %></strong>
+          <small>Selected ICS me main activity total.</small>
+        </div>
+        <div class="training-participation-box total">
+          <span>Sub Activity Count</span>
+          <strong><%= ics_report_summary[:sub_activities].to_i %></strong>
+          <small>Selected ICS me sub activity total.</small>
+        </div>
+      </div>
+    <% end %>
+
+    <% if selected_ics_report.present? && ics_report_rows.any? %>
       <div class="table-shell">
         <table class="module-table compact-table" id="dashboard_ics_farmer_report_table" data-paginated-table data-page-size="15">
           <thead>
@@ -570,6 +591,8 @@
         </table>
       </div>
       <div class="table-pagination" data-pagination-for="dashboard_ics_farmer_report_table"></div>
+    <% elsif selected_ics_report.blank? %>
+      <div class="training-empty-state">Pehle ICS dropdown se ICS select karo, tabhi niche data show hoga.</div>
     <% else %>
       <div class="training-empty-state">Selected ICS ke liye abhi koi farmer training data nahi mila.</div>
     <% end %>

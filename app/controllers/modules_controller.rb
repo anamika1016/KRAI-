@@ -727,7 +727,8 @@ class ModulesController < ApplicationController
     @farmer_training_dashboard_rows = farmer_training_dashboard_rows(training_targets, month_name: selected_month)
     @ics_farmer_report_options = ics_farmer_report_options(participation_records, participation_targets)
     @ics_farmer_report_selected_ics = params[:ics_report_ics].to_s.presence
-    @ics_farmer_report_rows = ics_farmer_report_rows(participation_records, selected_ics: @ics_farmer_report_selected_ics)
+    @ics_farmer_report_rows = @ics_farmer_report_selected_ics.present? ? ics_farmer_report_rows(participation_records, selected_ics: @ics_farmer_report_selected_ics) : []
+    @ics_farmer_report_summary = ics_farmer_report_summary(@ics_farmer_report_rows)
     @weekly_target_month_filter_value = params[:weekly_target_month].presence || default_status_month
     @weekly_dashboard_selected_month = @weekly_target_month_filter_value == "all" ? nil : @weekly_target_month_filter_value
     @weekly_target_fcoc_filter_value = params[:weekly_target_fcoc].presence
@@ -3487,6 +3488,16 @@ class ModulesController < ApplicationController
     ].map { |value| normalize_dashboard_text(value) }.reject(&:blank?)
 
     candidate_keys.include?(selected_key)
+  end
+
+  def ics_farmer_report_summary(rows)
+    rows = Array(rows)
+
+    {
+      farmers: rows.map { |row| row[:farmer_id].to_s }.reject(&:blank?).uniq.size,
+      main_activities: rows.map { |row| row[:main_activity].to_s.strip }.reject(&:blank?).reject { |value| value == "-" }.uniq.size,
+      sub_activities: rows.map { |row| row[:sub_activity].to_s.strip }.reject(&:blank?).reject { |value| value == "-" }.uniq.size
+    }
   end
 
   def training_attendance_counts_for_targets(targets, month_name: nil)
