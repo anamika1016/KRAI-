@@ -268,8 +268,9 @@
             </tr>
           </thead>
           <tbody>
-            <% if @target_mappings.any? %>
-              <% @target_mappings.each do |target| %>
+            <% if Array(@target_mapping_rows).any? %>
+              <% @target_mapping_rows.each do |row| %>
+                <% target = row[:target] %>
                 <tr>
                   <td><%= target.vrp&.name %></td>
                   <td><%= target.fco_name.presence || target.fco_id %></td>
@@ -278,7 +279,13 @@
                   <td><%= target.month_name %></td>
                   <td><%= target.completion_date&.strftime("%d-%m-%Y") || "-" %></td>
                   <td class="target-activity-text"><%= target.main_activity_name %></td>
-                  <td class="target-activity-text"><%= target.activity_name %></td>
+                  <td class="target-activity-text">
+                    <div class="target-activity-grouped-list">
+                      <% Array(row[:sub_activities]).each do |sub_activity| %>
+                        <span><%= sub_activity %></span>
+                      <% end %>
+                    </div>
+                  </td>
                   <td><%= number_with_precision(target.opg_training_target, precision: 4, strip_insignificant_zeros: true) if target.opg_training_target.present? %></td>
                   <td><%= number_with_precision(target.week_wise_opg_target, precision: 4, strip_insignificant_zeros: true) if target.week_wise_opg_target.present? %></td>
                   <td><%= number_with_precision(target.input_demo_inm_target, precision: 4, strip_insignificant_zeros: true) if target.input_demo_inm_target.present? %></td>
@@ -290,7 +297,7 @@
                   <td class="target-count-cell"><%= week_targets[1] %></td>
                   <td class="target-count-cell"><%= week_targets[2] %></td>
                   <td class="target-count-cell"><%= week_targets[3] %></td>
-                  <% target_farmer_ids = Array(target.afl_ids).map(&:to_s).reject(&:blank?) %>
+                  <% target_farmer_ids = Array(row[:farmer_ids]).map(&:to_s).reject(&:blank?) %>
                   <td class="target-farmer-view-cell">
                     <% if target_farmer_ids.any? %>
                       <% farmer_dialog_id = "target-farmers-#{target.id}" %>

@@ -19,6 +19,7 @@ class TargetMappingsController < ApplicationController
     @main_activity_type_map = main_activity_type_map
     @target_sub_activity_map = target_sub_activity_map
     @target_mappings = visible_target_mappings.includes(:vrp, :vrp_ics_mapping).order(updated_at: :desc).limit(100)
+    @target_mapping_rows = grouped_target_mapping_rows(@target_mappings)
     farmer_ids = @target_mappings.flat_map { |target| Array(target.afl_ids) }.map(&:to_s).reject(&:blank?).uniq
     @target_farmers_by_id = farmer_ids.each_slice(5_000).flat_map do |ids|
       Afl.where(id: ids)
@@ -213,7 +214,9 @@ class TargetMappingsController < ApplicationController
     weekly_plan_rows.find do |row|
       row["main_activity"].to_s.strip.casecmp(main_activity.to_s.strip).zero? &&
         row["sub_activity"].to_s.strip.casecmp(sub_activity.to_s.strip).zero?
-    end
+    end || weekly_plan_rows.find do |row|
+      row["main_activity"].to_s.strip.casecmp(main_activity.to_s.strip).zero?
+    end || (weekly_plan_rows.first if weekly_plan_rows.one?)
   end
 
   def apply_weekly_plan_target(target_mapping)
@@ -1174,6 +1177,34 @@ class TargetMappingsController < ApplicationController
       end,
       afl_ids: Array(target.afl_ids).map(&:to_s)
     }
+  end
+
+  def grouped_target_mapping_rows(targets)
+    Array(targets).group_by do |target|
+      [
+        target.vrp_id,
+        target.fco_name.presence || target.fco_id,
+        target.ics_name.presence || target.ics_id,
+        target.village_name.presence || target.village_id,
+        target.month_name,
+        target.completion_date,
+        target.main_activity_name,
+        target.opg_training_target.to_s,
+        target.week_wise_opg_target.to_s,
+        target.input_demo_inm_target.to_s,
+        target.input_demo_pm_target.to_s,
+        target.ffs_target.to_s,
+        target.target_quantity.to_s,
+        Array(target.weekly_target_values).map(&:to_i)
+      ]
+    end.map do |_key, grouped_targets|
+      target = grouped_targets.first
+      {
+        target: target,
+        sub_activities: grouped_targets.map { |row| row.activity_name.to_s.strip }.reject(&:blank?).uniq,
+        farmer_ids: grouped_targets.flat_map { |row| Array(row.afl_ids).map(&:to_s) }.reject(&:blank?).uniq
+      }
+    end
   end
 
   def main_activity_type_for(main_activity_name)

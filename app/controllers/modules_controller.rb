@@ -603,7 +603,16 @@ class ModulesController < ApplicationController
       t_scope = t_scope.select { |t| t.vrp_id.present? && v_ids.include?(t.vrp_id) }
     end
 
-    # 4. Month Filter (depends on Activity, FCO, Cluster Incharge)
+    # 4. ICS Filter
+    @filter_ics_options = t_scope.map { |t| t.ics_name.presence || t.ics_id }.uniq.compact_blank.sort
+    if params[:ics].present?
+      selected_ics = params[:ics].to_s
+      t_scope = t_scope.select { |t| (t.ics_name.presence || t.ics_id).to_s == selected_ics }
+      v_ids = t_scope.map(&:vrp_id).uniq
+      v_scope = v_scope.select { |v| v_ids.include?(v.id) }
+    end
+
+    # 5. Month Filter (depends on Activity, FCO, Cluster Incharge, ICS)
     @filter_month_options = (t_scope.map(&:month_name) + month_master_month_options)
       .uniq
       .compact_blank
@@ -615,7 +624,7 @@ class ModulesController < ApplicationController
       v_scope = v_scope.select { |v| v_ids.include?(v.id) }
     end
 
-    # 5. Post Filter (depends on all above)
+    # 6. Post Filter (depends on all above)
     @filter_post_options = v_scope.map(&:role).uniq.compact_blank.sort
     if params[:post].present?
       p_filter = params[:post].to_s
@@ -624,7 +633,7 @@ class ModulesController < ApplicationController
       t_scope = t_scope.select { |t| t.vrp_id.present? && v_ids.include?(t.vrp_id) }
     end
 
-    # 6. VRP Name Filter (depends on all above)
+    # 7. VRP Name Filter (depends on all above)
     @filter_vrp_options = v_scope.map { |v| [v.name, v.id] }.uniq.sort_by(&:first)
     if params[:vrp_id].present?
       vid = params[:vrp_id].to_i
@@ -639,7 +648,7 @@ class ModulesController < ApplicationController
     filtered_vrp_ids = @filtered_vrps.map { |v| v.id.to_s }
     dashboard_filters_active = [
       params[:search], params[:activity], params[:fcoc], params[:cluster_incharge],
-      params[:month], params[:post], params[:vrp_id]
+      params[:ics], params[:month], params[:post], params[:vrp_id]
     ].any?(&:present?)
 
     bill_records = ModuleRecord.where(module_slug: "jeevika-jankar-bill-process").to_a
@@ -695,8 +704,12 @@ class ModulesController < ApplicationController
     @participation_selected_month = @participation_month_filter_value == "all" ? nil : @participation_month_filter_value
     @participation_fcoc_filter_value = params[:participation_fcoc].presence
     participation_records = dashboard_training_participation_records(month_name: @participation_selected_month, fcoc_name: @participation_fcoc_filter_value)
-    participation_population_rows = training_participation_population_rows(month_name: @participation_selected_month, fcoc_name: @participation_fcoc_filter_value, records: participation_records)
-    @training_participation_status_cards = training_participation_status_cards_from_records(participation_records, month_name: @participation_selected_month, fcoc_name: @participation_fcoc_filter_value, population_rows: participation_population_rows)
+    participation_targets = training_participation_targets_for_dashboard(month_name: @participation_selected_month, fcoc_name: @participation_fcoc_filter_value)
+    @training_participation_status_cards = training_participation_status_cards(
+      participation_targets,
+      month_name: @participation_selected_month,
+      fcoc_name: @participation_fcoc_filter_value
+    )
     @training_unique_farmer_count = training_afl_farmer_rows_for_participation(
       month_name: @participation_selected_month,
       fcoc_name: @participation_fcoc_filter_value
@@ -747,16 +760,21 @@ class ModulesController < ApplicationController
     selected_fcoc = params[:training_fcoc].presence
     selected_status = normalize_training_participation_status(params[:status]) || "green"
     training_records = dashboard_training_participation_records(month_name: selected_month, sub_activity_name: selected_sub_activity, fcoc_name: selected_fcoc)
-    participation_population_rows = training_participation_population_rows(month_name: selected_month, fcoc_name: selected_fcoc, records: training_records)
+    participation_targets = training_participation_targets_for_dashboard(
+      month_name: selected_month,
+      fcoc_name: selected_fcoc,
+      sub_activity_name: selected_sub_activity
+    )
+    participation_status_rows = training_participation_farmer_rows(participation_targets, month_name: selected_month)
 
     @training_participation_status = selected_status
     @training_participation_title = training_participation_status_label(selected_status)
     @training_participation_caption = training_participation_status_caption(selected_status)
     @training_participation_rows = training_participation_farmer_rows_from_records(training_records)
     @training_participation_rows = if selected_status == "unique"
-      participation_population_rows
+      training_afl_farmer_rows_for_participation(month_name: selected_month, fcoc_name: selected_fcoc)
     elsif %w[green yellow red pending].include?(selected_status)
-      participation_population_rows.select { |row| row[:status] == selected_status }
+      participation_status_rows.select { |row| row[:status] == selected_status }
     elsif selected_status == "total"
       @training_participation_rows
     elsif selected_status == "unique"
@@ -765,8 +783,8 @@ class ModulesController < ApplicationController
       @training_participation_rows.select { |row| row[:status] == selected_status }
     end
     @training_participation_totals = training_participation_status_counts_from_records(training_records)
-    population_status_counts = training_participation_status_counts_from_rows(participation_population_rows)
-    @training_participation_totals.merge!(population_status_counts.slice(:green, :yellow, :red, :pending))
+    status_counts = training_participation_status_counts(participation_targets, month_name: selected_month)
+    @training_participation_totals.merge!(status_counts.slice(:green, :yellow, :red, :pending))
     @training_unique_farmer_count = training_afl_farmer_rows_for_participation(month_name: selected_month, fcoc_name: selected_fcoc).size
     @training_total_training_farmer_count = training_total_farmer_count_from_records(training_records)
     @training_participation_totals[:unique] = @training_unique_farmer_count
@@ -789,6 +807,13 @@ class ModulesController < ApplicationController
           rows: training_participation_rows_csv(@training_participation_rows),
           filename: "farmer-training-#{selected_status}-#{Time.current.strftime("%Y%m%d%H%M")}.xlsx",
           sheet_name: "Training Participation"
+        )
+      end
+      format.zip do
+        send_data(
+          training_participation_attachments_zip(@training_participation_rows),
+          filename: "farmer-training-attachments-#{selected_status}-#{Time.current.strftime("%Y%m%d%H%M")}.zip",
+          type: "application/zip"
         )
       end
     end
@@ -1304,16 +1329,32 @@ class ModulesController < ApplicationController
   def export
     load_module!
 
-    if @slug == "lg-directory-list"
-      prepare_lg_directory_data
-      csv_data = lg_directory_csv(@lg_directory_rows)
-      filename = "lg_directory_all_list_#{Date.current}.xlsx"
-    else
-      csv_data = module_records_csv(module_records)
-      filename = "#{record_source_slug.tr("-", "_")}_records_#{Date.current}.xlsx"
-    end
+    respond_to do |format|
+      format.xlsx do
+        if @slug == "lg-directory-list"
+          prepare_lg_directory_data
+          csv_data = lg_directory_csv(@lg_directory_rows)
+          filename = "lg_directory_all_list_#{Date.current}.xlsx"
+        else
+          csv_data = module_records_csv(module_records)
+          filename = "#{record_source_slug.tr("-", "_")}_records_#{Date.current}.xlsx"
+        end
 
-    send_xlsx rows: csv_data, filename: filename, sheet_name: @module[:title]
+        send_xlsx rows: csv_data, filename: filename, sheet_name: @module[:title]
+      end
+
+      format.zip do
+        unless @slug == "training-form-list"
+          redirect_to module_path(@slug), alert: "Attachment download is available only for Farmer Training Form List." and return
+        end
+
+        send_data(
+          module_records_attachments_zip(module_records),
+          filename: "training_form_attachments_#{Time.current.strftime("%Y%m%d%H%M")}.zip",
+          type: "application/zip"
+        )
+      end
+    end
   end
 
   def bulk_update
@@ -1444,8 +1485,12 @@ class ModulesController < ApplicationController
     @participation_selected_month = @participation_month_filter_value == "all" ? nil : @participation_month_filter_value
     @participation_fcoc_filter_value = params[:participation_fcoc].presence
     participation_records = dashboard_training_participation_records(month_name: @participation_selected_month, fcoc_name: @participation_fcoc_filter_value)
-    participation_population_rows = training_participation_population_rows(month_name: @participation_selected_month, fcoc_name: @participation_fcoc_filter_value, records: participation_records)
-    @training_participation_status_cards = training_participation_status_cards_from_records(participation_records, month_name: @participation_selected_month, fcoc_name: @participation_fcoc_filter_value, population_rows: participation_population_rows)
+    participation_targets = training_participation_targets_for_dashboard(month_name: @participation_selected_month, fcoc_name: @participation_fcoc_filter_value)
+    @training_participation_status_cards = training_participation_status_cards(
+      participation_targets,
+      month_name: @participation_selected_month,
+      fcoc_name: @participation_fcoc_filter_value
+    )
     @training_unique_farmer_count = training_afl_farmer_rows_for_participation(
       month_name: @participation_selected_month,
       fcoc_name: @participation_fcoc_filter_value
@@ -2428,11 +2473,27 @@ class ModulesController < ApplicationController
   end
 
   def dashboard_participation_targets
+    return @filtered_targets if defined?(@filtered_targets) && @filtered_targets.present?
+
     if vrp_login_user?
       current_vrp_record.present? ? vrp_dashboard_targets(current_vrp_record) : []
     else
       dashboard_target_mappings
     end
+  end
+
+  def training_participation_targets_for_dashboard(month_name: nil, fcoc_name: nil, sub_activity_name: nil)
+    targets = dashboard_participation_targets
+    targets = dashboard_targets_for_month(targets, month_name) if month_name.present?
+    if fcoc_name.present?
+      normalized_fcoc = normalize_dashboard_text(fcoc_name)
+      targets = Array(targets).select { |target| normalize_dashboard_text(target.vrp&.fcoc) == normalized_fcoc }
+    end
+    if sub_activity_name.present?
+      normalized_sub_activity = normalize_dashboard_text(sub_activity_name)
+      targets = Array(targets).select { |target| normalize_dashboard_text(target.activity_name) == normalized_sub_activity }
+    end
+    targets
   end
 
   def dashboard_training_participation_records(month_name: nil, sub_activity_name: nil, fcoc_name: nil)
@@ -2483,7 +2544,7 @@ class ModulesController < ApplicationController
         .map { |value| normalize_dashboard_text(value) }
         .reject(&:blank?)
         .join("|")
-      farmer_key = training_participation_farmer_unique_key(farmer.id, farmer: farmer, location_key: location_key)
+      farmer_key = farmer.id.to_s
       rows_by_key[farmer_key] ||= {
         farmer_id: farmer.id.to_s,
         source_farmer_ids: [],
@@ -2637,13 +2698,14 @@ class ModulesController < ApplicationController
     normalize_dashboard_text(record.data["main_activity_type"].presence || "Training") == normalize_dashboard_text("Training")
   end
 
-  def training_participation_status_cards(targets, month_name: nil, sub_activity_name: nil)
+  def training_participation_status_cards(targets, month_name: nil, sub_activity_name: nil, fcoc_name: nil)
     counts = training_participation_status_counts(targets, month_name: month_name)
 
     %w[green yellow red pending].map do |status|
       path_params = { status: status }
       path_params[:training_month] = month_name if month_name.present?
       path_params[:training_sub_activity] = sub_activity_name if sub_activity_name.present?
+      path_params[:training_fcoc] = fcoc_name if fcoc_name.present?
 
       {
         status: status,
@@ -3033,6 +3095,59 @@ class ModulesController < ApplicationController
         ]
       end
     end
+  end
+
+  def training_participation_attachments_zip(rows)
+    files = training_participation_attachment_files(rows)
+
+    Zip::OutputStream.write_buffer do |zip|
+      files.each do |file|
+        zip.put_next_entry(file[:name])
+        zip.write(file[:content])
+      end
+    end.string
+  end
+
+  def training_participation_attachment_files(rows)
+    used_names = Hash.new(0)
+
+    Array(rows).flat_map do |row|
+      attachment_urls = Array(row[:training_register_urls]) + Array(row[:training_photo_urls])
+      attachment_urls.filter_map do |url|
+        attachment = module_upload_attachment_file(url)
+        next if attachment.blank?
+
+        base_name = attachment[:name].presence || "attachment"
+        used_names[base_name] += 1
+        file_name = if used_names[base_name] > 1
+          extension = File.extname(base_name)
+          stem = File.basename(base_name, extension)
+          "#{stem}-#{used_names[base_name]}#{extension}"
+        else
+          base_name
+        end
+
+        { name: file_name, content: attachment[:content] }
+      end
+    end
+  end
+
+  def module_upload_attachment_file(url)
+    return if url.blank?
+
+    uri = URI.parse(url.to_s)
+    path = uri.path.to_s
+    return if path.blank?
+
+    public_path = Rails.root.join("public", path.delete_prefix("/"))
+    return unless public_path.exist? && public_path.file?
+
+    {
+      name: File.basename(public_path.to_s),
+      content: public_path.binread
+    }
+  rescue URI::InvalidURIError
+    nil
   end
 
   def training_target_status_cards(targets, month_name: nil, sub_activity_name: nil)
@@ -4862,6 +4977,40 @@ class ModulesController < ApplicationController
             value
           end
         end
+      end
+    end
+  end
+
+  def module_records_attachments_zip(records)
+    files = Array(records).flat_map do |record|
+      module_record_attachment_files(record)
+    end
+
+    used_names = Hash.new(0)
+    Zip::OutputStream.write_buffer do |zip|
+      files.each do |file|
+        base_name = file[:name].presence || "attachment"
+        used_names[base_name] += 1
+        entry_name = if used_names[base_name] > 1
+          extension = File.extname(base_name)
+          stem = File.basename(base_name, extension)
+          "#{stem}-#{used_names[base_name]}#{extension}"
+        else
+          base_name
+        end
+
+        zip.put_next_entry(entry_name)
+        zip.write(file[:content])
+      end
+    end.string
+  end
+
+  def module_record_attachment_files(record)
+    fields = %w[training_register_upload training_photo_upload_with_geo_tag]
+
+    fields.flat_map do |field|
+      module_upload_public_urls(record.data[field]).filter_map do |url|
+        module_upload_attachment_file(url)
       end
     end
   end

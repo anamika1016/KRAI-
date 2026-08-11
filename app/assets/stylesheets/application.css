@@ -4707,27 +4707,76 @@ body {
   min-width: 760px;
 }
 
+.target-weekly-table th,
+.target-weekly-table td {
+  vertical-align: middle !important;
+}
+
 .target-weekly-table th:first-child,
 .target-weekly-table td:first-child {
   width: 30%;
   min-width: 240px;
   white-space: normal;
   overflow-wrap: anywhere;
+  text-align: center;
 }
 
 .target-weekly-activity {
   display: grid;
-  gap: 4px;
+  gap: 10px;
   line-height: 1.35;
+  justify-items: center;
+  text-align: center;
+  max-width: 520px;
+  margin: 0 auto;
+}
+
+.target-weekly-activity strong {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 6px 12px;
+  border-radius: 999px;
+  background: #e7f0f4;
+  color: #143b52;
+}
+
+.target-weekly-subactivities {
+  display: grid;
+  gap: 8px;
+  width: 100%;
+}
+
+.target-weekly-subactivity {
+  display: flex;
+  justify-content: center;
 }
 
 .target-weekly-activity span {
   color: var(--vrp-muted);
+  display: inline-block;
+  max-width: 100%;
+  padding: 8px 12px;
+  border-radius: 10px;
+  background: #f1f5f7;
 }
 
 .target-weekly-table td:not(:first-child),
 .target-weekly-table th:not(:first-child) {
   text-align: center;
+}
+
+.target-weekly-table td:not(:first-child) {
+  padding-top: 18px;
+  padding-bottom: 18px;
+}
+
+.target-weekly-cell-center {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 120px;
+  width: 100%;
 }
 
 .target-weekly-input {
@@ -4740,6 +4789,7 @@ body {
   font: inherit;
   font-weight: 800;
   text-align: center;
+  margin: 0 auto;
 }
 
 .target-weekly-input:focus {

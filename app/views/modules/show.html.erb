@@ -1286,6 +1286,9 @@
           </label>
           <button type="button" class="list-btn upload" data-upload-selected>Upload</button>
           <button type="button" class="list-btn export" data-export-table="<%= table_id %>">Export</button>
+          <% if @slug == "training-form-list" %>
+            <%= link_to "Download Attachments", export_module_path(@slug, format: :zip), class: "list-btn export" %>
+          <% end %>
         </div>
       </div>
 
@@ -1808,6 +1811,9 @@
           </label>
           <button type="button" class="list-btn upload" data-upload-selected>Upload</button>
           <button type="button" class="list-btn export" data-export-table="<%= table_id %>">Export</button>
+          <% if @slug == "training-form-list" %>
+            <%= link_to "Download Attachments", export_module_path(@slug, format: :zip), class: "list-btn export" %>
+          <% end %>
         </div>
       </div>
 

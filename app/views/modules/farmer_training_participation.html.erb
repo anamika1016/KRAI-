@@ -17,6 +17,7 @@
     <div class="dashboard-actions">
       <%= link_to "Back to Dashboard", dashboard_path(filter_params), class: "list-btn active" %>
       <%= link_to "Export Excel", farmer_training_participation_path(filter_params.merge(status: @training_participation_status, format: :xlsx)), class: "list-btn export" %>
+      <%= link_to "Download Attachments", farmer_training_participation_path(filter_params.merge(status: @training_participation_status, format: :zip)), class: "list-btn export" %>
     </div>
   </div>
 

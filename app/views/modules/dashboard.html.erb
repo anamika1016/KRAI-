@@ -279,6 +279,18 @@
               data: { dashboard_filter_select: true } %>
       </div>
 
+      <div class="dashboard-filter-field">
+        <label for="dash_ics">ICS</label>
+        <%= f.select :ics,
+              options_for_select(
+                [["All ICS", ""]] + (@filter_ics_options || []).map { |v| [v, v] },
+                params[:ics]
+              ),
+              {},
+              id: "dash_ics", class: "form-select dashboard-filter-select",
+              data: { dashboard_filter_select: true } %>
+      </div>
+
       <%# Month %>
       <div class="dashboard-filter-field">
         <label for="dash_month">Month</label>
@@ -399,6 +411,13 @@
       </div>
       <div class="dashboard-actions">
         <%= form_with url: dashboard_path, method: :get, local: true, html: { class: "dashboard-month-filter" } do %>
+          <%= hidden_field_tag :activity, params[:activity] if params[:activity].present? %>
+          <%= hidden_field_tag :fcoc, params[:fcoc] if params[:fcoc].present? %>
+          <%= hidden_field_tag :cluster_incharge, params[:cluster_incharge] if params[:cluster_incharge].present? %>
+          <%= hidden_field_tag :ics, params[:ics] if params[:ics].present? %>
+          <%= hidden_field_tag :month, params[:month] if params[:month].present? %>
+          <%= hidden_field_tag :post, params[:post] if params[:post].present? %>
+          <%= hidden_field_tag :vrp_id, params[:vrp_id] if params[:vrp_id].present? %>
           <%= hidden_field_tag :participation_month, @participation_month_filter_value if @participation_month_filter_value.present? %>
           <%= hidden_field_tag :participation_fcoc, @participation_fcoc_filter_value if @participation_fcoc_filter_value.present? %>
           <label class="dashboard-month-select">

@@ -3310,49 +3310,33 @@ function initDeferredLayoutPage() {
     };
 
     const activityLabelHtml = (row) => {
-      const mainActivity = escapeHtml(row.mainActivity || row.label);
-      const subActivity = row.subActivity ? `<span>${escapeHtml(row.subActivity)}</span>` : "";
-      return `<div class="target-weekly-activity"><strong>${mainActivity}</strong>${subActivity}</div>`;
+      const mainActivity = row.mainActivityLabel || row.mainActivity || "";
+      const subActivities = Array.isArray(row.subActivityLabels) ? row.subActivityLabels : [];
+      const subLabel = subActivities.length
+        ? `<div class="target-weekly-subactivities">${subActivities.map((subActivity) => `<div class="target-weekly-subactivity"><span>${escapeHtml(subActivity)}</span></div>`).join("")}</div>`
+        : "";
+      return `<div class="target-weekly-activity"><strong>${escapeHtml(mainActivity)}</strong>${subLabel}</div>`;
     };
 
     const targetActivitySummaryRows = () => {
       const mainActivities = selectedMainActivityNames();
       if (!mainActivities.length) return [];
-
       const subActivities = selectedSubActivityNames();
-      if (!subActivities.length) return mainActivities.map((mainActivity) => ({ mainActivity, label: mainActivity }));
-
-      const mappedPairs = targetSubActivityRows.map((row) => ({
-        mainActivity: row.main_activity,
-        subActivity: row.sub_activity
-      }));
-
-      return mainActivities.flatMap((mainActivity) => {
-        const matches = subActivities.filter((subActivity) => (
-          mappedPairs.length === 0 ||
-          mappedPairs.some((pair) => (
-            normalizeOption(pair.mainActivity) === normalizeOption(mainActivity) &&
-            normalizeOption(pair.subActivity) === normalizeOption(subActivity)
-          ))
-        ));
-
-        if (!matches.length) return [{ mainActivity, label: mainActivity }];
-
-        return matches.map((subActivity) => ({
-          mainActivity,
-          subActivity,
-          label: `${mainActivity} - ${subActivity}`
-        }));
-      });
+      return [{
+        mainActivity: "__common__",
+        mainActivityLabel: mainActivities.join(", "),
+        subActivityLabels: subActivities,
+        subActivity: "",
+        label: mainActivities.join(", ")
+      }];
     };
 
-    const weeklyRowKey = (row) => `${row.mainActivity || ""}||${row.subActivity || ""}`;
+    const weeklyRowKey = (row) => `${row.mainActivity || ""}`;
     const farmerIdsForRow = (rowKey) => {
-      const [mainActivity, subActivity] = String(rowKey || "").split("||");
+      const mainActivity = String(rowKey || "");
       const savedFarmerIds = savedEditFarmerIds();
       const editRowMatches = editTarget.id &&
-        normalizeOption(mainActivity) === normalizeOption(editTarget.main_activity_names?.[0]) &&
-        normalizeOption(subActivity || mainActivity) === normalizeOption(editTarget.activity_names?.[0]);
+        normalizeOption(mainActivity) === normalizeOption(editTarget.main_activity_names?.[0]);
 
       if (editRowMatches && savedFarmerIds.length && !weeklyPlanFarmerIdsDirty.has(rowKey)) {
         weeklyPlanFarmerIds[rowKey] = new Set(savedFarmerIds);
@@ -3368,8 +3352,7 @@ function initDeferredLayoutPage() {
       if (!savedFarmerIds.length || !rows.length) return;
 
       const matchingRow = rows.find((row) => (
-        normalizeOption(row.mainActivity) === normalizeOption(editTarget.main_activity_names?.[0]) &&
-        normalizeOption(row.subActivity || row.mainActivity) === normalizeOption(editTarget.activity_names?.[0])
+        normalizeOption(row.mainActivity) === normalizeOption(editTarget.main_activity_names?.[0])
       ));
       if (!matchingRow) return;
 
@@ -3430,15 +3413,15 @@ function initDeferredLayoutPage() {
           <td>
             ${activityLabelHtml(row)}
             <input type="hidden" name="target_mapping[weekly_plan][${index}][main_activity]" value="${escapeHtml(row.mainActivity)}">
-            <input type="hidden" name="target_mapping[weekly_plan][${index}][sub_activity]" value="${escapeHtml(row.subActivity || row.mainActivity)}">
+            <input type="hidden" name="target_mapping[weekly_plan][${index}][sub_activity]" value="${escapeHtml(row.subActivity)}">
           </td>
-          <td>${weeklyPlanInput(row, index, "monthly", rowMonthlyCount)}</td>
-          <td>${weeklyPlanInput(row, index, "week_1", rowWeeklyCounts[0])}</td>
-          <td>${weeklyPlanInput(row, index, "week_2", rowWeeklyCounts[1])}</td>
-          <td>${weeklyPlanInput(row, index, "week_3", rowWeeklyCounts[2])}</td>
-          <td>${weeklyPlanInput(row, index, "week_4", rowWeeklyCounts[3])}</td>
-          <td><strong data-target-weekly-farmer-total>${selectedIds.size}</strong>${farmerInputs}</td>
-          <td><button type="button" class="table-action" data-target-weekly-view="${index}" data-weekly-row-key="${escapeHtml(weeklyRowKey(row))}" data-activity-label="${escapeHtml(row.label)}">View</button></td>
+          <td><div class="target-weekly-cell-center">${weeklyPlanInput(row, index, "monthly", rowMonthlyCount)}</div></td>
+          <td><div class="target-weekly-cell-center">${weeklyPlanInput(row, index, "week_1", rowWeeklyCounts[0])}</div></td>
+          <td><div class="target-weekly-cell-center">${weeklyPlanInput(row, index, "week_2", rowWeeklyCounts[1])}</div></td>
+          <td><div class="target-weekly-cell-center">${weeklyPlanInput(row, index, "week_3", rowWeeklyCounts[2])}</div></td>
+          <td><div class="target-weekly-cell-center">${weeklyPlanInput(row, index, "week_4", rowWeeklyCounts[3])}</div></td>
+          <td><div class="target-weekly-cell-center"><strong data-target-weekly-farmer-total>${selectedIds.size}</strong>${farmerInputs}</div></td>
+          <td><div class="target-weekly-cell-center"><button type="button" class="table-action" data-target-weekly-view="${index}" data-weekly-row-key="${escapeHtml(weeklyRowKey(row))}" data-activity-label="${escapeHtml(row.label)}">View</button></div></td>
         </tr>
       `;
       }).join("");
