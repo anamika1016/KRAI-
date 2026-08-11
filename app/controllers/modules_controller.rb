@@ -604,7 +604,10 @@ class ModulesController < ApplicationController
     end
 
     # 4. Month Filter (depends on Activity, FCO, Cluster Incharge)
-    @filter_month_options = t_scope.map(&:month_name).uniq.compact_blank.sort_by { |m| dashboard_month_index(m) || 0 }
+    @filter_month_options = (t_scope.map(&:month_name) + month_master_month_options)
+      .uniq
+      .compact_blank
+      .sort_by { |m| dashboard_month_index(m) || 0 }
     if params[:month].present?
       m = params[:month].to_s
       t_scope = t_scope.select { |t| t.month_name == m }
@@ -2978,7 +2981,7 @@ class ModulesController < ApplicationController
   def training_participation_status_caption(status)
     {
       "total" => "Farmer Training Form me selected farmer entries.",
-      "unique" => "Selected month ke mapped FCOs ke AFL unique farmers.",
+      "unique" => "Mapped FCOs ke AFL unique farmers.",
       "green" => "Farmer attended 3 or more trainings.",
       "yellow" => "Farmer attended 1-2 trainings.",
       "red" => "Month closed and farmer did not attend any training.",
@@ -3504,8 +3507,10 @@ class ModulesController < ApplicationController
   end
 
   def dashboard_month_options_for_targets(targets)
-    Array(targets)
-      .map { |target| target.month_name.to_s.strip }
+    target_months = Array(targets).map { |target| target.month_name.to_s.strip }
+    master_months = month_master_month_options
+
+    (target_months + master_months)
       .reject(&:blank?)
       .uniq
       .sort_by { |month| [dashboard_month_index(month), month] }
