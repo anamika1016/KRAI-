@@ -692,9 +692,12 @@ class ModulesController < ApplicationController
     @participation_selected_month = @participation_month_filter_value == "all" ? nil : @participation_month_filter_value
     @participation_fcoc_filter_value = params[:participation_fcoc].presence
     participation_records = dashboard_training_participation_records(month_name: @participation_selected_month, fcoc_name: @participation_fcoc_filter_value)
-    participation_targets = dashboard_training_participation_targets(month_name: @participation_selected_month, fcoc_name: @participation_fcoc_filter_value)
-    @training_participation_status_cards = training_participation_status_cards_from_records(participation_records, month_name: @participation_selected_month, fcoc_name: @participation_fcoc_filter_value, targets: participation_targets)
-    @training_unique_farmer_count = training_unique_farmer_count_from_records(participation_records)
+    participation_population_rows = training_participation_population_rows(month_name: @participation_selected_month, fcoc_name: @participation_fcoc_filter_value, records: participation_records)
+    @training_participation_status_cards = training_participation_status_cards_from_records(participation_records, month_name: @participation_selected_month, fcoc_name: @participation_fcoc_filter_value, population_rows: participation_population_rows)
+    @training_unique_farmer_count = training_afl_farmer_rows_for_participation(
+      month_name: @participation_selected_month,
+      fcoc_name: @participation_fcoc_filter_value
+    ).size
     @training_total_training_farmer_count = training_total_farmer_count_from_records(participation_records)
     if request.format.xlsx?
       @training_target_status_cards = training_target_status_cards(training_targets, month_name: selected_month, sub_activity_name: selected_sub_activity)
@@ -741,14 +744,16 @@ class ModulesController < ApplicationController
     selected_fcoc = params[:training_fcoc].presence
     selected_status = normalize_training_participation_status(params[:status]) || "green"
     training_records = dashboard_training_participation_records(month_name: selected_month, sub_activity_name: selected_sub_activity, fcoc_name: selected_fcoc)
-    participation_targets = dashboard_training_participation_targets(month_name: selected_month, fcoc_name: selected_fcoc)
+    participation_population_rows = training_participation_population_rows(month_name: selected_month, fcoc_name: selected_fcoc, records: training_records)
 
     @training_participation_status = selected_status
     @training_participation_title = training_participation_status_label(selected_status)
     @training_participation_caption = training_participation_status_caption(selected_status)
     @training_participation_rows = training_participation_farmer_rows_from_records(training_records)
-    @training_participation_rows = if %w[red pending].include?(selected_status)
-      training_participation_farmer_rows(participation_targets, month_name: selected_month).select { |row| row[:status] == selected_status }
+    @training_participation_rows = if selected_status == "unique"
+      participation_population_rows
+    elsif %w[green yellow red pending].include?(selected_status)
+      participation_population_rows.select { |row| row[:status] == selected_status }
     elsif selected_status == "total"
       @training_participation_rows
     elsif selected_status == "unique"
@@ -757,10 +762,9 @@ class ModulesController < ApplicationController
       @training_participation_rows.select { |row| row[:status] == selected_status }
     end
     @training_participation_totals = training_participation_status_counts_from_records(training_records)
-    target_status_counts = training_participation_status_counts(participation_targets, month_name: selected_month)
-    @training_participation_totals[:red] = target_status_counts[:red]
-    @training_participation_totals[:pending] = target_status_counts[:pending]
-    @training_unique_farmer_count = training_unique_farmer_count_from_records(training_records)
+    population_status_counts = training_participation_status_counts_from_rows(participation_population_rows)
+    @training_participation_totals.merge!(population_status_counts.slice(:green, :yellow, :red, :pending))
+    @training_unique_farmer_count = training_afl_farmer_rows_for_participation(month_name: selected_month, fcoc_name: selected_fcoc).size
     @training_total_training_farmer_count = training_total_farmer_count_from_records(training_records)
     @training_participation_totals[:unique] = @training_unique_farmer_count
     @training_participation_totals[:total] = @training_total_training_farmer_count
@@ -1437,9 +1441,12 @@ class ModulesController < ApplicationController
     @participation_selected_month = @participation_month_filter_value == "all" ? nil : @participation_month_filter_value
     @participation_fcoc_filter_value = params[:participation_fcoc].presence
     participation_records = dashboard_training_participation_records(month_name: @participation_selected_month, fcoc_name: @participation_fcoc_filter_value)
-    participation_targets = dashboard_training_participation_targets(month_name: @participation_selected_month, fcoc_name: @participation_fcoc_filter_value)
-    @training_participation_status_cards = training_participation_status_cards_from_records(participation_records, month_name: @participation_selected_month, fcoc_name: @participation_fcoc_filter_value, targets: participation_targets)
-    @training_unique_farmer_count = training_unique_farmer_count_from_records(participation_records)
+    participation_population_rows = training_participation_population_rows(month_name: @participation_selected_month, fcoc_name: @participation_fcoc_filter_value, records: participation_records)
+    @training_participation_status_cards = training_participation_status_cards_from_records(participation_records, month_name: @participation_selected_month, fcoc_name: @participation_fcoc_filter_value, population_rows: participation_population_rows)
+    @training_unique_farmer_count = training_afl_farmer_rows_for_participation(
+      month_name: @participation_selected_month,
+      fcoc_name: @participation_fcoc_filter_value
+    ).size
     @training_total_training_farmer_count = training_total_farmer_count_from_records(participation_records)
     village_count = @vrp_village_rows.size
     preload_training_farmers_for_targets!(filtered_targets)
@@ -2454,18 +2461,72 @@ class ModulesController < ApplicationController
     records
   end
 
-  def dashboard_training_participation_targets(month_name: nil, fcoc_name: nil)
-    activity_settings = jeevika_jankar_main_activity_settings
+  # The Unique Farmers card represents the AFL population for the FCOs mapped
+  # in the selected month. It must not be limited to farmers who already have
+  # a Training Form entry.
+  def training_afl_farmer_rows_for_participation(month_name: nil, fcoc_name: nil)
+    return [] unless model_ready?(:Afl)
+
     targets = dashboard_targets_for_month(dashboard_participation_targets, month_name)
-      .select do |target|
-        setting = activity_settings[normalize_dashboard_text(target.main_activity_name)]
-        setting.present? && training_main_activity_type?(setting[:main_activity_type])
-      end
-
     normalized_fcoc = normalize_dashboard_text(fcoc_name)
-    return targets if normalized_fcoc.blank?
+    if normalized_fcoc.present?
+      targets = targets.select { |target| normalize_dashboard_text(target.vrp&.fcoc) == normalized_fcoc }
+    end
 
-    targets.select { |target| normalize_dashboard_text(target.vrp&.fcoc) == normalized_fcoc }
+    fco_ids = targets.filter_map { |target| target.fco_id.to_s.strip.presence }.uniq
+    return [] if fco_ids.blank?
+
+    Afl.where(fco_id: fco_ids).order(:id).each_with_object({}) do |farmer, rows_by_key|
+      location_key = [farmer.ics_id, farmer.village_id]
+        .map { |value| normalize_dashboard_text(value) }
+        .reject(&:blank?)
+        .join("|")
+      farmer_key = training_participation_farmer_unique_key(farmer.id, farmer: farmer, location_key: location_key)
+      rows_by_key[farmer_key] ||= {
+        farmer_id: farmer.id.to_s,
+        source_farmer_ids: [],
+        farmer_name: dashboard_text_value(farmer.farmer_name).presence || "Farmer ##{farmer.id}",
+        father_name: dashboard_text_value(farmer.father_name),
+        mobile_no: dashboard_text_value(farmer.mobile_no),
+        tracenet_no: dashboard_text_value(farmer.tracenet_no),
+        khasara_no: dashboard_text_value(farmer.khasara_no),
+        ics: dashboard_text_value(farmer.ics_name).presence || dashboard_text_value(farmer.ics_id).presence || "-",
+        village: dashboard_text_value(farmer.village_name).presence || dashboard_text_value(farmer.village_id).presence || "-",
+        vrp: "-",
+        months: month_name.presence || "-",
+        main_activities: "-",
+        sub_activities: "-",
+        attendance_count: 0,
+        status: "unique",
+        status_label: "AFL Farmer",
+        training_dates: "-",
+        last_training_date: "-",
+        training_register_urls: [],
+        training_photo_urls: []
+      }
+      rows_by_key[farmer_key][:source_farmer_ids] |= [farmer.id.to_s]
+    end.values.sort_by { |row| row[:farmer_name].to_s.downcase }
+  end
+
+  def training_participation_population_rows(month_name:, fcoc_name:, records:)
+    rows = training_afl_farmer_rows_for_participation(month_name: month_name, fcoc_name: fcoc_name)
+    attendance_by_farmer_id = Hash.new(0)
+    Array(records).each do |record|
+      training_record_selected_farmer_ids(record).each { |farmer_id| attendance_by_farmer_id[farmer_id] += 1 }
+    end
+
+    rows.map do |row|
+      attendance_count = Array(row[:source_farmer_ids]).sum { |farmer_id| attendance_by_farmer_id[farmer_id] }
+      status = training_participation_status_for_count(
+        attendance_count,
+        pending_available: training_participation_month_open?(month_name)
+      )
+      row.merge(
+        attendance_count: attendance_count,
+        status: status,
+        status_label: training_participation_status_label(status)
+      )
+    end
   end
 
   def training_record_matches_fcoc?(record, fcoc_name)
@@ -2592,9 +2653,9 @@ class ModulesController < ApplicationController
     end
   end
 
-  def training_participation_status_cards_from_records(records, month_name: nil, sub_activity_name: nil, fcoc_name: nil, targets: nil)
+  def training_participation_status_cards_from_records(records, month_name: nil, sub_activity_name: nil, fcoc_name: nil, population_rows: nil)
     counts = training_participation_status_counts_from_records(records)
-    target_counts = targets.nil? ? {} : training_participation_status_counts(targets, month_name: month_name)
+    population_counts = population_rows.nil? ? {} : training_participation_status_counts_from_rows(population_rows)
 
     %w[green yellow red pending].map do |status|
       path_params = { status: status }
@@ -2605,7 +2666,7 @@ class ModulesController < ApplicationController
       {
         status: status,
         title: training_participation_status_label(status),
-        value: (%w[red pending].include?(status) ? target_counts.fetch(status.to_sym, counts[status.to_sym]) : counts[status.to_sym]).to_i,
+        value: population_counts.fetch(status.to_sym, counts[status.to_sym]).to_i,
         caption: training_participation_status_caption(status),
         path: farmer_training_participation_path(path_params)
       }
@@ -2623,6 +2684,13 @@ class ModulesController < ApplicationController
       pending: rows.count { |row| row[:status] == "pending" },
       total: training_total_farmer_count_from_records(records)
     }
+  end
+
+  def training_participation_status_counts_from_rows(rows)
+    Array(rows).each_with_object({ green: 0, yellow: 0, red: 0, pending: 0 }) do |row, counts|
+      status = row[:status].to_sym
+      counts[status] += 1 if counts.key?(status)
+    end
   end
 
   def training_unique_farmer_count_from_records(records)
@@ -2911,7 +2979,7 @@ class ModulesController < ApplicationController
   def training_participation_status_caption(status)
     {
       "total" => "Farmer Training Form me selected farmer entries.",
-      "unique" => "Selected month ke Farmer Training Form me distinct farmers.",
+      "unique" => "Selected month ke mapped FCOs ke AFL unique farmers.",
       "green" => "Farmer attended 3 or more trainings.",
       "yellow" => "Farmer attended 1-2 trainings.",
       "red" => "Month closed and farmer did not attend any training.",
