@@ -278,7 +278,13 @@
                   <td><%= target.village_name.presence || target.village_id %></td>
                   <td><%= target.month_name %></td>
                   <td><%= target.completion_date&.strftime("%d-%m-%Y") || "-" %></td>
-                  <td class="target-activity-text"><%= target.main_activity_name %></td>
+                  <td class="target-activity-text">
+                    <div class="target-activity-grouped-list">
+                      <% Array(row[:main_activities]).each do |main_activity| %>
+                        <span><%= main_activity %></span>
+                      <% end %>
+                    </div>
+                  </td>
                   <td class="target-activity-text">
                     <div class="target-activity-grouped-list">
                       <% Array(row[:sub_activities]).each do |sub_activity| %>
@@ -291,8 +297,8 @@
                   <td><%= number_with_precision(target.input_demo_inm_target, precision: 4, strip_insignificant_zeros: true) if target.input_demo_inm_target.present? %></td>
                   <td><%= number_with_precision(target.input_demo_pm_target, precision: 4, strip_insignificant_zeros: true) if target.input_demo_pm_target.present? %></td>
                   <td><%= number_with_precision(target.ffs_target, precision: 4, strip_insignificant_zeros: true) if target.ffs_target.present? %></td>
-                  <td class="target-count-cell"><%= number_with_precision(target.target_quantity, precision: 4, strip_insignificant_zeros: true) %></td>
-                  <% week_targets = target.weekly_target_values %>
+                  <td class="target-count-cell"><%= number_with_precision(row[:target_quantity], precision: 4, strip_insignificant_zeros: true) %></td>
+                  <% week_targets = Array(row[:weekly_values]).presence || target.weekly_target_values %>
                   <td class="target-count-cell"><%= week_targets[0] %></td>
                   <td class="target-count-cell"><%= week_targets[1] %></td>
                   <td class="target-count-cell"><%= week_targets[2] %></td>

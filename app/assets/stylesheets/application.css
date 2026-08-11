@@ -7206,3 +7206,15 @@ body {
   transform: translateY(-1px);
   box-shadow: 0 4px 10px rgba(31, 55, 65, 0.16);
 }
+.target-activity-grouped-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  align-items: flex-start;
+}
+
+.target-activity-grouped-list span {
+  display: block;
+  line-height: 1.4;
+  padding: 2px 0;
+}

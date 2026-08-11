@@ -13,6 +13,7 @@
 <% total_status_path_params[:training_month] = participation_selected_month if participation_selected_month.present? %>
 <% total_status_path_params[:training_fcoc] = participation_fcoc_filter_value if participation_fcoc_filter_value.present? %>
 <% unique_status_path_params = total_status_path_params.merge(status: "unique") %>
+<% training_unique_status_path_params = total_status_path_params.merge(status: "training_unique") %>
 <% target_status_cards = Array(@training_target_status_cards || []) %>
 
 <section class="module-card training-participation-status-card dashboard-status-panel training-status-panel">
@@ -66,6 +67,12 @@
         <span>Total Training Farmer</span>
         <strong><%= status_total %></strong>
         <small>Farmer Training Form ke selected farmers.</small>
+        <b>View List</b>
+      <% end %>
+      <%= link_to farmer_training_participation_path(training_unique_status_path_params), class: "training-participation-box total", data: { dashboard_card: true } do %>
+        <span>Training Unique Farmers</span>
+        <strong><%= @training_records_unique_farmer_count.to_i %></strong>
+        <small>Total Training Farmer me se distinct farmers.</small>
         <b>View List</b>
       <% end %>
       <% status_cards.each do |card| %>

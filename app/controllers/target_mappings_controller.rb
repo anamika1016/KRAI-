@@ -38,17 +38,21 @@ class TargetMappingsController < ApplicationController
     end
 
     if editable_target
-      target_mapping = editable_target
-      target_mapping.assign_attributes(single_target_mapping_attributes)
-      apply_weekly_plan_target(target_mapping)
-      target_mapping.vrp_ics_mapping_id = nil
-      normalize_location_values(target_mapping)
-      assign_afl_location_names(target_mapping)
+      mappings = build_target_mappings_for_selected_activities
 
-      if target_vrp_allowed?(target_mapping) && assign_target_farmers(target_mapping) && target_mapping.save
+      errors = mappings.flat_map do |target_mapping|
+        valid_mapping = target_vrp_allowed?(target_mapping) && assign_target_farmers(target_mapping) && target_mapping.valid?
+        valid_mapping ? [] : target_mapping.errors.full_messages
+      end
+
+      if mappings.any? && errors.blank?
+        TargetMapping.transaction do
+          editable_target_group.each(&:destroy!)
+          mappings.each(&:save!)
+        end
         redirect_to target_mappings_path, notice: "Target mapping saved successfully."
       else
-        redirect_to target_mappings_path, alert: target_mapping.errors.full_messages.to_sentence
+        redirect_to target_mappings_path, alert: errors.presence&.to_sentence || training_target_mode_error_message
       end
       return
     end
@@ -137,8 +141,6 @@ class TargetMappingsController < ApplicationController
       :training_targets,
       :weekly_plan
     )
-    attrs[:main_activity_name] = target_activity_values(target_mapping_params[:main_activity_names]).first || attrs[:main_activity_name]
-    attrs[:activity_name] = target_activity_values(target_mapping_params[:activity_names]).first || attrs[:activity_name]
     attrs[:target_quantity] = new_farmer_target_quantity if new_farmer_target_mode?
     attrs.merge!(training_target_attributes)
     attrs
@@ -303,12 +305,13 @@ class TargetMappingsController < ApplicationController
     return [] if main_activities.blank? || sub_activities.blank?
 
     mapped_pairs = target_sub_activity_map.map do |row|
-      [row[:main_activity].to_s.strip, row[:sub_activity].to_s.strip]
+      [normalized_activity_value(row[:main_activity]), normalized_activity_value(row[:sub_activity])]
     end
 
     main_activities.product(sub_activities).select do |main_activity, sub_activity|
       mapped_pairs.blank? || mapped_pairs.any? do |mapped_main, mapped_sub|
-        mapped_main.casecmp(main_activity).zero? && mapped_sub.casecmp(sub_activity).zero?
+        mapped_main == normalized_activity_value(main_activity) &&
+          mapped_sub == normalized_activity_value(sub_activity)
       end
     end.uniq
   end
@@ -326,12 +329,12 @@ class TargetMappingsController < ApplicationController
         return target_activity_values(parsed)
       end
 
-      [stripped]
+      [normalized_activity_display_value(stripped)]
     else
       Array(value).flat_map { |item| target_activity_values(item) }
-    end.map(&:to_s).map(&:strip).reject(&:blank?).uniq
+    end.map { |item| normalized_activity_display_value(item) }.reject(&:blank?).uniq
   rescue JSON::ParserError
-    [value.to_s.strip].reject(&:blank?)
+    [normalized_activity_display_value(value)].reject(&:blank?)
   end
 
   def target_village_param
@@ -342,6 +345,32 @@ class TargetMappingsController < ApplicationController
     return if params.dig(:target_mapping, :id).blank?
 
     visible_target_mappings.find(params.dig(:target_mapping, :id))
+  end
+
+  def editable_target_group
+    target = editable_target
+    return [] unless target
+
+    visible_target_mappings.select do |row|
+      target_group_signature(row) == target_group_signature(target)
+    end
+  end
+
+  def target_group_signature(target)
+    [
+      target.vrp_id,
+      target.fco_name.presence || target.fco_id,
+      target.ics_name.presence || target.ics_id,
+      target.village_name.presence || target.village_id,
+      target.month_name,
+      target.completion_date,
+      target.opg_training_target.to_s,
+      target.week_wise_opg_target.to_s,
+      target.input_demo_inm_target.to_s,
+      target.input_demo_pm_target.to_s,
+      target.ffs_target.to_s,
+      Array(target.afl_ids).map(&:to_s).reject(&:blank?).sort
+    ]
   end
 
   def target_vrps
@@ -1078,11 +1107,11 @@ class TargetMappingsController < ApplicationController
   end
 
   def target_sub_activity_options(main_activity)
-    selected_main_activity = main_activity.to_s.strip.downcase
+    selected_main_activity = normalized_activity_value(main_activity)
     return [] if selected_main_activity.blank?
 
     target_sub_activity_map
-      .select { |row| row[:main_activity].to_s.strip.downcase == selected_main_activity }
+      .select { |row| normalized_activity_value(row[:main_activity]) == selected_main_activity }
       .filter_map { |row| row[:sub_activity].presence }
       .uniq
   end
@@ -1155,27 +1184,30 @@ class TargetMappingsController < ApplicationController
   def edit_payload(target)
     return {} unless target
 
-    training_key = TRAINING_TARGET_FIELDS.key(target.activity_name.to_s)
+    grouped_targets = editable_targets_for_payload(target)
+    primary_target = grouped_targets.first || target
+
+    training_key = TRAINING_TARGET_FIELDS.key(primary_target.activity_name.to_s)
     training_mode = training_key.present?
 
     {
-      id: target.id,
-      vrp_id: target.vrp_id.to_s,
-      fco_id: encoded_location_value(target.fco_id, target.fco_name),
-      ics_id: encoded_location_value(target.ics_id, target.ics_name),
-      village_id: encoded_location_value(target.village_id, target.village_name),
-      village_ids: encoded_location_values(target.village_id, target.village_name),
-      month_name: target.month_name.to_s,
-      completion_date: target.completion_date&.strftime("%Y-%m-%d"),
-      main_activity_type: training_mode ? "Training" : main_activity_type_for(target.main_activity_name),
-      main_activity_names: [target.main_activity_name.to_s].reject(&:blank?),
-      activity_names: [target.activity_name.to_s].reject(&:blank?),
-      target_quantity: target_number_value(target.target_quantity),
-      new_farmer_target_quantity: Array(target.afl_ids).blank? && !training_mode ? target_number_value(target.target_quantity) : "",
+      id: primary_target.id,
+      vrp_id: primary_target.vrp_id.to_s,
+      fco_id: encoded_location_value(primary_target.fco_id, primary_target.fco_name),
+      ics_id: encoded_location_value(primary_target.ics_id, primary_target.ics_name),
+      village_id: encoded_location_value(primary_target.village_id, primary_target.village_name),
+      village_ids: encoded_location_values(primary_target.village_id, primary_target.village_name),
+      month_name: primary_target.month_name.to_s,
+      completion_date: primary_target.completion_date&.strftime("%Y-%m-%d"),
+      main_activity_type: training_mode ? "Training" : main_activity_type_for(primary_target.main_activity_name),
+      main_activity_names: unique_activity_values(grouped_targets.map(&:main_activity_name)),
+      activity_names: unique_activity_values(grouped_targets.map(&:activity_name)),
+      target_quantity: target_number_value(grouped_targets.map { |row| row.target_quantity.to_f }.max),
+      new_farmer_target_quantity: grouped_targets.all? { |row| Array(row.afl_ids).blank? } && !training_mode ? target_number_value(grouped_targets.map { |row| row.target_quantity.to_f }.max) : "",
       training_targets: TRAINING_TARGET_FIELDS.keys.index_with do |key|
-        target_number_value(target.public_send("#{key}_target"))
+        target_number_value(primary_target.public_send("#{key}_target"))
       end,
-      afl_ids: Array(target.afl_ids).map(&:to_s)
+      afl_ids: grouped_targets.flat_map { |row| Array(row.afl_ids).map(&:to_s) }.reject(&:blank?).uniq
     }
   end
 
@@ -1188,22 +1220,54 @@ class TargetMappingsController < ApplicationController
         target.village_name.presence || target.village_id,
         target.month_name,
         target.completion_date,
-        target.main_activity_name,
         target.opg_training_target.to_s,
         target.week_wise_opg_target.to_s,
         target.input_demo_inm_target.to_s,
         target.input_demo_pm_target.to_s,
         target.ffs_target.to_s,
-        target.target_quantity.to_s,
-        Array(target.weekly_target_values).map(&:to_i)
+        Array(target.afl_ids).map(&:to_s).reject(&:blank?).sort
       ]
     end.map do |_key, grouped_targets|
       target = grouped_targets.first
+      weekly_values = grouped_targets.map { |row| Array(row.weekly_target_values).map(&:to_i) }
+      merged_weekly_values = 4.times.map do |index|
+        weekly_values.map { |values| values[index].to_i }.max.to_i
+      end
       {
         target: target,
-        sub_activities: grouped_targets.map { |row| row.activity_name.to_s.strip }.reject(&:blank?).uniq,
-        farmer_ids: grouped_targets.flat_map { |row| Array(row.afl_ids).map(&:to_s) }.reject(&:blank?).uniq
+        main_activities: unique_activity_values(grouped_targets.map(&:main_activity_name)),
+        sub_activities: unique_activity_values(grouped_targets.map(&:activity_name)),
+        farmer_ids: grouped_targets.flat_map { |row| Array(row.afl_ids).map(&:to_s) }.reject(&:blank?).uniq,
+        target_quantity: grouped_targets.map { |row| row.target_quantity.to_f }.max,
+        weekly_values: merged_weekly_values
       }
+    end
+  end
+
+  def editable_targets_for_payload(target)
+    return [] unless target
+
+    target_group = visible_target_mappings.select do |row|
+      target_group_signature(row) == target_group_signature(target)
+    end
+    target_group.presence || [target]
+  end
+
+  def normalized_activity_value(value)
+    value.to_s.squish.downcase
+  end
+
+  def normalized_activity_display_value(value)
+    value.to_s.squish
+  end
+
+  def unique_activity_values(values)
+    Array(values).each_with_object([]) do |value, result|
+      display_value = normalized_activity_display_value(value)
+      next if display_value.blank?
+      next if result.any? { |existing| normalized_activity_value(existing) == normalized_activity_value(display_value) }
+
+      result << display_value
     end
   end
 

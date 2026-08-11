@@ -291,30 +291,32 @@ module ApplicationHelper
     access_records = ModuleRecord
       .where(module_slug: "access-control")
       .order(created_at: :desc)
-      .select { |record| record.data["status"].blank? || record.data["status"].to_s.casecmp("Active").zero? }
+      .select { |record| record_data(record)["status"].blank? || record_data(record)["status"].to_s.casecmp("Active").zero? }
       .select do |record|
-        record_stakeholder = record.data["stakeholder_name"].presence || record.data["stakeholder"]
+        data = record_data(record)
+        record_stakeholder = data["stakeholder_name"].presence || data["stakeholder"]
         stakeholder_match = access_value_matches?(record_stakeholder, current_app_user["stakeholder"])
-        record_stakeholder_role = record.data["stakeholder_role"].presence || record.data["stakeholder_person_type"]
+        record_stakeholder_role = data["stakeholder_role"].presence || data["stakeholder_person_type"]
         stakeholder_role_match = access_value_matches?(record_stakeholder_role, current_app_user["stakeholder_role"])
-        record_role = record.data["role"].presence || record.data["role_name"]
+        record_role = data["role"].presence || data["role_name"]
         role_match = access_value_matches?(record_role, current_app_user["role"])
-        record_role_name = record.data["role"].present? ? record.data["role_name"] : nil
+        record_role_name = data["role"].present? ? data["role_name"] : nil
         role_name_match = access_value_matches?(record_role_name, current_app_user["role_name"])
-        record_user_management_role = record.data["user_management_role"].presence || record.data["user_management_person_type"]
+        record_user_management_role = data["user_management_role"].presence || data["user_management_person_type"]
         user_management_role_match = access_value_matches?(record_user_management_role, current_app_user["user_management_role"])
-        record_person_type = record.data["person_type"]
+        record_person_type = data["person_type"]
         person_type_match = access_value_matches?(record_person_type, current_app_user["person_type"])
-        record_vrp_type = record.data["jeevika_jankar_type"].presence || record.data["vrp_type"].presence || record.data["select_vrp_type"]
+        record_vrp_type = data["jeevika_jankar_type"].presence || data["vrp_type"].presence || data["select_vrp_type"]
         vrp_type_match = access_value_matches_any?(record_vrp_type, current_app_user["vrp_types"])
-        can_view = record.data["can_view"].blank? || record.data["can_view"].to_s.casecmp("Yes").zero?
+        can_view = data["can_view"].blank? || data["can_view"].to_s.casecmp("Yes").zero?
         next can_view && record_vrp_type.present? && vrp_type_match if vrp_login_user?
 
         stakeholder_match && stakeholder_role_match && role_match && role_name_match && user_management_role_match && person_type_match && vrp_type_match && can_view
       end
 
     access_records.flat_map do |record|
-      access_values(record.data["sub_module_names"].presence || record.data["sub_module_name"])
+      data = record_data(record)
+      access_values(data["sub_module_names"].presence || data["sub_module_name"])
         .flat_map { |name| sidebar_access_name_keys(name) }
     end.uniq
   end
@@ -529,7 +531,10 @@ module ApplicationHelper
     @active_stakeholder_records[module_slug] ||= ModuleRecord
       .where(module_slug: module_slug)
       .order(updated_at: :desc)
-      .select { |record| record.data["status"].blank? || record.data["status"] == "Active" }
+      .select do |record|
+        status = record_data(record)["status"]
+        status.blank? || status.to_s.casecmp("Active").zero?
+      end
   end
 
   def matching_stakeholder_record(module_slug)
@@ -569,7 +574,7 @@ module ApplicationHelper
     legacy_user = ModuleRecord
       .where(module_slug: "new-user")
       .order(updated_at: :desc)
-      .detect { |record| record.data["user_name"].to_s == username }
+      .detect { |record| record_data(record)["user_name"].to_s == username }
     names << legacy_user&.data&.[]("stakeholder")
     @current_user_stakeholder_names = names.compact_blank.map { |name| name.to_s.strip }.uniq
   end
@@ -578,11 +583,12 @@ module ApplicationHelper
     normalized_stakeholder = normalize_stakeholder_name(stakeholder_name)
     return false if normalized_stakeholder.blank?
 
+    data = record_data(record)
     values = [
-      record.data["stakeholder_name_in_english"],
-      record.data["stakeholder_name_in_hindi"],
-      record.data["stakeholder_name"],
-      record.data["profile_name"]
+      data["stakeholder_name_in_english"],
+      data["stakeholder_name_in_hindi"],
+      data["stakeholder_name"],
+      data["profile_name"]
     ]
 
     values.compact.any? do |value|
@@ -591,6 +597,11 @@ module ApplicationHelper
         normalized_value.split.include?(normalized_stakeholder) ||
         normalized_stakeholder.split.include?(normalized_value)
     end
+  end
+
+  def record_data(record)
+    data = record.respond_to?(:data) ? record.data : nil
+    data.is_a?(Hash) ? data : {}
   end
 
   def normalize_stakeholder_name(value)
