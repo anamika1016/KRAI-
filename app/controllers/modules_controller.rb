@@ -694,6 +694,7 @@ class ModulesController < ApplicationController
     participation_records = dashboard_training_participation_records(month_name: @participation_selected_month, fcoc_name: @participation_fcoc_filter_value)
     @training_participation_status_cards = training_participation_status_cards_from_records(participation_records, month_name: @participation_selected_month, fcoc_name: @participation_fcoc_filter_value)
     @training_unique_farmer_count = training_unique_farmer_count_from_records(participation_records)
+    @training_total_training_farmer_count = training_total_farmer_count_from_records(participation_records)
     if request.format.xlsx?
       @training_target_status_cards = training_target_status_cards(training_targets, month_name: selected_month, sub_activity_name: selected_sub_activity)
       @training_participation = training_participation_summary(training_targets, month_name: selected_month)
@@ -747,12 +748,15 @@ class ModulesController < ApplicationController
     @training_participation_rows = if selected_status == "total"
       @training_participation_rows
     elsif selected_status == "unique"
-      @training_participation_rows.select { |row| row[:attendance_count].to_i == 1 }
+      @training_participation_rows
     else
       @training_participation_rows.select { |row| row[:status] == selected_status }
     end
     @training_participation_totals = training_participation_status_counts_from_records(training_records)
     @training_unique_farmer_count = training_unique_farmer_count_from_records(training_records)
+    @training_total_training_farmer_count = training_total_farmer_count_from_records(training_records)
+    @training_participation_totals[:unique] = @training_unique_farmer_count
+    @training_participation_totals[:total] = @training_total_training_farmer_count
     @training_selected_month = selected_month
     @training_selected_sub_activity = selected_sub_activity
     @training_selected_fcoc = selected_fcoc
@@ -1428,6 +1432,7 @@ class ModulesController < ApplicationController
     participation_records = dashboard_training_participation_records(month_name: @participation_selected_month, fcoc_name: @participation_fcoc_filter_value)
     @training_participation_status_cards = training_participation_status_cards_from_records(participation_records, month_name: @participation_selected_month, fcoc_name: @participation_fcoc_filter_value)
     @training_unique_farmer_count = training_unique_farmer_count_from_records(participation_records)
+    @training_total_training_farmer_count = training_total_farmer_count_from_records(participation_records)
     village_count = @vrp_village_rows.size
     preload_training_farmers_for_targets!(filtered_targets)
     @vrp_target_rows = vrp_dashboard_target_progress_rows(filtered_targets, bills)
@@ -2588,19 +2593,21 @@ class ModulesController < ApplicationController
     rows = training_participation_farmer_rows_from_records(records)
 
     {
-      unique: rows.count { |row| row[:attendance_count].to_i == 1 },
+      unique: rows.size,
       green: rows.count { |row| row[:status] == "green" },
       yellow: rows.count { |row| row[:status] == "yellow" },
       red: rows.count { |row| row[:status] == "red" },
       pending: rows.count { |row| row[:status] == "pending" },
-      total: rows.size
+      total: training_total_farmer_count_from_records(records)
     }
   end
 
   def training_unique_farmer_count_from_records(records)
-    training_participation_farmer_rows_from_records(records).count do |row|
-      row[:attendance_count].to_i == 1
-    end
+    training_participation_farmer_rows_from_records(records).size
+  end
+
+  def training_total_farmer_count_from_records(records)
+    Array(records).sum { |record| training_record_selected_farmer_ids(record).size }
   end
 
   def training_participation_farmer_unique_key(farmer_id, farmer: nil, saved_name: nil, location_key: nil)
@@ -2880,8 +2887,8 @@ class ModulesController < ApplicationController
 
   def training_participation_status_caption(status)
     {
-      "total" => "Farmer Target Form ke selected farmers.",
-      "unique" => "Sirf wahi farmer jinki training selected month me ek hi baar hui.",
+      "total" => "Farmer Training Form me selected farmer entries.",
+      "unique" => "Selected month ke Farmer Training Form me distinct farmers.",
       "green" => "Farmer attended 3 or more trainings.",
       "yellow" => "Farmer attended 1-2 trainings.",
       "red" => "Month closed and farmer did not attend any training.",
