@@ -2926,11 +2926,25 @@ class ModulesController < ApplicationController
   end
 
   def training_participation_target_memberships(targets)
-    Array(targets).each_with_object({}) do |target, memberships|
+    targets = Array(targets)
+    farmers_by_id = training_farmers_by_id(targets.flat_map { |target| target_farmer_ids(target) }.uniq)
+
+    targets.each_with_object({}) do |target, memberships|
       target_farmer_ids(target).each do |farmer_id|
-        membership_key = training_participation_membership_key(farmer_id, target.month_name)
+        farmer = farmers_by_id[farmer_id.to_s]
+        location_key = [
+          target_ics_label(target).to_s.strip,
+          target_village_label(target).to_s.strip
+        ].reject(&:blank?).join("|")
+        unique_farmer_key = training_participation_farmer_unique_key(
+          farmer_id,
+          farmer: farmer,
+          location_key: location_key
+        )
+        membership_key = training_participation_membership_key(unique_farmer_key, target.month_name)
         memberships[membership_key] ||= {
-          farmer_id: farmer_id,
+          farmer_id: farmer_id.to_s,
+          source_farmer_ids: [],
           months: [],
           ics: [],
           village: [],
@@ -2947,6 +2961,7 @@ class ModulesController < ApplicationController
         memberships[membership_key][:main_activities] |= [target.main_activity_name.to_s.strip].reject(&:blank?)
         memberships[membership_key][:sub_activities] |= [target.activity_name.to_s.strip].reject(&:blank?)
         memberships[membership_key][:pending_available] ||= training_participation_month_open?(target.month_name)
+        memberships[membership_key][:source_farmer_ids] |= [farmer_id.to_s]
       end
     end.transform_values do |membership|
       membership.transform_values do |values|
@@ -2958,6 +2973,7 @@ class ModulesController < ApplicationController
   def training_attendance_details_for_targets(targets, month_name: nil)
     return {} unless model_ready?(:ModuleRecord)
 
+    farmers_by_id = training_farmers_by_id(Array(targets).flat_map { |target| target_farmer_ids(target) }.uniq)
     target_sets = Array(targets).filter_map do |target|
       farmer_ids = target_farmer_ids(target)
       farmer_ids.blank? ? nil : [target, farmer_ids]
@@ -2974,7 +2990,17 @@ class ModulesController < ApplicationController
           next unless training_record_matches_dashboard_target?(record, target, farmer_ids)
 
           (training_record_selected_farmer_ids(record) & farmer_ids).each do |farmer_id|
-            keys << training_participation_membership_key(farmer_id, target.month_name)
+            farmer = farmers_by_id[farmer_id.to_s]
+            location_key = [
+              target_ics_label(target).to_s.strip,
+              target_village_label(target).to_s.strip
+            ].reject(&:blank?).join("|")
+            unique_farmer_key = training_participation_farmer_unique_key(
+              farmer_id,
+              farmer: farmer,
+              location_key: location_key
+            )
+            keys << training_participation_membership_key(unique_farmer_key, target.month_name)
           end
         end.uniq
         next if matching_membership_keys.blank?
