@@ -20,7 +20,7 @@ class AflsController < ApplicationController
 
     @afls = scoped_afls
       .select(Afl::LIST_COLUMNS)
-      .order(Arel.sql("farmer_name ASC NULLS LAST, id ASC"))
+      .order(Arel.sql("CASE WHEN farmer_name IS NULL OR farmer_name = '' THEN 1 ELSE 0 END ASC, farmer_name ASC, id ASC"))
       .offset((@page - 1) * @page_size)
       .limit(@page_size)
   end

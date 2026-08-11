@@ -92,8 +92,22 @@
                   <td><%= row[:fco] %></td>
                   <td><%= row[:village] %></td>
                   <td><%= row[:farmers] %></td>
-                  <td><%= row[:main_activity] %></td>
-                  <td><%= row[:activity] %></td>
+                  <% main_activity_list = Array(row[:main_activities]).presence || row[:main_activity].to_s.split("\n").map(&:strip).reject(&:blank?) %>
+                  <% sub_activity_list = Array(row[:sub_activities]).presence || row[:activity].to_s.split("\n").map(&:strip).reject(&:blank?) %>
+                  <td class="target-activity-text">
+                    <div class="target-activity-grouped-list">
+                      <% main_activity_list.each do |main_activity| %>
+                        <span><%= main_activity %></span>
+                      <% end %>
+                    </div>
+                  </td>
+                  <td class="target-activity-text">
+                    <div class="target-activity-grouped-list">
+                      <% sub_activity_list.each do |sub_activity| %>
+                        <span><%= sub_activity %></span>
+                      <% end %>
+                    </div>
+                  </td>
                   <td><%= quantity.call(row[:target]) %></td>
                   <td><%= quantity.call(row[:week_1]) %></td>
                   <td><%= quantity.call(row[:week_2]) %></td>
@@ -162,8 +176,22 @@
                 <tr>
                   <td><%= row[:month] %></td>
                   <td><%= row[:village] %></td>
-                  <td><%= row[:main_activity] %></td>
-                  <td><%= row[:activity] %></td>
+                  <% main_activity_list = Array(row[:main_activities]).presence || row[:main_activity].to_s.split("\n").map(&:strip).reject(&:blank?) %>
+                  <% sub_activity_list = Array(row[:sub_activities]).presence || row[:activity].to_s.split("\n").map(&:strip).reject(&:blank?) %>
+                  <td class="target-activity-text">
+                    <div class="target-activity-grouped-list">
+                      <% main_activity_list.each do |main_activity| %>
+                        <span><%= main_activity %></span>
+                      <% end %>
+                    </div>
+                  </td>
+                  <td class="target-activity-text">
+                    <div class="target-activity-grouped-list">
+                      <% sub_activity_list.each do |sub_activity| %>
+                        <span><%= sub_activity %></span>
+                      <% end %>
+                    </div>
+                  </td>
                   <td><%= quantity.call(row[:target]) %></td>
                   <% if selected_target_week == "all" %>
                     <td><%= quantity.call(row[:week_1]) %></td><td><%= quantity.call(row[:week_2]) %></td><td><%= quantity.call(row[:week_3]) %></td><td><%= quantity.call(row[:week_4]) %></td>
@@ -276,18 +304,6 @@
               ),
               {},
               id: "dash_ci", class: "form-select dashboard-filter-select",
-              data: { dashboard_filter_select: true } %>
-      </div>
-
-      <div class="dashboard-filter-field">
-        <label for="dash_ics">ICS</label>
-        <%= f.select :ics,
-              options_for_select(
-                [["All ICS", ""]] + (@filter_ics_options || []).map { |v| [v, v] },
-                params[:ics]
-              ),
-              {},
-              id: "dash_ics", class: "form-select dashboard-filter-select",
               data: { dashboard_filter_select: true } %>
       </div>
 
@@ -414,7 +430,6 @@
           <%= hidden_field_tag :activity, params[:activity] if params[:activity].present? %>
           <%= hidden_field_tag :fcoc, params[:fcoc] if params[:fcoc].present? %>
           <%= hidden_field_tag :cluster_incharge, params[:cluster_incharge] if params[:cluster_incharge].present? %>
-          <%= hidden_field_tag :ics, params[:ics] if params[:ics].present? %>
           <%= hidden_field_tag :month, params[:month] if params[:month].present? %>
           <%= hidden_field_tag :post, params[:post] if params[:post].present? %>
           <%= hidden_field_tag :vrp_id, params[:vrp_id] if params[:vrp_id].present? %>
@@ -462,6 +477,102 @@
         <div class="training-empty-state">No target data found for selected filters.</div>
       <% end %>
     </div>
+  </section>
+
+  <% ics_report_rows = Array(@ics_farmer_report_rows) %>
+  <% ics_report_options = Array(@ics_farmer_report_options) %>
+  <% selected_ics_report = @ics_farmer_report_selected_ics.to_s %>
+  <section class="module-card training-participation-status-card dashboard-status-panel weekly-status-panel" id="dashboard_ics_farmer_report">
+    <div class="module-card-header training-participation-status-header">
+      <div>
+        <h2>ICS Wise Farmer Report</h2>
+        <p>ICS wise farmer summary dekho, data fetch karo, aur export report nikalo.</p>
+      </div>
+      <div class="dashboard-actions">
+        <%= form_with url: dashboard_path, method: :get, local: true, html: { class: "dashboard-month-filter" } do %>
+          <%= hidden_field_tag :activity, params[:activity] if params[:activity].present? %>
+          <%= hidden_field_tag :fcoc, params[:fcoc] if params[:fcoc].present? %>
+          <%= hidden_field_tag :cluster_incharge, params[:cluster_incharge] if params[:cluster_incharge].present? %>
+          <%= hidden_field_tag :month, params[:month] if params[:month].present? %>
+          <%= hidden_field_tag :post, params[:post] if params[:post].present? %>
+          <%= hidden_field_tag :vrp_id, params[:vrp_id] if params[:vrp_id].present? %>
+          <%= hidden_field_tag :participation_month, @participation_month_filter_value if @participation_month_filter_value.present? %>
+          <%= hidden_field_tag :participation_fcoc, @participation_fcoc_filter_value if @participation_fcoc_filter_value.present? %>
+          <%= hidden_field_tag :weekly_target_month, @weekly_target_month_filter_value if @weekly_target_month_filter_value.present? %>
+          <%= hidden_field_tag :weekly_target_fcoc, @weekly_target_fcoc_filter_value if @weekly_target_fcoc_filter_value.present? %>
+          <label class="dashboard-month-select">
+            <span>ICS</span>
+            <select name="ics_report_ics" onchange="this.form.submit()">
+              <option value="">All ICS</option>
+              <% ics_report_options.each do |option| %>
+                <option value="<%= option %>" <%= "selected" if selected_ics_report == option.to_s %>><%= option %></option>
+              <% end %>
+            </select>
+          </label>
+        <% end %>
+        <button type="button" class="list-btn export" data-export-table="dashboard_ics_farmer_report_table" data-export-include-all="true">Export Excel</button>
+      </div>
+    </div>
+
+    <% if ics_report_rows.any? %>
+      <div class="table-shell">
+        <table class="module-table compact-table" id="dashboard_ics_farmer_report_table" data-paginated-table data-page-size="15">
+          <thead>
+            <tr>
+              <th>ICS</th>
+              <th>Farmer Name</th>
+              <th>Father Name</th>
+              <th>Mobile No.</th>
+              <th>Tracenet No.</th>
+              <th>Village</th>
+              <th>Jeevika Jankar</th>
+              <th>Main Activity</th>
+              <th>Sub Activity</th>
+              <th>Training Date</th>
+              <th>Register</th>
+              <th>Photo</th>
+            </tr>
+          </thead>
+          <tbody>
+            <% ics_report_rows.each do |row| %>
+              <tr>
+                <td><%= row[:ics].presence || "-" %></td>
+                <td><%= row[:farmer_name].presence || "-" %></td>
+                <td><%= row[:father_name].presence || "-" %></td>
+                <td><%= row[:mobile_no].presence || "-" %></td>
+                <td><%= row[:tracenet_no].presence || "-" %></td>
+                <td><%= row[:village].presence || "-" %></td>
+                <td><%= row[:vrp_name].presence || "-" %></td>
+                <td><%= row[:main_activity].presence || "-" %></td>
+                <td><%= row[:sub_activity].presence || "-" %></td>
+                <td><%= row[:training_dates].presence || "-" %></td>
+                <td>
+                  <% if Array(row[:training_register_urls]).any? %>
+                    <% Array(row[:training_register_urls]).each_with_index do |url, index| %>
+                      <%= link_to "Register #{index + 1}", url, class: "table-action", target: "_blank", rel: "noopener" %>
+                    <% end %>
+                  <% else %>
+                    -
+                  <% end %>
+                </td>
+                <td>
+                  <% if Array(row[:training_photo_urls]).any? %>
+                    <% Array(row[:training_photo_urls]).each_with_index do |url, index| %>
+                      <%= link_to "Photo #{index + 1}", url, class: "table-action", target: "_blank", rel: "noopener" %>
+                    <% end %>
+                  <% else %>
+                    -
+                  <% end %>
+                </td>
+              </tr>
+            <% end %>
+          </tbody>
+        </table>
+      </div>
+      <div class="table-pagination" data-pagination-for="dashboard_ics_farmer_report_table"></div>
+    <% else %>
+      <div class="training-empty-state">Selected ICS ke liye abhi koi farmer training data nahi mila.</div>
+    <% end %>
   </section>
 
 </section>

@@ -716,11 +716,12 @@ class ModulesController < ApplicationController
     ).size
     @training_records_unique_farmer_count = training_unique_farmer_count_from_records(participation_records)
     @training_total_training_farmer_count = training_total_farmer_count_from_records(participation_records)
-    if request.format.xlsx?
-      @training_target_status_cards = training_target_status_cards(training_targets, month_name: selected_month, sub_activity_name: selected_sub_activity)
-      @training_participation = training_participation_summary(training_targets, month_name: selected_month)
-      @farmer_training_dashboard_rows = farmer_training_dashboard_rows(training_targets, month_name: selected_month)
-    end
+    @training_target_status_cards = training_target_status_cards(training_targets, month_name: selected_month, sub_activity_name: selected_sub_activity)
+    @training_participation = training_participation_summary(participation_targets, month_name: @participation_selected_month)
+    @farmer_training_dashboard_rows = farmer_training_dashboard_rows(training_targets, month_name: selected_month)
+    @ics_farmer_report_options = ics_farmer_report_options(participation_records, participation_targets)
+    @ics_farmer_report_selected_ics = params[:ics_report_ics].to_s.presence
+    @ics_farmer_report_rows = ics_farmer_report_rows(participation_records, selected_ics: @ics_farmer_report_selected_ics)
     @weekly_target_month_filter_value = params[:weekly_target_month].presence || default_status_month
     @weekly_dashboard_selected_month = @weekly_target_month_filter_value == "all" ? nil : @weekly_target_month_filter_value
     @weekly_target_fcoc_filter_value = params[:weekly_target_fcoc].presence
@@ -1676,7 +1677,7 @@ class ModulesController < ApplicationController
     sub_activity_settings = jeevika_jankar_sub_activity_settings(activity_settings)
     other_target_achievement_index = approved_other_target_achievement_index
 
-    Array(targets).map do |target|
+    raw_rows = Array(targets).map do |target|
       assigned_farmer_ids = target_farmer_ids(target)
       completed = vrp_target_completed_quantity(
         target,
@@ -1716,6 +1717,51 @@ class ModulesController < ApplicationController
         pending: pending,
         progress: percentage(completed, effective_target)
       }
+    end
+
+    raw_rows.group_by do |row|
+      [
+        normalize_dashboard_text(row[:month]),
+        normalize_dashboard_text(row[:completion_date]),
+        normalize_dashboard_text(row[:fco]),
+        normalize_dashboard_text(row[:ics]),
+        normalize_dashboard_text(row[:village]),
+        row[:farmers].to_i,
+        row[:opg_training].to_f,
+        row[:general_training].to_f,
+        row[:input_demo_inm].to_f,
+        row[:input_demo_pm].to_f,
+        row[:ffs].to_f,
+        row[:week_1].to_f,
+        row[:week_2].to_f,
+        row[:week_3].to_f,
+        row[:week_4].to_f,
+        row[:target].to_f
+      ]
+    end.values.map do |rows|
+      first = rows.first
+      main_activities = rows.map { |row| row[:main_activity].to_s.strip }.reject(&:blank?).uniq
+      sub_activities = rows.map { |row| row[:activity].to_s.strip }.reject(&:blank?).uniq
+      completed_total = rows.sum { |row| row[:completed].to_f }
+      pending_total = rows.sum { |row| row[:pending].to_f }
+      effective_target = first[:target].to_f
+
+      first.merge(
+        main_activity: main_activities.join("\n"),
+        activity: sub_activities.join("\n"),
+        main_activities: main_activities,
+        sub_activities: sub_activities,
+        completed: [completed_total, effective_target].min,
+        pending: [effective_target - [completed_total, effective_target].min, 0].max,
+        progress: percentage([completed_total, effective_target].min, effective_target)
+      )
+    end.sort_by do |row|
+      [
+        dashboard_month_index(row[:month]),
+        row[:completion_date_sort] || Date.new(1900, 1, 1),
+        row[:fco].to_s,
+        row[:village].to_s
+      ]
     end
   end
 
@@ -2529,16 +2575,13 @@ class ModulesController < ApplicationController
     records
   end
 
-  # The Unique Farmers card represents the AFL population for the mapped FCOs.
-  # It must stay month-independent so July / All / any month all use the same base population.
   def training_afl_farmer_rows_for_participation(month_name: nil, fcoc_name: nil)
     return [] unless model_ready?(:Afl)
 
-    targets = dashboard_participation_targets
-    normalized_fcoc = normalize_dashboard_text(fcoc_name)
-    if normalized_fcoc.present?
-      targets = targets.select { |target| normalize_dashboard_text(target.vrp&.fcoc) == normalized_fcoc }
-    end
+    targets = training_participation_targets_for_dashboard(
+      month_name: month_name,
+      fcoc_name: fcoc_name
+    )
 
     fco_ids = targets.filter_map { |target| target.fco_id.to_s.strip.presence }.uniq
     return [] if fco_ids.blank?
@@ -3343,6 +3386,96 @@ class ModulesController < ApplicationController
       ics_rows: ics_rows,
       village_rows: village_rows
     }
+  end
+
+  def ics_farmer_report_options(records, targets = [])
+    record_options = Array(records).map do |record|
+      summary = training_summary(record)
+      summary[:ics].presence || record.data["ics_block"].presence || record.data["ics"].presence
+    end
+
+    target_options = Array(targets).map { |target| target_ics_label(target) }
+
+    (record_options + target_options)
+      .map { |value| value.to_s.strip }
+      .reject(&:blank?)
+      .reject { |value| value == "-" }
+      .uniq
+      .sort
+  end
+
+  def ics_farmer_report_rows(records, selected_ics: nil)
+    records = Array(records)
+    return [] if records.blank?
+
+    farmer_ids = records.flat_map { |record| training_record_selected_farmer_ids(record) }.uniq
+    farmers_by_id = training_farmers_by_id(farmer_ids)
+
+    rows = records.flat_map do |record|
+      summary = training_summary(record)
+      record_ics = summary[:ics].presence || record.data["ics_block"].presence || record.data["ics"].presence || "-"
+      next [] if selected_ics.present? && normalize_dashboard_text(record_ics) != normalize_dashboard_text(selected_ics)
+
+      saved_names = Array(record.data["selected_farmer_names"]).map(&:to_s)
+      training_date = bill_display_date(summary[:training_date]).presence || bill_display_date(record.created_at)
+      register_urls = module_upload_public_urls(record.data["training_register_upload"])
+      photo_urls = module_upload_public_urls(record.data["training_photo_upload_with_geo_tag"])
+
+      training_record_selected_farmer_ids(record).each_with_index.map do |farmer_id, index|
+        farmer = farmers_by_id[farmer_id]
+        row_ics = dashboard_text_value(farmer&.ics_name).presence || dashboard_text_value(farmer&.ics_id).presence || record_ics.to_s
+        next if selected_ics.present? && !ics_report_match?(selected_ics, record_ics, farmer)
+
+        {
+          farmer_id: farmer_id.to_s,
+          farmer_name: dashboard_text_value(farmer&.farmer_name).presence || saved_names[index].presence || "Farmer ##{farmer_id}",
+          father_name: dashboard_text_value(farmer&.father_name),
+          mobile_no: dashboard_text_value(farmer&.mobile_no),
+          tracenet_no: dashboard_text_value(farmer&.tracenet_no),
+          village: dashboard_text_value(farmer&.village_name).presence || record.data["gram_name"].presence || record.data["village"].presence || "-",
+          ics: row_ics,
+          vrp_name: record.data["trainer_name"].presence || record.data["jeevika_jankar_name"].presence || record.data["vrp_name"].presence || "-",
+          main_activity: summary[:training_topic].presence || "-",
+          sub_activity: summary[:training_subject].presence || "-",
+          training_date: training_date.presence || "-",
+          training_register_urls: register_urls,
+          training_photo_urls: photo_urls
+        }
+      end.compact
+    end
+
+    rows
+      .group_by do |row|
+        [
+          row[:farmer_id],
+          row[:ics],
+          row[:village],
+          row[:vrp_name],
+          row[:main_activity],
+          row[:sub_activity]
+        ]
+      end
+      .values
+      .map do |grouped|
+        first = grouped.first
+        first.merge(
+          training_dates: grouped.map { |row| row[:training_date] }.compact_blank.uniq.join(", ").presence || "-",
+          training_register_urls: grouped.flat_map { |row| Array(row[:training_register_urls]) }.compact_blank.uniq,
+          training_photo_urls: grouped.flat_map { |row| Array(row[:training_photo_urls]) }.compact_blank.uniq
+        )
+      end
+      .sort_by { |row| [row[:ics].to_s.downcase, row[:farmer_name].to_s.downcase, row[:main_activity].to_s.downcase, row[:sub_activity].to_s.downcase] }
+  end
+
+  def ics_report_match?(selected_ics, record_ics, farmer)
+    selected_key = normalize_dashboard_text(selected_ics)
+    candidate_keys = [
+      record_ics,
+      farmer&.ics_name,
+      farmer&.ics_id
+    ].map { |value| normalize_dashboard_text(value) }.reject(&:blank?)
+
+    candidate_keys.include?(selected_key)
   end
 
   def training_attendance_counts_for_targets(targets, month_name: nil)

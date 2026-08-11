@@ -27,7 +27,6 @@
       <%= hidden_field_tag :activity, params[:activity] if params[:activity].present? %>
       <%= hidden_field_tag :fcoc, params[:fcoc] if params[:fcoc].present? %>
       <%= hidden_field_tag :cluster_incharge, params[:cluster_incharge] if params[:cluster_incharge].present? %>
-      <%= hidden_field_tag :ics, params[:ics] if params[:ics].present? %>
       <%= hidden_field_tag :month, params[:month] if params[:month].present? %>
       <%= hidden_field_tag :post, params[:post] if params[:post].present? %>
       <%= hidden_field_tag :vrp_id, params[:vrp_id] if params[:vrp_id].present? %>
@@ -88,30 +87,4 @@
     <% end %>
   </div>
 
-  <% if Array(participation[:ics_rows]).any? %>
-    <div class="table-shell" style="margin-top: 16px;">
-      <table class="module-table compact-table">
-        <thead>
-          <tr>
-            <th>ICS</th>
-            <th>Total</th>
-            <th>Green</th>
-            <th>Yellow</th>
-            <th>Red</th>
-          </tr>
-        </thead>
-        <tbody>
-          <% Array(participation[:ics_rows]).each do |row| %>
-            <tr>
-              <td><%= row[:label].presence || "-" %></td>
-              <td><%= row[:total].to_i %></td>
-              <td><%= row[:green].to_i %></td>
-              <td><%= row[:yellow].to_i %></td>
-              <td><%= row[:red].to_i %></td>
-            </tr>
-          <% end %>
-        </tbody>
-      </table>
-    </div>
-  <% end %>
 </section>
