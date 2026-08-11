@@ -2548,7 +2548,12 @@ class ModulesController < ApplicationController
         .map { |value| normalize_dashboard_text(value) }
         .reject(&:blank?)
         .join("|")
-      farmer_key = farmer.id.to_s
+      farmer_key = training_participation_farmer_unique_key(
+        farmer.id,
+        farmer: farmer,
+        saved_name: farmer.farmer_name,
+        location_key: location_key
+      )
       rows_by_key[farmer_key] ||= {
         farmer_id: farmer.id.to_s,
         source_farmer_ids: [],
