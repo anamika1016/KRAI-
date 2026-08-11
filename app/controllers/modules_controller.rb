@@ -705,10 +705,16 @@ class ModulesController < ApplicationController
     @participation_fcoc_filter_value = params[:participation_fcoc].presence
     participation_records = dashboard_training_participation_records(month_name: @participation_selected_month, fcoc_name: @participation_fcoc_filter_value)
     participation_targets = training_participation_targets_for_dashboard(month_name: @participation_selected_month, fcoc_name: @participation_fcoc_filter_value)
-    @training_participation_status_cards = training_participation_status_cards(
-      participation_targets,
+    participation_population_rows = training_participation_population_rows(
       month_name: @participation_selected_month,
-      fcoc_name: @participation_fcoc_filter_value
+      fcoc_name: @participation_fcoc_filter_value,
+      records: participation_records
+    )
+    @training_participation_status_cards = training_participation_status_cards_from_records(
+      participation_records,
+      month_name: @participation_selected_month,
+      fcoc_name: @participation_fcoc_filter_value,
+      population_rows: participation_population_rows
     )
     @training_unique_farmer_count = training_afl_farmer_rows_for_participation(
       month_name: @participation_selected_month,
@@ -762,12 +768,17 @@ class ModulesController < ApplicationController
     selected_fcoc = params[:training_fcoc].presence
     selected_status = normalize_training_participation_status(params[:status]) || "green"
     training_records = dashboard_training_participation_records(month_name: selected_month, sub_activity_name: selected_sub_activity, fcoc_name: selected_fcoc)
+    population_rows = training_participation_population_rows(
+      month_name: selected_month,
+      fcoc_name: selected_fcoc,
+      records: training_records
+    )
     participation_targets = training_participation_targets_for_dashboard(
       month_name: selected_month,
       fcoc_name: selected_fcoc,
       sub_activity_name: selected_sub_activity
     )
-    participation_status_rows = training_participation_farmer_rows(participation_targets, month_name: selected_month)
+    participation_status_rows = population_rows
 
     @training_participation_status = selected_status
     @training_participation_title = training_participation_status_label(selected_status)
@@ -785,7 +796,7 @@ class ModulesController < ApplicationController
       @training_participation_rows.select { |row| row[:status] == selected_status }
     end
     @training_participation_totals = training_participation_status_counts_from_records(training_records)
-    status_counts = training_participation_status_counts(participation_targets, month_name: selected_month)
+    status_counts = training_participation_status_counts_from_rows(population_rows).merge(total: population_rows.size)
     @training_participation_totals.merge!(status_counts.slice(:green, :yellow, :red, :pending))
     @training_unique_farmer_count = training_afl_farmer_rows_for_participation(month_name: selected_month, fcoc_name: selected_fcoc).size
     @training_records_unique_farmer_count = training_unique_farmer_count_from_records(training_records)
