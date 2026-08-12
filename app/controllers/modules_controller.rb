@@ -2383,7 +2383,7 @@ class ModulesController < ApplicationController
         { title: "Pending Approval", value: pending_approvals, path: approvals_vrps_path }
       ], style: "registration"),
       dashboard_group_card("Jeevika Jankar Target Assignment", [
-        { title: "Target Records", value: targets.size, path: target_mappings_path },
+        { title: "Target Records", value: dashboard_target_record_count(targets), path: target_mappings_path },
         { title: "Without Target", value: unassigned_vrp_count, path: vrps_path(target_assignment: "unassigned") },
         { title: "Activities Assigned", value: activity_count, path: target_mappings_path },
         { title: "Without Activity", value: activity_unassigned_vrp_count, path: vrps_path(activity_assignment: "unassigned") }
@@ -2404,6 +2404,28 @@ class ModulesController < ApplicationController
     cards << dashboard_group_card("FCO-wise Jeevika Jankar", fco_summary_items, style: "fco")
 
     cards
+  end
+
+  # A target assignment can create one TargetMapping row per selected activity.
+  # The Target Mapping list combines those rows into a single assignment, so the
+  # dashboard uses the same assignment fields and stays in sync dynamically.
+  def dashboard_target_record_count(targets)
+    Array(targets).group_by do |target|
+      [
+        target.vrp_id,
+        target.fco_name.presence || target.fco_id,
+        target.ics_name.presence || target.ics_id,
+        target.village_name.presence || target.village_id,
+        target.month_name,
+        target.completion_date,
+        target.opg_training_target.to_s,
+        target.week_wise_opg_target.to_s,
+        target.input_demo_inm_target.to_s,
+        target.input_demo_pm_target.to_s,
+        target.ffs_target.to_s,
+        Array(target.afl_ids).map(&:to_s).reject(&:blank?).sort
+      ]
+    end.size
   end
 
   def dashboard_reports
