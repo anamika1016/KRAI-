@@ -405,8 +405,11 @@ module Api
       end
 
       def month_options(rows)
-        rows.filter_map { |row| row[:bill_month].to_s.strip.presence }
-          .reject { |month| month == "-" }.uniq
+        row_months = rows.filter_map { |row| row[:bill_month].to_s.strip.presence }
+          .reject { |month| month == "-" }
+        master_months = calculator.send(:month_master_month_options)
+
+        (master_months + row_months).uniq { |month| month.to_s.strip.downcase }
       end
 
       def bill_payload_for(record)

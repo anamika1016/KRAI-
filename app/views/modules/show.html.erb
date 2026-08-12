@@ -1473,7 +1473,7 @@
     <% table_id = "jeevika_jankar_completed_payment_table" %>
     <% all_completed_payment_rows = jeevika_completed_payment_rows %>
     <% month_options = jeevika_completed_payment_month_options(all_completed_payment_rows) %>
-    <% selected_month = params[:payment_month].presence || month_options.first %>
+    <% selected_month = params[:payment_month].presence || all_completed_payment_rows.find { |row| row[:bill_month].present? && row[:bill_month] != "-" }&.dig(:bill_month) || month_options.first %>
     <% date_options = jeevika_completed_payment_date_options(all_completed_payment_rows, selected_month) %>
     <% selected_date = params[:payment_date].presence %>
     <% selected_date = nil if selected_date.present? && date_options.exclude?(selected_date) %>
@@ -1574,7 +1574,8 @@
   <% elsif @slug == "jeevika-jankar-payment-list" && @record.blank? %>
     <% table_id = "jeevika_jankar_payment_table" %>
     <% month_options = jeevika_bill_payment_month_options(@records) %>
-    <% selected_month = params[:payment_month].presence || month_options.first %>
+    <% saved_payment_month = Array(@records).find { |record| record.data["bill_month"].present? }&.data&.[]("bill_month") %>
+    <% selected_month = params[:payment_month].presence || saved_payment_month || month_options.first %>
     <% payment_rows = jeevika_bill_payment_rows(@records, selected_month) %>
     <section class="module-card list-only-card">
       <div class="module-card-header list-title-header">
@@ -1968,7 +1969,8 @@
         <div class="module-form-grid <%= "user-registration-grid" if @slug == "new-user" || (@slug == "all-user" && @record.present?) %>">
           <% @module[:fields].each do |field| %>
             <% field_key = field.parameterize(separator: "_") %>
-            <% field_value = @record&.data&.[](field_key).to_s %>
+            <% raw_field_value = @record&.data&.[](field_key) %>
+            <% field_value = raw_field_value.is_a?(Array) ? raw_field_value.join(", ") : raw_field_value.to_s %>
             <% field_value = module_record_field_value(@record, field).to_s if @record.present? && field_value.blank? %>
             <% field_value = @record&.data&.[]("role_name").to_s if field == "Role" && field_value.blank? %>
             <% field_value = (@record&.data&.[]("category_name").presence || @record&.data&.[]("office")).to_s if field == "Office Name" && field_value.blank? %>
@@ -2068,7 +2070,10 @@
                   when "Main Activity"
                     "data-training-main-activity data-selected-value=\"#{ERB::Util.html_escape(field_value)}\""
                   when "Sub Activity"
-                    "data-training-sub-activity data-selected-value=\"#{ERB::Util.html_escape(field_value)}\""
+                    selected_sub_activity_value = raw_field_value.presence || field_value
+                    selected_sub_activities = selected_sub_activity_value.is_a?(Array) ? selected_sub_activity_value : selected_sub_activity_value.to_s.split(/,\s*(?=\d+\.\s*)/)
+                    selected_sub_activities = selected_sub_activities.map(&:to_s).map(&:strip).reject(&:blank?)
+                    "data-training-sub-activity data-selected-values=\"#{ERB::Util.html_escape(selected_sub_activities.to_json)}\" multiple size=\"4\""
                   end if @slug == "training-form" %>
                 <% seed_target_attr =
                   case field
@@ -2094,7 +2099,7 @@
                   when "Parent Office"
                     "data-parent-office-select data-selected-value=\"#{ERB::Util.html_escape(field_value)}\""
                   end if @slug == "parent-office-add" %>
-                <select name="module_record[<%= field_key %>]" <%= role_dependency_attr&.html_safe %> <%= location_dependency_attr&.html_safe %> <%= training_target_attr&.html_safe %> <%= seed_target_attr&.html_safe %> <%= parent_office_dependency_attr&.html_safe %> <%= required_attr %>>
+                <select name="module_record[<%= field_key %>]<%= "[]" if @slug == "training-form" && field == "Sub Activity" %>" <%= role_dependency_attr&.html_safe %> <%= location_dependency_attr&.html_safe %> <%= training_target_attr&.html_safe %> <%= seed_target_attr&.html_safe %> <%= parent_office_dependency_attr&.html_safe %> <%= required_attr %>>
                   <option value=""><%= options.any? ? "Select #{resource_person_label(field)}" : "No #{resource_person_label(field)} saved yet" %></option>
                   <% options.each do |option| %>
                     <option value="<%= option %>" <%= "selected" if option == field_value %>><%= option %></option>

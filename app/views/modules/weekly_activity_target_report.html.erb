@@ -5,6 +5,7 @@
   training_fcoc: @weekly_selected_fcoc.presence,
   activity: @weekly_selected_activity.presence,
   training_sub_activity: @weekly_selected_sub_activity.presence,
+  week: @weekly_selected_week.presence,
   status: @weekly_report_status.presence
 }.compact_blank %>
 <% status_counts = @weekly_report_totals || { green: 0, yellow: 0, red: 0, total: 0 } %>
@@ -34,6 +35,15 @@
 
     <%= form_with url: weekly_activity_target_report_path, method: :get, local: true, html: { class: "dashboard-filter-bar" } do %>
       <div class="dashboard-filter-grid">
+        <div class="dashboard-filter-field">
+          <label for="weekly_week">Week</label>
+          <select name="week" id="weekly_week" class="form-select dashboard-filter-select">
+            <option value="">All Weeks</option>
+            <% 1.upto(4) do |week_number| %>
+              <option value="<%= week_number %>" <%= "selected" if @weekly_selected_week.to_i == week_number %>>Week <%= week_number %></option>
+            <% end %>
+          </select>
+        </div>
         <div class="dashboard-filter-field">
           <label for="weekly_month">Month</label>
           <select name="training_month" id="weekly_month" class="form-select dashboard-filter-select">
@@ -142,10 +152,6 @@
             <th>Cluster Incharge</th>
             <th>Post</th>
             <th>Target</th>
-            <th>Week 1<br><small>Progress</small></th>
-            <th>Week 2<br><small>Progress</small></th>
-            <th>Week 3<br><small>Progress</small></th>
-            <th>Week 4<br><small>Progress</small></th>
             <th>Completed</th>
             <th>Pending</th>
             <th>Status</th>
@@ -167,18 +173,6 @@
                 <td><%= row[:cluster_incharge] %></td>
                 <td><%= row[:post] %></td>
                 <td><%= quantity.call(row[:target_quantity]) %></td>
-                <% 4.times do |week_index| %>
-                  <% week_target = Array(row[:weekly_targets])[week_index].to_f %>
-                  <% week_done = Array(row[:weekly_achievements])[week_index].to_f %>
-                  <% week_percent = week_target.positive? ? ((week_done / week_target) * 100).round : 0 %>
-                  <% week_status = training_target_status_for_percent(week_percent) %>
-                  <td class="weekly-progress-cell">
-                    <span class="weekly-progress-breakdown <%= week_status %>" title="Completed <%= quantity.call(week_done) %> out of target <%= quantity.call(week_target) %>">
-                      <span><small>Done</small><strong><%= quantity.call(week_done) %></strong></span>
-                      <span><small>Target</small><strong><%= quantity.call(week_target) %></strong></span>
-                    </span>
-                  </td>
-                <% end %>
                 <td><%= quantity.call(row[:completed_quantity]) %></td>
                 <td><%= quantity.call(row[:pending_quantity]) %></td>
                 <td><span class="training-status-pill <%= row[:status_class] %>"><%= row[:status_label] %></span></td>
@@ -204,7 +198,7 @@
             <% end %>
           <% else %>
             <tr>
-              <td colspan="19">
+              <td colspan="15">
                 <%= @weekly_report_status.present? ? "No weekly target data found for selected status and filters." : "Total, Green, Yellow or Red box par click karke uski list dekhein." %>
               </td>
             </tr>

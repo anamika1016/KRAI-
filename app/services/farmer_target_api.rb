@@ -52,14 +52,14 @@ class FarmerTargetApi
       {
         autofill: target_form_autofill,
         current_vrp: current_seed_target_vrp_option,
-        months: training_target_mappings.map { |m| m[:month] }.compact_blank.uniq,
+        months: master_month_options(training_target_mappings.map { |m| m[:month] }),
         target_mappings: training_target_mappings,
         training_methods: ["Input Demo INM", "Input Demo PM", "FFS", "OPG Training"]
       }
     when *OTHER_TARGET_SLUGS
       {
         autofill: target_form_autofill,
-        months: seed_distribution_target_mappings.map { |m| m[:month] }.compact_blank.uniq,
+        months: master_month_options(seed_distribution_target_mappings.map { |m| m[:month] }),
         target_mappings: seed_distribution_target_mappings,
         current_vrp: current_seed_target_vrp_option
       }
@@ -87,6 +87,19 @@ class FarmerTargetApi
   end
 
   private
+
+  def master_month_options(extra_months = [])
+    master_months = ModuleRecord.where(module_slug: "month-master").order(created_at: :desc).filter_map do |record|
+      status = record.data["status"].to_s.strip.downcase
+      next if status == "inactive"
+
+      record.data["month_name"].presence || record.data["month"].presence || record.data["name"].presence
+    end
+
+    (master_months + Array(extra_months)).map(&:to_s).map(&:strip).reject(&:blank?)
+      .uniq { |month| month.downcase }
+      .sort_by { |month| [Date::MONTHNAMES.index(month.capitalize) || 13, month] }
+  end
 
   attr_reader :current_app_user
 

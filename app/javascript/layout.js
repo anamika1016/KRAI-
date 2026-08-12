@@ -1887,6 +1887,14 @@ function initDeferredLayoutPage() {
 	    const geoLongitudeInput = formShell.querySelector("[data-training-geo-longitude]");
 	    if (!icsSelect || !villageSelect) return;
 	    const selectedFarmerIds = new Set(JSON.parse(farmerPanel?.dataset.selectedFarmerIds || "[]").map(String));
+	    let subActivityChips = null;
+	    if (subActivitySelect) {
+	      subActivitySelect.classList.add("training-sub-activity-native");
+	      subActivityChips = document.createElement("div");
+	      subActivityChips.className = "training-sub-activity-chips";
+	      subActivityChips.setAttribute("aria-live", "polite");
+	      subActivitySelect.insertAdjacentElement("afterend", subActivityChips);
+	    }
 
 	    const escapeHtml = (value) => String(value || "")
 	      .replaceAll("&", "&amp;")
@@ -1908,7 +1916,9 @@ function initDeferredLayoutPage() {
     };
 
     const fillTrainingSelect = (select, options, placeholder) => {
-      const selected = select.dataset.selectedValue || select.value;
+      const selected = select.multiple
+        ? (() => { try { return JSON.parse(select.dataset.selectedValues || "[]"); } catch (_error) { return []; } })()
+        : (select.dataset.selectedValue || select.value);
       select.innerHTML = "";
 
       const blank = document.createElement("option");
@@ -1920,7 +1930,11 @@ function initDeferredLayoutPage() {
         const option = document.createElement("option");
         option.value = optionValue(optionData);
         option.textContent = optionLabel(optionData);
-        selectOption(option, optionData, selected);
+        if (select.multiple) {
+          option.selected = selected.some((value) => normalizeOption(value) === normalizeOption(optionValue(optionData)));
+        } else {
+          selectOption(option, optionData, selected);
+        }
         select.appendChild(option);
       });
     };
@@ -1930,6 +1944,59 @@ function initDeferredLayoutPage() {
 
       select.value = optionValue(options[0]);
       select.dataset.selectedValue = select.value;
+    };
+
+    const selectedSubActivityValues = () => subActivitySelect
+      ? Array.from(subActivitySelect.selectedOptions).map((option) => option.value).filter(Boolean)
+      : [];
+
+    const mappingMatchesSelectedSubActivities = (mapping, selectedValues) => {
+      if (!selectedValues.length) return true;
+      const mappedValue = normalizeOption(mapping.sub_activity);
+      return selectedValues.some((value) => {
+        const selectedValue = normalizeOption(value);
+        return mappedValue === selectedValue || mappedValue.includes(selectedValue);
+      });
+    };
+
+    const renderSubActivityChips = () => {
+      if (!subActivitySelect || !subActivityChips) return;
+
+      const selectedOptions = Array.from(subActivitySelect.selectedOptions).filter((option) => option.value);
+      subActivityChips.innerHTML = "";
+      if (!selectedOptions.length) {
+        subActivityChips.innerHTML = '<span class="training-sub-activity-empty">Main Activity select karne par mapped Sub Activities yahan aayengi.</span>';
+        return;
+      }
+
+      selectedOptions.forEach((option) => {
+        const chip = document.createElement("span");
+        chip.className = "training-sub-activity-chip";
+        chip.append(document.createTextNode(option.textContent || option.value));
+        const remove = document.createElement("button");
+        remove.type = "button";
+        remove.className = "training-sub-activity-remove";
+        remove.setAttribute("aria-label", `Remove ${option.textContent || option.value}`);
+        remove.textContent = "×";
+        remove.addEventListener("click", () => {
+          option.selected = false;
+          subActivitySelect.dataset.selectedValues = JSON.stringify(selectedSubActivityValues());
+          renderSubActivityChips();
+          subActivitySelect.dispatchEvent(new Event("change", { bubbles: true }));
+        });
+        chip.appendChild(remove);
+        subActivityChips.appendChild(chip);
+      });
+    };
+
+    const autoSelectMappedSubActivities = () => {
+      if (!subActivitySelect || !mainActivitySelect?.value) {
+        renderSubActivityChips();
+        return;
+      }
+      Array.from(subActivitySelect.options).forEach((option) => { option.selected = Boolean(option.value); });
+      subActivitySelect.dataset.selectedValues = JSON.stringify(selectedSubActivityValues());
+      renderSubActivityChips();
     };
 
     const targetRowsForSelection = ({
@@ -1945,12 +2012,14 @@ function initDeferredLayoutPage() {
       const selectedVillage = normalizeOption(villageSelect.value);
       const selectedMainActivityType = selectedTrainingActivityType();
       const selectedMainActivity = includeMainActivity ? normalizeOption(mainActivitySelect?.value) : "";
-      const selectedSubActivity = includeSubActivity ? normalizeOption(subActivitySelect?.value) : "";
+      const selectedSubActivities = includeSubActivity && subActivitySelect
+        ? Array.from(subActivitySelect.selectedOptions).map((option) => normalizeOption(option.value)).filter(Boolean)
+        : [];
 
       if (requireMonth && !selectedMonth) return [];
       if (requireVillage && !selectedVillage) return [];
       if (requireMainActivity && !selectedMainActivity) return [];
-      if (requireSubActivity && !selectedSubActivity) return [];
+      if (requireSubActivity && !selectedSubActivities.length) return [];
 
       return mappings.filter((mapping) => {
         const monthMatches = !selectedMonth || normalizeOption(mapping.month) === selectedMonth;
@@ -1958,7 +2027,7 @@ function initDeferredLayoutPage() {
         const villageMatches = !selectedVillage || normalizeOption(mapping.village) === selectedVillage;
         const mainActivityTypeMatches = normalizeOption(mapping.main_activity_type || "Training") === selectedMainActivityType;
         const mainActivityMatches = !selectedMainActivity || normalizeOption(mapping.main_activity) === selectedMainActivity;
-        const subActivityMatches = !selectedSubActivity || normalizeOption(mapping.sub_activity) === selectedSubActivity;
+        const subActivityMatches = mappingMatchesSelectedSubActivities(mapping, selectedSubActivities);
         return monthMatches && icsMatches && villageMatches && mainActivityTypeMatches && mainActivityMatches && subActivityMatches;
       });
     };
@@ -1971,10 +2040,24 @@ function initDeferredLayoutPage() {
       targetRowsForSelection({ requireVillage: true, includeMainActivity: false })
         .map((mapping) => makeOption(mapping.main_activity, mapping.main_activity))
     ).map(optionValue);
-    const mappedSubActivityOptions = () => uniqueOptions(
-      targetRowsForSelection({ requireVillage: true, requireMainActivity: true, includeSubActivity: false })
-        .map((mapping) => makeOption(mapping.sub_activity, mapping.sub_activity))
-    ).map(optionValue);
+    const mappedSubActivityOptions = () => {
+      const rows = targetRowsForSelection({ requireVillage: true, requireMainActivity: true, includeSubActivity: false });
+      const selectedMainActivity = normalizeOption(mainActivitySelect?.value);
+      const configured = activityMappings
+        .filter((mapping) => normalizeOption(mapping.main_activity) === selectedMainActivity)
+        .flatMap((mapping) => Array(mapping.sub_activities || []));
+      const values = rows.flatMap((mapping) => {
+        const rawValue = String(mapping.sub_activity || "").trim();
+        const matchingConfigured = configured.filter((subActivity) => {
+          const normalizedSubActivity = normalizeOption(subActivity);
+          return normalizedSubActivity && normalizeOption(rawValue).includes(normalizedSubActivity);
+        });
+        if (matchingConfigured.length) return matchingConfigured;
+
+        return rawValue.split(/,\s*(?=\d+\.\s*)/).map((value) => value.trim()).filter(Boolean);
+      });
+      return uniqueOptions(values.map((value) => makeOption(value, value))).map(optionValue);
+    };
 	    const mappedVillageOptions = () => {
 	      const rows = targetRowsForSelection();
 
@@ -1984,12 +2067,14 @@ function initDeferredLayoutPage() {
     const syncTrainingMonthFromSelection = () => {
       if (!monthSelect || monthSelect.value) return;
 
-      const selectedSubActivity = normalizeOption(subActivitySelect?.value);
+      const selectedSubActivities = subActivitySelect
+        ? Array.from(subActivitySelect.selectedOptions).map((option) => normalizeOption(option.value)).filter(Boolean)
+        : [];
       const rows = targetRowsForSelection({
         requireVillage: true,
         requireMainActivity: true,
         includeSubActivity: false
-      }).filter((mapping) => !selectedSubActivity || normalizeOption(mapping.sub_activity) === selectedSubActivity);
+      }).filter((mapping) => mappingMatchesSelectedSubActivities(mapping, selectedSubActivities));
       const months = uniqueOptions(rows.map((mapping) => makeOption(mapping.month, mapping.month))).map(optionValue);
       if (months.length !== 1) return;
 
@@ -2002,12 +2087,14 @@ function initDeferredLayoutPage() {
 
       const selectedVillage = normalizeOption(villageSelect.value);
       const selectedMainActivity = normalizeOption(mainActivitySelect?.value);
-      const selectedSubActivity = normalizeOption(subActivitySelect?.value);
+      const selectedSubActivities = subActivitySelect
+        ? Array.from(subActivitySelect.selectedOptions).map((option) => normalizeOption(option.value)).filter(Boolean)
+        : [];
       if (!monthSelect?.value || !selectedVillage || !selectedMainActivity) return [];
 
       const farmersById = new Map();
       targetRowsForSelection({ requireMonth: true, requireVillage: true, requireMainActivity: true })
-	        .filter((mapping) => !selectedSubActivity || normalizeOption(mapping.sub_activity) === selectedSubActivity)
+	        .filter((mapping) => mappingMatchesSelectedSubActivities(mapping, selectedSubActivities))
 	        .forEach((mapping) => {
 	          const includedFarmerIds = new Set((mapping.completed_farmer_ids || []).map(String));
 	          (mapping.farmers || []).forEach((farmer) => {
@@ -2133,7 +2220,10 @@ function initDeferredLayoutPage() {
         return;
       }
 
-      if (mainActivitySelect?.value && !subActivitySelect?.value) {
+      const selectedSubActivityCount = subActivitySelect
+        ? Array.from(subActivitySelect.selectedOptions).filter((option) => option.value).length
+        : 0;
+      if (mainActivitySelect?.value && !selectedSubActivityCount) {
         farmerList.textContent = "Select Sub Activity to narrow the target farmers.";
       }
 
@@ -2219,7 +2309,7 @@ function initDeferredLayoutPage() {
 	    setOnlyTrainingOption(mainActivitySelect, initialMainOptions);
 	    const initialSubOptions = mappedSubActivityOptions();
 	    if (subActivitySelect) fillTrainingSelect(subActivitySelect, initialSubOptions, "Select Sub Activity");
-	    setOnlyTrainingOption(subActivitySelect, initialSubOptions);
+	    if (selectedSubActivityValues().length) renderSubActivityChips(); else autoSelectMappedSubActivities();
 	    renderTrainingFarmers();
 
 	    if (geoLatitudeInput && geoLongitudeInput && navigator.geolocation) {
@@ -2235,7 +2325,7 @@ function initDeferredLayoutPage() {
 	      icsSelect.value = "";
 	      villageSelect.value = "";
 	      if (mainActivitySelect) mainActivitySelect.dataset.selectedValue = "";
-	      if (subActivitySelect) subActivitySelect.dataset.selectedValue = "";
+	      if (subActivitySelect) subActivitySelect.dataset.selectedValues = "[]";
 	      if (mainActivitySelect) mainActivitySelect.value = "";
 	      if (subActivitySelect) subActivitySelect.value = "";
 	      const icsOptions = mappedIcsOptions();
@@ -2249,7 +2339,7 @@ function initDeferredLayoutPage() {
 	      setOnlyTrainingOption(mainActivitySelect, mainOptions);
 	      const subOptions = mappedSubActivityOptions();
 	      if (subActivitySelect) fillTrainingSelect(subActivitySelect, subOptions, "Select Sub Activity");
-	      setOnlyTrainingOption(subActivitySelect, subOptions);
+	      autoSelectMappedSubActivities();
 	      selectedFarmerIds.clear();
 	      renderTrainingFarmers();
 	    };
@@ -2260,7 +2350,7 @@ function initDeferredLayoutPage() {
 	      villageSelect.dataset.selectedValue = "";
 	      villageSelect.value = "";
 	      if (mainActivitySelect) mainActivitySelect.dataset.selectedValue = "";
-	      if (subActivitySelect) subActivitySelect.dataset.selectedValue = "";
+	      if (subActivitySelect) subActivitySelect.dataset.selectedValues = "[]";
 	      if (mainActivitySelect) mainActivitySelect.value = "";
 	      if (subActivitySelect) subActivitySelect.value = "";
 	      const villageOptions = mappedVillageOptions();
@@ -2271,13 +2361,13 @@ function initDeferredLayoutPage() {
 	      setOnlyTrainingOption(mainActivitySelect, mainOptions);
 	      const subOptions = mappedSubActivityOptions();
 	      if (subActivitySelect) fillTrainingSelect(subActivitySelect, subOptions, "Select Sub Activity");
-	      setOnlyTrainingOption(subActivitySelect, subOptions);
+	      autoSelectMappedSubActivities();
 	      selectedFarmerIds.clear();
 	      renderTrainingFarmers();
 	    });
 	    villageSelect.addEventListener("change", () => {
 	      if (mainActivitySelect) mainActivitySelect.dataset.selectedValue = "";
-	      if (subActivitySelect) subActivitySelect.dataset.selectedValue = "";
+	      if (subActivitySelect) subActivitySelect.dataset.selectedValues = "[]";
 	      if (mainActivitySelect) mainActivitySelect.value = "";
 	      if (subActivitySelect) subActivitySelect.value = "";
 	      const mainOptions = mappedMainActivityOptions();
@@ -2285,13 +2375,13 @@ function initDeferredLayoutPage() {
 	      setOnlyTrainingOption(mainActivitySelect, mainOptions);
 	      const subOptions = mappedSubActivityOptions();
 	      if (subActivitySelect) fillTrainingSelect(subActivitySelect, subOptions, "Select Sub Activity");
-	      setOnlyTrainingOption(subActivitySelect, subOptions);
+	      autoSelectMappedSubActivities();
 	      selectedFarmerIds.clear();
 	      renderTrainingFarmers();
 	    });
 	    mainActivityTypeSelect?.addEventListener("change", () => {
 	      if (mainActivitySelect) mainActivitySelect.dataset.selectedValue = "";
-	      if (subActivitySelect) subActivitySelect.dataset.selectedValue = "";
+	      if (subActivitySelect) subActivitySelect.dataset.selectedValues = "[]";
 	      if (mainActivitySelect) mainActivitySelect.value = "";
 	      if (subActivitySelect) subActivitySelect.value = "";
 	      const mainOptions = mappedMainActivityOptions();
@@ -2299,18 +2389,23 @@ function initDeferredLayoutPage() {
 	      setOnlyTrainingOption(mainActivitySelect, mainOptions);
 	      const subOptions = mappedSubActivityOptions();
 	      if (subActivitySelect) fillTrainingSelect(subActivitySelect, subOptions, "Select Sub Activity");
-	      setOnlyTrainingOption(subActivitySelect, subOptions);
+	      autoSelectMappedSubActivities();
 	      selectedFarmerIds.clear();
 	      renderTrainingFarmers();
 	    });
 	    mainActivitySelect?.addEventListener("change", () => {
-	      if (subActivitySelect) subActivitySelect.dataset.selectedValue = "";
+	      if (subActivitySelect) subActivitySelect.dataset.selectedValues = "[]";
 	      if (subActivitySelect) subActivitySelect.value = "";
-	      if (subActivitySelect) fillTrainingSelect(subActivitySelect, mappedSubActivityOptions(), "Select Sub Activity");
+	      if (subActivitySelect) {
+	        fillTrainingSelect(subActivitySelect, mappedSubActivityOptions(), "Select Sub Activity");
+	        autoSelectMappedSubActivities();
+	      }
 	      selectedFarmerIds.clear();
 	      renderTrainingFarmers();
 	    });
 	    subActivitySelect?.addEventListener("change", () => {
+	      subActivitySelect.dataset.selectedValues = JSON.stringify(selectedSubActivityValues());
+	      renderSubActivityChips();
 	      selectedFarmerIds.clear();
 	      renderTrainingFarmers();
 	    });

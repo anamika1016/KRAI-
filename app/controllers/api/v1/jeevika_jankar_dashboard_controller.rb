@@ -272,7 +272,9 @@ module Api
           activities: targets.filter_map { |target| target.main_activity_name.to_s.strip.presence }.uniq.sort,
           fcos: vrps.filter_map { |vrp| vrp.fcoc.to_s.strip.presence }.uniq.sort,
           cluster_incharges: vrps.filter_map { |vrp| vrp.cluster_incharge.to_s.strip.presence }.uniq.sort,
-          months: targets.filter_map { |target| target.month_name.to_s.strip.presence }.uniq.sort,
+          months: (web.send(:month_master_month_options) + targets.filter_map { |target| target.month_name.to_s.strip.presence })
+            .uniq { |month| web.send(:normalize_dashboard_text, month) }
+            .sort_by { |month| [web.send(:dashboard_month_index, month), month] },
           post_wise_names: vrps.filter_map { |vrp| vrp.role.to_s.strip.presence }.uniq.sort,
           jeevika_jankars: vrps.map { |vrp| { id: vrp.id, name: vrp.name, user_name: vrp.user_name } }
         }
