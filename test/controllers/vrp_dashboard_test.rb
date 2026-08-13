@@ -1304,6 +1304,22 @@ class VrpDashboardTest < ActionDispatch::IntegrationTest
     assert_redirected_to module_path("jeevika-jankar-bill-list")
     assert_equal "Pending at Sangam Kumari (Manager ics)", bill.reload.data["status"]
     assert_equal "1", bill.data["approval_current_sequence"]
+
+    ModuleRecord.create!(
+      module_slug: "jeevika-jankar-bill-approval-history",
+      data: {
+        "bill_id" => bill.id.to_s,
+        "action" => "Approved",
+        "approval_level" => "First Appovel",
+        "approver" => "Sangam Kumari (Manager ics)",
+        "action_by" => "Sangam Kumari"
+      }
+    )
+    get module_path("jeevika-jankar-bill-list")
+
+    assert_response :success
+    assert_includes response.body, "Pending at Akash Mandal (FCO-C Turekela)"
+    refute_includes response.body, "Pending at Sangam Kumari (Manager ics)"
   end
 
   test "jeevika bill remains visible to pending and previous approvers" do

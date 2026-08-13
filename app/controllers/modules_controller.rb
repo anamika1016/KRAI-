@@ -5768,9 +5768,19 @@ class ModulesController < ApplicationController
 
   def jeevika_bill_status_label(record)
     status = record.data["status"].presence || "Submitted (Not sent for approval)"
-    if status.to_s.downcase.include?("pending")
+    return status if status.to_s.downcase.match?(/rejected|returned/)
+
+    history_actions = jeevika_bill_approval_history(record).map { |history| history.data["action"].to_s }
+    approval_started = status.to_s.downcase.include?("pending") ||
+      history_actions.any? { |action| ["Sent for Approval", "Approved"].include?(action) }
+
+    if approval_started && history_actions.exclude?("Rejected")
+      steps = jeevika_bill_approval_steps(record)
+      return status if steps.blank?
+
       step = jeevika_bill_current_approval_step(record)
-      return step ? "Pending at #{step.data["approver_approved_by"]}" : "Approval channel not configured"
+      return "Pending at #{step.data["approver_approved_by"]}" if step
+      return "Final Approved"
     end
 
     status
@@ -5949,13 +5959,21 @@ class ModulesController < ApplicationController
     cache_key = record.id
     return @jeevika_bill_current_approval_step_cache[cache_key] if @jeevika_bill_current_approval_step_cache.key?(cache_key)
 
-    sequence = record.data["approval_current_sequence"].to_i
-    sequence = 1 if sequence.zero?
     steps = jeevika_bill_approval_steps(record)
-    @jeevika_bill_current_approval_step_cache[cache_key] = if jeevika_bill_approved_sequences(record).blank?
-      steps.first
-    else
-      steps.find { |step| approval_sequence_from_level(step.data["approval_level"]) == sequence }
+    @jeevika_bill_current_approval_step_cache[cache_key] = steps.find do |step|
+      !jeevika_bill_approval_step_closed?(record, step)
+    end
+  end
+
+  def jeevika_bill_approval_step_closed?(record, step)
+    step_sequence = approval_sequence_from_level(step.data["approval_level"])
+    step_approver = step.data["approver_approved_by"]
+
+    jeevika_bill_approval_history(record).any? do |history|
+      next false unless ["Approved", "Rejected"].include?(history.data["action"].to_s)
+
+      approval_sequence_from_level(history.data["approval_level"]) == step_sequence ||
+        dashboard_user_label_matches?(history.data["approver"], [step_approver])
     end
   end
 
