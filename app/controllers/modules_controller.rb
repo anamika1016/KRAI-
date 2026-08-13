@@ -2471,19 +2471,15 @@ class ModulesController < ApplicationController
   end
 
   def dashboard_bill_approved?(record)
-    record.data["status"].to_s.downcase.include?("final approved")
+    jeevika_bill_status_label(record).to_s.downcase.include?("final approved")
   end
 
   def dashboard_bill_pending?(record)
-    return false if dashboard_bill_approved?(record)
+    status = jeevika_bill_status_label(record).to_s
+    return false unless status.downcase.include?("pending")
+    return true if admin_dashboard_user?
 
-    status = record.data["status"].to_s.downcase
-    return false if status.include?("rejected") || status.include?("inactive") || status.include?("returned")
-
-    status.include?("pending") ||
-      status.include?("submitted") ||
-      status.blank? ||
-      jeevika_bill_pending_for_current_approver?(record)
+    jeevika_bill_current_approver?(record)
   end
 
   def weekly_activity_target_status_cards(targets, month_name: nil, fcoc_name: nil, week_number: nil)
