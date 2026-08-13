@@ -1673,6 +1673,10 @@
   <% elsif @slug == "jeevika-jankar-bill-list" && @record.blank? %>
     <% table_id = "jeevika_jankar_bill_table" %>
     <% bill_rows = jeevika_bill_rows(@records) %>
+    <% bill_months = bill_rows.map { |row| row[:bill_month] }.compact_blank.reject { |month| month == "-" }.uniq %>
+    <% default_bill_month = Date.current.prev_month.strftime("%B") %>
+    <% bill_months << default_bill_month unless bill_months.include?(default_bill_month) %>
+    <% bill_months.sort_by! { |month| Date::MONTHNAMES.index { |name| name.to_s.casecmp(month.to_s).zero? } || 99 } %>
     <section class="module-card list-only-card">
       <div class="module-card-header list-title-header">
         <h2>Jeevika Jankar Bill List</h2>
@@ -1686,6 +1690,28 @@
         <button type="button" class="list-btn deactive" data-bill-state-selected="Inactive">Inactive</button>
         <button type="button" class="list-btn delete" data-bill-delete-selected>Delete</button>
       </div>
+
+      <% if @jeevika_bill_user_filters %>
+        <div class="module-entry-form compact-filter-form compact-filter-form-multi"
+          data-bill-list-filters
+          data-default-month="<%= default_bill_month %>">
+          <label>
+            <span>Bill Month</span>
+            <select data-bill-month-filter>
+              <% bill_months.each do |month| %>
+                <option value="<%= month %>" <%= "selected" if month.casecmp(default_bill_month).zero? %>><%= month %></option>
+              <% end %>
+            </select>
+          </label>
+          <label>
+            <span>Approval Status</span>
+            <select data-bill-status-filter>
+              <option value="pending" selected>Pending</option>
+              <option value="final-approved">Final Approved</option>
+            </select>
+          </label>
+        </div>
+      <% end %>
 
       <div class="list-controls">
         <div class="list-search">
@@ -1718,7 +1744,9 @@
           <tbody>
             <% if bill_rows.any? %>
               <% bill_rows.each do |row| %>
-                <tr>
+                <tr data-bill-list-row
+                  data-bill-month="<%= row[:bill_month] %>"
+                  data-bill-status="<%= row[:status].to_s.downcase.include?("final approved") ? "final-approved" : (row[:current_approver] && row[:status].to_s.downcase.include?("pending") ? "pending" : "other") %>">
                   <td>
                     <input type="checkbox"
                       value="<%= row[:edit_path] %>"

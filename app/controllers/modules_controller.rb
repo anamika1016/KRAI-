@@ -1137,6 +1137,7 @@ class ModulesController < ApplicationController
     redirect_to new_user_path and return if @slug == "new-user"
 
     @records = module_records
+    @jeevika_bill_user_filters = !admin_dashboard_user? if @slug == "jeevika-jankar-bill-list"
     prepare_lg_directory_data if @slug == "lg-directory-list"
     prepare_vrp_bill_data if @slug == "vrp-bill-add"
     prepare_jeevika_jankar_bill_data if @slug == "jeevika-jankar-bill-process"
@@ -6008,7 +6009,7 @@ class ModulesController < ApplicationController
     if ["Rejected", "Returned"].include?(action)
       create_bill_approval_history(record, action, step)
       update_bill_status!(record, action, current_sequence: approval_sequence_from_level(step.data["approval_level"]))
-      redirect_to module_path("jeevika-jankar-bill-list", view_id: record.id), notice: "Bill #{action.downcase}."
+      respond_bill_approval_success(record, "Bill #{action.downcase}.")
       return
     end
 
@@ -6021,7 +6022,21 @@ class ModulesController < ApplicationController
       update_bill_status!(record, "Final Approved", current_sequence: approval_sequence_from_level(step.data["approval_level"]))
     end
 
-    redirect_to module_path("jeevika-jankar-bill-list", view_id: record.id), notice: "Bill approved."
+    respond_bill_approval_success(record, "Bill approved.")
+  end
+
+  def respond_bill_approval_success(record, message)
+    respond_to do |format|
+      format.html { redirect_to module_path("jeevika-jankar-bill-list", view_id: record.id), notice: message }
+      format.json do
+        render json: {
+          ok: true,
+          message: message,
+          status: jeevika_bill_status_label(record),
+          status_class: jeevika_bill_status_class(record)
+        }
+      end
+    end
   end
 
   def update_bill_status!(record, status, current_sequence:)
@@ -6041,6 +6056,8 @@ class ModulesController < ApplicationController
         "action_at" => Time.current.iso8601
       }
     )
+    @jeevika_bill_approval_history_by_bill_id = nil
+    @jeevika_bill_current_approval_step_cache&.delete(record.id)
   end
 
   def approved_vrp_id_options
