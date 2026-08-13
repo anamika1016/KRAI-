@@ -7051,7 +7051,7 @@ class ModulesController < ApplicationController
     return true if admin_dashboard_user?
     return false unless record&.data.present?
     return true if jeevika_bill_created_by_current_user?(record)
-    return true if jeevika_bill_pending_for_current_approver?(record)
+    return true if jeevika_bill_approver_visible?(record)
 
     vrp = jeevika_bill_vrp_for_visibility(record)
     return false unless vrp
@@ -7114,7 +7114,25 @@ class ModulesController < ApplicationController
   end
 
   def jeevika_bill_pending_for_current_approver?(record)
-    jeevika_bill_status_label(record).to_s.downcase.include?("pending") && jeevika_bill_current_approver?(record)
+    status = jeevika_bill_status_label(record).to_s
+    return false unless status.downcase.include?("pending")
+
+    jeevika_bill_current_approver?(record) ||
+      dashboard_user_label_matches?(status.sub(/\Apending\s+at\s+/i, ""), current_dashboard_user_labels)
+  end
+
+  # An approver must retain access after acting on a bill so that both pending
+  # and previously approved/rejected bills remain available in their list.
+  def jeevika_bill_approver_visible?(record)
+    return true if jeevika_bill_pending_for_current_approver?(record)
+
+    labels = current_dashboard_user_labels
+    return false if labels.blank?
+
+    jeevika_bill_approval_history(record).any? do |history|
+      dashboard_user_label_matches?(history.data["approver"], labels) ||
+        dashboard_user_label_matches?(history.data["action_by"], labels)
+    end
   end
 
   def jeevika_bill_vrp_registered_by_current_user?(vrp)

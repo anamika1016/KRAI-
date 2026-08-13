@@ -1306,6 +1306,51 @@ class VrpDashboardTest < ActionDispatch::IntegrationTest
     assert_equal "1", bill.data["approval_current_sequence"]
   end
 
+  test "jeevika bill remains visible to pending and previous approvers" do
+    approver = User.create!(
+      user_name: "bill_approver_#{SecureRandom.hex(4)}",
+      password: "secret",
+      first_name: "Dr Noushad",
+      last_name: "Parvez",
+      user_type: "user",
+      status: "Active"
+    )
+    pending_bill = ModuleRecord.create!(
+      module_slug: "jeevika-jankar-bill-process",
+      data: {
+        "select_vrp" => "999999",
+        "bill_month" => "July",
+        "status" => "Pending at Dr Noushad Parvez (Approver)"
+      }
+    )
+    approved_bill = ModuleRecord.create!(
+      module_slug: "jeevika-jankar-bill-process",
+      data: {
+        "select_vrp" => "999998",
+        "bill_month" => "June",
+        "status" => "Final Approved"
+      }
+    )
+    ModuleRecord.create!(
+      module_slug: "jeevika-jankar-bill-approval-history",
+      data: {
+        "bill_id" => approved_bill.id.to_s,
+        "action" => "Approved",
+        "approver" => "Dr Noushad Parvez (Approver)",
+        "action_by" => approver.full_name
+      }
+    )
+
+    post login_path, params: { login: approver.user_name, password: "secret" }
+    get module_path("jeevika-jankar-bill-list")
+
+    assert_response :success
+    assert_includes response.body, "Pending at Dr Noushad Parvez (Approver)"
+    assert_includes response.body, "Final Approved"
+    assert_includes response.body, pending_bill.id.to_s
+    assert_includes response.body, approved_bill.id.to_s
+  end
+
   private
 
   def target_params(vrp, mapping, month, target_quantity, farmer_ids, activity_name = "Farm Visit", main_activity_name = "Farmer Visit")
