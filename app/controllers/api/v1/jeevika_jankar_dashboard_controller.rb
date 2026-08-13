@@ -60,6 +60,51 @@ module Api
         }, status: :ok
       end
 
+      def farmer_training_participation
+        unless admin_dashboard_request?
+          return render json: { success: false, message: "Admin login required." }, status: :forbidden
+        end
+
+        exact_admin_dashboard_data
+        context = @admin_dashboard_api_context
+        web = context[:web]
+        status = normalize_participation_list_status(params[:status])
+        records = context[:participation_records]
+        population = context[:participation_population]
+        trained_rows = web.send(:training_participation_farmer_rows_from_records, records)
+        unique_rows = web.send(:training_afl_farmer_rows_for_participation,
+          month_name: context[:participation_month], fcoc_name: params[:participation_fcoc].presence || params[:training_fcoc].presence)
+        status_counts = web.send(:training_participation_status_counts_from_rows, population)
+
+        rows = case status
+        when "unique" then unique_rows
+        when "training_unique", "total" then trained_rows
+        when "green", "yellow", "red", "pending"
+          population.select { |row| row[:status] == status }
+        end
+
+        render json: {
+          success: true,
+          message: "Farmer Training Participation list fetched successfully.",
+          dashboard_type: "admin",
+          title: participation_list_title(status),
+          status: status,
+          selected_month: context[:participation_month_value],
+          selected_fcoc: params[:participation_fcoc].presence || params[:training_fcoc].presence,
+          totals: {
+            total_training_farmer: web.send(:training_total_farmer_count_from_records, records),
+            total_unique_farmers_distinct: unique_rows.size,
+            training_unique_farmers: web.send(:training_unique_farmer_count_from_records, records),
+            green: status_counts[:green].to_i,
+            yellow: status_counts[:yellow].to_i,
+            red: status_counts[:red].to_i,
+            pending: status_counts[:pending].to_i
+          },
+          count: rows.size,
+          farmers: rows
+        }, status: :ok
+      end
+
       private
 
       def admin_dashboard_request?
@@ -182,9 +227,9 @@ module Api
 
         months = web.send(:dashboard_month_options_for_targets, targets)
         default_month = web.send(:default_vrp_dashboard_month, months)
-        participation_value = params[:participation_month].presence || default_month
+        participation_value = params[:participation_month].presence || params[:training_month].presence || default_month
         participation_month = participation_value == "all" ? nil : participation_value
-        participation_fcoc = params[:participation_fcoc].presence
+        participation_fcoc = params[:participation_fcoc].presence || params[:training_fcoc].presence
         participation_records = web.send(:dashboard_training_participation_records, month_name: participation_month, fcoc_name: participation_fcoc)
         population = web.send(:training_participation_population_rows,
           month_name: participation_month, fcoc_name: participation_fcoc, records: participation_records)
@@ -223,7 +268,8 @@ module Api
           bills: bills,
           participation_records: participation_records,
           participation_population: population,
-          participation_month: participation_value,
+          participation_month: participation_month,
+          participation_month_value: participation_value,
           weekly_targets: weekly_targets,
           weekly_rows: weekly_rows,
           ics_rows: ics_rows
@@ -489,8 +535,32 @@ module Api
       end
 
       def dashboard_list_participation_month
-        value = params[:participation_month].presence || @admin_dashboard_api_context&.dig(:participation_month)
+        value = params[:participation_month].presence || params[:training_month].presence || @admin_dashboard_api_context&.dig(:participation_month)
         value == "all" ? nil : value
+      end
+
+      def normalize_participation_list_status(value)
+        status = value.to_s.downcase.presence || "unique"
+        aliases = {
+          "total_unique" => "unique",
+          "training" => "total",
+          "training_total" => "total",
+          "training_unique" => "training_unique"
+        }
+        status = aliases.fetch(status, status)
+        %w[unique total training_unique green yellow red pending].include?(status) ? status : "unique"
+      end
+
+      def participation_list_title(status)
+        {
+          "unique" => "Total Unique Farmers Farmer List",
+          "total" => "Total Training Farmer List",
+          "training_unique" => "Training Unique Farmers List",
+          "green" => "Green Farmer List",
+          "yellow" => "Yellow Farmer List",
+          "red" => "Red Farmer List",
+          "pending" => "Pending Farmer List"
+        }.fetch(status)
       end
 
       def dashboard_list_week_number

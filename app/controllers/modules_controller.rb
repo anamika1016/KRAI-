@@ -2497,23 +2497,23 @@ class ModulesController < ApplicationController
     [
       {
         status: "total",
-        title: "Target Mila",
+        title: "Target Assigned",
         value: dashboard_quantity(target_quantity),
-        caption: week_number.present? ? "Week #{week_number} ka total target." : "All weeks ka total target.",
+        caption: week_number.present? ? "Total target for week #{week_number}." : "Total target for all weeks.",
         path: weekly_activity_target_report_path(filter_params.merge(status: "total"))
       },
       {
         status: "green",
         title: "Completed",
         value: dashboard_quantity(completed_quantity),
-        caption: "Selected week me complete target.",
+        caption: "Target completed in the selected week.",
         path: weekly_activity_target_report_path(filter_params.merge(status: "total"))
       },
       {
         status: "pending",
         title: "Pending",
         value: dashboard_quantity(pending_quantity),
-        caption: "Selected week ka remaining target.",
+        caption: "Remaining target for the selected week.",
         path: weekly_activity_target_report_path(filter_params.merge(status: "total"))
       }
     ]

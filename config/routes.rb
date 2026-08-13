@@ -22,6 +22,7 @@ Rails.application.routes.draw do
       get "user-dashboard", to: "user_dashboard#show"
       get "admin-dashboard", to: "jeevika_jankar_dashboard#show"
       get "admin-dashboard/lists/:list_type", to: "jeevika_jankar_dashboard#list"
+      get "admin-dashboard/farmer-training-participation", to: "jeevika_jankar_dashboard#farmer_training_participation"
       get "jeevika-jankar-dashboard", to: "jeevika_jankar_dashboard#show"
       get "jeevika-jankar-bills", to: "jeevika_jankar_payments#bills"
       get "jeevika-jankar-bills/:id/download", to: "jeevika_jankar_payments#download_bill"
