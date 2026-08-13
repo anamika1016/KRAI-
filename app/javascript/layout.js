@@ -4207,8 +4207,6 @@ function initDeferredLayoutPage() {
     const dataRows = rows.filter((row) => !row.dataset.emptyRow);
     const columnFilters = JSON.parse(table.dataset.columnFilters || "{}");
     const matchedRows = dataRows.filter((row) => {
-      if (row.dataset.billFilterHidden === "true") return false;
-
       const globalMatch = row.innerText.toLowerCase().includes(query);
       if (!globalMatch) return false;
 
@@ -4404,65 +4402,6 @@ function initDeferredLayoutPage() {
     emptyRows.forEach((row) => tbody.appendChild(row));
     table.dataset.alphaSorted = "true";
   };
-
-  document.querySelectorAll("[data-bill-list-filters]").forEach((filters) => {
-    const table = document.getElementById("jeevika_jankar_bill_table");
-    const monthSelect = filters.querySelector("[data-bill-month-filter]");
-    const statusSelect = filters.querySelector("[data-bill-status-filter]");
-    if (!table || !monthSelect || !statusSelect) return;
-
-    const filterStorageKey = "jeevikaBillListFilters";
-    const backReloadStorageKey = "jeevikaBillListBackReload";
-    const navigationEntry = performance.getEntriesByType?.("navigation")?.[0];
-    const manualReload = navigationEntry?.type === "reload" && sessionStorage.getItem(backReloadStorageKey) !== "true";
-    if (manualReload) sessionStorage.removeItem(filterStorageKey);
-
-    let savedFilters = null;
-    try {
-      savedFilters = JSON.parse(sessionStorage.getItem(filterStorageKey) || "null");
-    } catch (_error) {
-      savedFilters = null;
-    }
-    if (!manualReload && savedFilters) {
-      if (Array.from(monthSelect.options).some((option) => option.value === savedFilters.month)) {
-        monthSelect.value = savedFilters.month;
-      }
-      if (Array.from(statusSelect.options).some((option) => option.value === savedFilters.status)) {
-        statusSelect.value = savedFilters.status;
-      }
-    }
-    sessionStorage.removeItem(backReloadStorageKey);
-
-    const saveBillFilters = () => {
-      sessionStorage.setItem(filterStorageKey, JSON.stringify({
-        month: monthSelect.value,
-        status: statusSelect.value
-      }));
-    };
-
-    const applyBillFilters = () => {
-      const month = String(monthSelect.value || "").trim().toLowerCase();
-      const status = String(statusSelect.value || "").trim();
-      table.querySelectorAll("tbody tr[data-bill-list-row]").forEach((row) => {
-        const monthMatches = !month || String(row.dataset.billMonth || "").trim().toLowerCase() === month;
-        const statusMatches = !status || row.dataset.billStatus === status;
-        row.dataset.billFilterHidden = String(!(monthMatches && statusMatches));
-      });
-      saveBillFilters();
-      paginateTable(table, 1);
-    };
-
-    monthSelect.addEventListener("change", applyBillFilters);
-    statusSelect.addEventListener("change", applyBillFilters);
-    applyBillFilters();
-
-    window.addEventListener("pageshow", (event) => {
-      if (!event.persisted) return;
-
-      sessionStorage.setItem(backReloadStorageKey, "true");
-      window.location.reload();
-    }, { once: true });
-  });
 
   document.querySelectorAll("[data-paginated-table]").forEach((table, index) => {
     table.querySelectorAll("tbody tr").forEach((row) => {

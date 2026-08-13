@@ -1677,6 +1677,12 @@
     <% default_bill_month = Date.current.prev_month.strftime("%B") %>
     <% bill_months << default_bill_month unless bill_months.include?(default_bill_month) %>
     <% bill_months.sort_by! { |month| Date::MONTHNAMES.index { |name| name.to_s.casecmp(month.to_s).zero? } || 99 } %>
+    <% selected_bill_month = params[:bill_month].presence || default_bill_month %>
+    <% selected_bill_status = params[:bill_status].presence_in(["pending", "final-approved"]) || "pending" %>
+    <% if @jeevika_bill_user_filters %>
+      <% bill_rows = bill_rows.select { |row| row[:bill_month].to_s.casecmp(selected_bill_month).zero? } %>
+      <% bill_rows = bill_rows.select { |row| selected_bill_status == "final-approved" ? row[:status].to_s.downcase.include?("final approved") : (row[:current_approver] && row[:status].to_s.downcase.include?("pending")) } %>
+    <% end %>
     <section class="module-card list-only-card">
       <div class="module-card-header list-title-header">
         <h2>Jeevika Jankar Bill List</h2>
@@ -1692,25 +1698,23 @@
       </div>
 
       <% if @jeevika_bill_user_filters %>
-        <div class="module-entry-form compact-filter-form compact-filter-form-multi"
-          data-bill-list-filters
-          data-default-month="<%= default_bill_month %>">
+        <%= form_with url: module_path("jeevika-jankar-bill-list"), method: :get, html: { class: "module-entry-form compact-filter-form compact-filter-form-multi" }, data: { bill_list_filters: true, default_month: default_bill_month } do %>
           <label>
             <span>Bill Month</span>
-            <select data-bill-month-filter>
+            <select name="bill_month" data-bill-month-filter onchange="this.form.requestSubmit()">
               <% bill_months.each do |month| %>
-                <option value="<%= month %>" <%= "selected" if month.casecmp(default_bill_month).zero? %>><%= month %></option>
+                <option value="<%= month %>" <%= "selected" if month.casecmp(selected_bill_month).zero? %>><%= month %></option>
               <% end %>
             </select>
           </label>
           <label>
             <span>Approval Status</span>
-            <select data-bill-status-filter>
-              <option value="pending" selected>Pending</option>
-              <option value="final-approved">Final Approved</option>
+            <select name="bill_status" data-bill-status-filter onchange="this.form.requestSubmit()">
+              <option value="pending" <%= "selected" if selected_bill_status == "pending" %>>Pending</option>
+              <option value="final-approved" <%= "selected" if selected_bill_status == "final-approved" %>>Final Approved</option>
             </select>
           </label>
-        </div>
+        <% end %>
       <% end %>
 
       <div class="list-controls">
