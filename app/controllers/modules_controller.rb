@@ -7088,9 +7088,6 @@ class ModulesController < ApplicationController
 
   def jeevika_bill_created_by_current_user?(record)
     data = record.data
-    current_ids = dashboard_current_app_user_ids.map(&:to_s)
-    return true if data["created_by_id"].present? && current_ids.include?(data["created_by_id"].to_s)
-
     current_user_values = normalized_visibility_values(
       current_app_user&.dig("username"),
       current_app_user&.dig("user_name"),
@@ -7102,7 +7099,14 @@ class ModulesController < ApplicationController
       data["created_by_name"],
       data["created_by_email"]
     )
-    (current_user_values & creator_values).any?
+    return (current_user_values & creator_values).any? if creator_values.any?
+
+    creator_record_type = data["created_by_record_type"].to_s
+    current_record_type = current_app_user&.dig("record_type").to_s
+    return false if creator_record_type.blank? || current_record_type.blank?
+    return false unless creator_record_type.casecmp(current_record_type).zero?
+
+    data["created_by_id"].present? && data["created_by_id"].to_s == current_app_user&.dig("id").to_s
   end
 
   def jeevika_bill_pending_for_current_approver?(record)

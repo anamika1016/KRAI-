@@ -1363,6 +1363,9 @@ class VrpDashboardTest < ActionDispatch::IntegrationTest
       data: {
         "select_vrp" => registered_vrp.id.to_s,
         "bill_month" => "May",
+        "created_by_record_type" => "ModuleRecord",
+        "created_by_id" => approver.id.to_s,
+        "created_by_username" => "different_bill_creator",
         "status" => "Not Assigned To This Approver"
       }
     )
