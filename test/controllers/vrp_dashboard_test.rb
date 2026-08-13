@@ -1315,6 +1315,15 @@ class VrpDashboardTest < ActionDispatch::IntegrationTest
       user_type: "user",
       status: "Active"
     )
+    ModuleRecord.create!(
+      module_slug: "approval-master",
+      data: {
+        "module_name" => "Jeevika Jankar Bill",
+        "approval_level" => "First Approval",
+        "approver_approved_by" => "Dr Noushad Parvez (Approver)",
+        "status" => "Active"
+      }
+    )
     pending_bill = ModuleRecord.create!(
       module_slug: "jeevika-jankar-bill-process",
       data: {
@@ -1340,6 +1349,23 @@ class VrpDashboardTest < ActionDispatch::IntegrationTest
         "action_by" => approver.full_name
       }
     )
+    registered_vrp = create_vrp(
+      name: "Approver Registered VRP",
+      user_name: "approver_registered_#{SecureRandom.hex(4)}",
+      mobile_no: "9#{SecureRandom.random_number(10**9).to_s.rjust(9, '0')}",
+      email: "approver-registered-#{SecureRandom.hex(4)}@example.com",
+      aadhar_no: SecureRandom.random_number(10**12).to_s.rjust(12, "0"),
+      status: 55,
+      created_by_id: approver.id
+    )
+    ModuleRecord.create!(
+      module_slug: "jeevika-jankar-bill-process",
+      data: {
+        "select_vrp" => registered_vrp.id.to_s,
+        "bill_month" => "May",
+        "status" => "Not Assigned To This Approver"
+      }
+    )
 
     post login_path, params: { login: approver.user_name, password: "secret" }
     get module_path("jeevika-jankar-bill-list")
@@ -1347,6 +1373,7 @@ class VrpDashboardTest < ActionDispatch::IntegrationTest
     assert_response :success
     assert_includes response.body, "Pending at Dr Noushad Parvez (Approver)"
     assert_includes response.body, "Final Approved"
+    refute_includes response.body, "Not Assigned To This Approver"
     assert_includes response.body, pending_bill.id.to_s
     assert_includes response.body, approved_bill.id.to_s
   end

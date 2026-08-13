@@ -7053,14 +7053,6 @@ class ModulesController < ApplicationController
     return true if jeevika_bill_created_by_current_user?(record)
     return true if jeevika_bill_approver_visible?(record)
 
-    vrp = jeevika_bill_vrp_for_visibility(record)
-    return false unless vrp
-
-    return vrp.id.to_s == current_vrp_record&.id.to_s if vrp_login_user?
-    return true if jeevika_bill_vrp_registered_by_current_user?(vrp)
-    return true if jeevika_bill_vrp_office_visible?(vrp)
-    return true if module_cluster_visible_vrp_ids.map(&:to_s).include?(vrp.id.to_s)
-
     false
   end
 
