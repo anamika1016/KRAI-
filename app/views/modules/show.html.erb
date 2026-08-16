@@ -1861,8 +1861,30 @@
             </tr>
           </thead>
           <tbody>
-            <% if @records.any? %>
-              <% @records.each do |record| %>
+            <% list_record_groups = if @slug == "training-form-list"
+              @records.group_by do |training_record|
+                training_data = training_record.data
+                farmer_ids = Array(training_data["selected_farmer_ids"]).map(&:to_s).reject(&:blank?).uniq.sort
+                [
+                  training_data["month"], training_data["ics_block"].presence || training_data["ics"],
+                  training_data["gram_name"].presence || training_data["village"], training_data["trainer_name"],
+                  training_data["training_date"], training_data["training_location"],
+                  farmer_ids
+                ].map { |item| item.is_a?(Array) ? item : item.to_s.strip.downcase }
+              end.values
+            else
+              @records.map { |list_record| [list_record] }
+            end %>
+            <% if list_record_groups.any? %>
+              <% list_record_groups.each do |group_records| %>
+                <% record = group_records.first %>
+                <% grouped_farmer_ids = group_records.flat_map { |item| Array(item.data["selected_farmer_ids"]).map(&:to_s) }.reject(&:blank?).uniq %>
+                <% grouped_main_activities = group_records.flat_map { |item| Array(item.data["main_activities"].presence || item.data["main_activity"].presence || item.data["training_topic"]) }.map(&:to_s).map(&:strip).reject(&:blank?).uniq %>
+                <% grouped_training_methods = group_records.flat_map { |item| Array(item.data["training_method"]) }.map(&:to_s).map(&:strip).reject(&:blank?).uniq %>
+                <% grouped_sub_activities = group_records.flat_map do |item|
+                  raw_sub_activities = item.data["sub_activities"].presence || item.data["sub_activity"].presence || item.data["training_subject"]
+                  raw_sub_activities.is_a?(Array) ? raw_sub_activities : raw_sub_activities.to_s.split(/,\s*(?=\d+\.\s*)/)
+                end.map(&:to_s).map(&:strip).reject(&:blank?).uniq %>
                 <tr>
                   <% edit_slug = { "approval-list" => "approval-master", "access-control-list" => "access-control", "vrp-bill-list" => "vrp-bill-add", "jeevika-jankar-bill-list" => "jeevika-jankar-bill-process", "training-form-list" => "training-form", "seed-distribution-target-list" => "seed-distribution-target", "papl360-target-list" => "papl360-target" }.fetch(@slug, @slug) %>
                   <td>
@@ -1879,6 +1901,12 @@
                     <% value ||= record.data["category_name"].presence || record.data["office"].presence if field == "Office Name" %>
                     <% value = record.data["select_vrp_name"].presence || value if @slug == "jeevika-jankar-bill-list" && field == "Jeevika Jankar Name" %>
                     <% value ||= Array(record.data["selected_farmer_names"]).join(", ").presence if field == "Selected Farmers" %>
+                    <% if @slug == "training-form-list" %>
+                      <% value = grouped_main_activities.join(" • ") if field == "Main Activity" %>
+                      <% value = grouped_sub_activities.join("\n") if field == "Sub Activity" %>
+                      <% value = grouped_training_methods.join(" • ") if field == "Training Method" %>
+                      <% value = grouped_farmer_ids.size if ["Farmer Count", "Total Farmer Count"].include?(field) %>
+                    <% end %>
                     <% if @slug == "access-control-list" && field == "Module Name" %>
                       <% value = Array(record.data["module_names"].presence || value).compact_blank %>
                     <% elsif @slug == "access-control-list" && field == "Sub Module Name" %>
@@ -1892,7 +1920,7 @@
                     <% if field == "Status" %>
                       <td><span class="status-pill <%= value == "Inactive" ? "inactive" : "active" %>"><%= value == "-" ? "Active" : value %></span></td>
                     <% elsif field == "Selected Farmers" %>
-                      <% selected_farmer_count = Array(record.data["selected_farmer_ids"]).map(&:to_s).reject(&:blank?).uniq.size %>
+                      <% selected_farmer_count = @slug == "training-form-list" ? grouped_farmer_ids.size : Array(record.data["selected_farmer_ids"]).map(&:to_s).reject(&:blank?).uniq.size %>
                       <td>
                         <% if selected_farmer_count.positive? %>
                           <div class="table-actions">
@@ -1917,7 +1945,14 @@
                         </div>
                       </td>
                     <% elsif field == "Training Register Upload" || field == "Training Photo Upload with Geo Tag" || field.downcase.include?("upload") || field.downcase.include?("file") %>
-                      <% file_urls = module_upload_public_urls(value) %>
+                      <% file_urls = if @slug == "training-form-list"
+                        group_records.flat_map do |item|
+                          grouped_value = module_record_field_value(item, field).presence || item.data[field_key].presence
+                          module_upload_public_urls(grouped_value)
+                        end.uniq
+                      else
+                        module_upload_public_urls(value)
+                      end %>
                       <td data-export-value="<%= file_urls.join(", ") %>">
                         <% if file_urls.any? %>
                           <% if field == "Training Photo Upload with Geo Tag" %>
@@ -1944,7 +1979,25 @@
                         <% end %>
                       </td>
                     <% else %>
-                      <td><%= value %></td>
+                      <td>
+                        <% if @slug == "training-form-list" && field == "Main Activity" %>
+                          <div class="training-list-main-activities">
+                            <strong><%= pluralize(grouped_main_activities.size, "Main Activity") %></strong>
+                            <% grouped_main_activities.each do |main_activity| %>
+                              <span><%= main_activity %></span>
+                            <% end %>
+                          </div>
+                        <% elsif @slug == "training-form-list" && field == "Sub Activity" %>
+                          <div class="training-list-sub-activities">
+                            <strong><%= pluralize(grouped_sub_activities.size, "Topic") %></strong>
+                            <% grouped_sub_activities.each_with_index do |sub_activity, index| %>
+                              <span><b><%= index + 1 %>.</b> <%= sub_activity.sub(/\A\d+\.\s*/, "") %></span>
+                            <% end %>
+                          </div>
+                        <% else %>
+                          <%= value %>
+                        <% end %>
+                      </td>
                     <% end %>
                   <% end %>
                 </tr>
@@ -2100,7 +2153,10 @@
                   when "Main Activity Type"
                     "data-training-main-activity-type data-selected-value=\"#{ERB::Util.html_escape(field_value)}\""
                   when "Main Activity"
-                    "data-training-main-activity data-selected-value=\"#{ERB::Util.html_escape(field_value)}\""
+                    selected_main_activity_value = raw_field_value.presence || field_value
+                    selected_main_activities = selected_main_activity_value.is_a?(Array) ? selected_main_activity_value : [selected_main_activity_value]
+                    selected_main_activities = selected_main_activities.map(&:to_s).map(&:strip).reject(&:blank?)
+                    "data-training-main-activity data-selected-values=\"#{ERB::Util.html_escape(selected_main_activities.to_json)}\" multiple size=\"3\""
                   when "Sub Activity"
                     selected_sub_activity_value = raw_field_value.presence || field_value
                     selected_sub_activities = selected_sub_activity_value.is_a?(Array) ? selected_sub_activity_value : selected_sub_activity_value.to_s.split(/,\s*(?=\d+\.\s*)/)
@@ -2131,7 +2187,7 @@
                   when "Parent Office"
                     "data-parent-office-select data-selected-value=\"#{ERB::Util.html_escape(field_value)}\""
                   end if @slug == "parent-office-add" %>
-                <select name="module_record[<%= field_key %>]<%= "[]" if @slug == "training-form" && field == "Sub Activity" %>" <%= role_dependency_attr&.html_safe %> <%= location_dependency_attr&.html_safe %> <%= training_target_attr&.html_safe %> <%= seed_target_attr&.html_safe %> <%= parent_office_dependency_attr&.html_safe %> <%= required_attr %>>
+                <select name="module_record[<%= field_key %>]<%= "[]" if @slug == "training-form" && ["Main Activity", "Sub Activity"].include?(field) %>" <%= role_dependency_attr&.html_safe %> <%= location_dependency_attr&.html_safe %> <%= training_target_attr&.html_safe %> <%= seed_target_attr&.html_safe %> <%= parent_office_dependency_attr&.html_safe %> <%= required_attr %>>
                   <option value=""><%= options.any? ? "Select #{resource_person_label(field)}" : "No #{resource_person_label(field)} saved yet" %></option>
                   <% options.each do |option| %>
                     <option value="<%= option %>" <%= "selected" if option == field_value %>><%= option %></option>

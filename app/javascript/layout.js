@@ -1949,6 +1949,9 @@ function initDeferredLayoutPage() {
     const selectedSubActivityValues = () => subActivitySelect
       ? Array.from(subActivitySelect.selectedOptions).map((option) => option.value).filter(Boolean)
       : [];
+    const selectedMainActivityValues = () => mainActivitySelect
+      ? Array.from(mainActivitySelect.selectedOptions).map((option) => option.value).filter(Boolean)
+      : [];
 
     const mappingMatchesSelectedSubActivities = (mapping, selectedValues) => {
       if (!selectedValues.length) return true;
@@ -1999,6 +2002,12 @@ function initDeferredLayoutPage() {
       renderSubActivityChips();
     };
 
+    const autoSelectMappedMainActivities = () => {
+      if (!mainActivitySelect) return;
+      Array.from(mainActivitySelect.options).forEach((option) => { option.selected = Boolean(option.value); });
+      mainActivitySelect.dataset.selectedValues = JSON.stringify(selectedMainActivityValues());
+    };
+
     const targetRowsForSelection = ({
       requireMonth = false,
       requireVillage = false,
@@ -2011,14 +2020,14 @@ function initDeferredLayoutPage() {
       const selectedIcs = normalizeOption(icsSelect.value);
       const selectedVillage = normalizeOption(villageSelect.value);
       const selectedMainActivityType = selectedTrainingActivityType();
-      const selectedMainActivity = includeMainActivity ? normalizeOption(mainActivitySelect?.value) : "";
+      const selectedMainActivities = includeMainActivity ? selectedMainActivityValues().map(normalizeOption) : [];
       const selectedSubActivities = includeSubActivity && subActivitySelect
         ? Array.from(subActivitySelect.selectedOptions).map((option) => normalizeOption(option.value)).filter(Boolean)
         : [];
 
       if (requireMonth && !selectedMonth) return [];
       if (requireVillage && !selectedVillage) return [];
-      if (requireMainActivity && !selectedMainActivity) return [];
+      if (requireMainActivity && !selectedMainActivities.length) return [];
       if (requireSubActivity && !selectedSubActivities.length) return [];
 
       return mappings.filter((mapping) => {
@@ -2026,7 +2035,7 @@ function initDeferredLayoutPage() {
         const icsMatches = !selectedIcs || normalizeOption(mapping.ics) === selectedIcs;
         const villageMatches = !selectedVillage || normalizeOption(mapping.village) === selectedVillage;
         const mainActivityTypeMatches = normalizeOption(mapping.main_activity_type || "Training") === selectedMainActivityType;
-        const mainActivityMatches = !selectedMainActivity || normalizeOption(mapping.main_activity) === selectedMainActivity;
+        const mainActivityMatches = !selectedMainActivities.length || selectedMainActivities.includes(normalizeOption(mapping.main_activity));
         const subActivityMatches = mappingMatchesSelectedSubActivities(mapping, selectedSubActivities);
         return monthMatches && icsMatches && villageMatches && mainActivityTypeMatches && mainActivityMatches && subActivityMatches;
       });
@@ -2042,9 +2051,9 @@ function initDeferredLayoutPage() {
     ).map(optionValue);
     const mappedSubActivityOptions = () => {
       const rows = targetRowsForSelection({ requireVillage: true, requireMainActivity: true, includeSubActivity: false });
-      const selectedMainActivity = normalizeOption(mainActivitySelect?.value);
+      const selectedMainActivities = selectedMainActivityValues().map(normalizeOption);
       const configured = activityMappings
-        .filter((mapping) => normalizeOption(mapping.main_activity) === selectedMainActivity)
+        .filter((mapping) => selectedMainActivities.includes(normalizeOption(mapping.main_activity)))
         .flatMap((mapping) => Array(mapping.sub_activities || []));
       const values = rows.flatMap((mapping) => {
         const rawValue = String(mapping.sub_activity || "").trim();
@@ -2086,11 +2095,11 @@ function initDeferredLayoutPage() {
       syncTrainingMonthFromSelection();
 
       const selectedVillage = normalizeOption(villageSelect.value);
-      const selectedMainActivity = normalizeOption(mainActivitySelect?.value);
+      const selectedMainActivities = selectedMainActivityValues().map(normalizeOption);
       const selectedSubActivities = subActivitySelect
         ? Array.from(subActivitySelect.selectedOptions).map((option) => normalizeOption(option.value)).filter(Boolean)
         : [];
-      if (!monthSelect?.value || !selectedVillage || !selectedMainActivity) return [];
+      if (!monthSelect?.value || !selectedVillage || !selectedMainActivities.length) return [];
 
       const farmersById = new Map();
       targetRowsForSelection({ requireMonth: true, requireVillage: true, requireMainActivity: true })
@@ -2213,7 +2222,7 @@ function initDeferredLayoutPage() {
         return;
       }
 
-      if (!mainActivitySelect?.value) {
+      if (!selectedMainActivityValues().length) {
         farmerList.textContent = "Select Main Activity to load target farmers.";
         if (farmerSelectAll) farmerSelectAll.checked = false;
         updateFarmerCount();
@@ -2223,7 +2232,7 @@ function initDeferredLayoutPage() {
       const selectedSubActivityCount = subActivitySelect
         ? Array.from(subActivitySelect.selectedOptions).filter((option) => option.value).length
         : 0;
-      if (mainActivitySelect?.value && !selectedSubActivityCount) {
+      if (selectedMainActivityValues().length && !selectedSubActivityCount) {
         farmerList.textContent = "Select Sub Activity to narrow the target farmers.";
       }
 
@@ -2306,7 +2315,7 @@ function initDeferredLayoutPage() {
 	    setOnlyTrainingOption(villageSelect, initialVillageOptions);
 	    const initialMainOptions = mappedMainActivityOptions();
 	    if (mainActivitySelect) fillTrainingSelect(mainActivitySelect, initialMainOptions, "Select Main Activity");
-	    setOnlyTrainingOption(mainActivitySelect, initialMainOptions);
+	    if (!selectedMainActivityValues().length) autoSelectMappedMainActivities();
 	    const initialSubOptions = mappedSubActivityOptions();
 	    if (subActivitySelect) fillTrainingSelect(subActivitySelect, initialSubOptions, "Select Sub Activity");
 	    if (selectedSubActivityValues().length) renderSubActivityChips(); else autoSelectMappedSubActivities();
@@ -2336,7 +2345,7 @@ function initDeferredLayoutPage() {
 	      setOnlyTrainingOption(villageSelect, villageOptions);
 	      const mainOptions = mappedMainActivityOptions();
 	      if (mainActivitySelect) fillTrainingSelect(mainActivitySelect, mainOptions, "Select Main Activity");
-	      setOnlyTrainingOption(mainActivitySelect, mainOptions);
+	      autoSelectMappedMainActivities();
 	      const subOptions = mappedSubActivityOptions();
 	      if (subActivitySelect) fillTrainingSelect(subActivitySelect, subOptions, "Select Sub Activity");
 	      autoSelectMappedSubActivities();
@@ -2358,7 +2367,7 @@ function initDeferredLayoutPage() {
 	      setOnlyTrainingOption(villageSelect, villageOptions);
 	      const mainOptions = mappedMainActivityOptions();
 	      if (mainActivitySelect) fillTrainingSelect(mainActivitySelect, mainOptions, "Select Main Activity");
-	      setOnlyTrainingOption(mainActivitySelect, mainOptions);
+	      autoSelectMappedMainActivities();
 	      const subOptions = mappedSubActivityOptions();
 	      if (subActivitySelect) fillTrainingSelect(subActivitySelect, subOptions, "Select Sub Activity");
 	      autoSelectMappedSubActivities();
@@ -2372,7 +2381,7 @@ function initDeferredLayoutPage() {
 	      if (subActivitySelect) subActivitySelect.value = "";
 	      const mainOptions = mappedMainActivityOptions();
 	      if (mainActivitySelect) fillTrainingSelect(mainActivitySelect, mainOptions, "Select Main Activity");
-	      setOnlyTrainingOption(mainActivitySelect, mainOptions);
+	      autoSelectMappedMainActivities();
 	      const subOptions = mappedSubActivityOptions();
 	      if (subActivitySelect) fillTrainingSelect(subActivitySelect, subOptions, "Select Sub Activity");
 	      autoSelectMappedSubActivities();
@@ -2386,7 +2395,7 @@ function initDeferredLayoutPage() {
 	      if (subActivitySelect) subActivitySelect.value = "";
 	      const mainOptions = mappedMainActivityOptions();
 	      if (mainActivitySelect) fillTrainingSelect(mainActivitySelect, mainOptions, "Select Main Activity");
-	      setOnlyTrainingOption(mainActivitySelect, mainOptions);
+	      autoSelectMappedMainActivities();
 	      const subOptions = mappedSubActivityOptions();
 	      if (subActivitySelect) fillTrainingSelect(subActivitySelect, subOptions, "Select Sub Activity");
 	      autoSelectMappedSubActivities();
@@ -2394,6 +2403,7 @@ function initDeferredLayoutPage() {
 	      renderTrainingFarmers();
 	    });
 	    mainActivitySelect?.addEventListener("change", () => {
+	      mainActivitySelect.dataset.selectedValues = JSON.stringify(selectedMainActivityValues());
 	      if (subActivitySelect) subActivitySelect.dataset.selectedValues = "[]";
 	      if (subActivitySelect) subActivitySelect.value = "";
 	      if (subActivitySelect) {
@@ -5089,7 +5099,12 @@ function initDeferredLayoutPage() {
       .replaceAll("'", "&#039;");
 
     const numberValue = (value) => Number(String(value || "0").replaceAll(",", "")) || 0;
-    const savedItemFor = (row) => savedItems.find((item) => String(item.target_mapping_id || "") === String(row.target_mapping_id || "")) || {};
+    const savedItemFor = (row) => savedItems.find((item) => {
+      const sameTarget = String(item.target_mapping_id || "") === String(row.target_mapping_id || "");
+      const rowSession = String(row.training_session_key || "");
+      const itemSession = String(item.training_session_key || "");
+      return sameTarget && (!rowSession || rowSession === itemSession);
+    }) || {};
     const rowInputs = () => Array.from(rowsBody?.querySelectorAll("tr[data-bill-row]") || []);
     const normalizedChoice = (value) => String(value || "").trim().toLowerCase().replaceAll(" ", "_");
     const normalizedMonth = (value) => String(value || "").trim().toLowerCase();
@@ -5275,6 +5290,7 @@ function initDeferredLayoutPage() {
           <tr data-bill-row data-row-index="${index}" data-target-quantity="${escapeHtml(row.target_quantity)}" data-assigned-count="${escapeHtml(assignedCount)}" data-achievement-count="${escapeHtml(autoAchievementCount)}" data-current-achievement="${escapeHtml(achievementCount)}" data-main-activity-type="${escapeHtml(mainActivityType)}" data-achievement-entry-mode="${escapeHtml(achievementEntryMode)}">
             <td>
               ${hiddenInput(`${inputPrefix}[target_mapping_id]`, row.target_mapping_id)}
+              ${hiddenInput(`${inputPrefix}[training_session_key]`, row.training_session_key || "")}
               ${hiddenInput(`${inputPrefix}[vrp_id]`, row.vrp_id)}
               ${hiddenInput(`${inputPrefix}[vrp_name]`, row.vrp_name)}
               ${hiddenInput(`${inputPrefix}[month_name]`, row.month_name)}

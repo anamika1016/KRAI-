@@ -4778,6 +4778,49 @@ body {
   font-size: 12px;
 }
 
+.training-list-sub-activities {
+  display: grid;
+  gap: 7px;
+  min-width: 320px;
+  white-space: normal;
+}
+
+.training-list-main-activities {
+  display: grid;
+  gap: 7px;
+  min-width: 180px;
+}
+
+.training-list-main-activities > strong {
+  color: #2f7237;
+  font-size: 11px;
+}
+
+.training-list-main-activities > span {
+  padding: 6px 9px;
+  border-radius: 6px;
+  background: #eef5f0;
+  font-weight: 700;
+}
+
+.training-list-sub-activities > strong {
+  width: fit-content;
+  padding: 4px 9px;
+  border-radius: 999px;
+  background: #e5f3e7;
+  color: #2f7237;
+  font-size: 11px;
+}
+
+.training-list-sub-activities > span {
+  display: block;
+  padding: 7px 9px;
+  border-left: 3px solid #70ad72;
+  border-radius: 4px;
+  background: #f3f8f4;
+  line-height: 1.35;
+}
+
 .target-weekly-table th:first-child,
 .target-weekly-table td:first-child {
   width: 30%;

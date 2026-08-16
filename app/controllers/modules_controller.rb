@@ -3943,12 +3943,12 @@ class ModulesController < ApplicationController
     return @training_record_target_match_cache[cache_key] = false unless training_record_target_location_matches?(record, target)
 
     summary = training_summary(record)
-    topic = normalize_dashboard_text(summary[:training_topic])
+    topics = training_activity_values(record.data["main_activities"].presence || summary[:training_topic])
     subjects = training_activity_values(record.data["sub_activities"].presence || summary[:training_subject])
     target_topic = normalize_dashboard_text(target.main_activity_name)
     target_subject = normalize_dashboard_text(target.activity_name)
 
-    topic_matches = dashboard_training_activity_text_matches?(topic, target_topic)
+    topic_matches = topics.any? { |topic| dashboard_training_activity_text_matches?(topic, target_topic) }
     subject_matches = subjects.any? { |subject| dashboard_training_activity_text_matches?(subject, target_subject) }
     @training_record_target_match_cache[cache_key] = topic_matches && subject_matches
   end
@@ -6315,7 +6315,7 @@ class ModulesController < ApplicationController
     sub_activity_settings = jeevika_jankar_sub_activity_settings(activity_settings)
     other_target_achievement_index = approved_other_target_achievement_index
 
-    targets.map do |target|
+    rows = targets.map do |target|
       activity_setting = jeevika_jankar_activity_setting_for(target, activity_settings, sub_activity_settings)
       main_activity_type = activity_setting&.dig(:main_activity_type).presence || "Training"
       achievement_entry_mode = activity_setting&.dig(:achievement_entry_mode).presence || "Auto Fill"
@@ -6382,6 +6382,134 @@ class ModulesController < ApplicationController
         timesheet_dates: (other_target_achievement&.dig(:achieved_at).presence || trained_rows.filter_map { |row| row[:training_date].presence }.uniq.join(", ")),
         farmer_details: farmer_rows
       }
+    end
+
+    group_jeevika_jankar_training_bill_rows(rows)
+  end
+
+  def group_jeevika_jankar_training_bill_rows(rows)
+    Array(rows).group_by do |row|
+      farmer_ids = Array(row[:farmer_details]).map { |farmer| farmer[:id].to_s }.reject(&:blank?).uniq.sort
+      if farmer_ids.any?
+        [
+          "farmers",
+          row[:vrp_id].to_s,
+          normalize_dashboard_text(row[:month_name]),
+          normalize_dashboard_text(row[:ics]),
+          normalize_dashboard_text(row[:village]),
+          farmer_ids
+        ]
+      else
+        ["target", row[:target_mapping_id].to_s]
+      end
+    end.values.flat_map do |group|
+      if group.one?
+        sessions = jeevika_jankar_bill_training_sessions(group, group.first)
+        next sessions.presence || [group.first]
+      end
+
+      primary = group.first
+      main_activities = group.map { |row| row[:main_activity].to_s.strip }.reject(&:blank?).uniq
+      activities = group.map { |row| row[:activity].to_s.strip }.reject(&:blank?).uniq
+      farmer_groups = group.flat_map { |row| Array(row[:farmer_details]) }.group_by { |farmer| farmer[:id].to_s }
+      farmers = farmer_groups.values.map do |entries|
+        entries.min_by do |farmer|
+          { "Trained in Same Activity" => 0, "Trained in Other Activity" => 1, "Pending" => 2 }.fetch(farmer[:status], 3)
+        end
+      end
+      trained = farmers.reject { |farmer| farmer[:status] == "Pending" }
+      same_count = farmers.count { |farmer| farmer[:status] == "Trained in Same Activity" }
+      other_count = farmers.count { |farmer| farmer[:status] == "Trained in Other Activity" }
+      assigned_count = farmers.size
+      achievement_count = [group.map { |row| row[:achievement_count].to_f }.max.to_f, trained.size.to_f].max
+      achievement_count = [achievement_count, assigned_count].min if assigned_count.positive?
+
+      combined = primary.merge(
+        target_mapping_ids: group.map { |row| row[:target_mapping_id].to_s }.reject(&:blank?).uniq,
+        main_activity: main_activities.join(" • "),
+        main_activity_type: group.any? { |row| training_main_activity_type?(row[:main_activity_type]) } ? "Training" : primary[:main_activity_type],
+        achievement_entry_mode: group.any? { |row| training_main_activity_type?(row[:main_activity_type]) } ? "Auto Fill" : primary[:achievement_entry_mode],
+        activity: activities.join(" • "),
+        target_quantity: assigned_count.positive? ? assigned_count : group.map { |row| row[:target_quantity].to_f }.max,
+        assigned_count: assigned_count,
+        achievement_count: achievement_count,
+        same_activity_count: same_count,
+        other_activity_count: other_count,
+        pending_count: [assigned_count - achievement_count, 0].max,
+        timesheet_dates: group.flat_map { |row| row[:timesheet_dates].to_s.split(",") }.map(&:strip).reject(&:blank?).uniq.join(", "),
+        farmer_details: farmers
+      )
+
+      sessions = jeevika_jankar_bill_training_sessions(group, combined)
+      sessions.presence || [combined]
+    end
+  end
+
+  def jeevika_jankar_bill_training_sessions(group, combined_row)
+    farmer_ids = Array(combined_row[:farmer_details]).map { |farmer| farmer[:id].to_s }.reject(&:blank?).uniq
+    return [] if farmer_ids.blank?
+
+    vrp_id = combined_row[:vrp_id].presence || group.first[:vrp_id]
+    vrp = Vrp.find_by(id: vrp_id)
+    return [] if vrp.blank?
+
+    records = dashboard_training_completion_records.select do |record|
+      training_record_matches_month?(record, combined_row[:month_name]) &&
+        training_record_matches_vrp?(record, vrp) &&
+        (training_record_selected_farmer_ids(record) & farmer_ids).any?
+    end
+    return [] if records.blank?
+
+    records.group_by do |record|
+      data = record.data
+      selected_ids = training_record_selected_farmer_ids(record).sort
+      [
+        training_summary(record)[:training_date].to_s,
+        normalize_dashboard_text(data["training_location"]),
+        normalize_dashboard_text(data["training_method"]),
+        selected_ids
+      ]
+    end.values.map do |session_records|
+      session_ids = session_records.flat_map { |record| training_record_selected_farmer_ids(record) }.uniq & farmer_ids
+      session_main_activities = session_records.flat_map do |record|
+        Array(record.data["main_activities"].presence || record.data["main_activity"].presence || record.data["training_topic"])
+      end.map(&:to_s).map(&:strip).reject(&:blank?).uniq
+      session_sub_activities = session_records.flat_map do |record|
+        raw = record.data["sub_activities"].presence || record.data["sub_activity"].presence || record.data["training_subject"]
+        raw.is_a?(Array) ? raw : raw.to_s.split(/,\s*(?=\d+\.\s*)/)
+      end.map(&:to_s).map(&:strip).reject(&:blank?).uniq
+      primary_record = session_records.max_by { |record| [record.created_at || Time.at(0), record.id.to_i] }
+      summary = training_summary(primary_record)
+      session_key = [
+        vrp_id,
+        normalize_dashboard_text(combined_row[:month_name]),
+        summary[:training_date].to_s,
+        normalize_dashboard_text(primary_record.data["training_location"]),
+        normalize_dashboard_text(primary_record.data["training_method"]),
+        session_ids.sort.join("-")
+      ].join("|")
+      farmers = Array(combined_row[:farmer_details]).select { |farmer| session_ids.include?(farmer[:id].to_s) }.map do |farmer|
+        farmer.merge(
+          training_topic: session_main_activities.join(", "),
+          training_subject: session_sub_activities.join(", "),
+          training_date: summary[:training_date],
+          status: "Trained in Same Activity"
+        )
+      end
+
+      combined_row.merge(
+        main_activity: session_main_activities.presence&.join(" • ") || combined_row[:main_activity],
+        activity: session_sub_activities.presence&.join(" • ") || combined_row[:activity],
+        target_quantity: session_ids.size,
+        assigned_count: session_ids.size,
+        achievement_count: session_ids.size,
+        same_activity_count: session_ids.size,
+        other_activity_count: 0,
+        pending_count: 0,
+        timesheet_dates: summary[:training_date].to_s,
+        farmer_details: farmers,
+        training_session_key: session_key
+      )
     end
   end
 
@@ -6533,7 +6661,8 @@ class ModulesController < ApplicationController
     @training_summary_cache[record.id] ||= {
       department: record.data["department"].presence || record.data["trainee_department"],
       month: record.data["month"].presence || parse_module_date(record.data["training_date"])&.strftime("%B"),
-      training_topic: record.data["main_activity"].presence || record.data["training_topic"],
+      training_topics: Array(record.data["main_activities"].presence || record.data["main_activity"].presence || record.data["training_topic"]).map(&:to_s).map(&:strip).reject(&:blank?),
+      training_topic: Array(record.data["main_activities"].presence || record.data["main_activity"].presence || record.data["training_topic"]).map(&:to_s).map(&:strip).reject(&:blank?).join(", "),
       training_subject: training_activity_values(record.data["sub_activities"].presence || record.data["sub_activity"].presence || record.data["training_subject"], normalize: false).join(", "),
       training_date: record.data["training_date"]
     }
@@ -6560,7 +6689,9 @@ class ModulesController < ApplicationController
   def training_matches_target_activity?(target, training_row)
     return false if training_row.blank?
 
-    topic_matches = normalize_dashboard_text(training_row[:training_topic]) == normalize_dashboard_text(target.main_activity_name)
+    topic_matches = Array(training_row[:training_topics].presence || training_row[:training_topic])
+      .map { |topic| normalize_dashboard_text(topic) }
+      .include?(normalize_dashboard_text(target.main_activity_name))
     subject_matches = normalize_dashboard_text(training_row[:training_subject]) == normalize_dashboard_text(target.activity_name)
     topic_matches && subject_matches
   end
@@ -7230,7 +7361,10 @@ class ModulesController < ApplicationController
     data["trainer_contact"] = trainer_contact if trainer_contact.present?
     data["trainee_department"] = training_trainee_department_default if data["trainee_department"].blank?
     data["main_activity_type"] = data["main_activity_type"].presence || "Training"
-    data["main_activity"] = data["main_activity"].presence || data["training_topic"].presence
+    raw_main_activities = data["main_activity"].presence || data["training_topic"].presence
+    main_activities = Array(raw_main_activities).map(&:to_s).map(&:strip).reject(&:blank?).uniq
+    data["main_activities"] = main_activities
+    data["main_activity"] = main_activities.one? ? main_activities.first : main_activities
     raw_sub_activities = data["sub_activity"].presence || data["training_subject"].presence
     sub_activities = if raw_sub_activities.is_a?(Array)
       raw_sub_activities
@@ -7240,7 +7374,7 @@ class ModulesController < ApplicationController
     sub_activities = sub_activities.map(&:to_s).map(&:strip).reject(&:blank?).uniq
     data["sub_activities"] = sub_activities
     data["sub_activity"] = sub_activities.one? ? sub_activities.first : sub_activities
-    data["training_topic"] = data["main_activity"] if data["main_activity"].present?
+    data["training_topic"] = main_activities.join(", ") if main_activities.present?
     data["training_subject"] = sub_activities.join(", ") if sub_activities.present?
 
     if (mapping = training_target_match(data))
@@ -7348,14 +7482,14 @@ class ModulesController < ApplicationController
     selected_month = normalize_dashboard_text(data["month"])
     selected_ics = normalize_dashboard_text(data["ics_block"].presence || data["ics"])
     selected_village = normalize_dashboard_text(data["gram_name"].presence || data["village"])
-    selected_main_activity = normalize_dashboard_text(data["main_activity"].presence || data["training_topic"])
+    selected_main_activities = training_activity_values(data["main_activities"].presence || data["main_activity"].presence || data["training_topic"])
     selected_sub_activities = training_activity_values(data["sub_activities"].presence || data["sub_activity"].presence || data["training_subject"])
 
     training_target_mappings.find do |mapping|
       normalize_dashboard_text(mapping[:month]) == selected_month &&
         normalize_dashboard_text(mapping[:ics]) == selected_ics &&
         normalize_dashboard_text(mapping[:village]) == selected_village &&
-        dashboard_training_activity_text_matches?(selected_main_activity, normalize_dashboard_text(mapping[:main_activity])) &&
+        selected_main_activities.any? { |main_activity| dashboard_training_activity_text_matches?(main_activity, normalize_dashboard_text(mapping[:main_activity])) } &&
         selected_sub_activities.any? { |sub_activity| dashboard_training_activity_text_matches?(sub_activity, normalize_dashboard_text(mapping[:sub_activity])) }
     end
   end
@@ -7407,7 +7541,7 @@ class ModulesController < ApplicationController
     selected_ics = normalize_dashboard_text(data["ics_block"])
     selected_village = normalize_dashboard_text(data["gram_name"])
     selected_main_activity_type = normalize_dashboard_text(data["main_activity_type"])
-    selected_main_activity = normalize_dashboard_text(data["main_activity"])
+    selected_main_activities = training_activity_values(data["main_activities"].presence || data["main_activity"])
     selected_sub_activities = training_activity_values(data["sub_activities"].presence || data["sub_activity"])
     activity_settings = jeevika_jankar_main_activity_settings
 
@@ -7420,7 +7554,7 @@ class ModulesController < ApplicationController
       next if selected_ics.present? && normalize_dashboard_text(target.ics_name.presence || target.ics_id) != selected_ics
       next if normalize_dashboard_text(target.village_name.presence || target.village_id) != selected_village
       next if selected_main_activity_type.present? && target_main_activity_type != selected_main_activity_type
-      next if normalize_dashboard_text(target.main_activity_name) != selected_main_activity
+      next unless selected_main_activities.include?(normalize_dashboard_text(target.main_activity_name))
       next unless selected_sub_activities.include?(normalize_dashboard_text(target.activity_name))
 
       farmer_ids = Array(target.afl_ids).map(&:to_s).reject(&:blank?).uniq
