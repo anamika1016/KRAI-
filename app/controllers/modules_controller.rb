@@ -1738,6 +1738,7 @@ class ModulesController < ApplicationController
       assigned_farmer_ids = target_farmer_ids(target)
       completed_farmer_ids = vrp_dashboard_completed_farmer_ids_for_target(target) & assigned_farmer_ids
       activity_setting = jeevika_jankar_activity_setting_for(target, activity_settings, sub_activity_settings)
+      training_completion = activity_setting.blank? || training_main_activity_type?(activity_setting[:main_activity_type])
       completion_uses_farmer_ids = activity_setting.blank? || training_main_activity_type?(activity_setting[:main_activity_type]) || completed_farmer_ids.any?
       completed = vrp_target_completed_quantity(
         target,
@@ -1765,6 +1766,7 @@ class ModulesController < ApplicationController
         target_mapping_id: target.id.to_s,
         assigned_farmer_ids: assigned_farmer_ids,
         completed_farmer_ids: completed_farmer_ids,
+        training_completion: training_completion,
         completion_uses_farmer_ids: completion_uses_farmer_ids,
         target: effective_target,
         week_1: week_targets[0],
@@ -1807,7 +1809,8 @@ class ModulesController < ApplicationController
       sub_activities = rows.map { |row| row[:activity].to_s.strip }.reject(&:blank?).uniq
       effective_target = first[:target].to_f
       assigned_farmer_ids = rows.flat_map { |row| Array(row[:assigned_farmer_ids]).map(&:to_s) }.reject(&:blank?).uniq
-      farmer_completion_rows = rows.select { |row| row[:completion_uses_farmer_ids] }
+      training_completion_rows = rows.select { |row| row[:training_completion] }
+      farmer_completion_rows = training_completion_rows.presence || rows.select { |row| row[:completion_uses_farmer_ids] }
       completed_farmer_ids = unique_training_farmer_ids(
         farmer_completion_rows.flat_map { |row| Array(row[:completed_farmer_ids]) }
       ) & assigned_farmer_ids
@@ -1931,7 +1934,12 @@ class ModulesController < ApplicationController
     assigned_ids = selected_targets.flat_map { |row| target_farmer_ids(row) }.map(&:to_s).reject(&:blank?).uniq
     activity_settings = jeevika_jankar_main_activity_settings
     sub_activity_settings = jeevika_jankar_sub_activity_settings(activity_settings)
-    completion_groups = selected_targets.filter_map do |row|
+    training_targets = selected_targets.select do |row|
+      setting = jeevika_jankar_activity_setting_for(row, activity_settings, sub_activity_settings)
+      setting.blank? || training_main_activity_type?(setting[:main_activity_type])
+    end
+    completion_targets = training_targets.presence || selected_targets
+    completion_groups = completion_targets.filter_map do |row|
       ids = vrp_dashboard_completed_farmer_ids_for_target(row)
       setting = jeevika_jankar_activity_setting_for(row, activity_settings, sub_activity_settings)
       next if setting.present? && !training_main_activity_type?(setting[:main_activity_type]) && ids.blank?
