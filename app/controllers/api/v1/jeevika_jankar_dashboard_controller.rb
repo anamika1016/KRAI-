@@ -258,6 +258,7 @@ module Api
         ics_options = web.send(:ics_farmer_report_options, ics_records, ics_targets)
         selected_ics = params[:ics_report_ics].to_s.presence
         ics_rows = selected_ics ? web.send(:ics_farmer_report_rows, ics_targets, ics_records, selected_ics: selected_ics) : []
+        target_progress = admin_dashboard_progress(web, targets, vrps)
 
         card_data = exact_admin_card_data(web, vrps, targets, all_targets, bills)
         @admin_dashboard_api_context = {
@@ -310,9 +311,52 @@ module Api
             rows: ics_rows,
             count: ics_rows.size
           },
-          monthly_target_summary: monthly_target_summary(targets),
-          recent_target_progress: targets.first(100).map { |target| progress_payload(target) }
+          monthly_target_summary: monthly_progress_summary(target_progress),
+          recent_target_progress: target_progress.first(100)
         }
+      end
+
+      def admin_dashboard_progress(web, targets, vrps)
+        vrps_by_id = Array(vrps).index_by { |vrp| vrp.id.to_s }
+        Array(targets).group_by { |target| target.vrp_id.to_s }.flat_map do |vrp_id, vrp_targets|
+          vrp = vrps_by_id[vrp_id]
+          next [] unless vrp
+
+          bills = web.send(:vrp_dashboard_bills, vrp)
+          web.send(:vrp_dashboard_target_progress_rows, vrp_targets, bills).map do |row|
+            assigned = row[:target].to_f
+            achieved = [row[:completed].to_f, assigned].min
+            {
+              target_mapping_id: row[:target_mapping_id],
+              target_mapping_ids: row[:target_mapping_ids].presence || [row[:target_mapping_id]],
+              jeevika_jankar_id: vrp.id,
+              jeevika_jankar_name: vrp.name,
+              month: row[:month],
+              fco: row[:fco],
+              ics: row[:ics],
+              village: row[:village],
+              main_activity: row[:main_activity],
+              sub_activity: row[:activity],
+              completion_date: parse_dashboard_date(row[:completion_date]),
+              assigned: number(assigned),
+              achieved: number(achieved),
+              pending: number([assigned - achieved, 0].max),
+              progress_percent: assigned.positive? ? ((achieved / assigned) * 100).round(2) : 0
+            }
+          end
+        end
+      end
+
+      def monthly_progress_summary(progress)
+        Array(progress).group_by { |row| row[:month].presence || "Not Set" }.map do |month, rows|
+          {
+            month: month,
+            target_records: rows.size,
+            target_quantity: number(rows.sum { |row| row[:assigned].to_f }),
+            achieved: number(rows.sum { |row| row[:achieved].to_f }),
+            pending: number(rows.sum { |row| row[:pending].to_f })
+          }
+        end
       end
 
       def exact_dashboard_bills(web, vrps)

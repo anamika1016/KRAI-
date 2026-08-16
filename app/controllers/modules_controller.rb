@@ -1736,6 +1736,9 @@ class ModulesController < ApplicationController
 
     raw_rows = Array(targets).map do |target|
       assigned_farmer_ids = target_farmer_ids(target)
+      completed_farmer_ids = vrp_dashboard_completed_farmer_ids_for_target(target) & assigned_farmer_ids
+      activity_setting = jeevika_jankar_activity_setting_for(target, activity_settings, sub_activity_settings)
+      completion_uses_farmer_ids = activity_setting.blank? || training_main_activity_type?(activity_setting[:main_activity_type]) || completed_farmer_ids.any?
       completed = vrp_target_completed_quantity(
         target,
         bills,
@@ -1760,6 +1763,9 @@ class ModulesController < ApplicationController
         main_activity: target.main_activity_name,
         activity: target.activity_name,
         target_mapping_id: target.id.to_s,
+        assigned_farmer_ids: assigned_farmer_ids,
+        completed_farmer_ids: completed_farmer_ids,
+        completion_uses_farmer_ids: completion_uses_farmer_ids,
         target: effective_target,
         week_1: week_targets[0],
         week_2: week_targets[1],
@@ -1783,7 +1789,7 @@ class ModulesController < ApplicationController
         normalize_dashboard_text(row[:fco]),
         normalize_dashboard_text(row[:ics]),
         normalize_dashboard_text(row[:village]),
-        row[:farmers].to_i,
+        Array(row[:assigned_farmer_ids]).map(&:to_s).sort,
         row[:opg_training].to_f,
         row[:general_training].to_f,
         row[:input_demo_inm].to_f,
@@ -1799,18 +1805,29 @@ class ModulesController < ApplicationController
       first = rows.first
       main_activities = rows.map { |row| row[:main_activity].to_s.strip }.reject(&:blank?).uniq
       sub_activities = rows.map { |row| row[:activity].to_s.strip }.reject(&:blank?).uniq
-      completed_total = rows.sum { |row| row[:completed].to_f }
-      pending_total = rows.sum { |row| row[:pending].to_f }
       effective_target = first[:target].to_f
+      assigned_farmer_ids = rows.flat_map { |row| Array(row[:assigned_farmer_ids]).map(&:to_s) }.reject(&:blank?).uniq
+      completed_farmer_ids = rows.flat_map { |row| Array(row[:completed_farmer_ids]).map(&:to_s) }.reject(&:blank?).uniq
+      completed_total = if assigned_farmer_ids.any? && rows.any? { |row| row[:completion_uses_farmer_ids] }
+        completed_farmer_ids.size.to_f
+      else
+        # Combined activity rows represent one mapped target. Without farmer IDs,
+        # use the greatest achieved value instead of multiplying it per activity.
+        rows.map { |row| row[:completed].to_f }.max.to_f
+      end
+      completed_total = [completed_total, effective_target].min
 
       first.merge(
         main_activity: main_activities.join("\n"),
         activity: sub_activities.join("\n"),
         main_activities: main_activities,
         sub_activities: sub_activities,
-        completed: [completed_total, effective_target].min,
-        pending: [effective_target - [completed_total, effective_target].min, 0].max,
-        progress: percentage([completed_total, effective_target].min, effective_target)
+        target_mapping_ids: rows.map { |row| row[:target_mapping_id].to_s }.reject(&:blank?).uniq,
+        assigned_farmer_ids: assigned_farmer_ids,
+        completed_farmer_ids: completed_farmer_ids,
+        completed: completed_total,
+        pending: [effective_target - completed_total, 0].max,
+        progress: percentage(completed_total, effective_target)
       )
     end.sort_by do |row|
       [
@@ -2411,22 +2428,28 @@ class ModulesController < ApplicationController
   # The Target Mapping list combines those rows into a single assignment, so the
   # dashboard uses the same assignment fields and stays in sync dynamically.
   def dashboard_target_record_count(targets)
-    Array(targets).group_by do |target|
-      [
-        target.vrp_id,
-        target.fco_name.presence || target.fco_id,
-        target.ics_name.presence || target.ics_id,
-        target.village_name.presence || target.village_id,
-        target.month_name,
-        target.completion_date,
-        target.opg_training_target.to_s,
-        target.week_wise_opg_target.to_s,
-        target.input_demo_inm_target.to_s,
-        target.input_demo_pm_target.to_s,
-        target.ffs_target.to_s,
-        Array(target.afl_ids).map(&:to_s).reject(&:blank?).sort
-      ]
-    end.size
+    dashboard_target_assignment_groups(targets).size
+  end
+
+  def dashboard_target_assignment_groups(targets)
+    Array(targets).group_by { |target| dashboard_target_assignment_key(target) }.values
+  end
+
+  def dashboard_target_assignment_key(target)
+    [
+      target.vrp_id,
+      target.fco_name.presence || target.fco_id,
+      target.ics_name.presence || target.ics_id,
+      target.village_name.presence || target.village_id,
+      target.month_name,
+      target.completion_date,
+      target.opg_training_target.to_s,
+      target.week_wise_opg_target.to_s,
+      target.input_demo_inm_target.to_s,
+      target.input_demo_pm_target.to_s,
+      target.ffs_target.to_s,
+      Array(target.afl_ids).map(&:to_s).reject(&:blank?).sort
+    ]
   end
 
   def dashboard_reports
@@ -3363,8 +3386,8 @@ class ModulesController < ApplicationController
   end
 
   def training_target_status_rows(targets)
-    Array(targets)
-      .map { |target| training_target_detail_row(target) }
+    dashboard_target_assignment_groups(targets)
+      .map { |group| combined_training_target_detail_row(group) }
       .sort_by do |row|
         [
           dashboard_month_index(row[:month]),
@@ -3376,6 +3399,48 @@ class ModulesController < ApplicationController
           row[:sub_activity].to_s
         ]
       end
+  end
+
+  def combined_training_target_detail_row(targets)
+    targets = Array(targets)
+    rows = targets.map { |target| training_target_detail_row(target) }
+    first = rows.first
+    return first if rows.one?
+
+    main_activities = rows.map { |row| row[:main_activity].to_s.strip }.reject(&:blank?).uniq
+    sub_activities = rows.map { |row| row[:sub_activity].to_s.strip }.reject(&:blank?).uniq
+    assigned_ids = rows.flat_map { |row| Array(row[:assigned_farmer_ids]) }.map(&:to_s).reject(&:blank?).uniq
+    completed_ids = rows.flat_map { |row| Array(row[:completed_farmer_ids]) }.map(&:to_s).reject(&:blank?).uniq
+    weekly_ids = (0..3).map do |index|
+      rows.flat_map { |row| Array(row[:weekly_completed_farmer_ids])[index] || [] }.map(&:to_s).reject(&:blank?).uniq
+    end
+    target_quantity = assigned_ids.any? ? assigned_ids.size.to_f : rows.map { |row| row[:target_quantity].to_f }.max.to_f
+    completed_quantity = assigned_ids.any? ? completed_ids.size.to_f : rows.map { |row| row[:completed_quantity].to_f }.max.to_f
+    completed_quantity = [completed_quantity, target_quantity].min
+    pending_quantity = [target_quantity - completed_quantity, 0].max
+    progress_percent = target_quantity.positive? ? ((completed_quantity / target_quantity) * 100).round : 0
+    status_class = training_target_status_for_percent(progress_percent)
+
+    first.merge(
+      target_mapping_ids: rows.map { |row| row[:target_mapping_id] }.compact_blank.uniq,
+      main_activity: main_activities.join("\n"),
+      sub_activity: sub_activities.join("\n"),
+      assigned_farmer_ids: assigned_ids,
+      completed_farmer_ids: completed_ids,
+      weekly_completed_farmer_ids: weekly_ids,
+      weekly_targets: (0..3).map { |index| rows.map { |row| Array(row[:weekly_targets])[index].to_f }.max.to_f },
+      weekly_achievements: weekly_ids.map(&:size),
+      target_quantity: target_quantity,
+      completed_quantity: completed_quantity,
+      pending_quantity: pending_quantity,
+      progress_percent: progress_percent,
+      status_class: status_class,
+      status_label: training_target_status_label(status_class),
+      training_register_urls: rows.flat_map { |row| Array(row[:training_register_urls]) }.uniq,
+      training_photo_urls: rows.flat_map { |row| Array(row[:training_photo_urls]) }.uniq,
+      completed_farmers: training_farmers_for_ids(completed_ids).map { |farmer| farmer.merge(status_label: "Completed", status_class: "green") },
+      pending_farmers: training_farmers_for_ids(assigned_ids - completed_ids).map { |farmer| farmer.merge(status_label: "Pending", status_class: "red") }
+    )
   end
 
   def training_target_status_counts(targets)
@@ -3658,25 +3723,21 @@ class ModulesController < ApplicationController
       farmer_ids = target_farmer_ids(target)
       next if farmer_ids.blank?
 
-      key = [
-        normalize_dashboard_text(target.month_name),
-        normalize_dashboard_text(target_ics_label(target)),
-        normalize_dashboard_text(target_village_label(target)),
-        normalize_dashboard_text(target.main_activity_name),
-        normalize_dashboard_text(target.activity_name)
-      ]
+      key = dashboard_target_assignment_key(target)
       groups[key] ||= {
         month: target.month_name.presence || "-",
         ics: target_ics_label(target),
         village: target_village_label(target),
-        activity: target.main_activity_name.presence || "Farmer Training",
-        sub_activity: target.activity_name.presence || "-",
+        activity: [],
+        sub_activity: [],
         farmer_ids: [],
         target_quantity: 0.0,
         targets: []
       }
+      groups[key][:activity] |= [target.main_activity_name.presence || "Farmer Training"]
+      groups[key][:sub_activity] |= [target.activity_name.presence || "-"]
       groups[key][:farmer_ids] |= farmer_ids
-      groups[key][:target_quantity] += target.target_quantity.to_f
+      groups[key][:target_quantity] = [groups[key][:target_quantity], farmer_ids.size.to_f, target.target_quantity.to_f].max
       groups[key][:targets] << target
     end
 
@@ -3688,11 +3749,13 @@ class ModulesController < ApplicationController
       session_participants = matching_records.flat_map { |record| training_record_selected_farmer_ids(record) & farmer_ids }
       unique_participants = session_participants.uniq
       target_quantity = group[:target_quantity].to_f
-      target_detail_rows = group[:targets].map { |target| training_target_detail_row(target) }
+      target_detail_rows = [combined_training_target_detail_row(group[:targets])]
       status_counts = training_target_status_counts_for_rows(target_detail_rows)
       farmer_rows = farmer_rows_for_training_group(group[:targets])
 
       group.merge(
+        activity: group[:activity].join("\n"),
+        sub_activity: group[:sub_activity].join("\n"),
         sessions: matching_records.size,
         training_photo_count: matching_records.count { |record| module_upload_present?(record.data["training_photo_upload_with_geo_tag"]) },
         register_count: matching_records.count { |record| module_upload_present?(record.data["training_register_upload"]) },
@@ -3731,10 +3794,14 @@ class ModulesController < ApplicationController
     progress_percent = target_quantity.positive? ? ((completed_quantity / target_quantity) * 100).round : 0
     status_class = training_target_status_for_percent(progress_percent)
     weekly_targets = target.respond_to?(:weekly_target_values) ? target.weekly_target_values.map(&:to_f) : [0, 0, 0, 0]
-    weekly_achievements = training_weekly_achievement_values(target, farmer_ids)
+    weekly_completed_farmer_ids = training_weekly_achievement_farmer_ids(target, farmer_ids)
+    weekly_achievements = weekly_completed_farmer_ids.map(&:size)
 
     {
       target_mapping_id: target.id.to_s,
+      assigned_farmer_ids: farmer_ids,
+      completed_farmer_ids: completed_farmer_ids,
+      weekly_completed_farmer_ids: weekly_completed_farmer_ids,
       month: target.month_name.presence || "-",
       vrp: target.vrp&.name.presence || "VRP ##{target.vrp_id}",
       fco: target.vrp&.fcoc.presence || "-",
@@ -3762,8 +3829,12 @@ class ModulesController < ApplicationController
   end
 
   def training_weekly_achievement_values(target, farmer_ids)
+    training_weekly_achievement_farmer_ids(target, farmer_ids).map(&:size)
+  end
+
+  def training_weekly_achievement_farmer_ids(target, farmer_ids)
     farmer_ids = Array(farmer_ids).map(&:to_s).reject(&:blank?).uniq
-    return [0, 0, 0, 0] if farmer_ids.blank? || !model_ready?(:ModuleRecord)
+    return Array.new(4) { [] } if farmer_ids.blank? || !model_ready?(:ModuleRecord)
 
     weekly_farmer_ids = Array.new(4) { [] }
     matching_training_records_for_target(target, farmer_ids).each do |record|
@@ -3774,7 +3845,7 @@ class ModulesController < ApplicationController
       weekly_farmer_ids[week_index] |= training_record_selected_farmer_ids(record) & farmer_ids
     end
 
-    weekly_farmer_ids.map(&:size)
+    weekly_farmer_ids
   end
 
   def training_target_status_counts_for_rows(rows)
@@ -4250,18 +4321,21 @@ class ModulesController < ApplicationController
 
   def vrp_assigned_target_report
     rows = if model_ready?(:TargetMapping)
-      TargetMapping.includes(:vrp)
+      targets = TargetMapping.includes(:vrp)
         .order(updated_at: :desc)
         .limit(100)
-        .map do |target|
+        .to_a
+      dashboard_target_assignment_groups(targets).map do |group|
+          target = group.first
+          farmer_count = group.flat_map { |row| target_farmer_ids(row) }.uniq.size
           [
             target.vrp&.name.presence || "VRP ##{target.vrp_id}",
             target.month_name.presence || "-",
             target.village_name.presence || target.village_id.presence || "-",
-            target.main_activity_name.presence || "-",
-            target.activity_name.presence || "-",
-            target.farmer_count,
-            dashboard_quantity(target.target_quantity)
+            group.map(&:main_activity_name).compact_blank.uniq.join("\n").presence || "-",
+            group.map(&:activity_name).compact_blank.uniq.join("\n").presence || "-",
+            farmer_count.positive? ? farmer_count : group.map(&:farmer_count).max,
+            dashboard_quantity(farmer_count.positive? ? farmer_count : group.map { |row| row.target_quantity.to_f }.max)
           ]
         end
     else
@@ -4333,13 +4407,13 @@ class ModulesController < ApplicationController
   end
 
   def dashboard_target_summary_rows(targets)
-    grouped = targets.group_by { |target| target.month_name.presence || "Not Set" }
+    grouped = dashboard_target_assignment_groups(targets).group_by { |rows| rows.first.month_name.presence || "Not Set" }
 
-    grouped.map do |month, rows|
+    grouped.map do |month, assignments|
       [
         month,
-        rows.size,
-        dashboard_quantity(rows.sum { |target| target.target_quantity.to_f })
+        assignments.size,
+        dashboard_quantity(assignments.sum { |rows| rows.map { |target| target_farmer_ids(target).size.nonzero? || target.target_quantity.to_f }.max.to_f })
       ]
     end.presence || [["No data", 0, 0]]
   end
