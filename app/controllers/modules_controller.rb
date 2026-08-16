@@ -1763,6 +1763,7 @@ class ModulesController < ApplicationController
         main_activity: target.main_activity_name,
         activity: target.activity_name,
         target_mapping_id: target.id.to_s,
+        target_record: target,
         assigned_farmer_ids: assigned_farmer_ids,
         completed_farmer_ids: completed_farmer_ids,
         completion_uses_farmer_ids: completion_uses_farmer_ids,
@@ -1808,10 +1809,18 @@ class ModulesController < ApplicationController
       effective_target = first[:target].to_f
       assigned_farmer_ids = rows.flat_map { |row| Array(row[:assigned_farmer_ids]).map(&:to_s) }.reject(&:blank?).uniq
       farmer_completion_rows = rows.select { |row| row[:completion_uses_farmer_ids] }
-      completed_farmer_ids = unique_training_farmer_ids(
-        farmer_completion_rows.flat_map { |row| Array(row[:completed_farmer_ids]) }
-      )
-      completed_total = if assigned_farmer_ids.any? && farmer_completion_rows.any?
+      completed_farmer_ids = common_training_farmer_ids(farmer_completion_rows.map { |row| Array(row[:completed_farmer_ids]) })
+      training_targets = rows.filter_map do |row|
+        target = row[:target_record]
+        next unless target
+
+        setting = jeevika_jankar_activity_setting_for(target, activity_settings, sub_activity_settings)
+        target if setting.blank? || training_main_activity_type?(setting[:main_activity_type])
+      end
+      training_session_total = dashboard_training_session_achievement(training_targets, assigned_farmer_ids)
+      completed_total = if training_targets.any?
+        training_session_total
+      elsif assigned_farmer_ids.any? && rows.any? { |row| row[:completion_uses_farmer_ids] }
         completed_farmer_ids.size.to_f
       else
         # Combined activity rows represent one mapped target. Without farmer IDs,
@@ -1840,6 +1849,21 @@ class ModulesController < ApplicationController
         row[:village].to_s
       ]
     end
+  end
+
+  def dashboard_training_session_achievement(targets, assigned_farmer_ids)
+    targets = Array(targets)
+    assigned_farmer_ids = Array(assigned_farmer_ids).map(&:to_s).reject(&:blank?).uniq
+    return 0.0 if targets.blank? || assigned_farmer_ids.blank?
+
+    dashboard_training_completion_records
+      .select do |record|
+        targets.any? { |target| training_record_matches_dashboard_target?(record, target, assigned_farmer_ids) }
+      end
+      .uniq(&:id)
+      .sum do |record|
+        (training_record_selected_farmer_ids(record) & assigned_farmer_ids).size
+      end.to_f
   end
 
   def vrp_dashboard_detail_payload(list_type, vrp, mappings, targets, bills, filters = {})
@@ -1938,7 +1962,7 @@ class ModulesController < ApplicationController
 
       ids
     end
-    completed_ids = unique_training_farmer_ids(completion_groups.flatten) & assigned_ids
+    completed_ids = common_training_farmer_ids(completion_groups) & assigned_ids
     pending_ids = assigned_ids - completed_ids
     farmer_ids = case scope
     when "completed" then completed_ids
@@ -3430,9 +3454,9 @@ class ModulesController < ApplicationController
     main_activities = rows.map { |row| row[:main_activity].to_s.strip }.reject(&:blank?).uniq
     sub_activities = rows.map { |row| row[:sub_activity].to_s.strip }.reject(&:blank?).uniq
     assigned_ids = rows.flat_map { |row| Array(row[:assigned_farmer_ids]) }.map(&:to_s).reject(&:blank?).uniq
-    completed_ids = unique_training_farmer_ids(rows.flat_map { |row| Array(row[:completed_farmer_ids]) })
+    completed_ids = common_training_farmer_ids(rows.map { |row| Array(row[:completed_farmer_ids]) })
     weekly_ids = (0..3).map do |index|
-      unique_training_farmer_ids(rows.flat_map { |row| Array(row[:weekly_completed_farmer_ids])[index] || [] })
+      common_training_farmer_ids(rows.map { |row| Array(row[:weekly_completed_farmer_ids])[index] || [] })
     end
     target_quantity = assigned_ids.any? ? assigned_ids.size.to_f : rows.map { |row| row[:target_quantity].to_f }.max.to_f
     completed_quantity = assigned_ids.any? ? completed_ids.size.to_f : rows.map { |row| row[:completed_quantity].to_f }.max.to_f
@@ -3889,7 +3913,7 @@ class ModulesController < ApplicationController
       progress_percent: 0
     } if target_rows.blank?
 
-    completed_farmer_ids = unique_training_farmer_ids(target_rows.flat_map do |target|
+    completed_farmer_ids = common_training_farmer_ids(target_rows.map do |target|
       completed_training_farmer_ids_for(target, target_farmer_ids(target))
     end)
     target_farmer_ids = target_rows.flat_map { |target| target_farmer_ids(target) }.uniq
@@ -3932,6 +3956,13 @@ class ModulesController < ApplicationController
       seen[key] = true
       unique_ids << farmer_id
     end
+  end
+
+  def common_training_farmer_ids(farmer_id_groups)
+    groups = Array(farmer_id_groups).map { |ids| unique_training_farmer_ids(ids) }
+    return [] if groups.blank?
+
+    groups.drop(1).reduce(groups.first) { |common_ids, ids| common_ids & ids }
   end
 
   def new_farmer_target_mapping?(target)
