@@ -1811,8 +1811,12 @@ class ModulesController < ApplicationController
       completed_farmer_ids = unique_training_farmer_ids(
         farmer_completion_rows.flat_map { |row| Array(row[:completed_farmer_ids]) }
       )
+      other_completed_total = rows.reject { |row| row[:completion_uses_farmer_ids] }
+        .group_by { |row| normalize_dashboard_text(row[:main_activity]) }
+        .values
+        .sum { |activity_rows| activity_rows.map { |row| row[:completed].to_f }.max.to_f }
       completed_total = if assigned_farmer_ids.any? && farmer_completion_rows.any?
-        completed_farmer_ids.size.to_f
+        completed_farmer_ids.size.to_f + other_completed_total
       else
         # Combined activity rows represent one mapped target. Without farmer IDs,
         # use the greatest achieved value instead of multiplying it per activity.
