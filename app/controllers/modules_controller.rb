@@ -1810,13 +1810,9 @@ class ModulesController < ApplicationController
       farmer_completion_rows = rows.select { |row| row[:completion_uses_farmer_ids] }
       completed_farmer_ids = unique_training_farmer_ids(
         farmer_completion_rows.flat_map { |row| Array(row[:completed_farmer_ids]) }
-      )
-      other_completed_total = rows.reject { |row| row[:completion_uses_farmer_ids] }
-        .group_by { |row| normalize_dashboard_text(row[:main_activity]) }
-        .values
-        .sum { |activity_rows| activity_rows.map { |row| row[:completed].to_f }.max.to_f }
+      ) & assigned_farmer_ids
       completed_total = if assigned_farmer_ids.any? && farmer_completion_rows.any?
-        completed_farmer_ids.size.to_f + other_completed_total
+        completed_farmer_ids.size.to_f
       else
         # Combined activity rows represent one mapped target. Without farmer IDs,
         # use the greatest achieved value instead of multiplying it per activity.
@@ -3916,26 +3912,10 @@ class ModulesController < ApplicationController
     Array(target.respond_to?(:afl_ids) ? target.afl_ids : []).map(&:to_s).reject(&:blank?).uniq
   end
 
-  # AFL imports can leave multiple database rows for the same real farmer.
-  # Dashboard achievement and farmer lists must count that person only once.
+  # Target Mapping treats every assigned AFL ID as one unique farmer. Dashboard
+  # achievement must use those exact IDs and only remove repeated attendance.
   def unique_training_farmer_ids(farmer_ids)
-    ids = Array(farmer_ids).map(&:to_s).reject(&:blank?).uniq
-    return ids if ids.blank? || !model_ready?(:Afl)
-
-    farmers = Afl.where(id: ids).index_by { |farmer| farmer.id.to_s }
-    seen = {}
-    ids.each_with_object([]) do |farmer_id, unique_ids|
-      farmer = farmers[farmer_id]
-      key = if farmer
-        training_participation_farmer_unique_key(farmer_id, farmer: farmer)
-      else
-        "id:#{farmer_id}"
-      end
-      next if seen[key]
-
-      seen[key] = true
-      unique_ids << farmer_id
-    end
+    Array(farmer_ids).map(&:to_s).reject(&:blank?).uniq
   end
 
   def new_farmer_target_mapping?(target)
