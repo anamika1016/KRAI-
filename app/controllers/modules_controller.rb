@@ -1764,6 +1764,7 @@ class ModulesController < ApplicationController
         main_activity: target.main_activity_name,
         activity: target.activity_name,
         target_mapping_id: target.id.to_s,
+        target_record: target,
         assigned_farmer_ids: assigned_farmer_ids,
         completed_farmer_ids: completed_farmer_ids,
         training_completion: training_completion,
@@ -1814,7 +1815,11 @@ class ModulesController < ApplicationController
       completed_farmer_ids = unique_training_farmer_ids(
         farmer_completion_rows.flat_map { |row| Array(row[:completed_farmer_ids]) }
       ) & assigned_farmer_ids
-      completed_total = if assigned_farmer_ids.any? && farmer_completion_rows.any?
+      training_targets = training_completion_rows.filter_map { |row| row[:target_record] }
+      training_form_total = dashboard_training_form_total_farmer_count(training_targets, assigned_farmer_ids)
+      completed_total = if training_targets.any?
+        training_form_total
+      elsif assigned_farmer_ids.any? && farmer_completion_rows.any?
         completed_farmer_ids.size.to_f
       else
         # Combined activity rows represent one mapped target. Without farmer IDs,
@@ -1843,6 +1848,22 @@ class ModulesController < ApplicationController
         row[:village].to_s
       ]
     end
+  end
+
+  def dashboard_training_form_total_farmer_count(targets, assigned_farmer_ids)
+    targets = Array(targets)
+    assigned_farmer_ids = Array(assigned_farmer_ids).map(&:to_s).reject(&:blank?).uniq
+    return 0.0 if targets.blank?
+
+    dashboard_training_completion_records
+      .select do |record|
+        targets.any? { |target| training_record_matches_dashboard_target?(record, target, assigned_farmer_ids) }
+      end
+      .uniq(&:id)
+      .sum do |record|
+        saved_total = dashboard_numeric(record.data["total_farmer_count"])
+        saved_total.positive? ? saved_total : training_record_selected_farmer_ids(record).size
+      end.to_f
   end
 
   def vrp_dashboard_detail_payload(list_type, vrp, mappings, targets, bills, filters = {})
