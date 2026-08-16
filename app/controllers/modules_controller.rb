@@ -1807,7 +1807,9 @@ class ModulesController < ApplicationController
       sub_activities = rows.map { |row| row[:activity].to_s.strip }.reject(&:blank?).uniq
       effective_target = first[:target].to_f
       assigned_farmer_ids = rows.flat_map { |row| Array(row[:assigned_farmer_ids]).map(&:to_s) }.reject(&:blank?).uniq
-      completed_farmer_ids = rows.flat_map { |row| Array(row[:completed_farmer_ids]).map(&:to_s) }.reject(&:blank?).uniq
+      completed_farmer_ids = unique_training_farmer_ids(
+        rows.flat_map { |row| Array(row[:completed_farmer_ids]).map(&:to_s) }
+      )
       completed_total = if assigned_farmer_ids.any? && rows.any? { |row| row[:completion_uses_farmer_ids] }
         completed_farmer_ids.size.to_f
       else
@@ -1918,12 +1920,17 @@ class ModulesController < ApplicationController
   end
 
   def vrp_dashboard_target_farmer_payload(targets, filters)
-    target = Array(targets).find { |row| row.id.to_s == filters[:target_id].to_s }
+    requested_ids = filters[:target_ids].to_s.split(",").map(&:strip).reject(&:blank?)
+    requested_ids = [filters[:target_id].to_s] if requested_ids.blank? && filters[:target_id].present?
+    selected_targets = Array(targets).select { |row| requested_ids.include?(row.id.to_s) }
+    target = selected_targets.first
     scope = filters[:farmer_scope].presence_in(%w[assigned completed pending]) || "assigned"
     return dashboard_detail_payload("target_farmers", "Target Farmers", "Target record not found.", 0, vrp_target_farmer_headers, []) unless target
 
-    assigned_ids = target_farmer_ids(target)
-    completed_ids = vrp_dashboard_completed_farmer_ids_for_target(target) & assigned_ids
+    assigned_ids = selected_targets.flat_map { |row| target_farmer_ids(row) }.map(&:to_s).reject(&:blank?).uniq
+    completed_ids = unique_training_farmer_ids(
+      selected_targets.flat_map { |row| vrp_dashboard_completed_farmer_ids_for_target(row) }
+    ) & assigned_ids
     pending_ids = assigned_ids - completed_ids
     farmer_ids = case scope
     when "completed" then completed_ids
@@ -1940,8 +1947,8 @@ class ModulesController < ApplicationController
     caption = [
       target.month_name,
       target.village_name.presence || target.village_id,
-      target.main_activity_name,
-      target.activity_name
+      selected_targets.map(&:main_activity_name).compact_blank.uniq.join(", "),
+      selected_targets.map(&:activity_name).compact_blank.uniq.join(", ")
     ].compact_blank.join(" | ")
 
     dashboard_detail_payload("target_farmers", title, caption, rows.size, vrp_target_farmer_headers, rows)
@@ -2065,7 +2072,12 @@ class ModulesController < ApplicationController
         row[:progress],
         {
           label: "View List",
-          path: vrp_dashboard_list_path("target_farmers", target_id: row[:target_mapping_id], farmer_scope: farmer_scope)
+          path: vrp_dashboard_list_path(
+            "target_farmers",
+            target_id: row[:target_mapping_id],
+            target_ids: Array(row[:target_mapping_ids].presence || row[:target_mapping_id]).join(","),
+            farmer_scope: farmer_scope
+          )
         }
       ]
     end
@@ -3410,7 +3422,7 @@ class ModulesController < ApplicationController
     main_activities = rows.map { |row| row[:main_activity].to_s.strip }.reject(&:blank?).uniq
     sub_activities = rows.map { |row| row[:sub_activity].to_s.strip }.reject(&:blank?).uniq
     assigned_ids = rows.flat_map { |row| Array(row[:assigned_farmer_ids]) }.map(&:to_s).reject(&:blank?).uniq
-    completed_ids = rows.flat_map { |row| Array(row[:completed_farmer_ids]) }.map(&:to_s).reject(&:blank?).uniq
+    completed_ids = unique_training_farmer_ids(rows.flat_map { |row| Array(row[:completed_farmer_ids]) })
     weekly_ids = (0..3).map do |index|
       rows.flat_map { |row| Array(row[:weekly_completed_farmer_ids])[index] || [] }.map(&:to_s).reject(&:blank?).uniq
     end
@@ -3869,9 +3881,9 @@ class ModulesController < ApplicationController
       progress_percent: 0
     } if target_rows.blank?
 
-    completed_farmer_ids = target_rows.flat_map do |target|
+    completed_farmer_ids = unique_training_farmer_ids(target_rows.flat_map do |target|
       completed_training_farmer_ids_for(target, target_farmer_ids(target))
-    end.uniq
+    end)
     target_farmer_ids = target_rows.flat_map { |target| target_farmer_ids(target) }.uniq
     pending_farmer_ids = target_farmer_ids - completed_farmer_ids
     completed_quantity = completed_farmer_ids.size
@@ -3890,6 +3902,28 @@ class ModulesController < ApplicationController
 
   def target_farmer_ids(target)
     Array(target.respond_to?(:afl_ids) ? target.afl_ids : []).map(&:to_s).reject(&:blank?).uniq
+  end
+
+  # AFL imports can leave multiple database rows for the same real farmer.
+  # Dashboard achievement and farmer lists must count that person only once.
+  def unique_training_farmer_ids(farmer_ids)
+    ids = Array(farmer_ids).map(&:to_s).reject(&:blank?).uniq
+    return ids if ids.blank? || !model_ready?(:Afl)
+
+    farmers = Afl.where(id: ids).index_by { |farmer| farmer.id.to_s }
+    seen = {}
+    ids.each_with_object([]) do |farmer_id, unique_ids|
+      farmer = farmers[farmer_id]
+      key = if farmer
+        training_participation_farmer_unique_key(farmer_id, farmer: farmer)
+      else
+        "id:#{farmer_id}"
+      end
+      next if seen[key]
+
+      seen[key] = true
+      unique_ids << farmer_id
+    end
   end
 
   def new_farmer_target_mapping?(target)
@@ -4009,6 +4043,7 @@ class ModulesController < ApplicationController
 
     selected_farmer_ids = training_record_selected_farmer_ids(record)
     return @training_record_target_match_cache[cache_key] = false if selected_farmer_ids.blank?
+    return @training_record_target_match_cache[cache_key] = false unless training_record_target_assignment_matches?(record, target)
     return @training_record_target_match_cache[cache_key] = false unless training_record_matches_month?(record, target.month_name)
     return @training_record_target_match_cache[cache_key] = false unless training_record_vrp_scope_matches?(record, target.vrp)
     return @training_record_target_match_cache[cache_key] = false unless training_record_target_location_matches?(record, target)
@@ -4022,6 +4057,21 @@ class ModulesController < ApplicationController
     topic_matches = topics.any? { |topic| dashboard_training_activity_text_matches?(topic, target_topic) }
     subject_matches = subjects.any? { |subject| dashboard_training_activity_text_matches?(subject, target_subject) }
     @training_record_target_match_cache[cache_key] = topic_matches && subject_matches
+  end
+
+  def training_record_target_assignment_matches?(record, target)
+    mapping_ids = Array(record.data["target_mapping_ids"].presence || record.data["target_mapping_id"])
+      .map(&:to_s).reject(&:blank?).uniq
+    return true if mapping_ids.blank?
+
+    @training_record_target_mapping_cache ||= {}
+    mapped_targets = mapping_ids.filter_map do |mapping_id|
+      @training_record_target_mapping_cache[mapping_id] ||= TargetMapping.find_by(id: mapping_id)
+    end
+    return false if mapped_targets.blank?
+
+    target_key = dashboard_target_assignment_key(target)
+    mapped_targets.any? { |mapped_target| dashboard_target_assignment_key(mapped_target) == target_key }
   end
 
   def training_record_target_location_matches?(record, target)
@@ -7451,8 +7501,10 @@ class ModulesController < ApplicationController
     data["training_topic"] = main_activities.join(", ") if main_activities.present?
     data["training_subject"] = sub_activities.join(", ") if sub_activities.present?
 
-    if (mapping = training_target_match(data))
+    matching_mappings = training_target_matches(data)
+    if (mapping = matching_mappings.first)
       data["target_mapping_id"] = mapping[:target_mapping_id]
+      data["target_mapping_ids"] = matching_mappings.map { |row| row[:target_mapping_id].to_s }.reject(&:blank?).uniq
       data["jeevika_jankar_id"] = mapping[:vrp_id]
       data["jeevika_jankar_name"] = mapping[:jeevika_jankar_name]
       data["jeevika_jankar_contact"] = mapping[:contact_number]
@@ -7553,13 +7605,17 @@ class ModulesController < ApplicationController
   end
 
   def training_target_match(data)
+    training_target_matches(data).first
+  end
+
+  def training_target_matches(data)
     selected_month = normalize_dashboard_text(data["month"])
     selected_ics = normalize_dashboard_text(data["ics_block"].presence || data["ics"])
     selected_village = normalize_dashboard_text(data["gram_name"].presence || data["village"])
     selected_main_activities = training_activity_values(data["main_activities"].presence || data["main_activity"].presence || data["training_topic"])
     selected_sub_activities = training_activity_values(data["sub_activities"].presence || data["sub_activity"].presence || data["training_subject"])
 
-    training_target_mappings.find do |mapping|
+    training_target_mappings.select do |mapping|
       normalize_dashboard_text(mapping[:month]) == selected_month &&
         normalize_dashboard_text(mapping[:ics]) == selected_ics &&
         normalize_dashboard_text(mapping[:village]) == selected_village &&
