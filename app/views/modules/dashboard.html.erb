@@ -40,9 +40,19 @@
         </div>
       </div>
       <div class="vrp-work-overview-metrics">
-        <% ["Mapped Farmers", "Mapped Villages", "Main Activities", "Sub Activities", "Assigned Target", "Achieved Target", "Pending Target"].each do |title| %>
+        <% ["AFL", "Target Map", "Pending Farmers", "Complete Farmers", "Pending Target Map", "Completed Target Map", "Red Farmers", "Green Farmers", "Yellow Farmers"].each do |title| %>
           <% card = dashboard_cards_by_title[title] %>
           <%= link_to card[:path], class: "#{title.parameterize}", title: card[:caption], data: { dashboard_card: true } do %>
+            <span><%= title %></span>
+            <strong><%= card[:value] %></strong>
+            <small><%= card[:caption] %></small>
+          <% end %>
+        <% end %>
+      </div>
+      <div class="vrp-work-overview-metrics vrp-mapping-detail-metrics">
+        <% ["Mapped Villages", "Main Activities", "Sub Activities"].each do |title| %>
+          <% card = dashboard_cards_by_title[title] %>
+          <%= link_to card[:path], class: title.parameterize, title: card[:caption], data: { dashboard_card: true } do %>
             <span><%= title %></span>
             <strong><%= card[:value] %></strong>
             <small><%= card[:caption] %></small>
@@ -393,6 +403,25 @@
       <% end %>
     <% end %>
   </div>
+
+  <%# ── ACTIVITY-WISE FARMER/TARGET OVERVIEW ──────────────────────── %>
+  <section class="module-card training-participation-status-card dashboard-status-panel" id="dashboard_activity_overview">
+    <div class="module-card-header training-participation-status-header">
+      <div>
+        <h2>Activity Farmer & Target Overview</h2>
+        <p>Current dashboard filters ke according distinct farmer status aur activity-wise target totals.</p>
+      </div>
+    </div>
+    <div class="training-participation-boxes activity-overview-boxes">
+      <% Array(@activity_overview_cards).each do |card| %>
+        <div class="training-participation-box <%= card[:title].to_s.parameterize %>">
+          <span><%= card[:title] %></span>
+          <strong><%= card[:value] %></strong>
+          <small><%= card[:caption] %></small>
+        </div>
+      <% end %>
+    </div>
+  </section>
 
 
   <%# ── TRAINING DASHBOARD ───────────────────────────────────────────── %>

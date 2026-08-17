@@ -51,9 +51,10 @@ class VrpDashboardTest < ActionDispatch::IntegrationTest
     get dashboard_path, params: { training_month: "July" }
 
     assert_response :success
-    assert_select ".assigned-target strong", text: "1"
-    assert_select ".achieved-target strong", text: "1"
-    assert_select ".pending-target strong", text: "0"
+    assert_select ".target-map strong", text: "1"
+    assert_select ".completed-target-map strong", text: "1"
+    assert_select ".pending-target-map strong", text: "0"
+    assert_select ".green-farmers strong", text: "1"
     assert_select "#vrp_target_progress_table tbody tr", count: 1
     assert_select "#vrp_target_progress_table .grid-status", text: "100%", count: 1
   end
@@ -108,8 +109,8 @@ class VrpDashboardTest < ActionDispatch::IntegrationTest
     get dashboard_path, params: { training_month: "July" }
 
     assert_response :success
-    assert_select ".achieved-target strong", text: "2"
-    assert_select ".pending-target strong", text: "0"
+    assert_select ".completed-target-map strong", text: "2"
+    assert_select ".pending-target-map strong", text: "0"
 
     get vrp_dashboard_list_path("pending_target"), params: { training_month: "July" }
     assert_response :success
@@ -169,8 +170,8 @@ class VrpDashboardTest < ActionDispatch::IntegrationTest
     get dashboard_path, params: { training_month: "July" }
 
     assert_response :success
-    assert_select ".achieved-target strong", text: "2"
-    assert_select ".pending-target strong", text: "1"
+    assert_select ".completed-target-map strong", text: "2"
+    assert_select ".pending-target-map strong", text: "1"
     assert_select "#vrp_target_progress_table tbody tr" do
       assert_select "td", text: "2"
       assert_select "td", text: "1"
@@ -313,10 +314,12 @@ class VrpDashboardTest < ActionDispatch::IntegrationTest
 
     assert_response :success
     assert_includes response.body, "Mapped Farmers"
-    assert_includes response.body, "Mapped Villages"
-    assert_includes response.body, "Main Activities"
-    assert_includes response.body, "Sub Activities"
-    assert_includes response.body, "Assigned Target"
+    assert_includes response.body, "Target Map"
+    assert_includes response.body, "Pending Farmers"
+    assert_includes response.body, "Complete Farmers"
+    assert_includes response.body, "Red Farmers"
+    assert_includes response.body, "Green Farmers"
+    assert_includes response.body, "Yellow Farmers"
     assert_includes response.body, "Completed"
     assert_includes response.body, "Farmer Month Follow-up"
     assert_includes response.body, "Farmer Training Dashboard"
