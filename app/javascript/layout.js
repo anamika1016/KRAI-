@@ -1887,6 +1887,13 @@ function initDeferredLayoutPage() {
 	    const geoLongitudeInput = formShell.querySelector("[data-training-geo-longitude]");
 	    if (!icsSelect || !villageSelect) return;
 	    const selectedFarmerIds = new Set(JSON.parse(farmerPanel?.dataset.selectedFarmerIds || "[]").map(String));
+	    let mainActivityChips = null;
+	    if (mainActivitySelect) {
+	      mainActivityChips = document.createElement("div");
+	      mainActivityChips.className = "training-sub-activity-chips training-main-activity-chips";
+	      mainActivityChips.setAttribute("aria-live", "polite");
+	      mainActivitySelect.insertAdjacentElement("afterend", mainActivityChips);
+	    }
 	    let subActivityChips = null;
 	    if (subActivitySelect) {
 	      subActivitySelect.classList.add("training-sub-activity-native");
@@ -1948,6 +1955,36 @@ function initDeferredLayoutPage() {
       ? Array.from(mainActivitySelect.selectedOptions).map((option) => option.value).filter(Boolean)
       : [];
 
+    const renderMainActivityChips = () => {
+      if (!mainActivitySelect || !mainActivityChips) return;
+
+      const selectedOptions = Array.from(mainActivitySelect.selectedOptions).filter((option) => option.value);
+      mainActivityChips.innerHTML = "";
+      if (!selectedOptions.length) {
+        mainActivityChips.innerHTML = '<span class="training-sub-activity-empty">Mapped Main Activities select karein.</span>';
+        return;
+      }
+
+      selectedOptions.forEach((option) => {
+        const chip = document.createElement("span");
+        chip.className = "training-sub-activity-chip";
+        chip.append(document.createTextNode(option.textContent || option.value));
+        const remove = document.createElement("button");
+        remove.type = "button";
+        remove.className = "training-sub-activity-remove";
+        remove.setAttribute("aria-label", `Remove ${option.textContent || option.value}`);
+        remove.textContent = "×";
+        remove.addEventListener("click", () => {
+          option.selected = false;
+          mainActivitySelect.dataset.selectedValues = JSON.stringify(selectedMainActivityValues());
+          renderMainActivityChips();
+          mainActivitySelect.dispatchEvent(new Event("change", { bubbles: true }));
+        });
+        chip.appendChild(remove);
+        mainActivityChips.appendChild(chip);
+      });
+    };
+
     const mappingMatchesSelectedSubActivities = (mapping, selectedValues) => {
       if (!selectedValues.length) return true;
       const mappedValue = normalizeOption(mapping.sub_activity);
@@ -2001,6 +2038,7 @@ function initDeferredLayoutPage() {
       if (!mainActivitySelect) return;
       Array.from(mainActivitySelect.options).forEach((option) => { option.selected = Boolean(option.value); });
       mainActivitySelect.dataset.selectedValues = JSON.stringify(selectedMainActivityValues());
+      renderMainActivityChips();
     };
 
     const targetRowsForSelection = ({
@@ -2113,6 +2151,7 @@ function initDeferredLayoutPage() {
 	    };
 
 	    const selectedFarmerBoxes = () => Array.from(formShell.querySelectorAll("[data-training-farmer-checkbox]:checked"));
+	    const allFarmerBoxes = () => Array.from(formShell.querySelectorAll("[data-training-farmer-checkbox]"));
 	    const farmerBoxes = () => Array.from(formShell.querySelectorAll("[data-training-farmer-checkbox]:not(:disabled)"));
 	    const applyTrainingFarmerSearch = () => {
 	      if (!farmerList) return;
@@ -2139,7 +2178,8 @@ function initDeferredLayoutPage() {
 	    const updateFarmerCount = () => {
 	      const count = selectedFarmerBoxes().length;
 	      const boxes = farmerBoxes();
-	      if (farmerCount) farmerCount.textContent = `${count} AFL farmer selected`;
+	      const mappedCount = allFarmerBoxes().length;
+	      if (farmerCount) farmerCount.textContent = `${count} selected / ${mappedCount} mapped farmers`;
 	      if (farmerCountInput) farmerCountInput.value = String(count);
 	      if (farmerSelectAll) {
 	        farmerSelectAll.checked = boxes.length > 0 && count === boxes.length;
@@ -2314,6 +2354,7 @@ function initDeferredLayoutPage() {
 	    const initialMainOptions = mappedMainActivityOptions();
 	    if (mainActivitySelect) fillTrainingSelect(mainActivitySelect, initialMainOptions, "Select Main Activity");
 	    if (!selectedMainActivityValues().length) autoSelectMappedMainActivities();
+	    else renderMainActivityChips();
 	    const initialSubOptions = mappedSubActivityOptions();
 	    if (subActivitySelect) fillTrainingSelect(subActivitySelect, initialSubOptions, "Select Sub Activity");
 	    if (selectedSubActivityValues().length) renderSubActivityChips(); else autoSelectMappedSubActivities();
@@ -2402,6 +2443,7 @@ function initDeferredLayoutPage() {
 	    });
 	    mainActivitySelect?.addEventListener("change", () => {
 	      mainActivitySelect.dataset.selectedValues = JSON.stringify(selectedMainActivityValues());
+	      renderMainActivityChips();
 	      if (subActivitySelect) subActivitySelect.dataset.selectedValues = "[]";
 	      if (subActivitySelect) subActivitySelect.value = "";
 	      if (subActivitySelect) {
