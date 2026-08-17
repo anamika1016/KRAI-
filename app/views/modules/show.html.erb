@@ -888,8 +888,15 @@
           <label>
             <span>Total Payment</span>
             <input name="module_record[grand_total]" type="number" min="0.01"
-              max="<%= ModulesController::JEEVIKA_JANKAR_BILL_FIXED_TOTAL.to_i %>" step="0.01"
-              value="<%= @record&.data&.[]("grand_total").presence || format("%.2f", ModulesController::JEEVIKA_JANKAR_BILL_FIXED_TOTAL) %>" required>
+              step="0.01"
+              value="<%= @record&.data&.[]("grand_total").presence || format("%.2f", ModulesController::JEEVIKA_JANKAR_BILL_FIXED_TOTAL) %>"
+              data-jeevika-grand-total required>
+          </label>
+          <% saved_payment = @record&.data&.[]("grand_total").to_f %>
+          <% nonstandard_payment = @record.present? && saved_payment.positive? && (saved_payment - ModulesController::JEEVIKA_JANKAR_BILL_FIXED_TOTAL).abs > 0.005 %>
+          <label data-jeevika-payment-remarks <%= "hidden" unless nonstandard_payment %>>
+            <span>Remarks <em>*</em></span>
+            <textarea name="module_record[remarks]" rows="3" placeholder="₹5000 se different payment ka reason enter karein" data-jeevika-payment-remarks-input <%= "required" if nonstandard_payment %>><%= @record&.data&.[]("remarks") %></textarea>
           </label>
         </div>
 
@@ -1743,6 +1750,7 @@
               <th>Total Achievement</th>
               <th>Approval Action</th>
               <th>Remarks</th>
+              <th>Approval Remarks</th>
             </tr>
           </thead>
           <tbody>
@@ -1790,12 +1798,13 @@
                       -
                     <% end %>
                   </td>
+                  <td><%= row[:remarks] %></td>
                   <td><%= row[:approval_remarks] %></td>
                 </tr>
               <% end %>
             <% else %>
               <tr>
-                <td colspan="15">No Jeevika Jankar bill saved yet.</td>
+                <td colspan="16">No Jeevika Jankar bill saved yet.</td>
               </tr>
             <% end %>
           </tbody>

@@ -674,6 +674,16 @@ class ModulesController < ApplicationController
       bill_records = bill_records.select { |r| jeevika_jankar_bill_record_visible?(r) }
     end
 
+    # A cluster incharge dashboard is a roll-up of the VRPs mapped below that
+    # incharge. Approval visibility can legitimately include unrelated bills,
+    # but those records must not leak into the cluster dashboard totals.
+    if module_cluster_incharge_login?
+      bill_records = bill_records.select do |record|
+        bill_vrp = jeevika_bill_vrp(record)
+        bill_vrp.present? && filtered_vrp_ids.include?(bill_vrp.id.to_s)
+      end
+    end
+
     bill_records = bill_records.select do |r|
       next false unless r.data.present?
 
@@ -1555,9 +1565,10 @@ class ModulesController < ApplicationController
     village_count = @vrp_village_rows.size
     preload_training_farmers_for_targets!(filtered_targets)
     @vrp_target_rows = vrp_dashboard_target_progress_rows(filtered_targets, bills)
-    assigned_target_total = @vrp_target_rows.sum { |row| row[:target].to_f }
-    achieved_target_total = @vrp_target_rows.sum { |row| row[:completed].to_f }
-    pending_target_total = @vrp_target_rows.sum { |row| row[:pending].to_f }
+    target_totals = vrp_dashboard_target_totals(@vrp_target_rows)
+    assigned_target_total = target_totals[:assigned]
+    achieved_target_total = target_totals[:achieved]
+    pending_target_total = target_totals[:pending]
     month_caption = selected_month.presence || "selected month"
 
     @dashboard_cards = [
@@ -1846,6 +1857,26 @@ class ModulesController < ApplicationController
     end
   end
 
+  # The same farmer can appear in several activity rows of one monthly plan.
+  # Dashboard totals represent unique assigned/covered farmers, while targets
+  # without AFL IDs remain quantity based and additive.
+  def vrp_dashboard_target_totals(rows)
+    farmer_rows, quantity_rows = Array(rows).partition { |row| Array(row[:assigned_farmer_ids]).any? }
+    assigned_ids = farmer_rows.flat_map { |row| Array(row[:assigned_farmer_ids]).map(&:to_s) }.reject(&:blank?).uniq
+    completed_ids = farmer_rows.flat_map { |row| Array(row[:completed_farmer_ids]).map(&:to_s) }.reject(&:blank?).uniq
+    legacy_completed = farmer_rows
+      .group_by { |row| [normalize_dashboard_text(row[:village]), Array(row[:assigned_farmer_ids]).map(&:to_s).sort] }
+      .sum do |_key, grouped_rows|
+        grouped_ids = grouped_rows.flat_map { |row| Array(row[:completed_farmer_ids]).map(&:to_s) }.reject(&:blank?).uniq
+        grouped_ids.any? ? 0 : grouped_rows.map { |row| row[:completed].to_f }.max.to_f
+      end
+    assigned = assigned_ids.size.to_f + quantity_rows.sum { |row| row[:target].to_f }
+    achieved = completed_ids.size.to_f + legacy_completed + quantity_rows.sum { |row| row[:completed].to_f }
+    achieved = [achieved, assigned].min
+
+    { assigned: assigned, achieved: achieved, pending: [assigned - achieved, 0].max }
+  end
+
   def dashboard_training_form_total_farmer_count(targets, assigned_farmer_ids)
     assigned_farmer_ids = Array(assigned_farmer_ids).map(&:to_s).reject(&:blank?).uniq
     records = dashboard_training_form_records(targets, assigned_farmer_ids)
@@ -1938,14 +1969,16 @@ class ModulesController < ApplicationController
       rows = vrp_dashboard_grouped_target_rows(target_rows, :activity)
       dashboard_detail_payload(key, "Sub Activities", "Sub activities mapped to your targets.", rows.size, ["Main Activity", "Sub Activity", "Targets", "Target", "Completed", "Pending", "Progress"], rows)
     when "achieved_target"
+      total = vrp_dashboard_target_totals(target_rows)[:achieved]
       rows = target_rows.select { |row| row[:completed].to_f.positive? }
-      dashboard_detail_payload(key, "Achieved Target", "Target completed so far.", dashboard_quantity(rows.sum { |row| row[:completed].to_f }), vrp_target_detail_headers, vrp_target_detail_rows(rows, farmer_scope: "completed"))
+      dashboard_detail_payload(key, "Achieved Target", "Target completed so far.", dashboard_quantity(total), vrp_target_detail_headers, vrp_target_detail_rows(rows, farmer_scope: "completed"))
     when "pending_target"
+      total = vrp_dashboard_target_totals(target_rows)[:pending]
       rows = target_rows.select { |row| row[:pending].to_f.positive? }
-      dashboard_detail_payload(key, "Pending Target", "Target left to complete.", dashboard_quantity(rows.sum { |row| row[:pending].to_f }), vrp_target_detail_headers, vrp_target_detail_rows(rows, farmer_scope: "pending"))
+      dashboard_detail_payload(key, "Pending Target", "Target left to complete.", dashboard_quantity(total), vrp_target_detail_headers, vrp_target_detail_rows(rows, farmer_scope: "pending"))
     else
       rows = target_rows
-      dashboard_detail_payload("assigned_target", "Assigned Target", "Total target quantity assigned to you.", dashboard_quantity(rows.sum { |row| row[:target].to_f }), vrp_target_detail_headers, vrp_target_detail_rows(rows, farmer_scope: "assigned"))
+      dashboard_detail_payload("assigned_target", "Assigned Target", "Total target quantity assigned to you.", dashboard_quantity(vrp_dashboard_target_totals(rows)[:assigned]), vrp_target_detail_headers, vrp_target_detail_rows(rows, farmer_scope: "assigned"))
     end
   end
 
@@ -2820,10 +2853,16 @@ class ModulesController < ApplicationController
       fcoc_name: fcoc_name
     )
 
+    assigned_farmer_ids = targets.flat_map { |target| target_farmer_ids(target) }.map(&:to_s).reject(&:blank?).uniq
     fco_ids = targets.filter_map { |target| target.fco_id.to_s.strip.presence }.uniq
-    return [] if fco_ids.blank?
+    return [] if assigned_farmer_ids.blank? && fco_ids.blank?
 
-    rows = Afl.where(fco_id: fco_ids).order(:id).each_with_object({}) do |farmer, rows_by_key|
+    # Participation belongs to the farmers assigned to the visible VRPs. FCO
+    # codes are not guaranteed to be stored identically on TargetMapping and
+    # AFL rows, so an FCO-only lookup can incorrectly return zero for a cluster.
+    farmer_scope = assigned_farmer_ids.any? ? Afl.where(id: assigned_farmer_ids) : Afl.where(fco_id: fco_ids)
+
+    rows = farmer_scope.order(:id).each_with_object({}) do |farmer, rows_by_key|
       location_key = [farmer.ics_id, farmer.village_id]
         .map { |value| normalize_dashboard_text(value) }
         .reject(&:blank?)
@@ -2905,8 +2944,15 @@ class ModulesController < ApplicationController
   # full farmer rows when the user opens a box.
   def training_participation_dashboard_counts(month_name:, fcoc_name:, records:)
     targets = training_participation_targets_for_dashboard(month_name: month_name, fcoc_name: fcoc_name)
+    assigned_farmer_ids = targets.flat_map { |target| target_farmer_ids(target) }.map(&:to_s).reject(&:blank?).uniq
     fco_ids = targets.filter_map { |target| target.fco_id.to_s.strip.presence }.uniq
-    farmer_ids = fco_ids.any? ? Afl.where(fco_id: fco_ids).pluck(:id).map(&:to_s) : []
+    farmer_ids = if assigned_farmer_ids.any?
+      Afl.where(id: assigned_farmer_ids).pluck(:id).map(&:to_s)
+    elsif fco_ids.any?
+      Afl.where(fco_id: fco_ids).pluck(:id).map(&:to_s)
+    else
+      []
+    end
     farmer_id_lookup = farmer_ids.index_with(true)
     attendance_counts = Hash.new(0)
 
@@ -3421,7 +3467,7 @@ class ModulesController < ApplicationController
   def training_participation_status_caption(status)
     {
       "total" => "Farmer Training Form me selected farmer entries.",
-      "unique" => "Mapped FCOs ke AFL unique farmers.",
+      "unique" => "Visible VRPs ke targets me assigned unique farmers.",
       "training_unique" => "Farmer Training Form me distinct farmers.",
       "green" => "Farmer attended 3 or more trainings.",
       "yellow" => "Farmer attended 1-2 trainings.",
@@ -5754,6 +5800,7 @@ class ModulesController < ApplicationController
         status_class: jeevika_bill_status_class(record),
         current_approver: jeevika_bill_current_approver?(record),
         approval_remarks: bill_approval_remarks_text(approval_history),
+        remarks: data["remarks"].presence || "-",
         record_state: data["record_state"].presence || "Active",
         bill_id: record.id,
         vrp_id: data["select_vrp"],
@@ -6423,10 +6470,18 @@ class ModulesController < ApplicationController
 
     return @module_cluster_visible_vrps = [] if current_cluster_incharge_labels.blank?
 
-    @module_cluster_visible_vrps = Vrp
+    directly_mapped_vrps = Vrp
       .where.not(cluster_incharge: [nil, ""])
       .order(:name, :id)
       .select { |vrp| module_cluster_vrp_visible?(vrp) }
+
+    # Some legacy/current hierarchy mappings link VRPs through their creator
+    # or user account without copying the cluster label onto the VRP row. A
+    # cluster dashboard must include both forms of mapping.
+    hierarchy_mapped_vrps = module_cluster_incharge_login? ? dashboard_hierarchy_vrps : []
+    @module_cluster_visible_vrps = (directly_mapped_vrps + hierarchy_mapped_vrps).uniq(&:id).sort_by do |vrp|
+      [vrp.name.to_s, vrp.id]
+    end
   end
 
   def current_cluster_incharge_labels
@@ -8302,8 +8357,9 @@ class ModulesController < ApplicationController
     total_payment = decimal_value(data["grand_total"])
     errors << "Total Payment valid amount hona chahiye." if total_payment.nil?
     errors << "Total Payment zero se jyada hona chahiye." if total_payment && total_payment <= 0
-    if total_payment && total_payment > JEEVIKA_JANKAR_BILL_FIXED_TOTAL
-      errors << "Total Payment ₹#{JEEVIKA_JANKAR_BILL_FIXED_TOTAL.to_i} se jyada nahi ho sakta."
+    payment_differs_from_standard = total_payment && (total_payment - JEEVIKA_JANKAR_BILL_FIXED_TOTAL).abs > 0.005
+    if payment_differs_from_standard && data["remarks"].to_s.strip.blank?
+      errors << "Total Payment ₹#{JEEVIKA_JANKAR_BILL_FIXED_TOTAL.to_i} se kam ya jyada hone par Remarks required hai."
     end
 
     duplicate = ModuleRecord
@@ -8533,7 +8589,7 @@ class ModulesController < ApplicationController
       .order(:ics_name, :ics_id, :village_name, :village_id, :id)
       .filter_map do |target|
         activity_setting = activity_settings[normalize_dashboard_text(target.main_activity_name)]
-        next if activity_setting.blank? || !training_main_activity_type?(activity_setting[:main_activity_type])
+        next if activity_setting.present? && !training_main_activity_type?(activity_setting[:main_activity_type])
 
         farmer_ids = Array(target.afl_ids).map(&:to_s).reject(&:blank?).uniq
         {

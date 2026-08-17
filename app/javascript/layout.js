@@ -5079,6 +5079,8 @@ function initDeferredLayoutPage() {
     const totalTargetInput = billForm.querySelector("[data-jeevika-total-target]");
     const totalAchievementInput = billForm.querySelector("[data-jeevika-total-achievement]");
     const grandTotalInput = billForm.querySelector("[data-jeevika-grand-total]");
+    const paymentRemarksField = billForm.querySelector("[data-jeevika-payment-remarks]");
+    const paymentRemarksInput = billForm.querySelector("[data-jeevika-payment-remarks-input]");
     let billRows = [];
     let savedItems = [];
     let existingBills = [];
@@ -5104,6 +5106,12 @@ function initDeferredLayoutPage() {
       .replaceAll("'", "&#039;");
 
     const numberValue = (value) => Number(String(value || "0").replaceAll(",", "")) || 0;
+    const syncPaymentRemarks = () => {
+      const payment = numberValue(grandTotalInput?.value);
+      const requiresRemarks = payment > 0 && Math.abs(payment - 5000) > 0.005;
+      if (paymentRemarksField) paymentRemarksField.hidden = !requiresRemarks;
+      if (paymentRemarksInput) paymentRemarksInput.required = requiresRemarks;
+    };
     const savedItemFor = (row) => savedItems.find((item) => {
       const sameTarget = String(item.target_mapping_id || "") === String(row.target_mapping_id || "");
       const rowSession = String(row.training_session_key || "");
@@ -5246,6 +5254,7 @@ function initDeferredLayoutPage() {
       if (summaryAchievement !== null) totalAchievement = summaryAchievement;
       if (totalAchievementInput) totalAchievementInput.value = String(totalAchievement);
       if (grandTotalInput) grandTotalInput.value = grandTotal.toFixed(2);
+      syncPaymentRemarks();
     };
 
     const renderJeevikaBillRows = () => {
@@ -5346,6 +5355,7 @@ function initDeferredLayoutPage() {
     rowsBody?.addEventListener("input", (event) => {
       if (event.target.matches("[data-jeevika-rate], [data-jeevika-achievement]")) recalculateJeevikaBill();
     });
+    grandTotalInput?.addEventListener("input", syncPaymentRemarks);
     billForm.querySelector("form")?.addEventListener("submit", (event) => {
       if (rowInputs().length > 0) return;
 
@@ -5359,6 +5369,7 @@ function initDeferredLayoutPage() {
     });
     syncJeevikaVrpOptions();
     renderJeevikaBillRows();
+    syncPaymentRemarks();
   });
 
   document.querySelectorAll("[data-vrp-bill-form]").forEach((billForm) => {

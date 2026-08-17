@@ -57,7 +57,7 @@
       <%= link_to farmer_training_participation_path(unique_status_path_params), class: "training-participation-box total", data: { dashboard_card: true } do %>
         <span>Total Unique Farmers (Distinct)</span>
         <strong><%= @training_unique_farmer_count.to_i %></strong>
-        <small>Mapped FCOs ke AFL distinct farmers.</small>
+        <small>Visible VRPs ke targets me assigned distinct farmers.</small>
         <b>View List</b>
       <% end %>
       <%= link_to farmer_training_participation_path(total_status_path_params), class: "training-participation-box total", data: { dashboard_card: true } do %>
