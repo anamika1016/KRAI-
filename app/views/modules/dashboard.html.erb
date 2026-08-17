@@ -40,19 +40,9 @@
         </div>
       </div>
       <div class="vrp-work-overview-metrics">
-        <% ["AFL", "Target Map", "Pending Farmers", "Complete Farmers", "Pending Target Map", "Completed Target Map", "Red Farmers", "Green Farmers", "Yellow Farmers"].each do |title| %>
+        <% ["Mapped Villages", "Main Activities", "Sub Activities", "Assigned Target", "Achieved Target", "Pending Target"].each do |title| %>
           <% card = dashboard_cards_by_title[title] %>
           <%= link_to card[:path], class: "#{title.parameterize}", title: card[:caption], data: { dashboard_card: true } do %>
-            <span><%= title %></span>
-            <strong><%= card[:value] %></strong>
-            <small><%= card[:caption] %></small>
-          <% end %>
-        <% end %>
-      </div>
-      <div class="vrp-work-overview-metrics vrp-mapping-detail-metrics">
-        <% ["Mapped Villages", "Main Activities", "Sub Activities"].each do |title| %>
-          <% card = dashboard_cards_by_title[title] %>
-          <%= link_to card[:path], class: title.parameterize, title: card[:caption], data: { dashboard_card: true } do %>
             <span><%= title %></span>
             <strong><%= card[:value] %></strong>
             <small><%= card[:caption] %></small>
@@ -508,7 +498,7 @@
   <% ics_report_options = Array(@ics_farmer_report_options) %>
   <% selected_ics_report = @ics_farmer_report_selected_ics.to_s %>
   <% selected_ics_report_month = @ics_farmer_report_month_value.to_s.presence || @participation_month_filter_value.to_s.presence || "all" %>
-  <% ics_report_summary = @ics_farmer_report_summary || { farmers: 0, main_activities: 0, sub_activities: 0 } %>
+  <% ics_report_summary = @ics_farmer_report_summary || { farmers: 0, villages: 0, main_activities: 0, sub_activities: 0 } %>
   <section class="module-card training-participation-status-card dashboard-status-panel weekly-status-panel" id="dashboard_ics_farmer_report">
     <div class="module-card-header training-participation-status-header">
       <div>
@@ -553,9 +543,14 @@
     <% if selected_ics_report.present? %>
       <div class="training-participation-boxes compact" style="margin-bottom: 12px;">
         <div class="training-participation-box total">
-          <span>Farmer Count</span>
+          <span>Mapped Farmer Count</span>
           <strong><%= ics_report_summary[:farmers].to_i %></strong>
-          <small>Distinct farmers in the selected ICS.</small>
+          <small>Total farmers mapped to the selected ICS in AFL.</small>
+        </div>
+        <div class="training-participation-box total">
+          <span>Village Count</span>
+          <strong><%= ics_report_summary[:villages].to_i %></strong>
+          <small>Distinct villages mapped to the selected ICS in AFL.</small>
         </div>
         <div class="training-participation-box total">
           <span>Main Activity Count</span>

@@ -665,7 +665,7 @@ body {
 
 .vrp-work-overview-metrics {
   display: grid;
-  grid-template-columns: repeat(5, minmax(140px, 1fr));
+  grid-template-columns: repeat(6, minmax(120px, 1fr));
   gap: 0;
   padding: 8px;
 }
@@ -704,23 +704,11 @@ body {
 
 .vrp-work-overview-metrics .achieved-target strong { color: var(--vrp-primary); }
 .vrp-work-overview-metrics .pending-target strong { color: #b7791f; }
-.vrp-work-overview-metrics .completed-target-map strong,
-.vrp-work-overview-metrics .complete-farmers strong,
-.vrp-work-overview-metrics .green-farmers strong { color: var(--vrp-primary); }
-.vrp-work-overview-metrics .pending-target-map strong,
-.vrp-work-overview-metrics .pending-farmers strong,
-.vrp-work-overview-metrics .yellow-farmers strong { color: #b7791f; }
-.vrp-work-overview-metrics .red-farmers strong { color: #c53030; }
 
 .vrp-work-overview-metrics small {
   color: var(--vrp-muted);
   font-size: 0.65rem;
   line-height: 1.25;
-}
-
-.vrp-mapping-detail-metrics {
-  grid-template-columns: repeat(3, minmax(160px, 1fr));
-  border-top: 1px solid var(--vrp-line);
 }
 
 .activity-overview-boxes {

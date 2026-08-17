@@ -791,7 +791,10 @@ class ModulesController < ApplicationController
     @ics_farmer_report_options = ics_farmer_report_options(ics_report_records, ics_report_targets)
     @ics_farmer_report_selected_ics = params[:ics_report_ics].to_s.presence
     @ics_farmer_report_rows = @ics_farmer_report_selected_ics.present? ? ics_farmer_report_rows(ics_report_targets, ics_report_records, selected_ics: @ics_farmer_report_selected_ics) : []
-    @ics_farmer_report_summary = ics_farmer_report_summary(@ics_farmer_report_rows)
+    @ics_farmer_report_summary = ics_farmer_report_summary(
+      @ics_farmer_report_rows,
+      selected_ics: @ics_farmer_report_selected_ics
+    )
     @weekly_target_month_filter_value = params[:weekly_target_month].presence || default_status_month
     @weekly_dashboard_selected_month = @weekly_target_month_filter_value == "all" ? nil : @weekly_target_month_filter_value
     @weekly_target_fcoc_filter_value = params[:weekly_target_fcoc].presence
@@ -1588,26 +1591,18 @@ class ModulesController < ApplicationController
     preload_training_farmers_for_targets!(filtered_targets)
     @vrp_target_rows = vrp_dashboard_target_progress_rows(filtered_targets, bills)
     target_totals = vrp_dashboard_target_totals(@vrp_target_rows)
-    farmer_status_totals = vrp_dashboard_farmer_status_totals(@vrp_target_rows)
-    afl_farmer_count = vrp_mapped_farmer_count(mappings)
     assigned_target_total = target_totals[:assigned]
     achieved_target_total = target_totals[:achieved]
     pending_target_total = target_totals[:pending]
     month_caption = selected_month.presence || "selected month"
 
     @dashboard_cards = [
-      dashboard_card("AFL", afl_farmer_count, "Distinct farmers mapped through ICS", vrp_dashboard_list_path("ics_mapped_farmers", training_month: selected_month)),
-      dashboard_card("Target Map", dashboard_quantity(assigned_target_total), "Activity-wise target; repeated farmer counts per activity", vrp_dashboard_list_path("assigned_target", training_month: selected_month)),
-      dashboard_card("Pending Farmers", farmer_status_totals[:pending], "Distinct farmers with at least one pending activity", vrp_dashboard_list_path("pending_farmers", training_month: selected_month)),
-      dashboard_card("Complete Farmers", farmer_status_totals[:complete], "Distinct farmers with at least one completed activity", vrp_dashboard_list_path("complete_farmers", training_month: selected_month)),
-      dashboard_card("Pending Target Map", dashboard_quantity(pending_target_total), "Pending activity targets; repeated farmer counts per activity", vrp_dashboard_list_path("pending_target", training_month: selected_month)),
-      dashboard_card("Completed Target Map", dashboard_quantity(achieved_target_total), "Completed activity targets; repeated farmer counts per activity", vrp_dashboard_list_path("achieved_target", training_month: selected_month)),
-      dashboard_card("Red Farmers", farmer_status_totals[:red], "Distinct farmers whose all mapped activities are pending", vrp_dashboard_list_path("red_farmers", training_month: selected_month)),
-      dashboard_card("Green Farmers", farmer_status_totals[:green], "Distinct farmers whose all mapped activities are complete", vrp_dashboard_list_path("green_farmers", training_month: selected_month)),
-      dashboard_card("Yellow Farmers", farmer_status_totals[:yellow], "Distinct farmers having both complete and pending activities", vrp_dashboard_list_path("yellow_farmers", training_month: selected_month)),
       dashboard_card("Mapped Villages", village_count, "Villages assigned in #{month_caption}", vrp_dashboard_list_path("mapped_villages", training_month: selected_month)),
       dashboard_card("Main Activities", main_activity_count, "Main activities mapped in #{month_caption}", vrp_dashboard_list_path("main_activities", training_month: selected_month)),
-      dashboard_card("Sub Activities", sub_activity_count, "Sub activities mapped in #{month_caption}", vrp_dashboard_list_path("sub_activities", training_month: selected_month))
+      dashboard_card("Sub Activities", sub_activity_count, "Sub activities mapped in #{month_caption}", vrp_dashboard_list_path("sub_activities", training_month: selected_month)),
+      dashboard_card("Assigned Target", dashboard_quantity(assigned_target_total), "Target quantity assigned in #{month_caption}", vrp_dashboard_list_path("assigned_target", training_month: selected_month)),
+      dashboard_card("Achieved Target", dashboard_quantity(achieved_target_total), "Target completed in #{month_caption}", vrp_dashboard_list_path("achieved_target", training_month: selected_month)),
+      dashboard_card("Pending Target", dashboard_quantity(pending_target_total), "Target pending in #{month_caption}", vrp_dashboard_list_path("pending_target", training_month: selected_month))
     ]
     @vrp_farmer_followup = empty_vrp_farmer_followup
   end
@@ -3929,13 +3924,38 @@ class ModulesController < ApplicationController
       .sort_by { |row| [row[:ics].to_s.downcase, row[:farmer_name].to_s.downcase, row[:main_activity].to_s.downcase, row[:sub_activity].to_s.downcase] }
   end
 
-  def ics_farmer_report_summary(rows)
+  def ics_farmer_report_summary(rows, selected_ics: nil)
     rows = Array(rows)
+    afl_summary = ics_afl_mapping_summary(selected_ics)
 
     {
-      farmers: rows.map { |row| row[:farmer_id].to_s }.reject(&:blank?).uniq.size,
+      farmers: afl_summary[:farmers],
+      villages: afl_summary[:villages],
       main_activities: rows.map { |row| row[:main_activity].to_s.strip }.reject(&:blank?).reject { |value| value == "-" }.uniq.size,
       sub_activities: rows.map { |row| row[:sub_activity].to_s.strip }.reject(&:blank?).reject { |value| value == "-" }.uniq.size
+    }
+  end
+
+  def ics_afl_mapping_summary(selected_ics)
+    return { farmers: 0, villages: 0 } unless model_ready?(:Afl) && selected_ics.present?
+
+    normalized_ics = normalize_dashboard_text(selected_ics)
+    afl_rows = Afl
+      .where(
+        "LOWER(BTRIM(COALESCE(ics_name, ''))) = :ics OR LOWER(BTRIM(COALESCE(ics_id::text, ''))) = :ics",
+        ics: normalized_ics
+      )
+      .pluck(:id, :village_id, :village_name)
+
+    village_keys = afl_rows.filter_map do |_farmer_id, village_id, village_name|
+      normalized_id = normalize_dashboard_text(village_id)
+      normalized_name = normalize_dashboard_text(village_name)
+      normalized_id.present? ? "id:#{normalized_id}" : ("name:#{normalized_name}" if normalized_name.present?)
+    end.uniq
+
+    {
+      farmers: afl_rows.map(&:first).uniq.size,
+      villages: village_keys.size
     }
   end
 
