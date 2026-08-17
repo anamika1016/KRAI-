@@ -8584,13 +8584,9 @@ class ModulesController < ApplicationController
   def training_target_mappings
     return [] unless model_ready?(:TargetMapping)
 
-    activity_settings = jeevika_jankar_main_activity_settings
     training_target_scope
       .order(:ics_name, :ics_id, :village_name, :village_id, :id)
-      .filter_map do |target|
-        activity_setting = activity_settings[normalize_dashboard_text(target.main_activity_name)]
-        next if activity_setting.present? && !training_main_activity_type?(activity_setting[:main_activity_type])
-
+      .map do |target|
         farmer_ids = Array(target.afl_ids).map(&:to_s).reject(&:blank?).uniq
         {
           target_mapping_id: target.id.to_s,

@@ -1903,11 +1903,6 @@ function initDeferredLayoutPage() {
 	      .replaceAll('"', "&quot;")
 	      .replaceAll("'", "&#039;");
 
-    const selectedTrainingActivityType = () => normalizeOption(mainActivityTypeSelect?.value || "Training");
-    const trainingActivityTypeMatches = (mapping) => {
-      return normalizeOption(mapping.main_activity_type || "Training") === selectedTrainingActivityType();
-    };
-
     const selectOption = (option, optionData, selected) => {
       const value = optionValue(optionData);
       const label = optionLabel(optionData);
@@ -2019,7 +2014,6 @@ function initDeferredLayoutPage() {
       const selectedMonth = normalizeOption(monthSelect?.value);
       const selectedIcs = normalizeOption(icsSelect.value);
       const selectedVillage = normalizeOption(villageSelect.value);
-      const selectedMainActivityType = selectedTrainingActivityType();
       const selectedMainActivities = includeMainActivity ? selectedMainActivityValues().map(normalizeOption) : [];
       const selectedSubActivities = includeSubActivity && subActivitySelect
         ? Array.from(subActivitySelect.selectedOptions).map((option) => normalizeOption(option.value)).filter(Boolean)
@@ -2034,10 +2028,9 @@ function initDeferredLayoutPage() {
         const monthMatches = !selectedMonth || normalizeOption(mapping.month) === selectedMonth;
         const icsMatches = !selectedIcs || normalizeOption(mapping.ics) === selectedIcs;
         const villageMatches = !selectedVillage || normalizeOption(mapping.village) === selectedVillage;
-        const mainActivityTypeMatches = normalizeOption(mapping.main_activity_type || "Training") === selectedMainActivityType;
         const mainActivityMatches = !selectedMainActivities.length || selectedMainActivities.includes(normalizeOption(mapping.main_activity));
         const subActivityMatches = mappingMatchesSelectedSubActivities(mapping, selectedSubActivities);
-        return monthMatches && icsMatches && villageMatches && mainActivityTypeMatches && mainActivityMatches && subActivityMatches;
+        return monthMatches && icsMatches && villageMatches && mainActivityMatches && subActivityMatches;
       });
     };
 
