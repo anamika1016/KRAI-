@@ -1817,6 +1817,8 @@ class ModulesController < ApplicationController
       ) & assigned_farmer_ids
       training_targets = training_completion_rows.filter_map { |row| row[:target_record] }
       training_form_total = dashboard_training_form_total_farmer_count(training_targets, assigned_farmer_ids)
+      training_form_farmer_ids = dashboard_training_form_completed_farmer_ids(training_targets, assigned_farmer_ids)
+      completed_farmer_ids = training_form_farmer_ids if training_targets.any?
       completed_total = if training_targets.any?
         training_form_total
       elsif assigned_farmer_ids.any? && farmer_completion_rows.any?
@@ -1851,19 +1853,40 @@ class ModulesController < ApplicationController
   end
 
   def dashboard_training_form_total_farmer_count(targets, assigned_farmer_ids)
+    assigned_farmer_ids = Array(assigned_farmer_ids).map(&:to_s).reject(&:blank?).uniq
+    records = dashboard_training_form_records(targets, assigned_farmer_ids)
+    completed_farmer_ids = records
+      .flat_map { |record| training_record_selected_farmer_ids(record) & assigned_farmer_ids }
+      .uniq
+    return completed_farmer_ids.size.to_f if completed_farmer_ids.any?
+
+    # Legacy forms may have only the saved total and no farmer-id array. A
+    # combined activity form is one training event, so never add the same
+    # farmer total once per activity/topic.
+    records.map { |record| dashboard_numeric(record.data["total_farmer_count"]) }.max.to_f
+  end
+
+  def dashboard_training_form_completed_farmer_ids(targets, assigned_farmer_ids)
+    assigned_farmer_ids = Array(assigned_farmer_ids).map(&:to_s).reject(&:blank?).uniq
+    dashboard_training_form_records(targets, assigned_farmer_ids)
+      .flat_map { |record| training_record_selected_farmer_ids(record) & assigned_farmer_ids }
+      .uniq
+  end
+
+  def dashboard_training_form_records(targets, assigned_farmer_ids)
     targets = Array(targets)
     assigned_farmer_ids = Array(assigned_farmer_ids).map(&:to_s).reject(&:blank?).uniq
-    return 0.0 if targets.blank?
+    return [] if targets.blank?
+
+    month_name = targets.first.month_name
+    vrp = targets.first.vrp
 
     dashboard_training_completion_records
       .select do |record|
-        targets.any? { |target| training_record_matches_dashboard_target?(record, target, assigned_farmer_ids) }
+        training_record_matches_month?(record, month_name) &&
+          training_record_vrp_scope_matches?(record, vrp)
       end
       .uniq(&:id)
-      .sum do |record|
-        saved_total = dashboard_numeric(record.data["total_farmer_count"])
-        saved_total.positive? ? saved_total : training_record_selected_farmer_ids(record).size
-      end.to_f
   end
 
   def vrp_dashboard_detail_payload(list_type, vrp, mappings, targets, bills, filters = {})
@@ -1959,15 +1982,11 @@ class ModulesController < ApplicationController
       setting = jeevika_jankar_activity_setting_for(row, activity_settings, sub_activity_settings)
       setting.blank? || training_main_activity_type?(setting[:main_activity_type])
     end
-    completion_targets = training_targets.presence || selected_targets
-    completion_groups = completion_targets.filter_map do |row|
-      ids = vrp_dashboard_completed_farmer_ids_for_target(row)
-      setting = jeevika_jankar_activity_setting_for(row, activity_settings, sub_activity_settings)
-      next if setting.present? && !training_main_activity_type?(setting[:main_activity_type]) && ids.blank?
-
-      ids
+    completed_ids = if training_targets.any?
+      dashboard_training_form_completed_farmer_ids(training_targets, assigned_ids)
+    else
+      unique_training_farmer_ids(selected_targets.flat_map { |row| vrp_dashboard_completed_farmer_ids_for_target(row) }) & assigned_ids
     end
-    completed_ids = unique_training_farmer_ids(completion_groups.flatten) & assigned_ids
     pending_ids = assigned_ids - completed_ids
     farmer_ids = case scope
     when "completed" then completed_ids
