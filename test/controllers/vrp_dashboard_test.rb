@@ -1,7 +1,7 @@
 require "test_helper"
 
 class VrpDashboardTest < ActionDispatch::IntegrationTest
-  test "dashboard counts the same farmer once for each completed training activity" do
+  test "dashboard counts a shared farmer plan once when grouped activities have different metrics" do
     vrp = create_vrp(user_name: "multi_activity_vrp", password: "secret", agreement_accepted_at: Time.current)
     farmer = create_afl(farmer_name: "Multi Activity Farmer", mobile_no: "9000000070")
     mapping = VrpIcsMapping.create!(
@@ -14,7 +14,7 @@ class VrpDashboardTest < ActionDispatch::IntegrationTest
       created_by_type: "User",
       created_by_id: 1
     )
-    ["Organic Introduction", "Soil Preparation"].each do |activity|
+    ["Organic Introduction", "Soil Preparation"].each_with_index do |activity, index|
       TargetMapping.create!(
         vrp: vrp,
         vrp_ics_mapping: mapping,
@@ -29,6 +29,7 @@ class VrpDashboardTest < ActionDispatch::IntegrationTest
         main_activity_name: "Farmers' Training",
         activity_name: activity,
         target_quantity: 1,
+        opg_training_target: index.zero? ? nil : 1,
         created_by_type: "User",
         created_by_id: 1
       )
@@ -50,10 +51,11 @@ class VrpDashboardTest < ActionDispatch::IntegrationTest
     get dashboard_path, params: { training_month: "July" }
 
     assert_response :success
-    assert_select ".assigned-target strong", text: "2"
-    assert_select ".achieved-target strong", text: "2"
+    assert_select ".assigned-target strong", text: "1"
+    assert_select ".achieved-target strong", text: "1"
     assert_select ".pending-target strong", text: "0"
-    assert_select "#vrp_target_progress_table .grid-status", text: "100%", count: 2
+    assert_select "#vrp_target_progress_table tbody tr", count: 1
+    assert_select "#vrp_target_progress_table .grid-status", text: "100%", count: 1
   end
 
   test "dashboard counts training submitted after the target completion date" do

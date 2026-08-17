@@ -1787,15 +1787,6 @@ class ModulesController < ApplicationController
         normalize_dashboard_text(row[:ics]),
         normalize_dashboard_text(row[:village]),
         Array(row[:assigned_farmer_ids]).map(&:to_s).sort,
-        row[:opg_training].to_f,
-        row[:general_training].to_f,
-        row[:input_demo_inm].to_f,
-        row[:input_demo_pm].to_f,
-        row[:ffs].to_f,
-        row[:week_1].to_f,
-        row[:week_2].to_f,
-        row[:week_3].to_f,
-        row[:week_4].to_f,
         row[:target].to_f
       ]
     end.values.map do |rows|
@@ -1832,6 +1823,15 @@ class ModulesController < ApplicationController
         target_mapping_ids: rows.map { |row| row[:target_mapping_id].to_s }.reject(&:blank?).uniq,
         assigned_farmer_ids: assigned_farmer_ids,
         completed_farmer_ids: completed_farmer_ids,
+        week_1: rows.map { |row| row[:week_1].to_f }.max,
+        week_2: rows.map { |row| row[:week_2].to_f }.max,
+        week_3: rows.map { |row| row[:week_3].to_f }.max,
+        week_4: rows.map { |row| row[:week_4].to_f }.max,
+        opg_training: rows.map { |row| row[:opg_training].to_f }.max,
+        general_training: rows.map { |row| row[:general_training].to_f }.max,
+        input_demo_inm: rows.map { |row| row[:input_demo_inm].to_f }.max,
+        input_demo_pm: rows.map { |row| row[:input_demo_pm].to_f }.max,
+        ffs: rows.map { |row| row[:ffs].to_f }.max,
         completed: completed_total,
         pending: [effective_target - completed_total, 0].max,
         progress: percentage(completed_total, effective_target)
