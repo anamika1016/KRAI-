@@ -722,7 +722,7 @@ class ModulesController < ApplicationController
 
     targets = @filtered_targets
     @training_month_options = dashboard_month_options_for_targets(targets)
-    selected_month = dashboard_selected_training_month_name.presence || default_vrp_dashboard_month(@training_month_options)
+    selected_month = dashboard_selected_training_month_name.presence || default_vrp_dashboard_month(@training_month_options, targets)
     month_targets = dashboard_targets_for_month(targets, selected_month)
     @training_sub_activity_options = dashboard_sub_activity_options_for_targets(month_targets, selected_month)
     requested_sub_activity = dashboard_selected_training_sub_activity_name
@@ -733,7 +733,7 @@ class ModulesController < ApplicationController
     @dashboard_caption = admin_dashboard_user? ? "Live complete system summary." : "Live summary for your mapped records."
     @training_selected_month = selected_month
     @training_selected_sub_activity = selected_sub_activity
-    default_status_month = default_vrp_dashboard_month(@training_month_options)
+    default_status_month = default_vrp_dashboard_month(@training_month_options, targets)
     @participation_month_filter_value = params[:participation_month].presence || default_status_month
     @participation_selected_month = @participation_month_filter_value == "all" ? nil : @participation_month_filter_value
     @participation_fcoc_filter_value = params[:participation_fcoc].presence
@@ -1556,7 +1556,7 @@ class ModulesController < ApplicationController
     mappings = vrp_dashboard_mappings(@vrp)
     targets = vrp_dashboard_targets(@vrp)
     @training_month_options = dashboard_month_options_for_targets(targets)
-    selected_month = dashboard_selected_training_month_name.presence || default_vrp_dashboard_month(@training_month_options)
+    selected_month = dashboard_selected_training_month_name.presence || default_vrp_dashboard_month(@training_month_options, targets)
     filtered_targets = dashboard_targets_for_month(targets, selected_month)
     @training_sub_activity_options = dashboard_sub_activity_options_for_targets(filtered_targets, selected_month)
     requested_sub_activity = dashboard_selected_training_sub_activity_name
@@ -1571,7 +1571,7 @@ class ModulesController < ApplicationController
     @vrp_village_rows = vrp_dashboard_village_rows(@vrp, mappings, filtered_targets)
     @training_selected_month = selected_month
     @training_selected_sub_activity = selected_sub_activity
-    @participation_month_filter_value = params[:participation_month].presence || default_vrp_dashboard_month(@training_month_options)
+    @participation_month_filter_value = params[:participation_month].presence || default_vrp_dashboard_month(@training_month_options, targets)
     @participation_selected_month = @participation_month_filter_value == "all" ? nil : @participation_month_filter_value
     @participation_fcoc_filter_value = params[:participation_fcoc].presence
     participation_records = dashboard_training_participation_records(month_name: @participation_selected_month, fcoc_name: @participation_fcoc_filter_value)
@@ -3082,6 +3082,8 @@ class ModulesController < ApplicationController
 
   def training_participation_population_rows(month_name:, fcoc_name:, records:)
     rows = training_afl_farmer_rows_for_participation(month_name: month_name, fcoc_name: fcoc_name)
+    return training_participation_farmer_rows_from_records(records) if rows.blank?
+
     record_farmer_ids = Array(records).flat_map { |record| training_record_selected_farmer_ids(record) }.uniq
     farmers_by_id = training_farmers_by_id(record_farmer_ids)
     attendance_by_farmer_key = Hash.new(0)
@@ -3132,6 +3134,8 @@ class ModulesController < ApplicationController
     else
       []
     end
+    return training_participation_status_counts_from_records(records) if farmer_ids.blank?
+
     farmer_id_lookup = farmer_ids.index_with(true)
     attendance_counts = Hash.new(0)
 
@@ -3263,7 +3267,7 @@ class ModulesController < ApplicationController
     return [] unless model_ready?(:Vrp)
     return [current_vrp_record].compact if vrp_login_user?
 
-    Vrp.all.to_a
+    dashboard_vrps
   end
 
   def participation_text_filter_options(entries, key)
@@ -4371,9 +4375,13 @@ class ModulesController < ApplicationController
     params[:training_month].presence || params[:dashboard_month].presence
   end
 
-  def default_vrp_dashboard_month(month_options)
+  def default_vrp_dashboard_month(month_options, targets = nil)
+    target_months = Array(targets)
+      .filter_map { |target| target.respond_to?(:month_name) ? target.month_name.to_s.strip.presence : nil }
+      .uniq
+    preferred_options = target_months.presence || Array(month_options)
     current_month = Date.current.strftime("%B")
-    Array(month_options).find { |month| normalize_dashboard_text(month) == normalize_dashboard_text(current_month) } || Array(month_options).last
+    preferred_options.find { |month| normalize_dashboard_text(month) == normalize_dashboard_text(current_month) } || preferred_options.last
   end
 
   def dashboard_selected_training_sub_activity_name
@@ -4639,9 +4647,11 @@ class ModulesController < ApplicationController
   def user_hierarchy_dashboard_summary
     @user_hierarchy_dashboard_summary ||= begin
       rows = user_hierarchy_dashboard_rows
+      level_2_rows = rows.select { |row| row[2].to_s == "Level 2" }
+      level_3_rows = rows.select { |row| row[2].to_s == "Level 3" }
       {
-        level_2_total: rows.size,
-        level_3_total: 0,
+        level_2_total: level_2_rows.size,
+        level_3_total: level_3_rows.size,
         total: rows.size,
         rows: rows
       }
@@ -4663,14 +4673,22 @@ class ModulesController < ApplicationController
         level_1_user = record.data["level_1_user"].to_s.strip
         hierarchy_mappings_for_dashboard(record).each do |mapping|
           level_2_user = mapping["level_2_user"].to_s.strip
+          level_3_users = collapsed_hierarchy_users(mapping["level_3_users"])
 
           if dashboard_user_label_matches?(level_1_user, current_labels)
             rows << [level_2_user, level_1_user, "Level 2"] if level_2_user.present?
+            level_3_users.each do |level_3_user|
+              rows << [level_3_user, level_2_user.presence || level_1_user, "Level 3"]
+            end
+          elsif dashboard_user_label_matches?(level_2_user, current_labels)
+            level_3_users.each do |level_3_user|
+              rows << [level_3_user, level_2_user, "Level 3"]
+            end
           end
         end
       end
 
-    rows.reject { |row| row[0].blank? }
+    rows.reject { |row| row[0].blank? }.uniq
   end
 
   def hierarchy_mappings_for_dashboard(record)
@@ -4680,17 +4698,19 @@ class ModulesController < ApplicationController
       mapping = mapping.to_h if mapping.respond_to?(:to_h)
       next unless mapping.is_a?(Hash)
 
-      users = collapsed_hierarchy_users(mapping["level_2_user"], mapping["level_3_users"])
-      users.map { |user| { "level_2_user" => user, "level_3_users" => [] } }
+      level_2_users = collapsed_hierarchy_users(mapping["level_2_user"])
+      level_3_users = collapsed_hierarchy_users(mapping["level_3_users"])
+      level_2_users.map { |level_2_user| { "level_2_user" => level_2_user, "level_3_users" => level_3_users } }
     end
     mappings.flatten!
 
     return mappings if mappings.any?
 
-    collapsed_hierarchy_users(record.data["level_2_users"].presence || record.data["level_2_user"], record.data["level_3_users"].presence || record.data["level_3_user"]).map do |level_2_user|
+    level_3_users = collapsed_hierarchy_users(record.data["level_3_users"].presence || record.data["level_3_user"])
+    collapsed_hierarchy_users(record.data["level_2_users"].presence || record.data["level_2_user"]).map do |level_2_user|
       {
         "level_2_user" => level_2_user,
-        "level_3_users" => []
+        "level_3_users" => level_3_users
       }
     end
   end
@@ -4802,7 +4822,7 @@ class ModulesController < ApplicationController
     mapped_vrps = module_cluster_visible_vrps
     return @dashboard_vrps = mapped_vrps if module_mapped_vrp_scope_active?
 
-    @dashboard_vrps = (dashboard_own_vrps_list + dashboard_hierarchy_vrps + dashboard_approval_related_vrps).uniq
+    @dashboard_vrps = (dashboard_own_vrps_list + dashboard_hierarchy_vrps + dashboard_office_visible_vrps + dashboard_approval_related_vrps).uniq
   end
 
   def dashboard_approved_vrps(vrps)
@@ -4899,6 +4919,12 @@ class ModulesController < ApplicationController
     end
 
     (scope.to_a + cluster_vrps).uniq
+  end
+
+  def dashboard_office_visible_vrps
+    return [] unless model_ready?(:Vrp)
+
+    @dashboard_office_visible_vrps ||= Vrp.all.select { |vrp| jeevika_bill_vrp_office_visible?(vrp) }
   end
 
   def dashboard_under_user_labels
