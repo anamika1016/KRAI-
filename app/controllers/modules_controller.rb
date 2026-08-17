@@ -555,6 +555,7 @@ class ModulesController < ApplicationController
     # Start with all targets and VRPs in user scope
     t_scope = unfiltered_targets.to_a
     v_scope = unfiltered_vrps.to_a
+    preload_dashboard_vrp_identity_records!(v_scope)
 
     # Apply search filter (if search query is present)
     if params[:search].present?
@@ -1855,9 +1856,7 @@ class ModulesController < ApplicationController
   def dashboard_training_form_total_farmer_count(targets, assigned_farmer_ids)
     assigned_farmer_ids = Array(assigned_farmer_ids).map(&:to_s).reject(&:blank?).uniq
     records = dashboard_training_form_records(targets, assigned_farmer_ids)
-    completed_farmer_ids = records
-      .flat_map { |record| training_record_selected_farmer_ids(record) & assigned_farmer_ids }
-      .uniq
+    completed_farmer_ids = dashboard_training_form_completed_farmer_ids(targets, assigned_farmer_ids)
     return completed_farmer_ids.size.to_f if completed_farmer_ids.any?
 
     # Legacy forms may have only the saved total and no farmer-id array. A
@@ -1868,8 +1867,20 @@ class ModulesController < ApplicationController
 
   def dashboard_training_form_completed_farmer_ids(targets, assigned_farmer_ids)
     assigned_farmer_ids = Array(assigned_farmer_ids).map(&:to_s).reject(&:blank?).uniq
-    dashboard_training_form_records(targets, assigned_farmer_ids)
-      .flat_map { |record| training_record_selected_farmer_ids(record) & assigned_farmer_ids }
+    completed_ids = dashboard_training_form_all_completed_farmer_ids(targets)
+    completed_ids & assigned_farmer_ids
+  end
+
+  def dashboard_training_form_all_completed_farmer_ids(targets)
+    targets = Array(targets)
+    return [] if targets.blank?
+
+    month_name = normalize_dashboard_text(targets.first.month_name)
+    vrp_id = targets.first.vrp_id.to_s
+    @dashboard_training_form_farmer_ids_by_scope ||= {}
+    cache_key = [month_name, vrp_id]
+    @dashboard_training_form_farmer_ids_by_scope[cache_key] ||= dashboard_training_form_records(targets, [])
+      .flat_map { |record| training_record_selected_farmer_ids(record) }
       .uniq
   end
 
@@ -1880,13 +1891,23 @@ class ModulesController < ApplicationController
 
     month_name = targets.first.month_name
     vrp = targets.first.vrp
+    @dashboard_training_form_records_by_scope ||= {}
+    cache_key = [normalize_dashboard_text(month_name), targets.first.vrp_id.to_s]
 
-    dashboard_training_completion_records
+    @dashboard_training_form_records_by_scope[cache_key] ||= dashboard_training_form_records_for_month(month_name)
       .select do |record|
-        training_record_matches_month?(record, month_name) &&
-          training_record_vrp_scope_matches?(record, vrp)
+        training_record_vrp_scope_matches?(record, vrp)
       end
       .uniq(&:id)
+  end
+
+  def dashboard_training_form_records_for_month(month_name)
+    month = month_name.to_s.strip.downcase
+    scope = ModuleRecord.where(module_slug: "training-form").order(created_at: :desc)
+    scope = scope.where("LOWER(BTRIM(data::jsonb ->> 'month')) = ?", month) if month.present?
+    scope
+      .select { |record| active_module_record?(record) }
+      .select { |record| training_record_countable?(record) }
   end
 
   def vrp_dashboard_detail_payload(list_type, vrp, mappings, targets, bills, filters = {})
@@ -2720,6 +2741,10 @@ class ModulesController < ApplicationController
   end
 
   def training_participation_targets_for_dashboard(month_name: nil, fcoc_name: nil, sub_activity_name: nil)
+    @training_participation_targets_cache ||= {}
+    cache_key = [normalize_dashboard_text(month_name), normalize_dashboard_text(fcoc_name), normalize_dashboard_text(sub_activity_name)]
+    return @training_participation_targets_cache[cache_key] if @training_participation_targets_cache.key?(cache_key)
+
     targets = dashboard_participation_targets
     targets = dashboard_targets_for_month(targets, month_name) if month_name.present?
     if fcoc_name.present?
@@ -2730,15 +2755,21 @@ class ModulesController < ApplicationController
       normalized_sub_activity = normalize_dashboard_text(sub_activity_name)
       targets = Array(targets).select { |target| normalize_dashboard_text(target.activity_name) == normalized_sub_activity }
     end
-    targets
+    @training_participation_targets_cache[cache_key] = targets
   end
 
   def dashboard_training_participation_records(month_name: nil, sub_activity_name: nil, fcoc_name: nil)
     return [] unless model_ready?(:ModuleRecord)
 
-    records = ModuleRecord
-      .where(module_slug: "training-form")
-      .order(created_at: :desc)
+    @dashboard_training_participation_records_cache ||= {}
+    cache_key = [normalize_dashboard_text(month_name), normalize_dashboard_text(sub_activity_name), normalize_dashboard_text(fcoc_name)]
+    return @dashboard_training_participation_records_cache[cache_key] if @dashboard_training_participation_records_cache.key?(cache_key)
+
+    records = ModuleRecord.where(module_slug: "training-form").order(created_at: :desc)
+    if month_name.present?
+      records = records.where("LOWER(BTRIM(data::jsonb ->> 'month')) = ?", month_name.to_s.strip.downcase)
+    end
+    records = records
       .select { |record| active_module_record?(record) }
       .select { |record| training_record_countable?(record) }
       .select { |record| module_record_visible_for_current_context?(record) }
@@ -2759,11 +2790,15 @@ class ModulesController < ApplicationController
       end
     end
 
-    records
+    @dashboard_training_participation_records_cache[cache_key] = records
   end
 
   def training_afl_farmer_rows_for_participation(month_name: nil, fcoc_name: nil)
     return [] unless model_ready?(:Afl)
+
+    @training_afl_farmer_rows_cache ||= {}
+    cache_key = [normalize_dashboard_text(month_name), normalize_dashboard_text(fcoc_name)]
+    return @training_afl_farmer_rows_cache[cache_key] if @training_afl_farmer_rows_cache.key?(cache_key)
 
     targets = training_participation_targets_for_dashboard(
       month_name: month_name,
@@ -2773,7 +2808,7 @@ class ModulesController < ApplicationController
     fco_ids = targets.filter_map { |target| target.fco_id.to_s.strip.presence }.uniq
     return [] if fco_ids.blank?
 
-    Afl.where(fco_id: fco_ids).order(:id).each_with_object({}) do |farmer, rows_by_key|
+    rows = Afl.where(fco_id: fco_ids).order(:id).each_with_object({}) do |farmer, rows_by_key|
       location_key = [farmer.ics_id, farmer.village_id]
         .map { |value| normalize_dashboard_text(value) }
         .reject(&:blank?)
@@ -2809,6 +2844,7 @@ class ModulesController < ApplicationController
       }
       rows_by_key[farmer_key][:source_farmer_ids] |= [farmer.id.to_s]
     end.values.sort_by { |row| row[:farmer_name].to_s.downcase }
+    @training_afl_farmer_rows_cache[cache_key] = rows
   end
 
   def training_participation_population_rows(month_name:, fcoc_name:, records:)
@@ -4626,8 +4662,12 @@ class ModulesController < ApplicationController
   def dashboard_approval_related_vrps
     return [] unless model_ready?(:Vrp)
 
-    @dashboard_approval_related_vrps ||= Vrp.all.select do |vrp|
-      vrp_approval_sent?(vrp) && dashboard_current_user_in_approval_channel?(vrp)
+    @dashboard_approval_related_vrps ||= begin
+      vrps = Vrp.all.to_a
+      preload_dashboard_vrp_identity_records!(vrps)
+      vrps.select do |vrp|
+        vrp_approval_sent?(vrp) && dashboard_current_user_in_approval_channel?(vrp)
+      end
     end
   end
 
@@ -4800,8 +4840,12 @@ class ModulesController < ApplicationController
   def vrp_approval_history_for(vrp)
     return [] unless model_ready?(:ModuleRecord)
 
-    @dashboard_approval_history ||= ModuleRecord.where(module_slug: "vrp-approval-history").order(created_at: :asc).to_a
-    @dashboard_approval_history.select { |record| record.data["vrp_id"].to_i == vrp.id }
+    @dashboard_approval_history_by_vrp_id ||= ModuleRecord
+      .where(module_slug: "vrp-approval-history")
+      .order(created_at: :asc)
+      .to_a
+      .group_by { |record| record.data["vrp_id"].to_s }
+    @dashboard_approval_history_by_vrp_id[vrp.id.to_s] || []
   end
 
   def vrp_approval_steps_for(vrp)
@@ -4867,10 +4911,10 @@ class ModulesController < ApplicationController
     end
 
     if model_ready?(:ModuleRecord)
-      matched_records = new_user_module_records.select do |record|
-        (vrp.email.present? && record.data["email"].to_s.casecmp(vrp.email.to_s).zero?) ||
-          (vrp.mobile_no.present? && record.data["mobile_no"].to_s == vrp.mobile_no.to_s)
-      end
+      matched_records = []
+      matched_records.concat(Array(new_user_module_records_by_email[vrp.email.to_s.strip.downcase])) if vrp.email.present?
+      matched_records.concat(Array(new_user_module_records_by_mobile[vrp.mobile_no.to_s.strip])) if vrp.mobile_no.present?
+      matched_records.uniq!(&:id)
       matched_records.each do |record|
         identities << record_dashboard_identity(record)
       end
@@ -4900,6 +4944,18 @@ class ModulesController < ApplicationController
     @new_user_module_records ||= ModuleRecord.where(module_slug: "new-user").to_a
   end
 
+  def new_user_module_records_by_email
+    @new_user_module_records_by_email ||= new_user_module_records
+      .select { |record| record.data["email"].present? }
+      .group_by { |record| record.data["email"].to_s.strip.downcase }
+  end
+
+  def new_user_module_records_by_mobile
+    @new_user_module_records_by_mobile ||= new_user_module_records
+      .select { |record| record.data["mobile_no"].present? }
+      .group_by { |record| record.data["mobile_no"].to_s.strip }
+  end
+
   def cached_module_record_find_by_id(id)
     return if id.blank? || !model_ready?(:ModuleRecord)
 
@@ -4908,6 +4964,42 @@ class ModulesController < ApplicationController
     return @cached_module_record_find_by_id[key] if @cached_module_record_find_by_id.key?(key)
 
     @cached_module_record_find_by_id[key] = ModuleRecord.find_by(id: id)
+  end
+
+  def preload_dashboard_vrp_identity_records!(vrps)
+    vrps = Array(vrps)
+    return if vrps.blank?
+
+    creator_ids = vrps.filter_map { |vrp| vrp.created_by_id.to_s.presence }.uniq
+
+    if model_ready?(:User)
+      @cached_user_find_by ||= {}
+      users = []
+      creator_ids.each { |id| @cached_user_find_by["id=#{id}"] = nil }
+      users.concat(User.where(id: creator_ids).to_a) if creator_ids.any?
+
+      emails = vrps.filter_map { |vrp| vrp.email.to_s.strip.presence }.uniq
+      emails.each { |email| @cached_user_find_by["email=#{email}"] = nil }
+      users.concat(User.where(email: emails).to_a) if emails.any? && User.column_names.include?("email")
+
+      mobile_numbers = vrps.filter_map { |vrp| vrp.mobile_no.to_s.strip.presence }.uniq
+      mobile_numbers.each { |mobile_no| @cached_user_find_by["mobile_no=#{mobile_no}"] = nil }
+      users.concat(User.where(mobile_no: mobile_numbers).to_a) if mobile_numbers.any? && User.column_names.include?("mobile_no")
+
+      users.uniq(&:id).each do |user|
+        @cached_user_find_by["id=#{user.id}"] = user
+        @cached_user_find_by["email=#{user.email}"] = user if user.respond_to?(:email) && user.email.present?
+        @cached_user_find_by["mobile_no=#{user.mobile_no}"] = user if user.respond_to?(:mobile_no) && user.mobile_no.present?
+      end
+    end
+
+    return unless creator_ids.any? && model_ready?(:ModuleRecord)
+
+    @cached_module_record_find_by_id ||= {}
+    creator_ids.each { |id| @cached_module_record_find_by_id[id] = nil }
+    ModuleRecord.where(id: creator_ids).find_each do |record|
+      @cached_module_record_find_by_id[record.id.to_s] = record
+    end
   end
 
   def cached_user_find_by(**attrs)
