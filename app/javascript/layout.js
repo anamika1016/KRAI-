@@ -2120,7 +2120,7 @@ function initDeferredLayoutPage() {
 	    };
 
 	    const selectedFarmerBoxes = () => Array.from(formShell.querySelectorAll("[data-training-farmer-checkbox]:checked"));
-	    const farmerBoxes = () => Array.from(formShell.querySelectorAll("[data-training-farmer-checkbox]"));
+	    const farmerBoxes = () => Array.from(formShell.querySelectorAll("[data-training-farmer-checkbox]:not(:disabled)"));
 	    const applyTrainingFarmerSearch = () => {
 	      if (!farmerList) return;
 
@@ -2250,12 +2250,17 @@ function initDeferredLayoutPage() {
 	          farmer.mobile_no ? `Mobile: ${farmer.mobile_no}` : "",
 	          farmer.khasara_no ? `Khasara: ${farmer.khasara_no}` : ""
 	        ].filter(Boolean).join(" | ");
-	        const checked = selectedFarmerIds.has(String(farmer.id)) ? " checked" : "";
+	        const isSelected = selectedFarmerIds.has(String(farmer.id));
+	        const checked = isSelected ? " checked" : "";
+	        // A completed farmer must not be added to another form for the same
+	        // target activity. Keep the checkbox enabled while editing the form
+	        // that already contains the farmer so existing data is preserved.
+	        const disabled = farmer.already_included && !isSelected ? " disabled" : "";
 	        const includedClass = farmer.already_included ? " already-included" : "";
-	        const includedBadge = farmer.already_included ? '<b class="training-included-badge">Already Included</b>' : "";
+	        const includedBadge = farmer.already_included ? '<b class="training-included-badge">Already Completed</b>' : "";
 	        return `
 	          <label class="vrp-ics-farmer-item${includedClass}">
-	            <input type="checkbox" name="module_record[selected_farmer_ids][]" value="${escapeHtml(farmer.id)}" data-training-farmer-checkbox${checked}>
+	            <input type="checkbox" name="module_record[selected_farmer_ids][]" value="${escapeHtml(farmer.id)}" data-training-farmer-checkbox${checked}${disabled}>
 	            <span>
 	              <strong>${escapeHtml(farmer.farmer_name || `Farmer #${farmer.id}`)} ${includedBadge}</strong>
 	              <small>${escapeHtml(meta)}</small>
