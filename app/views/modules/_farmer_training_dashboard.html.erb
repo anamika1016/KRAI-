@@ -1,4 +1,3 @@
-<% totals = participation[:totals] || {} %>
 <% month_options = Array(@training_month_options || []) %>
 <% sub_activity_options = Array(@training_sub_activity_options || []) %>
 <% selected_month = @training_selected_month.to_s %>
@@ -14,7 +13,6 @@
 <% total_status_path_params[:training_fcoc] = participation_fcoc_filter_value if participation_fcoc_filter_value.present? %>
 <% unique_status_path_params = total_status_path_params.merge(status: "unique") %>
 <% training_unique_status_path_params = total_status_path_params.merge(status: "training_unique") %>
-<% target_status_cards = Array(@training_target_status_cards || []) %>
 
 <section class="module-card training-participation-status-card dashboard-status-panel training-status-panel">
   <div class="module-card-header training-participation-status-header">

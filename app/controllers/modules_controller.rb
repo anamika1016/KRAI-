@@ -719,7 +719,6 @@ class ModulesController < ApplicationController
     selected_sub_activity = @training_sub_activity_options.find do |option|
       normalize_dashboard_text(option) == normalize_dashboard_text(requested_sub_activity)
     end || @training_sub_activity_options.first
-    training_targets = dashboard_targets_for_filters(targets, selected_month, selected_sub_activity)
     @dashboard_title = admin_dashboard_user? ? "Admin Dashboard" : dashboard_current_user_title
     @dashboard_caption = admin_dashboard_user? ? "Live complete system summary." : "Live summary for your mapped records."
     @training_selected_month = selected_month
@@ -729,27 +728,22 @@ class ModulesController < ApplicationController
     @participation_selected_month = @participation_month_filter_value == "all" ? nil : @participation_month_filter_value
     @participation_fcoc_filter_value = params[:participation_fcoc].presence
     participation_records = dashboard_training_participation_records(month_name: @participation_selected_month, fcoc_name: @participation_fcoc_filter_value)
-    participation_targets = training_participation_targets_for_dashboard(month_name: @participation_selected_month, fcoc_name: @participation_fcoc_filter_value)
-    participation_population_rows = training_participation_population_rows(
+    participation_dashboard_counts = training_participation_dashboard_counts(
       month_name: @participation_selected_month,
       fcoc_name: @participation_fcoc_filter_value,
       records: participation_records
     )
-    @training_participation_status_cards = training_participation_status_cards_from_records(
-      participation_records,
-      month_name: @participation_selected_month,
-      fcoc_name: @participation_fcoc_filter_value,
-      population_rows: participation_population_rows
-    )
-    @training_unique_farmer_count = training_afl_farmer_rows_for_participation(
+    @training_participation_status_cards = training_participation_dashboard_status_cards(
+      participation_dashboard_counts,
       month_name: @participation_selected_month,
       fcoc_name: @participation_fcoc_filter_value
-    ).size
+    )
+    @training_unique_farmer_count = participation_dashboard_counts[:total]
     @training_records_unique_farmer_count = training_unique_farmer_count_from_records(participation_records)
     @training_total_training_farmer_count = training_total_farmer_count_from_records(participation_records)
-    @training_target_status_cards = training_target_status_cards(training_targets, month_name: selected_month, sub_activity_name: selected_sub_activity)
-    @training_participation = training_participation_summary(participation_targets, month_name: @participation_selected_month)
-    @farmer_training_dashboard_rows = farmer_training_dashboard_rows(training_targets, month_name: selected_month)
+    # Full target/participation rows are available on their dedicated report
+    # pages. The dashboard renders summary boxes only, so building those large
+    # unused datasets here needlessly multiplies queries and memory usage.
     @ics_farmer_report_month_value = params[:ics_report_month].presence || @participation_month_filter_value
     @ics_farmer_report_selected_month = @ics_farmer_report_month_value == "all" ? nil : @ics_farmer_report_month_value
     ics_report_targets = training_participation_targets_for_dashboard(
@@ -783,7 +777,6 @@ class ModulesController < ApplicationController
       week_number: @weekly_target_week_filter_value
     )
     @dashboard_cards = dashboard_cards
-    @dashboard_reports = dashboard_reports
     @dashboard_generated_at = Time.current
 
     respond_to do |format|
@@ -2595,10 +2588,10 @@ class ModulesController < ApplicationController
   end
 
   def weekly_activity_target_status_cards(targets, month_name: nil, fcoc_name: nil, week_number: nil)
-    rows = weekly_activity_target_report_rows(targets, week_number: week_number)
-    target_quantity = rows.sum { |row| row[:target_quantity].to_f }
-    completed_quantity = rows.sum { |row| row[:completed_quantity].to_f }
-    pending_quantity = rows.sum { |row| row[:pending_quantity].to_f }
+    totals = weekly_activity_target_status_totals(targets, week_number: week_number)
+    target_quantity = totals[:target]
+    completed_quantity = totals[:completed]
+    pending_quantity = totals[:pending]
     filter_params = dashboard_weekly_report_filter_params
     filter_params.delete(:training_month)
     filter_params[:training_month] = month_name if month_name.present?
@@ -2629,6 +2622,28 @@ class ModulesController < ApplicationController
         path: weekly_activity_target_report_path(filter_params.merge(status: "total"))
       }
     ]
+  end
+
+  def weekly_activity_target_status_totals(targets, week_number: nil)
+    dashboard_target_assignment_groups(targets).each_with_object({ target: 0.0, completed: 0.0, pending: 0.0 }) do |group, totals|
+      assigned_ids = group.flat_map { |target| target_farmer_ids(target) }.map(&:to_s).reject(&:blank?).uniq
+      if week_number.present?
+        index = week_number - 1
+        target_quantity = group.map { |target| Array(target.weekly_target_values)[index].to_f }.max.to_f
+        completed_ids = unique_training_farmer_ids(group.flat_map do |target|
+          Array(training_weekly_achievement_farmer_ids(target, target_farmer_ids(target)))[index] || []
+        end) & assigned_ids
+      else
+        target_quantity = assigned_ids.any? ? assigned_ids.size.to_f : group.map { |target| target.target_quantity.to_f }.max.to_f
+        completed_ids = unique_training_farmer_ids(group.flat_map do |target|
+          completed_training_farmer_ids_for(target, target_farmer_ids(target))
+        end) & assigned_ids
+      end
+      completed_quantity = [completed_ids.size.to_f, target_quantity].min
+      totals[:target] += target_quantity
+      totals[:completed] += completed_quantity
+      totals[:pending] += [target_quantity - completed_quantity, 0].max
+    end
   end
 
   def dashboard_weekly_report_filter_params
@@ -2882,6 +2897,49 @@ class ModulesController < ApplicationController
         status: status,
         status_label: training_participation_status_label(status)
       )
+    end
+  end
+
+  # Dashboard boxes only need counts. Avoid materializing thousands of AFL
+  # objects and their display hashes; the dedicated list page still builds the
+  # full farmer rows when the user opens a box.
+  def training_participation_dashboard_counts(month_name:, fcoc_name:, records:)
+    targets = training_participation_targets_for_dashboard(month_name: month_name, fcoc_name: fcoc_name)
+    fco_ids = targets.filter_map { |target| target.fco_id.to_s.strip.presence }.uniq
+    farmer_ids = fco_ids.any? ? Afl.where(fco_id: fco_ids).pluck(:id).map(&:to_s) : []
+    farmer_id_lookup = farmer_ids.index_with(true)
+    attendance_counts = Hash.new(0)
+
+    Array(records).each do |record|
+      training_record_selected_farmer_ids(record).uniq.each do |farmer_id|
+        attendance_counts[farmer_id] += 1 if farmer_id_lookup.key?(farmer_id)
+      end
+    end
+
+    counts = { green: 0, yellow: 0, red: 0, pending: 0, total: farmer_ids.size }
+    pending_available = training_participation_month_open?(month_name)
+    farmer_ids.each do |farmer_id|
+      status = training_participation_status_for_count(
+        attendance_counts[farmer_id],
+        pending_available: pending_available
+      )
+      counts[status.to_sym] += 1
+    end
+    counts
+  end
+
+  def training_participation_dashboard_status_cards(counts, month_name:, fcoc_name:)
+    %w[green yellow red pending].map do |status|
+      path_params = { status: status }
+      path_params[:training_month] = month_name if month_name.present?
+      path_params[:training_fcoc] = fcoc_name if fcoc_name.present?
+      {
+        status: status,
+        title: training_participation_status_label(status),
+        value: counts[status.to_sym].to_i,
+        caption: training_participation_status_caption(status),
+        path: farmer_training_participation_path(path_params)
+      }
     end
   end
 

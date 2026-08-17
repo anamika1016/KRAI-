@@ -396,9 +396,7 @@
 
 
   <%# ── TRAINING DASHBOARD ───────────────────────────────────────────── %>
-  <% participation = @training_participation || { totals: { green: 0, yellow: 0, red: 0, total: 0 }, ics_rows: [], village_rows: [] } %>
-  <% training_rows = @farmer_training_dashboard_rows || [] %>
-  <%= render "farmer_training_dashboard", training_rows: training_rows, participation: participation %>
+  <%= render "farmer_training_dashboard" %>
 
   <%# ── WEEKLY TARGET STATUS BOXES ONLY (full data on report page) ── %>
   <% weekly_cards = @dashboard_weekly_target_cards || [] %>
