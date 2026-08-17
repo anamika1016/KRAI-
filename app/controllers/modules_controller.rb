@@ -753,8 +753,7 @@ class ModulesController < ApplicationController
     @training_total_training_farmer_count = training_total_farmer_count_from_records(participation_records)
     preload_training_farmers_for_targets!(month_targets)
     activity_overview_rows = vrp_dashboard_target_progress_rows(month_targets, [])
-    activity_target_totals = vrp_dashboard_target_totals(activity_overview_rows)
-    activity_farmer_totals = vrp_dashboard_farmer_status_totals(activity_overview_rows)
+    activity_overview_totals = vrp_activity_overview_totals(month_targets, bills: @filtered_bills)
     visible_vrp_ids = @filtered_vrps.map(&:id)
     ics_mappings = model_ready?(:VrpIcsMapping) ? VrpIcsMapping.where(vrp_id: visible_vrp_ids).to_a : []
     if params[:ics].present?
@@ -763,17 +762,18 @@ class ModulesController < ApplicationController
         normalize_dashboard_text(mapping.ics_name.presence || mapping.ics_id) == selected_ics
       end
     end
-    afl_farmer_count = vrp_mapped_farmer_count(ics_mappings)
+    afl_farmer_count = vrp_afl_farmer_count(ics_mappings, targets: month_targets, vrps: @filtered_vrps)
     @activity_overview_cards = [
-      dashboard_card("AFL", afl_farmer_count, "ICS se mapped distinct farmers"),
-      dashboard_card("Target Map", dashboard_quantity(activity_target_totals[:assigned]), "Activity-wise assigned target"),
-      dashboard_card("Pending Farmers", activity_farmer_totals[:pending], "At least one activity pending"),
-      dashboard_card("Complete Farmers", activity_farmer_totals[:complete], "At least one activity complete"),
-      dashboard_card("Pending Target Map", dashboard_quantity(activity_target_totals[:pending]), "Activity-wise pending target"),
-      dashboard_card("Completed Target Map", dashboard_quantity(activity_target_totals[:achieved]), "Activity-wise completed target"),
-      dashboard_card("Red Farmers", activity_farmer_totals[:red], "All mapped activities pending"),
-      dashboard_card("Green Farmers", activity_farmer_totals[:green], "All mapped activities complete"),
-      dashboard_card("Yellow Farmers", activity_farmer_totals[:yellow], "Complete and pending activities both")
+      dashboard_card("AFL", afl_farmer_count, "AFL se map total farmers"),
+      dashboard_card("map farmer", activity_overview_totals[:mapped_farmers], "Unique activities se mapped farmers distinct"),
+      dashboard_card("Target map", dashboard_quantity(activity_overview_totals[:target_map]), "Farmer target total activities"),
+      dashboard_card("Pending Farmers", activity_overview_totals[:pending_farmers], "Pending activity wale distinct farmers"),
+      dashboard_card("Complete farmers", activity_overview_totals[:complete_farmers], "Complete activity wale distinct farmers"),
+      dashboard_card("Pending Target map", dashboard_quantity(activity_overview_totals[:pending_target_map]), "Activity-wise pending target"),
+      dashboard_card("Completed Target map", dashboard_quantity(activity_overview_totals[:completed_target_map]), "Activity-wise completed target"),
+      dashboard_card("Red Farmers", activity_overview_totals[:red_farmers], "Sabhi activities pending wale distinct farmers"),
+      dashboard_card("Green farmers", activity_overview_totals[:green_farmers], "Sabhi activities complete wale distinct farmers"),
+      dashboard_card("Yellow Farmers", activity_overview_totals[:yellow_farmers], "Complete aur pending dono wale distinct farmers")
     ]
     # Full target/participation rows are available on their dedicated report
     # pages. The dashboard renders summary boxes only, so building those large
@@ -1748,10 +1748,79 @@ class ModulesController < ApplicationController
   end
 
   def vrp_mapped_farmer_count(mappings)
-    farmer_ids = mappings.flat_map { |mapping| Array(mapping.afl_ids).map(&:to_s) }.reject(&:blank?).uniq
-    return farmer_ids.size if farmer_ids.any?
+    direct_farmer_ids = mappings.flat_map { |mapping| Array(mapping.afl_ids).map(&:to_s) }.reject(&:blank?).uniq
+    return direct_farmer_ids.size unless model_ready?(:Afl)
 
-    mappings.sum(&:farmer_count)
+    fallback_farmer_ids = mappings.each_with_object([]) do |mapping, ids|
+      next if Array(mapping.afl_ids).any?
+
+      ids.concat(vrp_mapping_afl_ids(mapping))
+    end
+
+    (direct_farmer_ids | fallback_farmer_ids.map(&:to_s)).size
+  end
+
+  def vrp_afl_farmer_count(mappings, targets: [], vrps: [])
+    return 0 unless model_ready?(:Afl)
+
+    fco_ids = Array(targets).filter_map { |target| target.fco_id.to_s.strip.presence }.uniq
+    fco_names = (
+      Array(targets).filter_map { |target| target.fco_name.to_s.strip.presence } +
+      Array(vrps).filter_map { |vrp| vrp.fcoc.to_s.strip.presence }
+    ).uniq
+    ics_values = Array(mappings).filter_map { |mapping| mapping.ics_name.presence || mapping.ics_id.presence }.uniq
+
+    scope = Afl.all
+    scope = vrp_filter_afl_mapping_scope(scope, :fco_id, :fco, fco_ids, fco_names) if fco_ids.any? || fco_names.any?
+    scope = vrp_filter_afl_mapping_scope(scope, :ics_id, :ics_name, ics_values, ics_values) if params[:ics].present? && ics_values.any?
+
+    scope.distinct.count(:id)
+  end
+
+  def vrp_mapping_afl_ids(mapping)
+    return [] unless mapping
+
+    scope = Afl.all
+    scope = vrp_filter_afl_mapping_scope(scope, :fco_id, :fco, mapping.fco_id, mapping.fco_name)
+    scope = vrp_filter_afl_mapping_scope(scope, :ics_id, :ics_name, mapping.ics_id, mapping.ics_name)
+    scope = vrp_filter_afl_mapping_scope(scope, :village_id, :village_name, mapping.village_id, mapping.village_name)
+    scope.distinct.pluck(:id).map(&:to_s)
+  end
+
+  def vrp_filter_afl_mapping_scope(scope, id_column, name_column, id_value, name_value)
+    id_values = vrp_dashboard_location_values(id_value).map { |value| normalize_dashboard_text(value) }.reject(&:blank?).uniq
+    label_values = vrp_dashboard_location_values(name_value).map { |value| normalize_dashboard_text(value) }.reject(&:blank?).uniq
+    return scope.none if id_values.blank? && label_values.blank?
+
+    conditions = []
+    bind_values = {}
+
+    if id_values.any?
+      conditions << "LOWER(BTRIM(COALESCE(#{Afl.connection.quote_column_name(id_column)}::text, ''))) IN (:ids)"
+      bind_values[:ids] = id_values
+    end
+
+    if label_values.any?
+      conditions << "LOWER(BTRIM(COALESCE(#{Afl.connection.quote_column_name(name_column)}, ''))) IN (:labels)"
+      bind_values[:labels] = label_values
+    end
+
+    scope.where(conditions.join(" OR "), bind_values)
+  end
+
+  def vrp_dashboard_location_values(value)
+    Array(value).flat_map do |item|
+      text = item.to_s.strip
+      next [] if text.blank?
+
+      parsed = begin
+        JSON.parse(text) if text.start_with?("[")
+      rescue JSON::ParserError
+        nil
+      end
+
+      parsed.is_a?(Array) ? parsed : text.split(",")
+    end.map { |item| item.to_s.strip }.reject(&:blank?)
   end
 
   def vrp_targeted_farmer_ids(targets)
@@ -1922,6 +1991,57 @@ class ModulesController < ApplicationController
       red: farmer_states.filter_map { |farmer_id, state| farmer_id if state[:pending].positive? && state[:complete].zero? },
       green: farmer_states.filter_map { |farmer_id, state| farmer_id if state[:complete].positive? && state[:pending].zero? },
       yellow: farmer_states.filter_map { |farmer_id, state| farmer_id if state[:complete].positive? && state[:pending].positive? }
+    }
+  end
+
+  def vrp_activity_overview_totals(targets, bills: [])
+    farmer_states = Hash.new { |hash, farmer_id| hash[farmer_id] = { complete: 0, pending: 0 } }
+    activity_settings = jeevika_jankar_main_activity_settings
+    sub_activity_settings = jeevika_jankar_sub_activity_settings(activity_settings)
+    other_target_achievement_index = approved_other_target_achievement_index
+    target_map = 0.0
+    completed_target_map = 0.0
+
+    Array(targets).each do |target|
+      assigned_ids = target_farmer_ids(target)
+      target_count = assigned_ids.any? ? assigned_ids.size.to_f : target.target_quantity.to_f
+      completed_ids = vrp_dashboard_completed_farmer_ids_for_target(target) & assigned_ids
+      completed_count = if assigned_ids.any?
+        completed_ids.size.to_f
+      else
+        vrp_target_completed_quantity(
+          target,
+          Array(bills),
+          activity_settings: activity_settings,
+          sub_activity_settings: sub_activity_settings,
+          other_target_achievement_index: other_target_achievement_index
+        ).to_f
+      end
+      completed_count = [completed_count, target_count].min
+
+      target_map += target_count
+      completed_target_map += completed_count
+
+      assigned_ids.each do |farmer_id|
+        state = farmer_states[farmer_id.to_s]
+        if completed_ids.include?(farmer_id)
+          state[:complete] += 1
+        else
+          state[:pending] += 1
+        end
+      end
+    end
+
+    {
+      mapped_farmers: farmer_states.keys.size,
+      target_map: target_map,
+      pending_farmers: farmer_states.count { |_farmer_id, state| state[:pending].positive? },
+      complete_farmers: farmer_states.count { |_farmer_id, state| state[:complete].positive? },
+      pending_target_map: [target_map - completed_target_map, 0].max,
+      completed_target_map: completed_target_map,
+      red_farmers: farmer_states.count { |_farmer_id, state| state[:pending].positive? && state[:complete].zero? },
+      green_farmers: farmer_states.count { |_farmer_id, state| state[:complete].positive? && state[:pending].zero? },
+      yellow_farmers: farmer_states.count { |_farmer_id, state| state[:complete].positive? && state[:pending].positive? }
     }
   end
 
