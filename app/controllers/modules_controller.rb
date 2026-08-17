@@ -1857,21 +1857,13 @@ class ModulesController < ApplicationController
     end
   end
 
-  # The same farmer can appear in several activity rows of one monthly plan.
-  # Dashboard totals represent unique assigned/covered farmers, while targets
-  # without AFL IDs remain quantity based and additive.
+  # Mapped Farmers is a distinct headcount, but target progress is activity-wise.
+  # A farmer assigned to two different activities contributes once to each
+  # activity target, so these totals must remain additive across dashboard rows.
   def vrp_dashboard_target_totals(rows)
-    farmer_rows, quantity_rows = Array(rows).partition { |row| Array(row[:assigned_farmer_ids]).any? }
-    assigned_ids = farmer_rows.flat_map { |row| Array(row[:assigned_farmer_ids]).map(&:to_s) }.reject(&:blank?).uniq
-    completed_ids = farmer_rows.flat_map { |row| Array(row[:completed_farmer_ids]).map(&:to_s) }.reject(&:blank?).uniq
-    legacy_completed = farmer_rows
-      .group_by { |row| [normalize_dashboard_text(row[:village]), Array(row[:assigned_farmer_ids]).map(&:to_s).sort] }
-      .sum do |_key, grouped_rows|
-        grouped_ids = grouped_rows.flat_map { |row| Array(row[:completed_farmer_ids]).map(&:to_s) }.reject(&:blank?).uniq
-        grouped_ids.any? ? 0 : grouped_rows.map { |row| row[:completed].to_f }.max.to_f
-      end
-    assigned = assigned_ids.size.to_f + quantity_rows.sum { |row| row[:target].to_f }
-    achieved = completed_ids.size.to_f + legacy_completed + quantity_rows.sum { |row| row[:completed].to_f }
+    rows = Array(rows)
+    assigned = rows.sum { |row| row[:target].to_f }
+    achieved = rows.sum { |row| row[:completed].to_f }
     achieved = [achieved, assigned].min
 
     { assigned: assigned, achieved: achieved, pending: [assigned - achieved, 0].max }
