@@ -8684,7 +8684,10 @@ class ModulesController < ApplicationController
     return [] if farmer_ids.blank?
     return [] unless model_ready?(:ModuleRecord)
 
-    dashboard_training_completion_records
+    # Target progress is calculated repeatedly while rendering a dashboard.
+    # Restrict the candidate records to this target's month and VRP instead of
+    # scanning every training form in the system once for every target row.
+    dashboard_training_form_records([target], farmer_ids)
       .select { |record| training_record_matches_dashboard_target?(record, target, farmer_ids) }
       .flat_map { |record| training_record_selected_farmer_ids(record) & farmer_ids }
       .uniq
@@ -8728,7 +8731,7 @@ class ModulesController < ApplicationController
     cache_key = [target.id, target.completion_date.to_s]
     return @matching_training_records_for_target_cache[cache_key] if @matching_training_records_for_target_cache.key?(cache_key)
 
-    @matching_training_records_for_target_cache[cache_key] = dashboard_training_completion_records
+    @matching_training_records_for_target_cache[cache_key] = dashboard_training_form_records([target], farmer_ids)
       .select { |record| training_record_matches_dashboard_target?(record, target, farmer_ids) }
       .select { |record| training_record_within_completion_date?(record, target.completion_date) }
   end
