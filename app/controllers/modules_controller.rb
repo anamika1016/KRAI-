@@ -795,8 +795,8 @@ class ModulesController < ApplicationController
       end
     end
     @activity_overview_cards = [
-      dashboard_card("Mapped Farmers (Distinct)", activity_overview_totals[:mapped_farmers], "Selected activities ke unique mapped farmers.", farmer_training_participation_path(activity_overview_farmer_path_params(status: "unique"))),
       dashboard_card("AFL", activity_overview_totals[:mapped_farmers], "Selected activities ke unique mapped farmers."),
+      dashboard_card("Mapped Farmers (Distinct)", activity_overview_totals[:mapped_farmers], "Selected activities ke unique mapped farmers.", farmer_training_participation_path(activity_overview_farmer_path_params(status: "unique"))),
       dashboard_card(
         "Target Map",
         activity_overview_totals[:target_map],
