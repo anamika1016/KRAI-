@@ -290,6 +290,33 @@
     <% if params[:training_sub_activity].present? %>
       <%= hidden_field_tag :training_sub_activity, params[:training_sub_activity] %>
     <% end %>
+    <% if params[:participation_month].present? %>
+      <%= hidden_field_tag :participation_month, params[:participation_month] %>
+    <% end %>
+    <% if params[:participation_fcoc].present? %>
+      <%= hidden_field_tag :participation_fcoc, params[:participation_fcoc] %>
+    <% end %>
+    <% if params[:weekly_target_month].present? %>
+      <%= hidden_field_tag :weekly_target_month, params[:weekly_target_month] %>
+    <% end %>
+    <% if params[:weekly_target_fcoc].present? %>
+      <%= hidden_field_tag :weekly_target_fcoc, params[:weekly_target_fcoc] %>
+    <% end %>
+    <% if params[:weekly_target_week].present? %>
+      <%= hidden_field_tag :weekly_target_week, params[:weekly_target_week] %>
+    <% end %>
+    <% if params[:ics_report_month].present? %>
+      <%= hidden_field_tag :ics_report_month, params[:ics_report_month] %>
+    <% end %>
+    <% if params[:ics_report_ics].present? %>
+      <%= hidden_field_tag :ics_report_ics, params[:ics_report_ics] %>
+    <% end %>
+    <% if params[:activity_overview_month].present? %>
+      <%= hidden_field_tag :activity_overview_month, params[:activity_overview_month] %>
+    <% end %>
+    <% if params[:activity_overview_fcoc].present? %>
+      <%= hidden_field_tag :activity_overview_fcoc, params[:activity_overview_fcoc] %>
+    <% end %>
     <div class="dashboard-filter-grid">
 
 
@@ -471,7 +498,7 @@
     <% ics_report_options = Array(@ics_farmer_report_options) %>
     <% selected_ics_report = @ics_farmer_report_selected_ics.to_s %>
     <% selected_ics_report_month = @ics_farmer_report_month_value.to_s.presence || @participation_month_filter_value.to_s.presence || "all" %>
-    <% ics_report_summary = @ics_farmer_report_summary || { farmers: 0, villages: 0, main_activities: 0, sub_activities: 0 } %>
+    <% ics_report_summary = @ics_farmer_report_summary || { farmers: 0, villages: 0, main_activities: 0, sub_activities: 0, trained_farmers: 0 } %>
     <section class="module-card training-participation-status-card dashboard-status-panel weekly-status-panel" id="dashboard_ics_farmer_report">
       <div class="module-card-header training-participation-status-header">
         <div>
@@ -514,14 +541,9 @@
       <% if selected_ics_report.present? %>
         <div class="training-participation-boxes compact" style="margin-bottom: 12px;">
           <div class="training-participation-box total">
-            <span>Mapped Farmer Count</span>
+            <span>AFL</span>
             <strong><%= ics_report_summary[:farmers].to_i %></strong>
-            <small>Total farmers mapped to the selected ICS in AFL.</small>
-          </div>
-          <div class="training-participation-box total">
-            <span>Village Count</span>
-            <strong><%= ics_report_summary[:villages].to_i %></strong>
-            <small>Distinct villages mapped to the selected ICS in AFL.</small>
+            <small>Selected ICS ke visible AFL farmers.</small>
           </div>
           <div class="training-participation-box total">
             <span>Main Activity Count</span>
@@ -532,6 +554,11 @@
             <span>Sub Activity Count</span>
             <strong><%= ics_report_summary[:sub_activities].to_i %></strong>
             <small>Total sub activities in the selected ICS.</small>
+          </div>
+          <div class="training-participation-box total">
+            <span>Achievement</span>
+            <strong><%= ics_report_summary[:achievement].to_i %></strong>
+            <small>Selected ICS me worked distinct farmers ka count.</small>
           </div>
         </div>
       <% end %>

@@ -797,13 +797,12 @@ class ModulesController < ApplicationController
     afl_farmer_count = vrp_afl_farmer_count(ics_mappings, targets: month_targets, vrps: @filtered_vrps)
     @activity_overview_cards = [
       dashboard_card("AFL", afl_farmer_count.to_i, "AFL se map total farmers"),
+      dashboard_card("Mapped Farmers (Distinct)", activity_overview_totals[:mapped_farmers], "Selected activities ke unique mapped farmers.", farmer_training_participation_path(activity_overview_farmer_path_params(status: "unique"))),
       dashboard_card(
-        "Mapped Farmers (Distinct)",
-        activity_overview_totals[:mapped_farmers],
-        "Selected activities ke unique mapped farmers.",
-        farmer_training_participation_path(activity_overview_farmer_path_params(status: "unique"))
+        "Target Map",
+        activity_overview_totals[:target_map],
+        "Farmer × activity mappings. Same farmer har mapped activity ke liye count hoga."
       ),
-      dashboard_card("Target Map", activity_overview_totals[:target_map], "Farmer × activity mappings. Same farmer har mapped activity ke liye count hoga."),
       dashboard_card("Pending Farmers (Distinct)", activity_overview_totals[:pending_farmers], "Selected activities me training pending unique farmers."),
       dashboard_card("Complete Farmers (Distinct)", activity_overview_totals[:complete_farmers], "Selected activities me training complete unique farmers."),
       dashboard_card("Pending Target Map", activity_overview_totals[:pending_target_map], "Pending farmer × activity mappings; same farmer ki har pending activity count hogi."),
@@ -3246,7 +3245,7 @@ class ModulesController < ApplicationController
   end
 
   def training_participation_dashboard_status_cards(counts, month_name:, fcoc_name:)
-    %w[green yellow red pending].map do |status|
+    %w[red green yellow pending].map do |status|
       path_params = { status: status }
       path_params[:training_month] = month_name if month_name.present?
       path_params[:training_fcoc] = fcoc_name if fcoc_name.present?
@@ -4139,12 +4138,15 @@ class ModulesController < ApplicationController
   def ics_farmer_report_summary(rows, selected_ics: nil)
     rows = Array(rows)
     afl_summary = ics_afl_mapping_summary(selected_ics)
+    distinct_farmers = rows.map { |row| row[:farmer_id].to_s }.reject(&:blank?).uniq.size
 
     {
       farmers: afl_summary[:farmers],
       villages: afl_summary[:villages],
       main_activities: rows.map { |row| row[:main_activity].to_s.strip }.reject(&:blank?).reject { |value| value == "-" }.uniq.size,
-      sub_activities: rows.map { |row| row[:sub_activity].to_s.strip }.reject(&:blank?).reject { |value| value == "-" }.uniq.size
+      sub_activities: rows.map { |row| row[:sub_activity].to_s.strip }.reject(&:blank?).reject { |value| value == "-" }.uniq.size,
+      achievement: distinct_farmers,
+      trained_farmers: distinct_farmers
     }
   end
 
