@@ -4216,9 +4216,9 @@ class ModulesController < ApplicationController
       .select { |record| training_record_matches_dashboard_target?(record, target, farmer_ids) }
     completed_farmer_ids = completed_training_farmer_ids_for(target, farmer_ids)
     pending_farmer_ids = farmer_ids - completed_farmer_ids
-    target_quantity = farmer_ids.any? ? farmer_ids.size.to_f : target.target_quantity.to_f
+    target_quantity = target.target_quantity.to_f
     completed_quantity = completed_farmer_ids.size.to_f
-    pending_quantity = farmer_ids.any? ? pending_farmer_ids.size.to_f : [target_quantity - completed_quantity, 0].max
+    pending_quantity = [target_quantity - completed_quantity, 0].max
     progress_percent = target_quantity.positive? ? ((completed_quantity / target_quantity) * 100).round : 0
     status_class = training_target_status_for_percent(progress_percent)
     weekly_targets = target.respond_to?(:weekly_target_values) ? target.weekly_target_values.map(&:to_f) : [0, 0, 0, 0]
