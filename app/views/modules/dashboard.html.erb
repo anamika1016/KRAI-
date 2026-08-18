@@ -435,11 +435,21 @@
     </div>
     <div class="training-participation-boxes activity-overview-boxes">
       <% Array(@activity_overview_cards).each do |card| %>
-        <div class="training-participation-box <%= card[:title].to_s.parameterize %>">
-          <span><%= card[:title] %></span>
-          <strong><%= card[:value] %></strong>
-          <small><%= card[:caption] %></small>
-        </div>
+        <% card_class = "training-participation-box #{card[:title].to_s.parameterize}" %>
+        <% if card[:path].present? %>
+          <%= link_to card[:path], class: card_class, data: { dashboard_card: true } do %>
+            <span><%= card[:title] %></span>
+            <strong><%= card[:value] %></strong>
+            <small><%= card[:caption] %></small>
+            <b>View List</b>
+          <% end %>
+        <% else %>
+          <div class="<%= card_class %>">
+            <span><%= card[:title] %></span>
+            <strong><%= card[:value] %></strong>
+            <small><%= card[:caption] %></small>
+          </div>
+        <% end %>
       <% end %>
     </div>
   </section>

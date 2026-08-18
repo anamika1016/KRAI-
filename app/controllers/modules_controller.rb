@@ -762,11 +762,11 @@ class ModulesController < ApplicationController
       fcoc_name: @activity_overview_fcoc_filter_value
     )
     activity_overview_target_rows = Array(activity_overview_targets).map { |target| training_target_detail_row(target) }
-    activity_overview_records = dashboard_training_participation_records(
-      month_name: @activity_overview_selected_month,
-      fcoc_name: @activity_overview_fcoc_filter_value
-    )
-    activity_overview_farmer_rows = training_participation_farmer_rows_from_records(activity_overview_records)
+    # Target mappings, rather than submitted training forms, define the farmer
+    # population for this overview. A farmer may be mapped to several
+    # activities, but must be counted once for the selected month (or once
+    # overall when "All" is selected).
+    activity_overview_totals = activity_overview_farmer_totals(activity_overview_target_rows)
     visible_vrp_ids = @filtered_vrps.map(&:id)
     ics_mappings = model_ready?(:VrpIcsMapping) ? VrpIcsMapping.where(vrp_id: visible_vrp_ids).to_a : []
     if params[:ics].present?
@@ -778,15 +778,20 @@ class ModulesController < ApplicationController
     afl_farmer_count = vrp_afl_farmer_count(ics_mappings, targets: month_targets, vrps: @filtered_vrps)
     @activity_overview_cards = [
       dashboard_card("AFL", afl_farmer_count.to_i, "AFL se map total farmers"),
-      dashboard_card("map farmer", activity_overview_farmer_rows.size.to_i, "Unique framer tranning Activities se map total farmers Distinct"),
-      dashboard_card("Target map", dashboard_quantity(activity_overview_target_rows.sum { |row| row[:target_quantity].to_f }), "Farmer tranning Target total activeties"),
-      dashboard_card("Pending Farmers", activity_overview_farmer_rows.count { |row| row[:pending_quantity].to_i.positive? }, "Farmer tranning Activeties se map total Distinct farmers"),
-      dashboard_card("Complete farmers", activity_overview_farmer_rows.count { |row| row[:completed_quantity].to_i.positive? }, "Farmer tranning Activeties se map total Distinct farmers"),
-      dashboard_card("Pending Target map", dashboard_quantity(activity_overview_target_rows.sum { |row| row[:pending_quantity].to_f }), "Farmer tranning Total Pending activeties"),
-      dashboard_card("Completed Target map", dashboard_quantity(activity_overview_target_rows.sum { |row| row[:completed_quantity].to_f }), "Farmer tranning Total Complete activeties"),
-      dashboard_card("Red Farmers", activity_overview_farmer_rows.count { |row| row[:status_class] == "red" }, "Farmer tranning Activeties se map total Distinct farmers"),
-      dashboard_card("Green farmers", activity_overview_farmer_rows.count { |row| row[:status_class] == "green" }, "Farmer tranning Activeties se map total Distinct farmers"),
-      dashboard_card("Yellow Farmers", activity_overview_farmer_rows.count { |row| row[:status_class] == "yellow" }, "Farmer tranning Activeties se map total Distinct farmers")
+      dashboard_card(
+        "Mapped Farmers (Distinct)",
+        activity_overview_totals[:mapped_farmers],
+        "Selected activities ke unique mapped farmers.",
+        farmer_training_participation_path(activity_overview_farmer_path_params(status: "unique"))
+      ),
+      dashboard_card("Target Map", activity_overview_totals[:target_map], "Farmer × activity mappings. Same farmer har mapped activity ke liye count hoga."),
+      dashboard_card("Pending Farmers (Distinct)", activity_overview_totals[:pending_farmers], "Selected activities me training pending unique farmers."),
+      dashboard_card("Complete Farmers (Distinct)", activity_overview_totals[:complete_farmers], "Selected activities me training complete unique farmers."),
+      dashboard_card("Pending Target Map", activity_overview_totals[:pending_target_map], "Pending farmer × activity mappings; same farmer ki har pending activity count hogi."),
+      dashboard_card("Completed Target Map", activity_overview_totals[:completed_target_map], "Complete farmer × activity mappings; same farmer ki har complete activity count hogi."),
+      dashboard_card("Red Farmers (Distinct)", activity_overview_totals[:red_farmers], "Kisi selected activity me completion nahi hua."),
+      dashboard_card("Green Farmers (Distinct)", activity_overview_totals[:green_farmers], "Har selected activity me completion hua."),
+      dashboard_card("Yellow Farmers (Distinct)", activity_overview_totals[:yellow_farmers], "Kuch activities complete aur kuch pending hain.")
     ]
     # Full target/participation rows are available on their dedicated report
     # pages. The dashboard renders summary boxes only, so building those large
@@ -2057,6 +2062,53 @@ class ModulesController < ApplicationController
     }
   end
 
+  # A farmer can occur in multiple target rows (for different activities).
+  # Keep one state per farmer so the activity overview always reports distinct
+  # farmers for both an individual month and the "All" month selection.
+  def activity_overview_farmer_totals(target_rows)
+    farmer_states = Hash.new { |hash, farmer_id| hash[farmer_id] = { completed: false, pending: false } }
+    target_map = 0
+    completed_target_map = 0
+    pending_target_map = 0
+
+    Array(target_rows).each do |row|
+      assigned_ids = unique_training_farmer_ids(row[:assigned_farmer_ids])
+      completed_ids = unique_training_farmer_ids(row[:completed_farmer_ids])
+
+      assigned_ids.each do |farmer_id|
+        state = farmer_states[farmer_id]
+        if completed_ids.include?(farmer_id)
+          state[:completed] = true
+          completed_target_map += 1
+        else
+          state[:pending] = true
+          pending_target_map += 1
+        end
+        target_map += 1
+      end
+    end
+
+    {
+      mapped_farmers: farmer_states.size,
+      target_map: target_map,
+      pending_target_map: pending_target_map,
+      completed_target_map: completed_target_map,
+      pending_farmers: farmer_states.count { |_farmer_id, state| state[:pending] },
+      complete_farmers: farmer_states.count { |_farmer_id, state| state[:completed] },
+      red_farmers: farmer_states.count { |_farmer_id, state| state[:pending] && !state[:completed] },
+      green_farmers: farmer_states.count { |_farmer_id, state| state[:completed] && !state[:pending] },
+      yellow_farmers: farmer_states.count { |_farmer_id, state| state[:completed] && state[:pending] }
+    }
+  end
+
+  def activity_overview_farmer_path_params(status:)
+    {
+      status: status,
+      training_month: @activity_overview_selected_month.presence,
+      training_fcoc: @activity_overview_fcoc_filter_value.presence
+    }.compact_blank
+  end
+
   def dashboard_training_form_total_farmer_count(targets, assigned_farmer_ids)
     assigned_farmer_ids = Array(assigned_farmer_ids).map(&:to_s).reject(&:blank?).uniq
     records = dashboard_training_form_records(targets, assigned_farmer_ids)
@@ -2970,7 +3022,9 @@ class ModulesController < ApplicationController
   end
 
   def dashboard_participation_targets
-    return @filtered_targets if defined?(@filtered_targets) && @filtered_targets.present?
+    # On the dashboard an empty filtered result is meaningful: it must remain
+    # empty instead of silently falling back to every target in the system.
+    return @filtered_targets if defined?(@filtered_targets)
 
     if vrp_login_user?
       current_vrp_record.present? ? vrp_dashboard_targets(current_vrp_record) : []
