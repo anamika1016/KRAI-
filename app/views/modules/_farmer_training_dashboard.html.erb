@@ -14,6 +14,7 @@
 <% unique_status_path_params = total_status_path_params.merge(status: "unique") %>
 <% training_unique_status_path_params = total_status_path_params.merge(status: "training_unique") %>
 
+<% if false %>
 <section class="module-card training-participation-status-card dashboard-status-panel training-status-panel">
   <div class="module-card-header training-participation-status-header">
     <div>
@@ -54,8 +55,13 @@
 
   <div class="training-participation-boxes compact">
     <% if status_cards.any? %>
+      <div class="training-participation-box total">
+        <span>AFL</span>
+        <strong><%= @training_unique_farmer_count.to_i %></strong>
+        <small>Visible AFL farmers for the selected filters.</small>
+      </div>
       <%= link_to farmer_training_participation_path(total_status_path_params), class: "training-participation-box total", data: { dashboard_card: true } do %>
-        <span>Total Training Farmer</span>
+        <span>Total Training Map Farmer</span>
         <strong><%= status_total %></strong>
         <small>Farmer Training Form ke selected farmers.</small>
         <b>View List</b>
@@ -80,3 +86,4 @@
   </div>
 
 </section>
+<% end %>
