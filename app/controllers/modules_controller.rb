@@ -757,10 +757,13 @@ class ModulesController < ApplicationController
     @activity_overview_month_filter_value = params[:activity_overview_month].presence || default_status_month
     @activity_overview_selected_month = @activity_overview_month_filter_value == "all" ? nil : @activity_overview_month_filter_value
     @activity_overview_fcoc_filter_value = params[:activity_overview_fcoc].presence
-    activity_overview_targets = training_participation_targets_for_dashboard(
-      month_name: @activity_overview_selected_month,
-      fcoc_name: @activity_overview_fcoc_filter_value
-    )
+    activity_overview_targets = dashboard_targets_for_month(@filtered_targets, @activity_overview_selected_month)
+    if @activity_overview_fcoc_filter_value.present?
+      normalized_fcoc = normalize_dashboard_text(@activity_overview_fcoc_filter_value)
+      activity_overview_targets = activity_overview_targets.select do |target|
+        normalize_dashboard_text(target.vrp&.fcoc) == normalized_fcoc
+      end
+    end
     activity_overview_bills = Array(@filtered_bills)
     if @activity_overview_fcoc_filter_value.present?
       normalized_fcoc = normalize_dashboard_text(@activity_overview_fcoc_filter_value)
@@ -3687,7 +3690,7 @@ class ModulesController < ApplicationController
       "unique" => "Visible VRPs ke targets me assigned unique farmers.",
       "training_unique" => "Farmer Training Form me distinct farmers.",
       "green" => "Farmer attended 3 or more trainings.",
-      "yellow" => "Farmer attended 1-2 trainings.",
+      "yellow" => "Farmer attended 1 or more trainings.",
       "red" => "Month closed and farmer did not attend any training.",
       "pending" => "Month open and farmer training is still pending."
     }[status.to_s] || "Farmer training participation status."
