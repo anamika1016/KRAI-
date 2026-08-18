@@ -54,17 +54,6 @@
 
   <div class="training-participation-boxes compact">
     <% if status_cards.any? %>
-      <div class="training-participation-box total">
-        <span>AFL</span>
-        <strong><%= @training_unique_farmer_count.to_i %></strong>
-        <small>Visible AFL farmers for the selected filters.</small>
-      </div>
-      <%= link_to farmer_training_participation_path(unique_status_path_params), class: "training-participation-box total", data: { dashboard_card: true } do %>
-        <span>Total Unique Farmers (Distinct)</span>
-        <strong><%= @training_unique_farmer_count.to_i %></strong>
-        <small>Visible VRPs ke targets me assigned distinct farmers.</small>
-        <b>View List</b>
-      <% end %>
       <%= link_to farmer_training_participation_path(total_status_path_params), class: "training-participation-box total", data: { dashboard_card: true } do %>
         <span>Total Training Farmer</span>
         <strong><%= status_total %></strong>

@@ -794,10 +794,9 @@ class ModulesController < ApplicationController
         normalize_dashboard_text(mapping.ics_name.presence || mapping.ics_id) == selected_ics
       end
     end
-    afl_farmer_count = vrp_afl_farmer_count(ics_mappings, targets: month_targets, vrps: @filtered_vrps)
     @activity_overview_cards = [
-      dashboard_card("AFL", afl_farmer_count.to_i, "AFL se map total farmers"),
       dashboard_card("Mapped Farmers (Distinct)", activity_overview_totals[:mapped_farmers], "Selected activities ke unique mapped farmers.", farmer_training_participation_path(activity_overview_farmer_path_params(status: "unique"))),
+      dashboard_card("AFL", activity_overview_totals[:mapped_farmers], "Selected activities ke unique mapped farmers."),
       dashboard_card(
         "Target Map",
         activity_overview_totals[:target_map],
