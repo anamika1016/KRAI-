@@ -785,16 +785,16 @@ class ModulesController < ApplicationController
     end
     afl_farmer_count = vrp_afl_farmer_count(ics_mappings, targets: month_targets, vrps: @filtered_vrps)
     @activity_overview_cards = [
-      dashboard_card("AFL", afl_farmer_count, "AFL se map total farmers"),
-      dashboard_card("map farmer", activity_overview_totals[:mapped_farmers], "Unique activities se mapped farmers distinct"),
+      dashboard_card("AFL", afl_farmer_count.to_i, "AFL se map total farmers"),
+      dashboard_card("map farmer", activity_overview_totals[:mapped_farmers].to_i, "Unique activities se mapped farmers distinct"),
       dashboard_card("Target map", dashboard_quantity(activity_overview_totals[:target_map]), "Farmer target total activities"),
-      dashboard_card("Pending Farmers", activity_overview_totals[:pending_farmers], "Pending activity wale distinct farmers"),
-      dashboard_card("Complete farmers", activity_overview_totals[:complete_farmers], "Complete activity wale distinct farmers"),
+      dashboard_card("Pending Farmers", activity_overview_totals[:pending_farmers].to_i, "Pending activity wale distinct farmers"),
+      dashboard_card("Complete farmers", activity_overview_totals[:complete_farmers].to_i, "Complete activity wale distinct farmers"),
       dashboard_card("Pending Target map", dashboard_quantity(activity_overview_totals[:pending_target_map]), "Activity-wise pending target"),
       dashboard_card("Completed Target map", dashboard_quantity(activity_overview_totals[:completed_target_map]), "Activity-wise completed target"),
-      dashboard_card("Red Farmers", activity_overview_totals[:red_farmers], "Sabhi activities pending wale distinct farmers"),
-      dashboard_card("Green farmers", activity_overview_totals[:green_farmers], "Sabhi activities complete wale distinct farmers"),
-      dashboard_card("Yellow Farmers", activity_overview_totals[:yellow_farmers], "Complete aur pending dono wale distinct farmers")
+      dashboard_card("Red Farmers", activity_overview_totals[:red_farmers].to_i, "Sabhi activities pending wale distinct farmers"),
+      dashboard_card("Green farmers", activity_overview_totals[:green_farmers].to_i, "Sabhi activities complete wale distinct farmers"),
+      dashboard_card("Yellow Farmers", activity_overview_totals[:yellow_farmers].to_i, "Complete aur pending dono wale distinct farmers")
     ]
     # Full target/participation rows are available on their dedicated report
     # pages. The dashboard renders summary boxes only, so building those large
