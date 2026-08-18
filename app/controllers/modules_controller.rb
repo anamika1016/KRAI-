@@ -757,27 +757,16 @@ class ModulesController < ApplicationController
     @activity_overview_month_filter_value = params[:activity_overview_month].presence || default_status_month
     @activity_overview_selected_month = @activity_overview_month_filter_value == "all" ? nil : @activity_overview_month_filter_value
     @activity_overview_fcoc_filter_value = params[:activity_overview_fcoc].presence
-    activity_overview_targets = dashboard_targets_for_month(@filtered_targets, @activity_overview_selected_month)
-    if @activity_overview_fcoc_filter_value.present?
-      normalized_fcoc = normalize_dashboard_text(@activity_overview_fcoc_filter_value)
-      activity_overview_targets = activity_overview_targets.select do |target|
-        normalize_dashboard_text(target.vrp&.fcoc) == normalized_fcoc
-      end
-    end
-    activity_overview_bills = Array(@filtered_bills)
-    if @activity_overview_fcoc_filter_value.present?
-      normalized_fcoc = normalize_dashboard_text(@activity_overview_fcoc_filter_value)
-      activity_overview_bills = activity_overview_bills.select do |bill|
-        normalize_dashboard_text(
-          bill.respond_to?(:fcoc) ? bill.fcoc : bill.try(:data).try(:[], "fcoc_name")
-        ) == normalized_fcoc
-      end
-    end
-    activity_overview_bills = activity_overview_bills.select do |bill|
-      @activity_overview_selected_month.blank? || normalize_dashboard_text(bill.try(:data).try(:[], "bill_month")) == normalize_dashboard_text(@activity_overview_selected_month)
-    end
-    activity_overview_rows = vrp_dashboard_target_progress_rows(activity_overview_targets, [])
-    activity_overview_totals = vrp_activity_overview_totals(activity_overview_targets, bills: activity_overview_bills)
+    activity_overview_records = dashboard_training_participation_records(
+      month_name: @activity_overview_selected_month,
+      fcoc_name: @activity_overview_fcoc_filter_value
+    )
+    activity_overview_counts = training_participation_dashboard_counts(
+      month_name: @activity_overview_selected_month,
+      fcoc_name: @activity_overview_fcoc_filter_value,
+      records: activity_overview_records
+    )
+    activity_overview_farmer_rows = training_participation_farmer_rows_from_records(activity_overview_records)
     visible_vrp_ids = @filtered_vrps.map(&:id)
     ics_mappings = model_ready?(:VrpIcsMapping) ? VrpIcsMapping.where(vrp_id: visible_vrp_ids).to_a : []
     if params[:ics].present?
@@ -789,15 +778,15 @@ class ModulesController < ApplicationController
     afl_farmer_count = vrp_afl_farmer_count(ics_mappings, targets: month_targets, vrps: @filtered_vrps)
     @activity_overview_cards = [
       dashboard_card("AFL", afl_farmer_count.to_i, "AFL se map total farmers"),
-      dashboard_card("map farmer", activity_overview_totals[:mapped_farmers].to_i, "Unique activities se mapped farmers distinct"),
-      dashboard_card("Target map", dashboard_quantity(activity_overview_totals[:target_map]), "Farmer target total activities"),
-      dashboard_card("Pending Farmers", activity_overview_totals[:pending_farmers].to_i, "Pending activity wale distinct farmers"),
-      dashboard_card("Complete farmers", activity_overview_totals[:complete_farmers].to_i, "Complete activity wale distinct farmers"),
-      dashboard_card("Pending Target map", dashboard_quantity(activity_overview_totals[:pending_target_map]), "Activity-wise pending target"),
-      dashboard_card("Completed Target map", dashboard_quantity(activity_overview_totals[:completed_target_map]), "Activity-wise completed target"),
-      dashboard_card("Red Farmers", activity_overview_totals[:red_farmers].to_i, "Sabhi activities pending wale distinct farmers"),
-      dashboard_card("Green farmers", activity_overview_totals[:green_farmers].to_i, "Sabhi activities complete wale distinct farmers"),
-      dashboard_card("Yellow Farmers", activity_overview_totals[:yellow_farmers].to_i, "Complete aur pending dono wale distinct farmers")
+      dashboard_card("map farmer", activity_overview_counts[:total].to_i, "Unique framer tranning Activities se map total farmers Distinct"),
+      dashboard_card("Target map", dashboard_quantity(activity_overview_farmer_rows.sum { |row| row[:attendance_count].to_i }), "Farmer tranning Target total activeties"),
+      dashboard_card("Pending Farmers", activity_overview_counts[:pending].to_i, "Farmer tranning Activeties se map total Distinct farmers"),
+      dashboard_card("Complete farmers", (activity_overview_counts[:green].to_i + activity_overview_counts[:yellow].to_i).to_i, "Farmer tranning Activeties se map total Distinct farmers"),
+      dashboard_card("Pending Target map", dashboard_quantity(activity_overview_counts[:pending].to_i), "Farmer tranning Total Pending activeties"),
+      dashboard_card("Completed Target map", dashboard_quantity(activity_overview_counts[:green].to_i + activity_overview_counts[:yellow].to_i), "Farmer tranning Total Complete activeties"),
+      dashboard_card("Red Farmers", activity_overview_counts[:red].to_i, "Farmer tranning Activeties se map total Distinct farmers"),
+      dashboard_card("Green farmers", activity_overview_counts[:green].to_i, "Farmer tranning Activeties se map total Distinct farmers"),
+      dashboard_card("Yellow Farmers", activity_overview_counts[:yellow].to_i, "Farmer tranning Activeties se map total Distinct farmers")
     ]
     # Full target/participation rows are available on their dedicated report
     # pages. The dashboard renders summary boxes only, so building those large
@@ -2034,10 +2023,10 @@ class ModulesController < ApplicationController
   def vrp_activity_overview_totals(targets, bills: [])
     rows = vrp_dashboard_target_progress_rows(targets, bills)
     farmer_states = Hash.new { |hash, farmer_id| hash[farmer_id] = { complete: 0, pending: 0 } }
-    target_map = Array(rows).sum { |row| Array(row[:assigned_farmer_ids]).map(&:to_s).reject(&:blank?).uniq.size.nonzero? || row[:target].to_f }
+    target_map = Array(rows).sum { |row| Array(row[:assigned_farmer_ids]).map(&:to_s).reject(&:blank?).size.nonzero? || row[:target].to_f }
     completed_target_map = Array(rows).sum do |row|
-      assigned_ids = Array(row[:assigned_farmer_ids]).map(&:to_s).reject(&:blank?).uniq
-      completed_ids = Array(row[:completed_farmer_ids]).map(&:to_s).reject(&:blank?).uniq
+      assigned_ids = Array(row[:assigned_farmer_ids]).map(&:to_s).reject(&:blank?)
+      completed_ids = Array(row[:completed_farmer_ids]).map(&:to_s).reject(&:blank?)
       assigned_ids.any? ? completed_ids.size.to_f : row[:completed].to_f
     end
 
