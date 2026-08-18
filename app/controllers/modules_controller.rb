@@ -754,8 +754,27 @@ class ModulesController < ApplicationController
     @training_records_unique_farmer_count = training_unique_farmer_count_from_records(participation_records)
     @training_total_training_farmer_count = training_total_farmer_count_from_records(participation_records)
     preload_training_farmers_for_targets!(month_targets)
-    activity_overview_rows = vrp_dashboard_target_progress_rows(month_targets, [])
-    activity_overview_totals = vrp_activity_overview_totals(month_targets, bills: @filtered_bills)
+    @activity_overview_month_filter_value = params[:activity_overview_month].presence || default_status_month
+    @activity_overview_selected_month = @activity_overview_month_filter_value == "all" ? nil : @activity_overview_month_filter_value
+    @activity_overview_fcoc_filter_value = params[:activity_overview_fcoc].presence
+    activity_overview_targets = training_participation_targets_for_dashboard(
+      month_name: @activity_overview_selected_month,
+      fcoc_name: @activity_overview_fcoc_filter_value
+    )
+    activity_overview_bills = Array(@filtered_bills)
+    if @activity_overview_fcoc_filter_value.present?
+      normalized_fcoc = normalize_dashboard_text(@activity_overview_fcoc_filter_value)
+      activity_overview_bills = activity_overview_bills.select do |bill|
+        normalize_dashboard_text(
+          bill.respond_to?(:fcoc) ? bill.fcoc : bill.try(:data).try(:[], "fcoc_name")
+        ) == normalized_fcoc
+      end
+    end
+    activity_overview_bills = activity_overview_bills.select do |bill|
+      @activity_overview_selected_month.blank? || normalize_dashboard_text(bill.try(:data).try(:[], "bill_month")) == normalize_dashboard_text(@activity_overview_selected_month)
+    end
+    activity_overview_rows = vrp_dashboard_target_progress_rows(activity_overview_targets, [])
+    activity_overview_totals = vrp_activity_overview_totals(activity_overview_targets, bills: activity_overview_bills)
     visible_vrp_ids = @filtered_vrps.map(&:id)
     ics_mappings = model_ready?(:VrpIcsMapping) ? VrpIcsMapping.where(vrp_id: visible_vrp_ids).to_a : []
     if params[:ics].present?
