@@ -2034,8 +2034,12 @@ class ModulesController < ApplicationController
   def vrp_activity_overview_totals(targets, bills: [])
     rows = vrp_dashboard_target_progress_rows(targets, bills)
     farmer_states = Hash.new { |hash, farmer_id| hash[farmer_id] = { complete: 0, pending: 0 } }
-    target_map = rows.sum { |row| row[:target].to_f }
-    completed_target_map = rows.sum { |row| row[:completed].to_f }
+    target_map = Array(rows).sum { |row| Array(row[:assigned_farmer_ids]).map(&:to_s).reject(&:blank?).uniq.size.nonzero? || row[:target].to_f }
+    completed_target_map = Array(rows).sum do |row|
+      assigned_ids = Array(row[:assigned_farmer_ids]).map(&:to_s).reject(&:blank?).uniq
+      completed_ids = Array(row[:completed_farmer_ids]).map(&:to_s).reject(&:blank?).uniq
+      assigned_ids.any? ? completed_ids.size.to_f : row[:completed].to_f
+    end
 
     Array(rows).each do |row|
       assigned_ids = Array(row[:assigned_farmer_ids]).map(&:to_s).reject(&:blank?).uniq
