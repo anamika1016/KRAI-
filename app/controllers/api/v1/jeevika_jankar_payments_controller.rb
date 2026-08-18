@@ -57,7 +57,7 @@ module Api
       end
 
       def payments
-        return payment_access_denied unless payment_list_user?
+        return payment_access_denied unless payment_list_user?("jeevika-jankar-payment-list")
 
         months = calculator.send(:jeevika_bill_payment_month_options, bill_records)
         month = selected_month.presence || months.first
@@ -79,7 +79,7 @@ module Api
       end
 
       def export_payments
-        return payment_access_denied unless payment_list_user?
+        return payment_access_denied unless payment_list_user?("jeevika-jankar-payment-list")
 
         month = selected_month
         records = bill_records.select do |record|
@@ -110,7 +110,7 @@ module Api
       end
 
       def payment_details
-        return payment_access_denied unless payment_list_user?
+        return payment_access_denied unless payment_list_user?("jeevika-jankar-payment-list-detail")
 
         rows = calculator.send(:jeevika_payment_selectable_rows, bill_records)
         approval_dates = calculator.send(:jeevika_payment_bill_date_options, bill_records)
@@ -129,7 +129,7 @@ module Api
       end
 
       def completed_payments
-        return payment_access_denied unless payment_list_user?
+        return payment_access_denied unless payment_list_user?("jeevika-jankar-completed-payment-list")
 
         all_rows = calculator.send(:jeevika_completed_payment_rows).map { |row| completed_payment_payload(row) }
         months = calculator.send(:jeevika_completed_payment_month_options, all_rows)
@@ -386,8 +386,8 @@ module Api
         @bill_records ||= ModuleRecord.where(module_slug: BILL_SLUG).order(created_at: :desc, id: :desc).to_a
       end
 
-      def payment_list_user?
-        calculator.send(:jeevika_jankar_payment_list_user?)
+      def payment_list_user?(slug)
+        calculator.send(:jeevika_jankar_payment_module_access?, slug)
       end
 
       def payment_access_denied

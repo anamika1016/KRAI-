@@ -274,17 +274,9 @@ module ApplicationHelper
     return nil if admin_access_user?
     return @allowed_sidebar_keys = [] unless defined?(ModuleRecord) && ModuleRecord.table_exists?
 
-    cache_version = ModuleRecord.where(module_slug: "access-control").maximum(:updated_at)&.to_i
-    cache_key = [
-      "allowed_sidebar_keys",
-      current_app_user["id"],
-      current_app_user["username"],
-      cache_version
-    ]
-
-    @allowed_sidebar_keys = Rails.cache.fetch(cache_key, expires_in: 10.minutes) do
-      compute_allowed_sidebar_keys
-    end
+    # Access changes must take effect on the very next request.  Caching this
+    # value left users seeing menu entries from their old role permissions.
+    @allowed_sidebar_keys = compute_allowed_sidebar_keys
   end
 
   def compute_allowed_sidebar_keys
@@ -401,13 +393,13 @@ module ApplicationHelper
       keys.concat(["bill-process", "jeevika-jankar-bill", "jeevika-jankar-bill-process"])
     end
     if ["Bill List", "Jeevika Jankar Bill List"].include?(name.to_s.strip)
-      keys.concat(["bill-list", "jeevika-jankar-bill-list", "payment-list", "jeevika-jankar-payment-list", "payment-list-detail", "jeevika-jankar-payment-list-detail", "completed-payment-list", "jeevika-jankar-completed-payment-list"])
+      keys.concat(["bill-list", "jeevika-jankar-bill-list"])
     end
     if ["Payment List", "Jeevika Jankar Payment List"].include?(name.to_s.strip)
-      keys.concat(["payment-list", "jeevika-jankar-payment-list", "payment-list-detail", "jeevika-jankar-payment-list-detail", "completed-payment-list", "jeevika-jankar-completed-payment-list"])
+      keys.concat(["payment-list", "jeevika-jankar-payment-list"])
     end
     if ["Payment List Detail", "Jeevika Jankar Payment List Detail"].include?(name.to_s.strip)
-      keys.concat(["payment-list-detail", "jeevika-jankar-payment-list-detail", "completed-payment-list", "jeevika-jankar-completed-payment-list"])
+      keys.concat(["payment-list-detail", "jeevika-jankar-payment-list-detail"])
     end
     if ["Completed Payment List", "Jeevika Jankar Completed Payment List"].include?(name.to_s.strip)
       keys.concat(["completed-payment-list", "jeevika-jankar-completed-payment-list"])

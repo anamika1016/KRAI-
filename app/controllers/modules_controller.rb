@@ -3,6 +3,8 @@ require "securerandom"
 require "csv"
 
 class ModulesController < ApplicationController
+  before_action :authorize_jeevika_payment_module_access
+
   helper_method :module_field_options, :module_select_field?, :static_field_options, :role_management_mappings,
                 :access_control_role_mappings, :access_control_field_options,
                 :location_hierarchy_mappings, :office_category_mappings, :training_target_mappings,
@@ -1232,7 +1234,7 @@ class ModulesController < ApplicationController
 
   def create_payment_detail
     load_module!
-    unless @slug == "jeevika-jankar-payment-list-detail" && jeevika_jankar_payment_list_user?
+    unless @slug == "jeevika-jankar-payment-list-detail" && jeevika_jankar_payment_module_access?(@slug)
       redirect_to module_path(@slug), alert: "You are not allowed to submit payment details."
       return
     end
@@ -1538,6 +1540,19 @@ class ModulesController < ApplicationController
   end
 
   private
+
+  def authorize_jeevika_payment_module_access
+    payment_slugs = %w[
+      jeevika-jankar-payment-list
+      jeevika-jankar-payment-list-detail
+      jeevika-jankar-completed-payment-list
+    ]
+    requested_slug = current_slug.to_s
+    return unless payment_slugs.include?(requested_slug)
+    return if jeevika_jankar_payment_module_access?(requested_slug)
+
+    redirect_to dashboard_path, alert: "You are not allowed to access this menu."
+  end
 
   def prepare_vrp_dashboard
     @vrp_dashboard = true
@@ -5516,7 +5531,7 @@ class ModulesController < ApplicationController
 
     records = ModuleRecord.where(module_slug: record_source_slug).to_a
     if record_source_slug == "jeevika-jankar-bill-process"
-      records = if ["jeevika-jankar-payment-list", "jeevika-jankar-payment-list-detail"].include?(@slug) && jeevika_jankar_payment_list_user?
+      records = if ["jeevika-jankar-payment-list", "jeevika-jankar-payment-list-detail"].include?(@slug) && jeevika_jankar_payment_module_access?(@slug)
         records.select { |record| jeevika_bill_final_approved?(record) }
       else
         records.select { |record| jeevika_jankar_bill_record_visible?(record) }
@@ -7817,13 +7832,17 @@ class ModulesController < ApplicationController
     false
   end
 
-  def jeevika_jankar_payment_list_user?
+  def jeevika_jankar_payment_module_access?(slug)
     return true if admin_dashboard_user?
 
     keys = helpers.allowed_sidebar_keys
     return false if keys.blank?
 
-    keys.intersect?(%w[payment-list jeevika-jankar-payment-list payment-list-detail jeevika-jankar-payment-list-detail completed-payment-list jeevika-jankar-completed-payment-list])
+    keys.include?(slug.to_s)
+  end
+
+  def jeevika_jankar_payment_list_user?
+    jeevika_jankar_payment_module_access?("jeevika-jankar-payment-list")
   end
 
   def jeevika_jankar_bill_downloadable?(record)
