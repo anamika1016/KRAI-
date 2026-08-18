@@ -2041,19 +2041,15 @@ class ModulesController < ApplicationController
 
     Array(targets).each do |target|
       assigned_ids = target_farmer_ids(target)
-      target_count = assigned_ids.any? ? assigned_ids.size.to_f : target.target_quantity.to_f
       completed_ids = vrp_dashboard_completed_farmer_ids_for_target(target) & assigned_ids
-      completed_count = if assigned_ids.any?
-        completed_ids.size.to_f
-      else
-        vrp_target_completed_quantity(
-          target,
-          Array(bills),
-          activity_settings: activity_settings,
-          sub_activity_settings: sub_activity_settings,
-          other_target_achievement_index: other_target_achievement_index
-        ).to_f
-      end
+      target_count = target.target_quantity.to_f
+      completed_count = vrp_target_completed_quantity(
+        target,
+        Array(bills),
+        activity_settings: activity_settings,
+        sub_activity_settings: sub_activity_settings,
+        other_target_achievement_index: other_target_achievement_index
+      ).to_f
       completed_count = [completed_count, target_count].min
 
       target_map += target_count
