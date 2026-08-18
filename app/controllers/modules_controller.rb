@@ -2159,9 +2159,12 @@ class ModulesController < ApplicationController
 
   def dashboard_training_form_records_for_month(month_name)
     month = month_name.to_s.strip.downcase
+    @dashboard_training_form_records_by_month ||= {}
+    return @dashboard_training_form_records_by_month[month] if @dashboard_training_form_records_by_month.key?(month)
+
     scope = ModuleRecord.where(module_slug: "training-form").order(created_at: :desc)
     scope = scope.where("LOWER(BTRIM(data::jsonb ->> 'month')) = ?", month) if month.present?
-    scope
+    @dashboard_training_form_records_by_month[month] = scope
       .select { |record| active_module_record?(record) }
       .select { |record| training_record_countable?(record) }
   end
@@ -4266,8 +4269,7 @@ class ModulesController < ApplicationController
 
   def training_target_detail_row(target)
     farmer_ids = target_farmer_ids(target)
-    matching_training_records = dashboard_training_completion_records
-      .select { |record| training_record_matches_dashboard_target?(record, target, farmer_ids) }
+    matching_training_records = training_records_matching_dashboard_target(target, farmer_ids)
     completed_farmer_ids = completed_training_farmer_ids_for(target, farmer_ids)
     pending_farmer_ids = farmer_ids - completed_farmer_ids
     target_quantity = target.target_quantity.to_f
@@ -4522,14 +4524,28 @@ class ModulesController < ApplicationController
       .map(&:to_s).reject(&:blank?).uniq
     return true if mapping_ids.blank?
 
-    @training_record_target_mapping_cache ||= {}
-    mapped_targets = mapping_ids.filter_map do |mapping_id|
-      @training_record_target_mapping_cache[mapping_id] ||= TargetMapping.find_by(id: mapping_id)
-    end
+    mapped_targets = mapping_ids.filter_map { |mapping_id| training_target_mapping_for_dashboard(mapping_id) }
     return false if mapped_targets.blank?
 
     target_key = dashboard_target_assignment_key(target)
     mapped_targets.any? { |mapped_target| dashboard_target_assignment_key(mapped_target) == target_key }
+  end
+
+  # Training forms can reference many target mapping IDs. Looking up each ID
+  # individually turned a single dashboard load into hundreds of SQL queries.
+  # Dashboard targets are already loaded with their VRP association, so use
+  # that request-local index first and only query IDs outside the visible scope.
+  def training_target_mapping_for_dashboard(mapping_id)
+    mapping_id = mapping_id.to_s
+    return nil if mapping_id.blank?
+
+    @training_record_target_mapping_cache ||= {}
+    return @training_record_target_mapping_cache[mapping_id] if @training_record_target_mapping_cache.key?(mapping_id)
+
+    @dashboard_target_mapping_index ||= dashboard_target_mappings.index_by { |target| target.id.to_s }
+    return @training_record_target_mapping_cache[mapping_id] = @dashboard_target_mapping_index[mapping_id] if @dashboard_target_mapping_index.key?(mapping_id)
+
+    @training_record_target_mapping_cache[mapping_id] = TargetMapping.includes(:vrp).find_by(id: mapping_id)
   end
 
   def training_record_target_location_matches?(record, target)
@@ -9039,8 +9055,7 @@ class ModulesController < ApplicationController
     # Target progress is calculated repeatedly while rendering a dashboard.
     # Restrict the candidate records to this target's month and VRP instead of
     # scanning every training form in the system once for every target row.
-    dashboard_training_form_records([target], farmer_ids)
-      .select { |record| training_record_matches_dashboard_target?(record, target, farmer_ids) }
+    training_records_matching_dashboard_target(target, farmer_ids)
       .flat_map { |record| training_record_selected_farmer_ids(record) & farmer_ids }
       .uniq
   end
@@ -9083,9 +9098,20 @@ class ModulesController < ApplicationController
     cache_key = [target.id, target.completion_date.to_s]
     return @matching_training_records_for_target_cache[cache_key] if @matching_training_records_for_target_cache.key?(cache_key)
 
-    @matching_training_records_for_target_cache[cache_key] = dashboard_training_form_records([target], farmer_ids)
-      .select { |record| training_record_matches_dashboard_target?(record, target, farmer_ids) }
+    @matching_training_records_for_target_cache[cache_key] = training_records_matching_dashboard_target(target, farmer_ids)
       .select { |record| training_record_within_completion_date?(record, target.completion_date) }
+  end
+
+  # Reuse the target's already month/VRP-scoped records. The former path
+  # scanned every training form for every target row, which was the dominant
+  # CPU cost on large dashboard requests.
+  def training_records_matching_dashboard_target(target, farmer_ids)
+    @training_records_matching_dashboard_target_cache ||= {}
+    cache_key = target.id.to_s
+    return @training_records_matching_dashboard_target_cache[cache_key] if @training_records_matching_dashboard_target_cache.key?(cache_key)
+
+    @training_records_matching_dashboard_target_cache[cache_key] = dashboard_training_form_records([target], farmer_ids)
+      .select { |record| training_record_matches_dashboard_target?(record, target, farmer_ids) }
   end
 
   def training_record_within_completion_date?(record, completion_date)
