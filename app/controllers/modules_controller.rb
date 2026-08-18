@@ -2032,31 +2032,17 @@ class ModulesController < ApplicationController
   end
 
   def vrp_activity_overview_totals(targets, bills: [])
+    rows = vrp_dashboard_target_progress_rows(targets, bills)
     farmer_states = Hash.new { |hash, farmer_id| hash[farmer_id] = { complete: 0, pending: 0 } }
-    activity_settings = jeevika_jankar_main_activity_settings
-    sub_activity_settings = jeevika_jankar_sub_activity_settings(activity_settings)
-    other_target_achievement_index = approved_other_target_achievement_index
-    target_map = 0.0
-    completed_target_map = 0.0
+    target_map = rows.sum { |row| row[:target].to_f }
+    completed_target_map = rows.sum { |row| row[:completed].to_f }
 
-    Array(targets).each do |target|
-      assigned_ids = target_farmer_ids(target)
-      completed_ids = vrp_dashboard_completed_farmer_ids_for_target(target) & assigned_ids
-      target_count = target.target_quantity.to_f
-      completed_count = vrp_target_completed_quantity(
-        target,
-        Array(bills),
-        activity_settings: activity_settings,
-        sub_activity_settings: sub_activity_settings,
-        other_target_achievement_index: other_target_achievement_index
-      ).to_f
-      completed_count = [completed_count, target_count].min
-
-      target_map += target_count
-      completed_target_map += completed_count
+    Array(rows).each do |row|
+      assigned_ids = Array(row[:assigned_farmer_ids]).map(&:to_s).reject(&:blank?).uniq
+      completed_ids = Array(row[:completed_farmer_ids]).map(&:to_s).reject(&:blank?).uniq.to_set
 
       assigned_ids.each do |farmer_id|
-        state = farmer_states[farmer_id.to_s]
+        state = farmer_states[farmer_id]
         if completed_ids.include?(farmer_id)
           state[:complete] += 1
         else
@@ -2074,7 +2060,7 @@ class ModulesController < ApplicationController
       completed_target_map: completed_target_map,
       red_farmers: farmer_states.count { |_farmer_id, state| state[:pending].positive? && state[:complete].zero? },
       green_farmers: farmer_states.count { |_farmer_id, state| state[:complete].positive? && state[:pending].zero? },
-      yellow_farmers: farmer_states.count { |_farmer_id, state| state[:complete].positive? && state[:pending].positive? }
+      yellow_farmers: farmer_states.count { |_farmer_id, state| state[:complete].positive? && state[:pending].positive? } + farmer_states.count { |_farmer_id, state| state[:pending] > 1 && state[:complete].zero? }
     }
   end
 
