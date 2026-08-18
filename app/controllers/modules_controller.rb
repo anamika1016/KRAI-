@@ -786,6 +786,7 @@ class ModulesController < ApplicationController
     # activities, but must be counted once for the selected month (or once
     # overall when "All" is selected).
     activity_overview_totals = activity_overview_farmer_totals(activity_overview_target_rows)
+    activity_overview_afl_count = activity_overview_afl_master_count(activity_overview_targets)
     visible_vrp_ids = @filtered_vrps.map(&:id)
     ics_mappings = model_ready?(:VrpIcsMapping) ? VrpIcsMapping.where(vrp_id: visible_vrp_ids).to_a : []
     if params[:ics].present?
@@ -795,7 +796,7 @@ class ModulesController < ApplicationController
       end
     end
     @activity_overview_cards = [
-      dashboard_card("AFL", activity_overview_totals[:mapped_farmers], "Selected activities ke unique mapped farmers."),
+      dashboard_card("AFL", activity_overview_afl_count, "Selected filters ke AFL master farmers."),
       dashboard_card("Mapped Farmers (Distinct)", activity_overview_totals[:mapped_farmers], "Selected activities ke unique mapped farmers.", farmer_training_participation_path(activity_overview_farmer_path_params(status: "unique"))),
       dashboard_card(
         "Target Map",
@@ -2116,6 +2117,26 @@ class ModulesController < ApplicationController
       green_farmers: farmer_states.count { |_farmer_id, state| state[:completed] && !state[:pending] },
       yellow_farmers: farmer_states.count { |_farmer_id, state| state[:completed] && state[:pending] }
     }
+  end
+
+  def activity_overview_afl_master_count(targets)
+    return 0 unless model_ready?(:Afl)
+
+    targets = Array(targets)
+    return Afl.distinct.count(:id) if targets.blank?
+
+    fco_ids = targets.filter_map { |target| target.fco_id.to_s.strip.presence }.uniq
+    fco_names = targets.filter_map { |target| target.fco_name.to_s.strip.presence }.uniq
+    ics_ids = targets.filter_map { |target| target.ics_id.to_s.strip.presence }.uniq
+    ics_names = targets.filter_map { |target| target.ics_name.to_s.strip.presence }.uniq
+    village_ids = targets.filter_map { |target| target.village_id.to_s.strip.presence }.uniq
+    village_names = targets.filter_map { |target| target.village_name.to_s.strip.presence }.uniq
+
+    scope = Afl.all
+    scope = vrp_filter_afl_mapping_scope(scope, :fco_id, :fco, fco_ids, fco_names) if fco_ids.any? || fco_names.any?
+    scope = vrp_filter_afl_mapping_scope(scope, :ics_id, :ics_name, ics_ids, ics_names) if ics_ids.any? || ics_names.any?
+    scope = vrp_filter_afl_mapping_scope(scope, :village_id, :village_name, village_ids, village_names) if village_ids.any? || village_names.any?
+    scope.distinct.count(:id)
   end
 
   def activity_overview_farmer_path_params(status:)
