@@ -623,6 +623,14 @@ body {
   gap: 20px;
 }
 
+/* Keep the training dashboard sections in their reporting workflow order. */
+.dashboard-page > .dashboard-training-primary-summaries { order: 1; }
+.dashboard-page > .training-status-panel { order: 2; }
+.dashboard-page > #dashboard_activity_overview { order: 3; }
+.dashboard-page > #dashboard_weekly_target_boxes { order: 4; }
+.dashboard-page > #dashboard_ics_farmer_report { order: 5; }
+.dashboard-page > .dashboard-training-secondary-summaries { order: 6; }
+
 .vrp-compact-summary-grid {
   display: grid;
   grid-template-columns: minmax(0, 1.15fr) minmax(0, 0.85fr);
@@ -1191,6 +1199,76 @@ body {
 .metric-card-group-fco .metric-card-group-item strong {
   font-size: 1.18rem;
   line-height: 1.2;
+}
+
+/* Training dashboard: the administration summaries are deliberately short,
+   two-panel rows instead of four narrow cards with unused space. */
+.dashboard-grid.premium.dashboard-training-primary-summaries,
+.dashboard-grid.premium.dashboard-training-secondary-summaries {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 20px;
+}
+
+.dashboard-grid.premium.dashboard-training-secondary-summaries {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+
+.dashboard-grid.premium.dashboard-training-primary-summaries .metric-card-group,
+.dashboard-grid.premium.dashboard-training-secondary-summaries .metric-card-group {
+  min-height: 174px;
+  border: 1px solid rgba(204, 218, 222, 0.9);
+  border-radius: 12px;
+  box-shadow: 0 10px 24px rgba(23, 33, 38, 0.08);
+}
+
+.dashboard-training-primary-summaries .metric-card-group-title,
+.dashboard-training-secondary-summaries .metric-card-group-title {
+  margin-bottom: 16px;
+  padding: 13px 18px;
+  font-size: 0.9rem;
+  letter-spacing: 0.01em;
+}
+
+.dashboard-training-primary-summaries .metric-card-group-billing > .metric-card-group-items,
+.dashboard-training-secondary-summaries .metric-card-group-billing > .metric-card-group-items {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.dashboard-training-primary-summaries .metric-card-group-billing .metric-card-group-item-level-2-users,
+.dashboard-training-secondary-summaries .metric-card-group-billing .metric-card-group-item-level-2-users {
+  grid-column: auto;
+  min-height: 0;
+}
+
+.dashboard-training-primary-summaries .metric-card-group-item,
+.dashboard-training-secondary-summaries .metric-card-group-item {
+  min-height: 82px;
+  padding: 13px;
+  border-radius: 9px;
+}
+
+.dashboard-training-primary-summaries .metric-card-group-item strong,
+.dashboard-training-secondary-summaries .metric-card-group-item strong {
+  font-size: 1.75rem;
+}
+
+@media (max-width: 760px) {
+  .dashboard-grid.premium.dashboard-training-primary-summaries,
+  .dashboard-grid.premium.dashboard-training-secondary-summaries {
+    grid-template-columns: 1fr;
+    gap: 14px;
+  }
+
+  .dashboard-training-primary-summaries .metric-card-group-billing > .metric-card-group-items,
+  .dashboard-training-secondary-summaries .metric-card-group-billing > .metric-card-group-items {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (min-width: 761px) and (max-width: 1180px) {
+  .dashboard-grid.premium.dashboard-training-secondary-summaries {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
 }
 
 .upload-report-table {

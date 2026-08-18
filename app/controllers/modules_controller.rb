@@ -581,7 +581,22 @@ class ModulesController < ApplicationController
     # ─── CASCADING FILTER DROPDOWNS ───
     # 1. Activity Filter (always show all in initial scope, restrict others)
     @filter_main_activity_options = t_scope.map(&:main_activity_name).uniq.compact_blank.sort
-    selected_main_activity = params[:main_activity].presence
+    # Open the dashboard on the farmer-training view when it is available;
+    # an explicitly selected activity always takes precedence.
+    @dashboard_main_activity_filter_value = params[:main_activity].presence ||
+      @filter_main_activity_options.find do |activity|
+        normalize_dashboard_text(activity) == normalize_dashboard_text("Farmer Activity") ||
+          normalize_dashboard_text(activity) == normalize_dashboard_text("Farmers' Training") ||
+          normalize_dashboard_text(activity) == normalize_dashboard_text("Farmers Training")
+      end
+    normalized_dashboard_main_activity = normalize_dashboard_text(@dashboard_main_activity_filter_value)
+    @dashboard_farmer_activity_mode = [
+      "Farmer Activity",
+      "Farmers' Training",
+      "Farmers Training"
+    ].any? { |value| normalized_dashboard_main_activity == normalize_dashboard_text(value) } ||
+      normalized_dashboard_main_activity.include?(normalize_dashboard_text("Training"))
+    selected_main_activity = @dashboard_main_activity_filter_value
     selected_sub_activity = params[:sub_activity].presence
     legacy_activity = params[:activity].presence
     if selected_main_activity.present?
@@ -637,8 +652,12 @@ class ModulesController < ApplicationController
       .uniq
       .compact_blank
       .sort_by { |m| dashboard_month_index(m) || 0 }
-    if params[:month].present?
-      m = params[:month].to_s
+    # Monthly reporting is for the completed month by default (for example,
+    # opening the dashboard in August shows July). Users can still choose All
+    # Months or another month from the filter.
+    @dashboard_month_filter_value = params[:month].presence || Date.current.prev_month.strftime("%B")
+    if @dashboard_month_filter_value.present?
+      m = @dashboard_month_filter_value.to_s
       t_scope = t_scope.select { |t| t.month_name == m }
       v_ids = t_scope.map(&:vrp_id).uniq
       v_scope = v_scope.select { |v| v_ids.include?(v.id) }

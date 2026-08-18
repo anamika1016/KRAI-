@@ -52,14 +52,21 @@ module Api
         vrps, targets = search_scope(vrps, targets)
         options = { activities: activity_options(targets) }
 
-        if params[:activity].present?
-          targets = targets.select { |t| same?(t.main_activity_name, params[:activity]) || same?(t.activity_name, params[:activity]) }
+        selected_activity = params[:main_activity].presence || params[:activity].presence || default_farmer_activity(targets)
+        if selected_activity.present?
+          targets = targets.select { |t| same?(t.main_activity_name, selected_activity) || same?(t.activity_name, selected_activity) }
           vrps = vrps.select { |v| targets.any? { |t| t.vrp_id == v.id } }
         end
         options[:fcos] = values(vrps, :fcoc)
         vrps, targets = filter_vrps(vrps, targets, :fcoc, params[:fcoc].presence || params[:fco])
         options[:cluster_incharges] = values(vrps, :cluster_incharge)
         vrps, targets = filter_vrps(vrps, targets, :cluster_incharge, params[:cluster_incharge])
+        options[:ics_names] = targets.filter_map { |target| (target.ics_name.presence || target.ics_id).to_s.strip.presence }.uniq.sort
+        selected_ics = params[:ics].presence || params[:ics_name]
+        if selected_ics.present?
+          targets = targets.select { |target| same?(target.ics_name.presence || target.ics_id, selected_ics) }
+          vrps = vrps.select { |vrp| targets.any? { |target| target.vrp_id == vrp.id } }
+        end
         options[:months] = values(targets, :month_name)
         if params[:month].present?
           targets = targets.select { |t| same?(t.month_name, params[:month]) }
@@ -92,7 +99,7 @@ module Api
 
       def filtered_bills(calculator, vrps)
         ids = vrps.map { |v| v.id.to_s }
-        filters_active = %i[search activity fcoc fco cluster_incharge month post post_wise_name vrp_id].any? { |key| params[key].present? }
+        filters_active = %i[search activity main_activity fcoc fco cluster_incharge ics ics_name month post post_wise_name vrp_id].any? { |key| params[key].present? }
         records = ModuleRecord.where(module_slug: "jeevika-jankar-bill-process").to_a
           .select { |record| calculator.send(:jeevika_jankar_bill_record_visible?, record) }
           .select { |record| ids.include?(record.data["select_vrp"].to_s) || !filters_active }
@@ -106,7 +113,7 @@ module Api
       end
 
       def selected_month(key, months, calculator)
-        value = params[key].presence || calculator.send(:default_vrp_dashboard_month, months)
+        value = params[key].presence || Date.current.prev_month.strftime("%B")
         value.to_s.casecmp("all").zero? ? nil : value
       end
 
@@ -154,12 +161,16 @@ module Api
       end
 
       def applied_filters
-        %i[search activity fcoc fco cluster_incharge month post post_wise_name vrp_id participation_month weekly_target_month]
+        %i[search activity main_activity fcoc fco cluster_incharge ics ics_name month post post_wise_name vrp_id participation_month weekly_target_month]
           .to_h { |key| [key, params[key]] }.compact_blank
       end
 
       def activity_options(targets)
         targets.flat_map { |t| [t.main_activity_name, t.activity_name] }.compact_blank.uniq.sort
+      end
+
+      def default_farmer_activity(targets)
+        targets.map(&:main_activity_name).compact_blank.find { |activity| same?(activity, "Farmer Activity") }
       end
 
       def values(records, attribute)
