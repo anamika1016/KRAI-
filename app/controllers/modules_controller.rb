@@ -840,11 +840,12 @@ class ModulesController < ApplicationController
     @weekly_target_week_filter_value = params[:weekly_target_week].to_i if params[:weekly_target_week].present?
     @weekly_target_week_filter_value = nil unless (1..4).include?(@weekly_target_week_filter_value)
     weekly_dashboard_targets = dashboard_targets_for_month(@filtered_targets, @weekly_dashboard_selected_month)
-    if @weekly_target_fcoc_filter_value.present?
-      weekly_dashboard_targets = weekly_dashboard_targets.select do |target|
-        normalize_dashboard_text(target.vrp&.fcoc) == normalize_dashboard_text(@weekly_target_fcoc_filter_value)
-      end
-    end
+    weekly_dashboard_targets = filter_weekly_activity_targets(
+      weekly_dashboard_targets,
+      activity: params[:activity].presence || params[:main_activity].presence,
+      sub_activity: params[:training_sub_activity].presence || params[:sub_activity].presence,
+      fcoc: @weekly_target_fcoc_filter_value
+    )
     preload_training_farmers_for_targets!(weekly_dashboard_targets)
     @dashboard_weekly_target_cards = weekly_activity_target_status_cards(
       weekly_dashboard_targets,
@@ -887,6 +888,7 @@ class ModulesController < ApplicationController
       sub_activity_name: selected_sub_activity
     )
     participation_status_rows = population_rows
+    target_map_rows = training_participation_target_map_rows(participation_targets, month_name: selected_month)
 
     @training_participation_status = selected_status
     @training_participation_title = training_participation_status_label(selected_status)
@@ -899,19 +901,19 @@ class ModulesController < ApplicationController
     elsif %w[green yellow red pending].include?(selected_status)
       participation_status_rows.select { |row| row[:status] == selected_status }
     elsif selected_status == "total"
-      @training_participation_rows
+      target_map_rows
     else
       @training_participation_rows.select { |row| row[:status] == selected_status }
     end
     @training_participation_totals = training_participation_status_counts_from_records(training_records)
-    status_counts = training_participation_status_counts_from_rows(population_rows).merge(total: population_rows.size)
+    status_counts = training_participation_status_counts_from_rows(population_rows).merge(total: target_map_rows.size)
     @training_participation_totals.merge!(status_counts.slice(:green, :yellow, :red, :pending))
     @training_unique_farmer_count = training_afl_farmer_rows_for_participation(month_name: selected_month, fcoc_name: selected_fcoc).size
     @training_records_unique_farmer_count = training_unique_farmer_count_from_records(training_records)
     @training_total_training_farmer_count = training_total_farmer_count_from_records(training_records)
     @training_participation_totals[:unique] = @training_unique_farmer_count
     @training_participation_totals[:training_unique] = @training_records_unique_farmer_count
-    @training_participation_totals[:total] = @training_total_training_farmer_count
+    @training_participation_totals[:total] = target_map_rows.size
     @training_selected_month = selected_month
     @training_selected_sub_activity = selected_sub_activity
     @training_selected_fcoc = selected_fcoc
@@ -1093,25 +1095,16 @@ class ModulesController < ApplicationController
 
     filtered_targets = targets.to_a
     filtered_targets = dashboard_targets_for_month(filtered_targets, selected_month) if selected_month.present?
-    if selected_activity.present?
-      filtered_targets = filtered_targets.select do |target|
-        normalize_dashboard_text(target.main_activity_name) == normalize_dashboard_text(selected_activity) ||
-          normalize_dashboard_text(target.activity_name) == normalize_dashboard_text(selected_activity)
-      end
-    end
-    if selected_sub_activity.present?
-      filtered_targets = filtered_targets.select do |target|
-        normalize_dashboard_text(target.activity_name) == normalize_dashboard_text(selected_sub_activity)
-      end
-    end
-    if selected_fcoc.present?
-      filtered_targets = filtered_targets.select do |target|
-        normalize_dashboard_text(target.vrp&.fcoc) == normalize_dashboard_text(selected_fcoc)
-      end
-    end
+    filtered_targets = filter_weekly_activity_targets(
+      filtered_targets,
+      activity: selected_activity,
+      sub_activity: selected_sub_activity,
+      fcoc: selected_fcoc
+    )
 
     preload_training_farmers_for_targets!(filtered_targets)
-    rows = weekly_activity_target_report_rows(filtered_targets, week_number: selected_week)
+    all_rows = weekly_activity_target_report_rows(filtered_targets, week_number: selected_week)
+    rows = all_rows
     rows = if selected_status.present?
       rows.select { |row| row[:status_class] == selected_status }
     elsif selected_status_key == "total"
@@ -1121,7 +1114,7 @@ class ModulesController < ApplicationController
     end
 
     @weekly_report_rows = rows
-    @weekly_report_totals = training_target_status_counts(filtered_targets)
+    @weekly_report_totals = weekly_activity_target_status_counts_for_rows(all_rows)
     @weekly_report_status = selected_status_key
     @weekly_selected_month = selected_month
     @weekly_selected_activity = selected_activity
@@ -2950,16 +2943,40 @@ class ModulesController < ApplicationController
         title: "Completed",
         value: dashboard_quantity(completed_quantity),
         caption: "Target completed in the selected week.",
-        path: weekly_activity_target_report_path(filter_params.merge(status: "total"))
+        path: weekly_activity_target_report_path(filter_params.merge(status: "green"))
       },
       {
         status: "pending",
         title: "Pending",
         value: dashboard_quantity(pending_quantity),
         caption: "Remaining target for the selected week.",
-        path: weekly_activity_target_report_path(filter_params.merge(status: "total"))
+        path: weekly_activity_target_report_path(filter_params.merge(status: "red"))
       }
     ]
+  end
+
+  def filter_weekly_activity_targets(targets, activity: nil, sub_activity: nil, fcoc: nil)
+    filtered_targets = Array(targets)
+    if activity.present?
+      selected_activity = normalize_dashboard_text(activity)
+      filtered_targets = filtered_targets.select do |target|
+        normalize_dashboard_text(target.main_activity_name) == selected_activity ||
+          normalize_dashboard_text(target.activity_name) == selected_activity
+      end
+    end
+    if sub_activity.present?
+      selected_sub_activity = normalize_dashboard_text(sub_activity)
+      filtered_targets = filtered_targets.select do |target|
+        normalize_dashboard_text(target.activity_name) == selected_sub_activity
+      end
+    end
+    if fcoc.present?
+      selected_fcoc = normalize_dashboard_text(fcoc)
+      filtered_targets = filtered_targets.select do |target|
+        normalize_dashboard_text(target.vrp&.fcoc) == selected_fcoc
+      end
+    end
+    filtered_targets
   end
 
   def weekly_activity_target_status_totals(targets, week_number: nil)
@@ -3074,6 +3091,14 @@ class ModulesController < ApplicationController
           Array(row[:training_photo_urls]).join(", ")
         ]
       end
+    end
+  end
+
+  def weekly_activity_target_status_counts_for_rows(rows)
+    Array(rows).each_with_object({ green: 0, yellow: 0, red: 0, total: 0 }) do |row, counts|
+      counts[:total] += 1
+      status = row[:status_class].to_s.to_sym
+      counts[status] += 1 if counts.key?(status)
     end
   end
 
@@ -3266,6 +3291,7 @@ class ModulesController < ApplicationController
       assigned_activity_count = row[:assigned_activity_count].to_i
       completed_activity_count = [attendance_count, assigned_activity_count].min
       status = training_participation_status_for_activity_progress(
+        attendance_count,
         completed_activity_count,
         assigned_activity_count,
         pending_available: training_participation_month_open?(month_name)
@@ -3289,6 +3315,7 @@ class ModulesController < ApplicationController
     return training_participation_status_counts_from_records(records) if memberships.blank?
 
     completed_activity_keys = Hash.new { |hash, key| hash[key] = [] }
+    attendance_counts = Hash.new(0)
     farmers_by_id = training_farmers_by_id(Array(targets).flat_map { |target| target_farmer_ids(target) }.uniq)
     target_sets = Array(targets).filter_map do |target|
       farmer_ids = target_farmer_ids(target)
@@ -3307,6 +3334,7 @@ class ModulesController < ApplicationController
             location_key: training_participation_target_location_key(target)
           )
           membership_key = training_participation_membership_key(farmer_key, target.month_name)
+          attendance_counts[membership_key] += 1
           completed_activity_keys[membership_key] |= [training_participation_target_activity_key(target)]
         end
       end
@@ -3317,11 +3345,13 @@ class ModulesController < ApplicationController
       yellow: 0,
       red: 0,
       pending: 0,
+      completed: 0,
       total: memberships.size,
       target_map_total: memberships.values.sum { |membership| membership[:assigned_activity_count].to_i }
     }
     memberships.each do |membership_key, membership|
       status = training_participation_status_for_activity_progress(
+        attendance_counts[membership_key],
         completed_activity_keys[membership_key].size,
         membership[:assigned_activity_count].to_i,
         pending_available: membership[:pending_available]
@@ -3667,6 +3697,7 @@ class ModulesController < ApplicationController
       attendance_count = details[:attendance_count].to_i
       completed_activity_count = details.fetch(:completed_activity_count, 0).to_i
       status = training_participation_status_for_activity_progress(
+        attendance_count,
         completed_activity_count,
         membership[:assigned_activity_count].to_i,
         pending_available: membership[:pending_available]
@@ -3746,6 +3777,54 @@ class ModulesController < ApplicationController
     end
   end
 
+  def training_participation_target_map_rows(targets, month_name: nil)
+    targets = Array(targets)
+    return [] if targets.blank?
+
+    attendance_details = training_attendance_details_for_targets(targets, month_name: month_name)
+    farmers_by_id = training_farmers_by_id(targets.flat_map { |target| target_farmer_ids(target) }.uniq)
+
+    targets.flat_map do |target|
+      activity_key = training_participation_target_activity_key(target)
+      target_farmer_ids(target).map do |farmer_id|
+        farmer = farmers_by_id[farmer_id.to_s]
+        farmer_key = training_participation_farmer_unique_key(
+          farmer_id,
+          farmer: farmer,
+          location_key: training_participation_target_location_key(target)
+        )
+        membership_key = training_participation_membership_key(farmer_key, target.month_name)
+        details = attendance_details[membership_key] || { attendance_count: 0, training_dates: "", completed_activity_keys: [] }
+        completed = Array(details[:completed_activity_keys]).include?(activity_key)
+        status = completed ? "completed" : "red"
+
+        {
+          farmer_id: farmer_id.to_s,
+          farmer_name: dashboard_text_value(farmer&.farmer_name).presence || "Farmer ##{farmer_id}",
+          father_name: dashboard_text_value(farmer&.father_name),
+          mobile_no: dashboard_text_value(farmer&.mobile_no),
+          tracenet_no: dashboard_text_value(farmer&.tracenet_no),
+          khasara_no: dashboard_text_value(farmer&.khasara_no),
+          ics: target_ics_label(target).presence || dashboard_text_value(farmer&.ics_name).presence || dashboard_text_value(farmer&.ics_id).presence || "-",
+          village: target_village_label(target).presence || dashboard_text_value(farmer&.village_name).presence || dashboard_text_value(farmer&.village_id).presence || "-",
+          vrp: target.vrp&.name.presence || "-",
+          months: target.month_name.to_s.presence || "-",
+          main_activities: target.main_activity_name.to_s.presence || "-",
+          sub_activities: target.activity_name.to_s.presence || "-",
+          attendance_count: completed ? 1 : 0,
+          assigned_activity_count: 1,
+          completed_activity_count: completed ? 1 : 0,
+          status: status,
+          status_label: completed ? "Completed" : "Pending",
+          training_dates: completed ? details[:training_dates].presence || "-" : "-",
+          last_training_date: completed ? details[:last_training_date].presence || "-" : "-",
+          training_register_urls: [],
+          training_photo_urls: []
+        }
+      end
+    end.sort_by { |row| [row[:status], row[:farmer_name].to_s.downcase, row[:sub_activities].to_s.downcase] }
+  end
+
   def training_attendance_details_for_targets(targets, month_name: nil)
     return {} unless model_ready?(:ModuleRecord)
 
@@ -3795,7 +3874,8 @@ class ModulesController < ApplicationController
         detail.merge(
           training_dates: dates.join(", "),
           last_training_date: dates.last,
-          completed_activity_count: detail[:completed_activity_keys].size
+          completed_activity_count: detail[:completed_activity_keys].size,
+          completed_activity_keys: detail[:completed_activity_keys]
         )
       end
   end
@@ -3848,11 +3928,12 @@ class ModulesController < ApplicationController
     ].join("|")
   end
 
-  def training_participation_status_for_activity_progress(completed_count, assigned_count, pending_available: false)
+  def training_participation_status_for_activity_progress(attendance_count, completed_count, assigned_count, pending_available: false)
+    attendance_count = attendance_count.to_i
     completed_count = completed_count.to_i
     assigned_count = assigned_count.to_i
-    return "green" if assigned_count.positive? && completed_count >= assigned_count
-    return "yellow" if completed_count.positive?
+    return "green" if attendance_count >= 3
+    return "yellow" if completed_count.positive? && completed_count < assigned_count
     return "pending" if pending_available
 
     "red"
@@ -3861,7 +3942,7 @@ class ModulesController < ApplicationController
   def training_participation_status_for_count(count, pending_available: false)
     count = count.to_i
     return "green" if count >= 3
-    return "yellow" if count.positive?
+    return "completed" if count.positive?
     return "pending" if pending_available
 
     "red"
@@ -3880,18 +3961,19 @@ class ModulesController < ApplicationController
       "green" => "Green",
       "yellow" => "Yellow",
       "red" => "Red",
-      "pending" => "Pending"
+      "pending" => "Pending",
+      "completed" => "Completed"
     }[status.to_s] || "Farmer"
   end
 
   def training_participation_status_caption(status)
     {
-      "total" => "Farmer Training Form me selected farmer entries.",
+      "total" => "Farmer x mapped activity target entries.",
       "unique" => "Visible VRPs ke targets me assigned unique farmers.",
       "training_unique" => "Farmer Training Form me distinct farmers.",
       "green" => "Farmer attended 3 or more trainings.",
-      "yellow" => "Farmer attended 1 or more trainings.",
-      "red" => "Month closed and farmer did not attend any training.",
+      "yellow" => "Multiple mapped trainings me kuch complete aur kuch pending.",
+      "red" => "Farmer did not attend any training.",
       "pending" => "Month open and farmer training is still pending."
     }[status.to_s] || "Farmer training participation status."
   end

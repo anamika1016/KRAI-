@@ -13,7 +13,7 @@ class ModulesControllerSortingTest < ActiveSupport::TestCase
     )
 
     controller.define_singleton_method(:training_afl_farmer_rows_for_participation) do |**|
-      [{ farmer_key: "tracenet:tn-100", farmer_id: "11", source_farmer_ids: ["11"] }]
+      [{ farmer_key: "tracenet:tn-100", farmer_id: "11", source_farmer_ids: ["11"], assigned_activity_count: 2 }]
     end
     controller.define_singleton_method(:training_farmers_by_id) { |_| { "22" => farmer } }
     controller.define_singleton_method(:training_participation_month_open?) { |_| false }
