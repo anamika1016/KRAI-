@@ -5216,6 +5216,30 @@ class ModulesController < ApplicationController
     current_app_user&.dig("user_type").to_s.strip.casecmp("admin").zero?
   end
 
+  def dashboard_global_view_user?
+    return true if admin_dashboard_user?
+    return false if current_app_user.blank? || !model_ready?(:ModuleRecord)
+
+    stakeholder = normalized_access_value(current_app_user["stakeholder"])
+    stakeholder_role = normalized_access_value(current_app_user["stakeholder_role"])
+    role = normalized_access_value(current_app_user["role"].presence || current_app_user["role_name"])
+    return false if stakeholder.blank? && stakeholder_role.blank? && role.blank?
+
+    ModuleRecord.where(module_slug: "access-control").any? do |record|
+      data = record.data || {}
+      next false unless ["yes", "true", "1"].include?(normalized_access_value(data["can_view"]))
+      next false unless normalized_access_value(data["status"].presence || "Active") == "active"
+
+      access_stakeholder = normalized_access_value(data["stakeholder_name"].presence || data["stakeholder"])
+      access_stakeholder_role = normalized_access_value(data["stakeholder_role"].presence || data["stakeholder_person_type"])
+      access_role = normalized_access_value(data["role"].presence || data["role_name"])
+      stakeholder_match = access_stakeholder.blank? || stakeholder.blank? || access_stakeholder == stakeholder
+      stakeholder_role_match = access_stakeholder_role.blank? || stakeholder_role.blank? || access_stakeholder_role == stakeholder_role
+      role_match = access_role.blank? || role.blank? || access_role == role
+      stakeholder_match && stakeholder_role_match && role_match
+    end
+  end
+
   def dashboard_current_user_title
     current_app_user&.dig("name").presence ||
       current_app_user&.dig("username").presence ||
@@ -5226,7 +5250,7 @@ class ModulesController < ApplicationController
   def dashboard_vrps
     return @dashboard_vrps if defined?(@dashboard_vrps)
     return @dashboard_vrps = [] unless model_ready?(:Vrp)
-    return @dashboard_vrps = Vrp.all.to_a if current_app_user.blank? || current_app_user["user_type"].to_s.casecmp("admin").zero?
+    return @dashboard_vrps = Vrp.all.to_a if current_app_user.blank? || dashboard_global_view_user?
 
     mapped_vrps = module_cluster_visible_vrps
     return @dashboard_vrps = mapped_vrps if module_mapped_vrp_scope_active?
@@ -5261,7 +5285,7 @@ class ModulesController < ApplicationController
     return @dashboard_target_mappings = [] unless model_ready?(:TargetMapping)
 
     scope = TargetMapping.includes(:vrp).order(updated_at: :desc)
-    return @dashboard_target_mappings = scope.to_a if admin_dashboard_user?
+    return @dashboard_target_mappings = scope.to_a if dashboard_global_view_user?
 
     visible_vrp_ids = dashboard_vrps.map(&:id)
     current_ids = dashboard_current_app_user_ids
