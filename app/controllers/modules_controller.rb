@@ -863,46 +863,65 @@ class ModulesController < ApplicationController
     selected_fcoc = params[:training_fcoc].presence
     selected_status = normalize_training_participation_status(params[:status]) || "green"
     training_records = dashboard_training_participation_records(month_name: selected_month, sub_activity_name: selected_sub_activity, fcoc_name: selected_fcoc)
-    population_rows = training_participation_population_rows(
-      month_name: selected_month,
-      fcoc_name: selected_fcoc,
-      records: training_records
-    )
     participation_targets = training_participation_targets_for_dashboard(
       month_name: selected_month,
       fcoc_name: selected_fcoc,
       sub_activity_name: selected_sub_activity
     )
-    target_map_rows = training_participation_target_map_rows(participation_targets, month_name: selected_month)
+    participation_dashboard_counts = training_participation_dashboard_counts(
+      month_name: selected_month,
+      fcoc_name: selected_fcoc,
+      records: training_records
+    )
+    population_rows = nil
+    target_map_rows = nil
+    record_rows = nil
 
     @training_participation_status = selected_status
     @training_participation_title = training_participation_status_label(selected_status)
     @training_participation_caption = training_participation_status_caption(selected_status)
-    @training_participation_rows = training_participation_farmer_rows_from_records(training_records)
     @training_participation_rows = if selected_status == "unique"
+      population_rows = training_participation_population_rows(
+        month_name: selected_month,
+        fcoc_name: selected_fcoc,
+        records: training_records,
+        targets: participation_targets
+      )
       population_rows
     elsif selected_status == "training_unique"
-      @training_participation_rows
+      record_rows = training_participation_farmer_rows_from_records(training_records)
     elsif selected_status == "completed_map"
+      target_map_rows = training_participation_target_map_rows(participation_targets, month_name: selected_month)
       target_map_rows.select { |row| row[:completed_activity_count].to_i.positive? }
     elsif selected_status == "red"
+      population_rows = training_participation_population_rows(
+        month_name: selected_month,
+        fcoc_name: selected_fcoc,
+        records: training_records,
+        targets: participation_targets
+      )
       population_rows.select { |row| row[:status] == "red" }
     elsif %w[green yellow pending].include?(selected_status)
+      population_rows = training_participation_population_rows(
+        month_name: selected_month,
+        fcoc_name: selected_fcoc,
+        records: training_records,
+        targets: participation_targets
+      )
       population_rows.select { |row| row[:status] == selected_status }
     elsif selected_status == "total"
+      target_map_rows = training_participation_target_map_rows(participation_targets, month_name: selected_month)
       target_map_rows
     else
-      @training_participation_rows.select { |row| row[:status] == selected_status }
+      record_rows = training_participation_farmer_rows_from_records(training_records)
+      record_rows.select { |row| row[:status] == selected_status }
     end
-    @training_participation_totals = training_participation_status_counts_from_records(training_records)
-    farmer_counts = training_participation_status_counts_from_rows(population_rows)
-    status_counts = farmer_counts.merge(total: target_map_rows.size)
-    @training_participation_totals.merge!(status_counts.slice(:green, :yellow, :red, :pending))
-    @training_unique_farmer_count = population_rows.size
-    @training_total_training_farmer_count = training_total_farmer_count_from_records(training_records)
-    @training_completed_target_map_count = target_map_rows.count { |row| row[:completed_activity_count].to_i.positive? }
+    @training_participation_totals = participation_dashboard_counts.slice(:green, :yellow, :red, :pending, :total)
+    @training_unique_farmer_count = participation_dashboard_counts[:total].to_i
+    @training_total_training_farmer_count = participation_dashboard_counts[:target_map_total].to_i
+    @training_completed_target_map_count = participation_dashboard_counts[:completed_target_map_total].to_i
     @training_participation_totals[:unique] = @training_unique_farmer_count
-    @training_participation_totals[:total] = target_map_rows.size
+    @training_participation_totals[:total] = @training_total_training_farmer_count
     @training_participation_totals[:completed_map] = @training_completed_target_map_count
     @training_selected_month = selected_month
     @training_selected_sub_activity = selected_sub_activity
@@ -3367,12 +3386,19 @@ class ModulesController < ApplicationController
       farmer_ids = training_participation_target_farmer_ids(target)
       farmer_ids.blank? ? nil : [target, farmer_ids]
     end
+    target_sets_by_farmer_id = Hash.new { |hash, key| hash[key] = [] }
+    target_sets.each do |target_set|
+      _target, farmer_ids = target_set
+      farmer_ids.each { |farmer_id| target_sets_by_farmer_id[farmer_id.to_s] << target_set }
+    end
 
     Array(records).each do |record|
-      target_sets.each do |target, farmer_ids|
+      selected_farmer_ids = training_record_selected_farmer_ids(record)
+      candidate_target_sets = selected_farmer_ids.flat_map { |farmer_id| target_sets_by_farmer_id[farmer_id.to_s] }.uniq
+      candidate_target_sets.each do |target, farmer_ids|
         next unless training_record_matches_dashboard_target?(record, target, farmer_ids)
 
-        (training_record_selected_farmer_ids(record) & farmer_ids).each do |farmer_id|
+        (selected_farmer_ids & farmer_ids).each do |farmer_id|
           farmer_key = training_participation_target_farmer_key(farmer_id)
           membership_key = training_participation_membership_key(farmer_key, target.month_name)
           attendance_counts[membership_key] += 1
@@ -3956,16 +3982,24 @@ class ModulesController < ApplicationController
     end
     return {} if target_sets.blank?
 
+    target_sets_by_farmer_id = Hash.new { |hash, key| hash[key] = [] }
+    target_sets.each do |target_set|
+      _target, farmer_ids = target_set
+      farmer_ids.each { |farmer_id| target_sets_by_farmer_id[farmer_id.to_s] << target_set }
+    end
+
     ModuleRecord
       .where(module_slug: "training-form")
       .order(created_at: :desc)
       .select { |record| active_module_record?(record) }
       .select { |record| month_name.blank? || normalize_dashboard_text(training_record_month_name(record)) == normalize_dashboard_text(month_name) }
       .each_with_object(Hash.new { |hash, key| hash[key] = { attendance_count: 0, training_dates: [], completed_activity_keys: [] } }) do |record, details|
-        matching_membership_keys = target_sets.each_with_object([]) do |(target, farmer_ids), keys|
+        selected_farmer_ids = training_record_selected_farmer_ids(record)
+        candidate_target_sets = selected_farmer_ids.flat_map { |farmer_id| target_sets_by_farmer_id[farmer_id.to_s] }.uniq
+        matching_membership_keys = candidate_target_sets.each_with_object([]) do |(target, farmer_ids), keys|
           next unless training_record_matches_dashboard_target?(record, target, farmer_ids)
 
-          (training_record_selected_farmer_ids(record) & farmer_ids).each do |farmer_id|
+          (selected_farmer_ids & farmer_ids).each do |farmer_id|
             unique_farmer_key = training_participation_target_farmer_key(farmer_id)
             keys << [
               training_participation_membership_key(unique_farmer_key, target.month_name),
