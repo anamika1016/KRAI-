@@ -2047,6 +2047,11 @@ body {
   background: linear-gradient(180deg, rgba(117, 136, 145, 0.08), #fff 48%);
 }
 
+.dashboard-status-panel .training-participation-box.completed {
+  border-top-color: #3f6fb5;
+  background: linear-gradient(180deg, rgba(63, 111, 181, 0.08), #fff 48%);
+}
+
 .training-participation-box:hover,
 .training-participation-box.is-active {
   transform: translateY(-2px);
@@ -2110,6 +2115,12 @@ body {
   border-color: rgba(46, 113, 135, 0.24);
   background: rgba(46, 113, 135, 0.08);
   color: #20586a;
+}
+
+.training-participation-box.completed {
+  border-color: rgba(63, 111, 181, 0.26);
+  background: rgba(63, 111, 181, 0.10);
+  color: #254f8f;
 }
 
 .training-participation-table {

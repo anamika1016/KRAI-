@@ -13,12 +13,12 @@
 <% total_status_path_params[:training_fcoc] = participation_fcoc_filter_value if participation_fcoc_filter_value.present? %>
 <% unique_status_path_params = total_status_path_params.merge(status: "unique") %>
 <% training_unique_status_path_params = total_status_path_params.merge(status: "training_unique") %>
+<% completed_map_status_path_params = total_status_path_params.merge(status: "completed_map") %>
 
 <section class="module-card training-participation-status-card dashboard-status-panel training-status-panel">
   <div class="module-card-header training-participation-status-header">
     <div>
       <h2>Farmer Training Participation Status (Automatic)</h2>
-      <p>Tracenet number ke according: Red = no attendance farmer, Green = 3 ya zyada trainings attended, Yellow = kuch mapped trainings complete aur kuch pending.</p>
     </div>
     <%= form_with url: dashboard_path, method: :get, local: true, html: { class: "dashboard-month-filter" } do %>
       <%= hidden_field_tag :weekly_target_month, @weekly_target_month_filter_value if @weekly_target_month_filter_value.present? %>
@@ -55,20 +55,20 @@
   <div class="training-participation-boxes compact">
     <% if status_cards.any? %>
       <div class="training-participation-box total">
-        <span>AFL</span>
-        <strong><%= @training_unique_farmer_count.to_i %></strong>
-        <small>Selected activities ke unique tracenet farmers.</small>
+        <span>Total registered farmer afl</span>
+        <strong><%= (@training_registered_farmer_count || @training_unique_farmer_count).to_i %></strong>
+        <small>Selected filters ke registered AFL farmers.</small>
       </div>
-      <%= link_to farmer_training_participation_path(total_status_path_params), class: "training-participation-box total", data: { dashboard_card: true } do %>
-        <span>Total Target Map</span>
-        <strong><%= status_total %></strong>
-        <small>Farmer × activity mappings tracenet number se.</small>
+      <%= link_to farmer_training_participation_path(unique_status_path_params), class: "training-participation-box total", data: { dashboard_card: true } do %>
+        <span>Mapped Farmer Distinct</span>
+        <strong><%= @training_mapped_farmer_count.to_i %></strong>
+        <small>Selected month me farmer training se mapped unique farmers.</small>
         <b>View List</b>
       <% end %>
-      <%= link_to farmer_training_participation_path(training_unique_status_path_params), class: "training-participation-box total", data: { dashboard_card: true } do %>
-        <span>Completed Farmers</span>
-        <strong><%= @training_records_unique_farmer_count.to_i %></strong>
-        <small>Selected activities me training complete unique tracenet farmers.</small>
+      <%= link_to farmer_training_participation_path(total_status_path_params), class: "training-participation-box total", data: { dashboard_card: true } do %>
+        <span>Multiple Total Target Map</span>
+        <strong><%= status_total %></strong>
+        <small>Farmer × activity mappings tracenet number se.</small>
         <b>View List</b>
       <% end %>
       <% status_cards.each do |card| %>
@@ -78,6 +78,18 @@
           <small><%= card[:caption] %></small>
           <b>View List</b>
         <% end %>
+      <% end %>
+      <%= link_to farmer_training_participation_path(training_unique_status_path_params), class: "training-participation-box total", data: { dashboard_card: true } do %>
+        <span>Total Complete Farmers</span>
+        <strong><%= @training_records_unique_farmer_count.to_i %></strong>
+        <small>Mapped farmers me kam se kam ek training complete.</small>
+        <b>View List</b>
+      <% end %>
+      <%= link_to farmer_training_participation_path(completed_map_status_path_params), class: "training-participation-box completed", data: { dashboard_card: true } do %>
+        <span>Multiple Total Complete Training</span>
+        <strong><%= @training_completed_target_map_count.to_i %></strong>
+        <small>Multiple total target map me completed training count.</small>
+        <b>View List</b>
       <% end %>
     <% else %>
       <div class="training-empty-state">No farmer training target data found.</div>
