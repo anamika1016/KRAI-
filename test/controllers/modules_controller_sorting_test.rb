@@ -39,6 +39,28 @@ class ModulesControllerSortingTest < ActiveSupport::TestCase
     assert_equal ["fco-c sausar", "sausar"], controller.send(:training_fcoc_filter_values, "FCO-C Sausar")
   end
 
+  test "training dashboard keeps registered AFL count when target memberships are blank" do
+    controller = ModulesController.new
+    controller.define_singleton_method(:training_participation_targets_for_dashboard) { |**| [] }
+    controller.define_singleton_method(:training_participation_target_memberships) { |_| {} }
+    controller.define_singleton_method(:training_participation_status_counts_from_records) do |_records|
+      { green: 0, yellow: 0, red: 0, pending: 0, completed: 0, total: 0 }
+    end
+    controller.define_singleton_method(:training_registered_afl_farmer_count_for_participation) do |_targets, fcoc_name: nil|
+      fcoc_name == "FCO-C Turekela" ? 9980 : 0
+    end
+
+    counts = controller.send(
+      :training_participation_dashboard_counts,
+      month_name: "July",
+      fcoc_name: "FCO-C Turekela",
+      records: []
+    )
+
+    assert_equal 9980, counts[:registered_farmer_total]
+    assert_equal 0, counts[:target_map_total]
+  end
+
   test "Jeevika Jankar bill list puts submitted and pending bills before approved bills" do
     controller = ModulesController.new
     current_month = Date.current.beginning_of_month

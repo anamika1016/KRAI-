@@ -3353,7 +3353,13 @@ class ModulesController < ApplicationController
   def training_participation_dashboard_counts(month_name:, fcoc_name:, records:)
     targets = training_participation_targets_for_dashboard(month_name: month_name, fcoc_name: fcoc_name)
     memberships = training_participation_target_memberships(targets)
-    return training_participation_status_counts_from_records(records) if memberships.blank?
+    if memberships.blank?
+      counts = training_participation_status_counts_from_records(records)
+      counts[:registered_farmer_total] = training_registered_afl_farmer_count_for_participation(targets, fcoc_name: fcoc_name)
+      counts[:target_map_total] = 0
+      counts[:completed_target_map_total] = 0
+      return counts
+    end
 
     completed_activity_keys = Hash.new { |hash, key| hash[key] = [] }
     attendance_counts = Hash.new(0)
@@ -5354,7 +5360,7 @@ class ModulesController < ApplicationController
 
     hierarchy_vrps = dashboard_hierarchy_vrps
     if dashboard_hierarchy_cluster_scope?
-      return @dashboard_vrps = (dashboard_own_vrps_list + hierarchy_vrps + dashboard_approval_related_vrps).uniq
+      return @dashboard_vrps = (dashboard_own_vrps_list + hierarchy_vrps).uniq
     end
 
     @dashboard_vrps = (dashboard_own_vrps_list + hierarchy_vrps + dashboard_office_visible_vrps + dashboard_approval_related_vrps).uniq
@@ -9365,8 +9371,13 @@ class ModulesController < ApplicationController
   def training_target_mappings
     return [] unless model_ready?(:TargetMapping)
 
-    training_target_scope
+    targets = training_target_scope
+      .includes(:vrp)
       .order(:ics_name, :ics_id, :village_name, :village_id, :id)
+      .to_a
+    preload_training_farmers_for_targets!(targets)
+
+    targets
       .map do |target|
         farmer_ids = Array(target.afl_ids).map(&:to_s).reject(&:blank?).uniq
         {
@@ -9395,8 +9406,14 @@ class ModulesController < ApplicationController
     activity_settings = jeevika_jankar_main_activity_settings
     sub_activity_settings = jeevika_jankar_sub_activity_settings(activity_settings)
 
-    training_target_scope
+    targets = training_target_scope
+      .includes(:vrp)
       .order(:ics_name, :ics_id, :village_name, :village_id, :id)
+      .to_a
+    preload_other_target_completed_farmer_ids!(targets)
+    preload_training_farmers_for_targets!(targets)
+
+    targets
       .filter_map do |target|
         activity_setting = jeevika_jankar_activity_setting_for(target, activity_settings, sub_activity_settings)
         next unless activity_setting.present? && !training_main_activity_type?(activity_setting[:main_activity_type])
@@ -9431,19 +9448,39 @@ class ModulesController < ApplicationController
   def other_target_completed_farmer_ids_for(target_mapping_id)
     return [] unless model_ready?(:ModuleRecord)
 
-    target = model_ready?(:TargetMapping) ? TargetMapping.find_by(id: target_mapping_id) : nil
-    mapped_farmer_ids = target ? target_farmer_ids(target) : nil
+    if defined?(@other_target_completed_farmer_ids_by_target) && @other_target_completed_farmer_ids_by_target.key?(target_mapping_id.to_s)
+      return Array(@other_target_completed_farmer_ids_by_target[target_mapping_id.to_s])
+    end
 
-    ModuleRecord
+    targets = model_ready?(:TargetMapping) ? TargetMapping.where(id: target_mapping_id).to_a : []
+    preload_other_target_completed_farmer_ids!(targets)
+    Array(@other_target_completed_farmer_ids_by_target[target_mapping_id.to_s])
+  end
+
+  def preload_other_target_completed_farmer_ids!(targets)
+    targets_by_id = Array(targets).index_by { |target| target.id.to_s }
+    @other_target_completed_farmer_ids_by_target ||= {}
+    return @other_target_completed_farmer_ids_by_target if targets_by_id.blank?
+
+    missing_targets_by_id = targets_by_id.reject { |id, _target| @other_target_completed_farmer_ids_by_target.key?(id) }
+    return @other_target_completed_farmer_ids_by_target if missing_targets_by_id.blank?
+
+    records_by_target = ModuleRecord
       .where(module_slug: record_source_slug)
+      .where("data::jsonb ->> 'target_mapping_id' IN (?)", missing_targets_by_id.keys)
       .order(created_at: :asc)
       .reject { |record| record.id.to_s == params[:id].to_s }
       .select { |record| blocking_other_target_record?(record) }
-      .select { |record| record.data["target_mapping_id"].to_s == target_mapping_id.to_s }
-      .flat_map { |record| Array(record.data["selected_farmer_ids"]).map(&:to_s) }
-      .reject(&:blank?)
-      .uniq
-      .then { |ids| mapped_farmer_ids.present? ? (ids & mapped_farmer_ids) : ids }
+      .group_by { |record| record.data["target_mapping_id"].to_s }
+
+    @other_target_completed_farmer_ids_by_target.merge!(missing_targets_by_id.transform_values do |target|
+      mapped_farmer_ids = target_farmer_ids(target)
+      completed_ids = Array(records_by_target[target.id.to_s])
+        .flat_map { |record| Array(record.data["selected_farmer_ids"]).map(&:to_s) }
+        .reject(&:blank?)
+        .uniq
+      mapped_farmer_ids.present? ? (completed_ids & mapped_farmer_ids) : completed_ids
+    end)
   end
 
   def blocking_other_target_record?(record)

@@ -560,8 +560,13 @@ class FarmerTargetApi
 
     activity_settings = main_activity_settings
     sub_activity_settings = sub_activity_settings_for(activity_settings)
-    @training_target_mappings = training_target_scope
+    targets = training_target_scope
+      .includes(:vrp)
       .order(:ics_name, :ics_id, :village_name, :village_id, :id)
+      .to_a
+    preload_training_farmers_for_targets!(targets)
+
+    @training_target_mappings = targets
       .filter_map do |target|
         activity_setting = activity_setting_for(target, activity_settings, sub_activity_settings)
         next if activity_setting.blank? || !training_main_activity_type?(activity_setting[:main_activity_type])
@@ -599,8 +604,14 @@ class FarmerTargetApi
     activity_settings = main_activity_settings
     sub_activity_settings = sub_activity_settings_for(activity_settings)
 
-    @seed_distribution_target_mappings = training_target_scope
+    targets = training_target_scope
+      .includes(:vrp)
       .order(:ics_name, :ics_id, :village_name, :village_id, :id)
+      .to_a
+    preload_other_target_completed_farmer_ids!(targets)
+    preload_training_farmers_for_targets!(targets)
+
+    @seed_distribution_target_mappings = targets
       .filter_map do |target|
         activity_setting = activity_setting_for(target, activity_settings, sub_activity_settings)
         next unless activity_setting.present? && !training_main_activity_type?(activity_setting[:main_activity_type])
@@ -815,19 +826,39 @@ class FarmerTargetApi
   def other_target_completed_farmer_ids_for(target_mapping_id)
     return [] unless model_ready?(:ModuleRecord)
 
-    target = model_ready?(:TargetMapping) ? TargetMapping.find_by(id: target_mapping_id) : nil
-    mapped_farmer_ids = target ? target_farmer_ids(target) : nil
+    if defined?(@other_target_completed_farmer_ids_by_target) && @other_target_completed_farmer_ids_by_target.key?(target_mapping_id.to_s)
+      return Array(@other_target_completed_farmer_ids_by_target[target_mapping_id.to_s])
+    end
 
-    ModuleRecord
+    targets = model_ready?(:TargetMapping) ? TargetMapping.where(id: target_mapping_id).to_a : []
+    preload_other_target_completed_farmer_ids!(targets)
+    Array(@other_target_completed_farmer_ids_by_target[target_mapping_id.to_s])
+  end
+
+  def preload_other_target_completed_farmer_ids!(targets)
+    targets_by_id = Array(targets).index_by { |target| target.id.to_s }
+    @other_target_completed_farmer_ids_by_target ||= {}
+    return @other_target_completed_farmer_ids_by_target if targets_by_id.blank?
+
+    missing_targets_by_id = targets_by_id.reject { |id, _target| @other_target_completed_farmer_ids_by_target.key?(id) }
+    return @other_target_completed_farmer_ids_by_target if missing_targets_by_id.blank?
+
+    records_by_target = ModuleRecord
       .where(module_slug: @module_slug)
+      .where("data::jsonb ->> 'target_mapping_id' IN (?)", missing_targets_by_id.keys)
       .order(created_at: :asc)
       .reject { |record| @exclude_record_id.present? && record.id.to_s == @exclude_record_id.to_s }
       .select { |record| blocking_other_target_record?(record) }
-      .select { |record| record.data["target_mapping_id"].to_s == target_mapping_id.to_s }
-      .flat_map { |record| Array(record.data["selected_farmer_ids"]).map(&:to_s) }
-      .reject(&:blank?)
-      .uniq
-      .then { |ids| mapped_farmer_ids.present? ? (ids & mapped_farmer_ids) : ids }
+      .group_by { |record| record.data["target_mapping_id"].to_s }
+
+    @other_target_completed_farmer_ids_by_target.merge!(missing_targets_by_id.transform_values do |target|
+      mapped_farmer_ids = target_farmer_ids(target)
+      completed_ids = Array(records_by_target[target.id.to_s])
+        .flat_map { |record| Array(record.data["selected_farmer_ids"]).map(&:to_s) }
+        .reject(&:blank?)
+        .uniq
+      mapped_farmer_ids.present? ? (completed_ids & mapped_farmer_ids) : completed_ids
+    end)
   end
 
   def blocking_other_target_record?(record)
@@ -883,7 +914,7 @@ class FarmerTargetApi
     farmer_ids = Array(farmer_ids).map(&:to_s).reject(&:blank?).uniq
     return [] if farmer_ids.blank?
 
-    Afl.where(id: farmer_ids).order(:farmer_name, :id).map do |farmer|
+    training_farmers_by_id(farmer_ids).values.compact.sort_by { |farmer| [farmer.farmer_name.to_s.downcase, farmer.id] }.map do |farmer|
       {
         id: farmer.id.to_s,
         farmer_name: farmer.farmer_name.presence || "Farmer ##{farmer.id}",
@@ -893,6 +924,27 @@ class FarmerTargetApi
         khasara_no: farmer.khasara_no.to_s
       }
     end
+  end
+
+  def preload_training_farmers_for_targets!(targets)
+    training_farmers_by_id(Array(targets).flat_map { |target| target_farmer_ids(target) })
+  end
+
+  def training_farmers_by_id(farmer_ids)
+    ids = Array(farmer_ids).map(&:to_s).reject(&:blank?).uniq
+    return {} if ids.blank?
+
+    @training_farmers_by_id_cache ||= {}
+    missing_ids = ids.reject { |id| @training_farmers_by_id_cache.key?(id) }
+    missing_ids.each_slice(5_000) do |slice|
+      Afl
+        .where(id: slice)
+        .select(:id, :farmer_name, :father_name, :mobile_no, :tracenet_no, :khasara_no)
+        .find_each { |farmer| @training_farmers_by_id_cache[farmer.id.to_s] = farmer }
+      slice.each { |id| @training_farmers_by_id_cache[id] = nil unless @training_farmers_by_id_cache.key?(id) }
+    end
+
+    ids.index_with { |id| @training_farmers_by_id_cache[id] }.compact
   end
 
   def training_target_farmer_ids(target)
