@@ -3318,7 +3318,7 @@ class ModulesController < ApplicationController
       farmer = farmers_by_id[farmer_id]
       details = attendance_details[membership_key] || { attendance_count: 0, training_dates: "", completed_activity_keys: [] }
       assigned_activity_count = membership[:assigned_activity_count].to_i
-      completed_activity_count = [details[:attendance_count].to_i, assigned_activity_count].min
+      completed_activity_count = [Array(details[:completed_activity_keys]).size, assigned_activity_count].min
       attendance_count = details[:attendance_count].to_i
       status = training_participation_status_for_activity_progress(
         attendance_count,
@@ -3396,7 +3396,7 @@ class ModulesController < ApplicationController
     memberships.each do |membership_key, membership|
       assigned_count = membership[:assigned_activity_count].to_i
       attendance_count = attendance_counts[membership_key].to_i
-      completed_count = [attendance_counts[membership_key].to_i, assigned_count].min
+      completed_count = [completed_activity_keys[membership_key].size, assigned_count].min
       counts[:completed_target_map_total] += completed_count
 
       if completed_count >= assigned_count && assigned_count.positive?
@@ -3846,10 +3846,11 @@ class ModulesController < ApplicationController
           membership_key = training_participation_membership_key(farmer_key, target.month_name)
           details = attendance_details[membership_key] || { attendance_count: 0, training_dates: "", completed_activity_keys: [] }
           completed_keys = Array(details[:completed_activity_keys])
+          farmer = farmers_by_id[farmer_id.to_s]
           assigned_count = memberships.dig(membership_key, :assigned_activity_count).to_i
           attendance_count = details[:attendance_count].to_i
-          completed_count = [attendance_count, assigned_count].min
-          completed = activity_index < completed_count
+          completed_count = [completed_keys.size, assigned_count].min
+          completed = completed_keys.include?(activity_key)
           status = if completed_count >= assigned_count && assigned_count.positive?
             "green"
           elsif completed_count.positive?
