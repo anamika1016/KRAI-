@@ -18,7 +18,7 @@
   <div class="module-card-header training-participation-status-header">
     <div>
       <h2>Farmer Training Participation Status (Automatic)</h2>
-      <p>Tracenet number ke according activity-wise farmer status: Red = no completion, Green = all mapped activities complete, Yellow = kuch complete aur kuch pending.</p>
+      <p>Tracenet number ke according: Red = no attendance farmer, Green = 3 ya zyada trainings attended, Yellow = kuch mapped trainings complete aur kuch pending.</p>
     </div>
     <%= form_with url: dashboard_path, method: :get, local: true, html: { class: "dashboard-month-filter" } do %>
       <%= hidden_field_tag :weekly_target_month, @weekly_target_month_filter_value if @weekly_target_month_filter_value.present? %>

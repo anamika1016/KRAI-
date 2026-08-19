@@ -3211,7 +3211,7 @@ class ModulesController < ApplicationController
           farmer: farmer,
           location_key: training_participation_target_location_key(target)
         )
-        assignments_by_farmer_key[farmer_key][:assigned_activity_keys] |= [training_participation_target_activity_key(target)]
+        assignments_by_farmer_key[farmer_key][:assigned_activity_keys] |= training_participation_target_activity_keys(target)
         assignments_by_farmer_key[farmer_key][:main_activities] |= [target.main_activity_name.to_s.strip].reject(&:blank?)
         assignments_by_farmer_key[farmer_key][:sub_activities] |= [target.activity_name.to_s.strip].reject(&:blank?)
         assignments_by_farmer_key[farmer_key][:months] |= [target.month_name.to_s.strip].reject(&:blank?)
@@ -3335,7 +3335,7 @@ class ModulesController < ApplicationController
           )
           membership_key = training_participation_membership_key(farmer_key, target.month_name)
           attendance_counts[membership_key] += 1
-          completed_activity_keys[membership_key] |= [training_participation_target_activity_key(target)]
+          completed_activity_keys[membership_key] |= training_record_completed_activity_keys_for_target(record, target)
         end
       end
     end
@@ -3351,13 +3351,15 @@ class ModulesController < ApplicationController
     }
     memberships.each do |membership_key, membership|
       assigned_count = membership[:assigned_activity_count].to_i
-      completed_count = [completed_activity_keys[membership_key].size, assigned_count].min
-      if attendance_counts[membership_key].positive?
-        counts[:green] += completed_count
-        counts[:yellow] += [assigned_count - completed_count, 0].max
-      else
-        counts[:red] += 1
+      attendance_count = attendance_counts[membership_key].to_i
+      completed_count = [attendance_count, assigned_count].min
+      if attendance_count >= 3
+        counts[:green] += assigned_count
+      elsif completed_count.positive? && completed_count < assigned_count
         counts[:yellow] += assigned_count
+      end
+      if attendance_count.zero?
+        counts[:red] += 1
       end
     end
     counts[:completed_unique] = [counts[:total] - counts[:red], 0].max
@@ -3767,7 +3769,7 @@ class ModulesController < ApplicationController
         memberships[membership_key][:vrp] |= [target.vrp&.name.to_s.strip].reject(&:blank?)
         memberships[membership_key][:main_activities] |= [target.main_activity_name.to_s.strip].reject(&:blank?)
         memberships[membership_key][:sub_activities] |= [target.activity_name.to_s.strip].reject(&:blank?)
-        memberships[membership_key][:assigned_activity_keys] |= [training_participation_target_activity_key(target)]
+        memberships[membership_key][:assigned_activity_keys] |= training_participation_target_activity_keys(target)
         memberships[membership_key][:pending_available] ||= training_participation_month_open?(target.month_name)
         memberships[membership_key][:source_farmer_ids] |= [farmer_id.to_s]
       end
@@ -3785,45 +3787,58 @@ class ModulesController < ApplicationController
     return [] if targets.blank?
 
     attendance_details = training_attendance_details_for_targets(targets, month_name: month_name)
+    memberships = training_participation_target_memberships(targets)
     farmers_by_id = training_farmers_by_id(targets.flat_map { |target| target_farmer_ids(target) }.uniq)
 
     targets.flat_map do |target|
-      activity_key = training_participation_target_activity_key(target)
-      target_farmer_ids(target).map do |farmer_id|
-        farmer = farmers_by_id[farmer_id.to_s]
-        farmer_key = training_participation_farmer_unique_key(
-          farmer_id,
-          farmer: farmer,
-          location_key: training_participation_target_location_key(target)
-        )
-        membership_key = training_participation_membership_key(farmer_key, target.month_name)
-        details = attendance_details[membership_key] || { attendance_count: 0, training_dates: "", completed_activity_keys: [] }
-        completed = Array(details[:completed_activity_keys]).include?(activity_key)
-        status = completed ? "green" : "yellow"
+      training_participation_target_activity_entries(target).flat_map do |activity_entry|
+        activity_key = activity_entry[:key]
+        target_farmer_ids(target).map do |farmer_id|
+          farmer = farmers_by_id[farmer_id.to_s]
+          farmer_key = training_participation_farmer_unique_key(
+            farmer_id,
+            farmer: farmer,
+            location_key: training_participation_target_location_key(target)
+          )
+          membership_key = training_participation_membership_key(farmer_key, target.month_name)
+          details = attendance_details[membership_key] || { attendance_count: 0, training_dates: "", completed_activity_keys: [] }
+          completed_keys = Array(details[:completed_activity_keys])
+          assigned_count = memberships.dig(membership_key, :assigned_activity_count).to_i
+          attendance_count = details[:attendance_count].to_i
+          completed_count = [attendance_count, assigned_count].min
+          completed = completed_keys.include?(activity_key)
+          status = if attendance_count >= 3
+            "green"
+          elsif completed_count.positive? && completed_count < assigned_count
+            "yellow"
+          else
+            "red"
+          end
 
-        {
-          farmer_id: farmer_id.to_s,
-          farmer_name: dashboard_text_value(farmer&.farmer_name).presence || "Farmer ##{farmer_id}",
-          father_name: dashboard_text_value(farmer&.father_name),
-          mobile_no: dashboard_text_value(farmer&.mobile_no),
-          tracenet_no: dashboard_text_value(farmer&.tracenet_no),
-          khasara_no: dashboard_text_value(farmer&.khasara_no),
-          ics: target_ics_label(target).presence || dashboard_text_value(farmer&.ics_name).presence || dashboard_text_value(farmer&.ics_id).presence || "-",
-          village: target_village_label(target).presence || dashboard_text_value(farmer&.village_name).presence || dashboard_text_value(farmer&.village_id).presence || "-",
-          vrp: target.vrp&.name.presence || "-",
-          months: target.month_name.to_s.presence || "-",
-          main_activities: target.main_activity_name.to_s.presence || "-",
-          sub_activities: target.activity_name.to_s.presence || "-",
-          attendance_count: completed ? 1 : 0,
-          assigned_activity_count: 1,
-          completed_activity_count: completed ? 1 : 0,
-          status: status,
-          status_label: training_participation_status_label(status),
-          training_dates: completed ? details[:training_dates].presence || "-" : "-",
-          last_training_date: completed ? details[:last_training_date].presence || "-" : "-",
-          training_register_urls: [],
-          training_photo_urls: []
-        }
+          {
+            farmer_id: farmer_id.to_s,
+            farmer_name: dashboard_text_value(farmer&.farmer_name).presence || "Farmer ##{farmer_id}",
+            father_name: dashboard_text_value(farmer&.father_name),
+            mobile_no: dashboard_text_value(farmer&.mobile_no),
+            tracenet_no: dashboard_text_value(farmer&.tracenet_no),
+            khasara_no: dashboard_text_value(farmer&.khasara_no),
+            ics: target_ics_label(target).presence || dashboard_text_value(farmer&.ics_name).presence || dashboard_text_value(farmer&.ics_id).presence || "-",
+            village: target_village_label(target).presence || dashboard_text_value(farmer&.village_name).presence || dashboard_text_value(farmer&.village_id).presence || "-",
+            vrp: target.vrp&.name.presence || "-",
+            months: target.month_name.to_s.presence || "-",
+            main_activities: activity_entry[:main_activity].presence || target.main_activity_name.to_s.presence || "-",
+            sub_activities: activity_entry[:sub_activity].presence || target.activity_name.to_s.presence || "-",
+            attendance_count: completed ? 1 : 0,
+            assigned_activity_count: 1,
+            completed_activity_count: completed ? 1 : 0,
+            status: status,
+            status_label: training_participation_status_label(status),
+            training_dates: completed ? details[:training_dates].presence || "-" : "-",
+            last_training_date: completed ? details[:last_training_date].presence || "-" : "-",
+            training_register_urls: [],
+            training_photo_urls: []
+          }
+        end
       end
     end.sort_by { |row| [row[:status], row[:farmer_name].to_s.downcase, row[:sub_activities].to_s.downcase] }
   end
@@ -3860,17 +3875,17 @@ class ModulesController < ApplicationController
             )
             keys << [
               training_participation_membership_key(unique_farmer_key, target.month_name),
-              training_participation_target_activity_key(target)
+              training_record_completed_activity_keys_for_target(record, target)
             ]
           end
         end.uniq
         next if matching_membership_keys.blank?
 
         training_date = bill_display_date(training_summary(record)[:training_date]).presence || bill_display_date(record.created_at)
-        matching_membership_keys.each do |membership_key, activity_key|
+        matching_membership_keys.each do |membership_key, activity_keys|
           details[membership_key][:attendance_count] += 1
           details[membership_key][:training_dates] |= [training_date].reject(&:blank?)
-          details[membership_key][:completed_activity_keys] |= [activity_key]
+          details[membership_key][:completed_activity_keys] |= Array(activity_keys)
         end
       end.transform_values do |detail|
         dates = detail[:training_dates].sort_by { |date| parse_module_date(date)&.to_time || Time.zone.local(1900, 1, 1) }
@@ -3925,10 +3940,40 @@ class ModulesController < ApplicationController
   end
 
   def training_participation_target_activity_key(target)
-    [
-      normalize_dashboard_text(target.main_activity_name),
-      normalize_dashboard_text(target.activity_name)
-    ].join("|")
+    training_participation_target_activity_keys(target).first
+  end
+
+  def training_participation_target_activity_keys(target)
+    training_participation_target_activity_entries(target).map { |entry| entry[:key] }
+  end
+
+  def training_participation_target_activity_entries(target)
+    main_activity = target.main_activity_name.to_s.strip
+    sub_activities = training_activity_values(target.activity_name, normalize: false)
+    sub_activities = [target.activity_name.to_s.strip] if sub_activities.blank?
+
+    sub_activities.map do |sub_activity|
+      {
+        main_activity: main_activity,
+        sub_activity: sub_activity,
+        key: [
+          normalize_dashboard_text(main_activity),
+          normalize_dashboard_text(sub_activity)
+        ].join("|")
+      }
+    end.uniq { |entry| entry[:key] }
+  end
+
+  def training_record_completed_activity_keys_for_target(record, target)
+    summary = training_summary(record)
+    record_subjects = training_activity_values(record.data["sub_activities"].presence || summary[:training_subject])
+    target_entries = training_participation_target_activity_entries(target)
+    matched_entries = target_entries.select do |entry|
+      target_subject = normalize_dashboard_text(entry[:sub_activity])
+      record_subjects.any? { |subject| dashboard_training_activity_text_matches?(subject, target_subject) }
+    end
+    matched_entries = target_entries if matched_entries.blank? && training_record_matches_dashboard_target?(record, target, target_farmer_ids(target))
+    matched_entries.map { |entry| entry[:key] }
   end
 
   def training_participation_status_for_activity_progress(attendance_count, completed_count, assigned_count, pending_available: false)
