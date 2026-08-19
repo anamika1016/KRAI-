@@ -7,13 +7,11 @@
 <% participation_fcoc_filter_value = @participation_fcoc_filter_value.to_s %>
 <% filters_ready = selected_month.present? && selected_sub_activity.present? %>
 <% status_cards = Array(@training_participation_status_cards || []).reject { |card| card[:status].to_s == "pending" } %>
-<% status_total = @training_total_training_farmer_count.presence || status_cards.sum { |card| card[:value].to_i } %>
-<% total_status_path_params = { status: "total" } %>
-<% total_status_path_params[:training_month] = participation_selected_month if participation_selected_month.present? %>
-<% total_status_path_params[:training_fcoc] = participation_fcoc_filter_value if participation_fcoc_filter_value.present? %>
-<% unique_status_path_params = total_status_path_params.merge(status: "unique") %>
-<% training_unique_status_path_params = total_status_path_params.merge(status: "training_unique") %>
-<% completed_map_status_path_params = total_status_path_params.merge(status: "completed_map") %>
+<% participation_path_params = { status: "total" } %>
+<% participation_path_params[:training_month] = participation_selected_month if participation_selected_month.present? %>
+<% participation_path_params[:training_fcoc] = participation_fcoc_filter_value if participation_fcoc_filter_value.present? %>
+<% unique_status_path_params = participation_path_params.merge(status: "unique") %>
+<% completed_map_status_path_params = participation_path_params.merge(status: "completed_map") %>
 
 <section class="module-card training-participation-status-card dashboard-status-panel training-status-panel">
   <div class="module-card-header training-participation-status-header">
@@ -48,7 +46,7 @@
       </label>
     <% end %>
     <%= link_to "Export Excel",
-          farmer_training_participation_path(total_status_path_params.merge(status: "total", format: :xlsx)),
+          farmer_training_participation_path(participation_path_params.merge(status: "total", format: :xlsx)),
           class: "list-btn export" %>
   </div>
 
@@ -65,12 +63,6 @@
         <small>Selected month me farmer training se mapped unique farmers.</small>
         <b>View List</b>
       <% end %>
-      <%= link_to farmer_training_participation_path(total_status_path_params), class: "training-participation-box total", data: { dashboard_card: true } do %>
-        <span>Multiple Total Target Map</span>
-        <strong><%= status_total %></strong>
-        <small>Farmer × activity mappings tracenet number se.</small>
-        <b>View List</b>
-      <% end %>
       <% status_cards.each do |card| %>
         <%= link_to card[:path], class: "training-participation-box #{card[:status]}", data: { dashboard_card: true } do %>
           <span><%= card[:status] == "pending" ? "Pending Farmer" : card[:title] %></span>
@@ -78,12 +70,6 @@
           <small><%= card[:caption] %></small>
           <b>View List</b>
         <% end %>
-      <% end %>
-      <%= link_to farmer_training_participation_path(training_unique_status_path_params), class: "training-participation-box total", data: { dashboard_card: true } do %>
-        <span>Total Complete Farmers</span>
-        <strong><%= @training_records_unique_farmer_count.to_i %></strong>
-        <small>Mapped farmers me kam se kam ek training complete.</small>
-        <b>View List</b>
       <% end %>
       <%= link_to farmer_training_participation_path(completed_map_status_path_params), class: "training-participation-box completed", data: { dashboard_card: true } do %>
         <span>Multiple Total Complete Training</span>

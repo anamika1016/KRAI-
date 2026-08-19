@@ -777,25 +777,6 @@ class ModulesController < ApplicationController
     @training_total_training_farmer_count = participation_dashboard_counts[:target_map_total].presence || training_total_farmer_count_from_records(participation_records)
     @training_completed_target_map_count = participation_dashboard_counts[:completed_target_map_total].to_i
     preload_training_farmers_for_targets!(month_targets)
-    @activity_overview_month_filter_value = params[:activity_overview_month].presence || default_status_month
-    @activity_overview_selected_month = @activity_overview_month_filter_value == "all" ? nil : @activity_overview_month_filter_value
-    @activity_overview_fcoc_filter_value = params[:activity_overview_fcoc].presence
-    activity_overview_targets = training_participation_targets_for_dashboard(
-      month_name: @activity_overview_selected_month,
-      fcoc_name: @activity_overview_fcoc_filter_value
-    )
-    activity_overview_target_rows = Array(activity_overview_targets).map { |target| training_target_detail_row(target) }
-    # Target mappings, rather than submitted training forms, define the farmer
-    # population for this overview. A farmer may be mapped to several
-    # activities, but must be counted once for the selected month (or once
-    # overall when "All" is selected).
-    activity_overview_totals = activity_overview_farmer_totals(activity_overview_target_rows)
-    @training_activity_status_totals = activity_overview_totals
-    @training_activity_status_cards = training_activity_status_cards(
-      activity_overview_totals,
-      month_name: @activity_overview_selected_month,
-      fcoc_name: @activity_overview_fcoc_filter_value
-    )
     visible_vrp_ids = @filtered_vrps.map(&:id)
     ics_mappings = model_ready?(:VrpIcsMapping) ? VrpIcsMapping.where(vrp_id: visible_vrp_ids).to_a : []
     if params[:ics].present?
@@ -804,17 +785,6 @@ class ModulesController < ApplicationController
         normalize_dashboard_text(mapping.ics_name.presence || mapping.ics_id) == selected_ics
       end
     end
-    @activity_overview_cards = [
-      dashboard_card(
-        "Target Map",
-        activity_overview_totals[:target_map],
-        "Farmer × activity mappings. Same farmer har mapped activity ke liye count hoga."
-      ).merge(code: "C"),
-      dashboard_card("Pending Target Map", activity_overview_totals[:pending_target_map], "Pending farmer × activity mappings; same farmer ki har pending activity count hogi.").merge(code: "F"),
-      dashboard_card("Red Farmers (Distinct)", activity_overview_totals[:red_farmers], "Kisi selected activity me completion nahi hua.").merge(code: "H"),
-      dashboard_card("Green Farmers (Distinct)", activity_overview_totals[:green_farmers], "Har selected activity me completion hua.").merge(code: "I"),
-      dashboard_card("Yellow Farmers (Distinct)", activity_overview_totals[:yellow_farmers], "Kuch activities complete aur kuch pending hain.").merge(code: "J")
-    ]
     # Full target/participation rows are available on their dedicated report
     # pages. The dashboard renders summary boxes only, so building those large
     # unused datasets here needlessly multiplies queries and memory usage.
@@ -3298,49 +3268,52 @@ class ModulesController < ApplicationController
   end
 
   def training_participation_population_rows(month_name:, fcoc_name:, records:)
-    rows = training_afl_farmer_rows_for_participation(month_name: month_name, fcoc_name: fcoc_name)
-    return training_participation_farmer_rows_from_records(records) if rows.blank?
+    targets = training_participation_targets_for_dashboard(month_name: month_name, fcoc_name: fcoc_name)
+    memberships = training_participation_target_memberships(targets)
+    return training_participation_farmer_rows_from_records(records) if memberships.blank?
 
-    record_farmer_ids = Array(records).flat_map { |record| training_record_selected_farmer_ids(record) }.uniq
-    farmers_by_id = training_farmers_by_id(record_farmer_ids)
-    attendance_by_farmer_key = Hash.new(0)
+    attendance_details = training_attendance_details_for_targets(targets, month_name: month_name)
+    farmers_by_id = training_farmers_by_id(Array(targets).flat_map { |target| target_farmer_ids(target) }.uniq)
 
-    Array(records).each do |record|
-      saved_names = Array(record.data["selected_farmer_names"]).map(&:to_s)
-      location_key = [record.data["ics_block"], record.data["gram_name"]]
-        .map { |value| normalize_dashboard_text(value) }
-        .reject(&:blank?)
-        .join("|")
-
-      record_farmer_keys = training_record_selected_farmer_ids(record).each_with_index.map do |farmer_id, index|
-        training_participation_farmer_unique_key(
-          farmer_id,
-          farmer: farmers_by_id[farmer_id],
-          saved_name: saved_names[index],
-          location_key: location_key
-        )
-      end.uniq
-      record_farmer_keys.each { |farmer_key| attendance_by_farmer_key[farmer_key] += 1 }
-    end
-
-    rows.map do |row|
-      attendance_count = attendance_by_farmer_key[row[:farmer_key]].to_i
-      assigned_activity_count = row[:assigned_activity_count].to_i
-      completed_activity_count = [attendance_count, assigned_activity_count].min
+    memberships.map do |membership_key, membership|
+      farmer_id = membership[:farmer_id].to_s
+      farmer = farmers_by_id[farmer_id]
+      details = attendance_details[membership_key] || { attendance_count: 0, training_dates: "", completed_activity_keys: [] }
+      assigned_activity_count = membership[:assigned_activity_count].to_i
+      completed_activity_count = [Array(details[:completed_activity_keys]).size, assigned_activity_count].min
+      attendance_count = details[:attendance_count].to_i
       status = training_participation_status_for_activity_progress(
         attendance_count,
         completed_activity_count,
         assigned_activity_count,
-        pending_available: training_participation_month_open?(month_name)
+        pending_available: membership[:pending_available]
       )
-      row.merge(
+      {
+        farmer_key: membership_key,
+        farmer_id: farmer_id,
+        source_farmer_ids: Array(membership[:source_farmer_ids].to_s.split(",")).map(&:strip).reject(&:blank?),
+        farmer_name: dashboard_text_value(farmer&.farmer_name).presence || "Farmer ##{farmer_id}",
+        father_name: dashboard_text_value(farmer&.father_name),
+        mobile_no: dashboard_text_value(farmer&.mobile_no),
+        tracenet_no: dashboard_text_value(farmer&.tracenet_no),
+        khasara_no: dashboard_text_value(farmer&.khasara_no),
+        ics: membership[:ics].presence || dashboard_text_value(farmer&.ics_name).presence || dashboard_text_value(farmer&.ics_id).presence || "-",
+        village: membership[:village].presence || dashboard_text_value(farmer&.village_name).presence || dashboard_text_value(farmer&.village_id).presence || "-",
+        vrp: membership[:vrp].presence || "-",
+        months: membership[:months].presence || month_name.presence || "-",
+        main_activities: membership[:main_activities].presence || "-",
+        sub_activities: membership[:sub_activities].presence || "-",
         attendance_count: attendance_count,
         assigned_activity_count: assigned_activity_count,
         completed_activity_count: completed_activity_count,
         status: status,
-        status_label: training_participation_status_label(status)
-      )
-    end
+        status_label: training_participation_status_label(status),
+        training_dates: details[:training_dates].presence || "-",
+        last_training_date: details[:last_training_date].presence || "-",
+        training_register_urls: [],
+        training_photo_urls: []
+      }
+    end.sort_by { |row| [row[:status], -row[:completed_activity_count].to_i, row[:farmer_name].to_s.downcase] }
   end
 
   # Dashboard boxes only need counts. Avoid materializing thousands of AFL

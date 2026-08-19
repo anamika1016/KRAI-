@@ -23,11 +23,6 @@
 
   <section class="module-card training-participation-status-card">
     <div class="training-participation-boxes compact">
-      <%= link_to farmer_training_participation_path(filter_params.merge(status: "total")), class: "training-participation-box total #{'is-active' if @training_participation_status == 'total'}" do %>
-        <span>Multiple Total Target Map</span>
-        <strong><%= status_counts[:total].to_i %></strong>
-        <small>Farmer x mapped activity target entries.</small>
-      <% end %>
       <%= link_to farmer_training_participation_path(filter_params.merge(status: "unique")), class: "training-participation-box total #{'is-active' if @training_participation_status == 'unique'}" do %>
         <span>Mapped Farmer Distinct</span>
         <strong><%= status_counts[:unique].to_i %></strong>
@@ -39,11 +34,6 @@
           <strong><%= status_counts[status.to_sym].to_i %></strong>
           <small><%= training_participation_status_caption(status) %></small>
         <% end %>
-      <% end %>
-      <%= link_to farmer_training_participation_path(filter_params.merge(status: "training_unique")), class: "training-participation-box total #{'is-active' if @training_participation_status == 'training_unique'}" do %>
-        <span>Total Complete Farmers</span>
-        <strong><%= status_counts[:training_unique].to_i %></strong>
-        <small>Mapped farmers me kam se kam ek training complete.</small>
       <% end %>
       <%= link_to farmer_training_participation_path(filter_params.merge(status: "completed_map")), class: "training-participation-box completed #{'is-active' if @training_participation_status == 'completed_map'}" do %>
         <span>Multiple Total Complete Training</span>
