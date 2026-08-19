@@ -626,7 +626,9 @@ body {
 /* Keep the training dashboard sections in their reporting workflow order. */
 .dashboard-page > .dashboard-training-primary-summaries { order: 1; }
 .dashboard-page > .training-status-panel { order: 2; }
-.dashboard-page > #dashboard_activity_overview { order: 3; }
+.dashboard-page > #dashboard_activity_overview {
+  display: none;
+}
 .dashboard-page > #dashboard_weekly_target_boxes { order: 4; }
 .dashboard-page > #dashboard_ics_farmer_report { order: 5; }
 .dashboard-page > .dashboard-training-secondary-summaries { order: 6; }

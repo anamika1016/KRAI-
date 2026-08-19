@@ -123,7 +123,7 @@
   <section class="module-card">
     <div class="module-card-header">
       <div>
-        <h2>Activity / Sub Activity Weekly Report</h2>
+        <h2>Farmer Weekly Training Status Report</h2>
         <p class="module-subtitle">
           <% if @weekly_report_status.present? %>
             Showing: <%= @weekly_report_status == "total" ? "Total Targets" : training_target_status_label(@weekly_report_status) %> |
@@ -143,15 +143,16 @@
         <thead>
           <tr>
             <th>Week</th>
-            <th>Month</th>
-            <th>Completion Date</th>
+            <th>Farmer</th>
+            <th>Mobile</th>
+            <th>TraceNet No</th>
+            <th>ICS</th>
+            <th>Village</th>
             <th>VRP</th>
+            <th>Month</th>
             <th>Main Activity</th>
             <th>Sub Activity</th>
-            <th>FCO</th>
-            <th>Cluster Incharge</th>
-            <th>Post</th>
-            <th>Target</th>
+            <th>Assigned</th>
             <th>Completed</th>
             <th>Pending</th>
             <th>Status</th>
@@ -164,14 +165,20 @@
             <% @weekly_report_rows.each do |row| %>
               <tr>
                 <td><%= row[:week] %></td>
-                <td><%= row[:month] %></td>
-                <td><%= row[:completion_date] %></td>
+                <td>
+                  <%= row[:farmer_name] %>
+                  <% if row[:father_name].present? %>
+                    <small>Father: <%= row[:father_name] %></small>
+                  <% end %>
+                </td>
+                <td><%= row[:mobile_no].presence || "-" %></td>
+                <td><%= row[:tracenet_no].presence || "-" %></td>
+                <td><%= row[:ics].presence || "-" %></td>
+                <td><%= row[:village].presence || "-" %></td>
                 <td><%= row[:vrp] %></td>
+                <td><%= row[:month] %></td>
                 <td class="dashboard-activity-cell"><%= row[:main_activity] %></td>
                 <td class="dashboard-activity-cell"><%= row[:sub_activity] %></td>
-                <td><%= row[:fco] %></td>
-                <td><%= row[:cluster_incharge] %></td>
-                <td><%= row[:post] %></td>
                 <td><%= quantity.call(row[:target_quantity]) %></td>
                 <td><%= quantity.call(row[:completed_quantity]) %></td>
                 <td><%= quantity.call(row[:pending_quantity]) %></td>
@@ -198,7 +205,7 @@
             <% end %>
           <% else %>
             <tr>
-              <td colspan="15">
+              <td colspan="16">
                 <%= @weekly_report_status.present? ? "No weekly target data found for selected status and filters." : "Total, Green, Yellow or Red box par click karke uski list dekhein." %>
               </td>
             </tr>

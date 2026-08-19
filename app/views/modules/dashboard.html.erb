@@ -336,7 +336,7 @@
         <%= f.select :fcoc,
               options_for_select(
                 [["All FCO", ""]] + (@filter_fcoc_options || []).map { |v| [v, v] },
-                params[:fcoc]
+                @dashboard_fcoc_filter_value
               ),
               {},
               id: "dash_fcoc", class: "form-select dashboard-filter-select",
