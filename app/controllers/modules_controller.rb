@@ -3170,10 +3170,6 @@ class ModulesController < ApplicationController
   end
 
   def dashboard_participation_targets
-    # On the dashboard an empty filtered result is meaningful: it must remain
-    # empty instead of silently falling back to every target in the system.
-    return @filtered_targets if defined?(@filtered_targets)
-
     if vrp_login_user?
       current_vrp_record.present? ? vrp_dashboard_targets(current_vrp_record) : []
     else
