@@ -786,6 +786,15 @@ class ModulesController < ApplicationController
     # activities, but must be counted once for the selected month (or once
     # overall when "All" is selected).
     activity_overview_totals = activity_overview_farmer_totals(activity_overview_target_rows)
+    @training_activity_status_totals = activity_overview_totals
+    @training_unique_farmer_count = activity_overview_totals[:mapped_farmers]
+    @training_total_training_farmer_count = activity_overview_totals[:target_map]
+    @training_records_unique_farmer_count = activity_overview_totals[:complete_farmers]
+    @training_participation_status_cards = training_activity_status_cards(
+      activity_overview_totals,
+      month_name: @activity_overview_selected_month,
+      fcoc_name: @activity_overview_fcoc_filter_value
+    )
     visible_vrp_ids = @filtered_vrps.map(&:id)
     ics_mappings = model_ready?(:VrpIcsMapping) ? VrpIcsMapping.where(vrp_id: visible_vrp_ids).to_a : []
     if params[:ics].present?
@@ -3285,6 +3294,25 @@ class ModulesController < ApplicationController
         title: training_participation_status_label(status),
         value: counts[status.to_sym].to_i,
         caption: training_participation_status_caption(status),
+        path: farmer_training_participation_path(path_params)
+      }
+    end
+  end
+
+  def training_activity_status_cards(totals, month_name:, fcoc_name:)
+    [
+      ["red", "Red", :red_farmers, "Kisi selected activity me completion nahi hua."],
+      ["green", "Green", :green_farmers, "Har selected activity me completion hua."],
+      ["yellow", "Yellow", :yellow_farmers, "Kuch activities complete aur kuch pending hain."]
+    ].map do |status, title, key, caption|
+      path_params = { status: status }
+      path_params[:training_month] = month_name if month_name.present?
+      path_params[:training_fcoc] = fcoc_name if fcoc_name.present?
+      {
+        status: status,
+        title: title,
+        value: totals[key].to_i,
+        caption: caption,
         path: farmer_training_participation_path(path_params)
       }
     end

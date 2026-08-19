@@ -6,7 +6,7 @@
 <% participation_month_filter_value = @participation_month_filter_value.to_s %>
 <% participation_fcoc_filter_value = @participation_fcoc_filter_value.to_s %>
 <% filters_ready = selected_month.present? && selected_sub_activity.present? %>
-<% status_cards = Array(@training_participation_status_cards || []) %>
+<% status_cards = Array(@training_participation_status_cards || []).reject { |card| card[:status].to_s == "pending" } %>
 <% status_total = @training_total_training_farmer_count.presence || status_cards.sum { |card| card[:value].to_i } %>
 <% total_status_path_params = { status: "total" } %>
 <% total_status_path_params[:training_month] = participation_selected_month if participation_selected_month.present? %>
@@ -18,7 +18,7 @@
   <div class="module-card-header training-participation-status-header">
     <div>
       <h2>Farmer Training Participation Status (Automatic)</h2>
-      <p>Total = farmers with training records; Green = 3 or more, Yellow = 1–2, Red = no training in a closed month, Pending = training due in an open month.</p>
+      <p>Tracenet number ke according activity-wise farmer status: Red = no completion, Green = all mapped activities complete, Yellow = kuch complete aur kuch pending.</p>
     </div>
     <%= form_with url: dashboard_path, method: :get, local: true, html: { class: "dashboard-month-filter" } do %>
       <%= hidden_field_tag :weekly_target_month, @weekly_target_month_filter_value if @weekly_target_month_filter_value.present? %>
@@ -57,18 +57,18 @@
       <div class="training-participation-box total">
         <span>AFL</span>
         <strong><%= @training_unique_farmer_count.to_i %></strong>
-        <small>Visible AFL farmers for the selected filters.</small>
+        <small>Selected activities ke unique tracenet farmers.</small>
       </div>
       <%= link_to farmer_training_participation_path(total_status_path_params), class: "training-participation-box total", data: { dashboard_card: true } do %>
-        <span>Total Training Map Farmer</span>
+        <span>Total Target Map</span>
         <strong><%= status_total %></strong>
-        <small>Farmer Training Form ke selected farmers.</small>
+        <small>Farmer × activity mappings tracenet number se.</small>
         <b>View List</b>
       <% end %>
       <%= link_to farmer_training_participation_path(training_unique_status_path_params), class: "training-participation-box total", data: { dashboard_card: true } do %>
-        <span>Training Unique Farmers</span>
+        <span>Completed Farmers</span>
         <strong><%= @training_records_unique_farmer_count.to_i %></strong>
-        <small>Total Training Farmer me se distinct farmers.</small>
+        <small>Selected activities me training complete unique tracenet farmers.</small>
         <b>View List</b>
       <% end %>
       <% status_cards.each do |card| %>
