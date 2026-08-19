@@ -65,6 +65,12 @@
         <small>Farmer × activity mappings tracenet number se.</small>
         <b>View List</b>
       <% end %>
+      <%= link_to farmer_training_participation_path(training_unique_status_path_params), class: "training-participation-box total", data: { dashboard_card: true } do %>
+        <span>Completed Farmers</span>
+        <strong><%= @training_records_unique_farmer_count.to_i %></strong>
+        <small>Selected activities me training complete unique tracenet farmers.</small>
+        <b>View List</b>
+      <% end %>
       <% status_cards.each do |card| %>
         <%= link_to card[:path], class: "training-participation-box #{card[:status]}", data: { dashboard_card: true } do %>
           <span><%= card[:status] == "pending" ? "Pending Farmer" : card[:title] %></span>
