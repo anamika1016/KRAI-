@@ -1810,7 +1810,11 @@ class ModulesController < ApplicationController
     scope = vrp_filter_afl_mapping_scope(scope, :fco_id, :fco, fco_ids, fco_names) if fco_ids.any? || fco_names.any?
     scope = vrp_filter_afl_mapping_scope(scope, :ics_id, :ics_name, ics_values, ics_values) if params[:ics].present? && ics_values.any?
 
-    scope.distinct.count(:id)
+    rows = scope.distinct.pluck(:id, :tracenet_no)
+    rows.map do |id, tracenet_no|
+      tracenet = dashboard_text_value(tracenet_no)
+      tracenet.present? && tracenet.casecmp("NULL") != 0 ? "tracenet:#{tracenet}" : "afl:#{id}"
+    end.uniq.size
   end
 
   def vrp_mapping_afl_ids(mapping)
