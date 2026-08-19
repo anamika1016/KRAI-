@@ -652,6 +652,7 @@ class ModulesController < ApplicationController
       .uniq
       .compact_blank
       .sort_by { |m| dashboard_month_index(m) || 0 }
+    weekly_target_scope = t_scope.dup
     # Monthly reporting is for the completed month by default (for example,
     # opening the dashboard in August shows July). Users can still choose All
     # Months or another month from the filter.
@@ -836,7 +837,15 @@ class ModulesController < ApplicationController
     @weekly_target_fcoc_filter_value = params[:weekly_target_fcoc].presence
     @weekly_target_week_filter_value = params[:weekly_target_week].to_i if params[:weekly_target_week].present?
     @weekly_target_week_filter_value = nil unless (1..4).include?(@weekly_target_week_filter_value)
-    weekly_dashboard_targets = dashboard_targets_for_month(@filtered_targets, @weekly_dashboard_selected_month)
+    weekly_dashboard_targets = dashboard_targets_for_month(weekly_target_scope, @weekly_dashboard_selected_month)
+    if params[:post].present?
+      selected_post = params[:post].to_s
+      weekly_dashboard_targets = weekly_dashboard_targets.select { |target| target.vrp&.role.to_s == selected_post }
+    end
+    if params[:vrp_id].present?
+      selected_vrp_id = params[:vrp_id].to_s
+      weekly_dashboard_targets = weekly_dashboard_targets.select { |target| target.vrp_id.to_s == selected_vrp_id }
+    end
     weekly_dashboard_targets = filter_weekly_activity_targets(
       weekly_dashboard_targets,
       activity: params[:activity].presence || params[:main_activity].presence,
@@ -2960,8 +2969,10 @@ class ModulesController < ApplicationController
     if activity.present?
       selected_activity = normalize_dashboard_text(activity)
       filtered_targets = filtered_targets.select do |target|
-        normalize_dashboard_text(target.main_activity_name) == selected_activity ||
-          normalize_dashboard_text(target.activity_name) == selected_activity
+        dashboard_training_activity_text_matches?(selected_activity, normalize_dashboard_text(target.main_activity_name)) ||
+          dashboard_training_activity_text_matches?(selected_activity, normalize_dashboard_text(target.activity_name)) ||
+          dashboard_training_activity_text_matches?(normalize_dashboard_text(target.main_activity_name), selected_activity) ||
+          dashboard_training_activity_text_matches?(normalize_dashboard_text(target.activity_name), selected_activity)
       end
     end
     if sub_activity.present?
@@ -2980,7 +2991,7 @@ class ModulesController < ApplicationController
   end
 
   def weekly_activity_target_status_totals(targets, week_number: nil)
-    dashboard_target_assignment_groups(targets).each_with_object({ target: 0.0, completed: 0.0, pending: 0.0 }) do |group, totals|
+    weekly_activity_target_groups(targets).each_with_object({ target: 0.0, completed: 0.0, pending: 0.0 }) do |group, totals|
       assigned_ids = group.flat_map { |target| target_farmer_ids(target) }.map(&:to_s).reject(&:blank?).uniq
       if week_number.present?
         index = week_number - 1
@@ -2989,7 +3000,7 @@ class ModulesController < ApplicationController
           Array(training_weekly_achievement_farmer_ids(target, target_farmer_ids(target)))[index] || []
         end) & assigned_ids
       else
-        target_quantity = assigned_ids.any? ? assigned_ids.size.to_f : group.map { |target| target.target_quantity.to_f }.max.to_f
+        target_quantity = assigned_ids.any? ? assigned_ids.size.to_f : group.map { |target| weekly_activity_target_quantity(target) }.max.to_f
         completed_ids = unique_training_farmer_ids(group.flat_map do |target|
           completed_training_farmer_ids_for(target, target_farmer_ids(target))
         end) & assigned_ids
@@ -2999,6 +3010,23 @@ class ModulesController < ApplicationController
       totals[:completed] += completed_quantity
       totals[:pending] += [target_quantity - completed_quantity, 0].max
     end
+  end
+
+  def weekly_activity_target_groups(targets)
+    Array(targets).group_by do |target|
+      dashboard_target_assignment_key(target) + [
+        normalize_dashboard_text(target.main_activity_name),
+        normalize_dashboard_text(target.activity_name)
+      ]
+    end.values
+  end
+
+  def weekly_activity_target_quantity(target)
+    [
+      target.target_quantity.to_f,
+      target.farmer_count.to_f,
+      Array(target.weekly_target_values).sum(&:to_f)
+    ].max
   end
 
   def dashboard_weekly_report_filter_params
@@ -5236,9 +5264,12 @@ class ModulesController < ApplicationController
     return @dashboard_target_mappings = scope.to_a if admin_dashboard_user?
 
     visible_vrp_ids = dashboard_vrps.map(&:id)
-    return @dashboard_target_mappings = [] if visible_vrp_ids.blank?
+    current_ids = dashboard_current_app_user_ids
+    visible_scope = TargetMapping.none
+    visible_scope = visible_scope.or(scope.where(vrp_id: visible_vrp_ids)) if visible_vrp_ids.any?
+    visible_scope = visible_scope.or(scope.where(created_by_id: current_ids)) if current_ids.any? && TargetMapping.column_names.include?("created_by_id")
 
-    @dashboard_target_mappings = scope.where(vrp_id: visible_vrp_ids).to_a
+    @dashboard_target_mappings = visible_scope.to_a
   end
 
   def dashboard_target_summary_rows(targets)
