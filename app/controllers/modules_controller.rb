@@ -3383,7 +3383,7 @@ class ModulesController < ApplicationController
       completed: 0,
       completed_target_map_total: 0,
       registered_farmer_total: training_registered_afl_farmer_count_for_participation(targets, fcoc_name: fcoc_name),
-      total: (memberships.keys | training_record_unique_farmer_keys(records)).size,
+      total: memberships.size,
       target_map_total: memberships.values.sum { |membership| membership[:assigned_activity_count].to_i }
     }
     memberships.each do |membership_key, membership|
