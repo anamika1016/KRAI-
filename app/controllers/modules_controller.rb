@@ -786,7 +786,6 @@ class ModulesController < ApplicationController
     # activities, but must be counted once for the selected month (or once
     # overall when "All" is selected).
     activity_overview_totals = activity_overview_farmer_totals(activity_overview_target_rows)
-    activity_overview_afl_count = activity_overview_afl_master_count(activity_overview_targets)
     visible_vrp_ids = @filtered_vrps.map(&:id)
     ics_mappings = model_ready?(:VrpIcsMapping) ? VrpIcsMapping.where(vrp_id: visible_vrp_ids).to_a : []
     if params[:ics].present?
@@ -796,19 +795,15 @@ class ModulesController < ApplicationController
       end
     end
     @activity_overview_cards = [
-      dashboard_card("AFL", activity_overview_afl_count, "Selected filters ke AFL master farmers.").merge(code: "A"),
-      dashboard_card("Mapped Farmers (Distinct)", activity_overview_totals[:mapped_farmers], "Selected activities ke unique mapped farmers.", farmer_training_participation_path(activity_overview_farmer_path_params(status: "unique"))).merge(code: "B"),
-      dashboard_card("Green Farmers (Distinct)", activity_overview_totals[:green_farmers], "Har selected activity me completion hua.").merge(code: "I"),
-      dashboard_card("Yellow Farmers (Distinct)", activity_overview_totals[:yellow_farmers], "Kuch activities complete aur kuch pending hain.").merge(code: "J"),
-      dashboard_card("Red Farmers (Distinct)", activity_overview_totals[:red_farmers], "Kisi selected activity me completion nahi hua.").merge(code: "H"),
       dashboard_card(
         "Target Map",
         activity_overview_totals[:target_map],
         "Farmer × activity mappings. Same farmer har mapped activity ke liye count hoga."
       ).merge(code: "C"),
       dashboard_card("Pending Target Map", activity_overview_totals[:pending_target_map], "Pending farmer × activity mappings; same farmer ki har pending activity count hogi.").merge(code: "F"),
-      dashboard_card("Completed Target Map", activity_overview_totals[:completed_target_map], "Complete farmer × activity mappings; same farmer ki har complete activity count hogi.").merge(code: "G"),
-      dashboard_card("Pending Farmers (Distinct)", activity_overview_totals[:pending_farmers], "Selected activities me training pending unique farmers.").merge(code: "D")
+      dashboard_card("Red Farmers (Distinct)", activity_overview_totals[:red_farmers], "Kisi selected activity me completion nahi hua.").merge(code: "H"),
+      dashboard_card("Green Farmers (Distinct)", activity_overview_totals[:green_farmers], "Har selected activity me completion hua.").merge(code: "I"),
+      dashboard_card("Yellow Farmers (Distinct)", activity_overview_totals[:yellow_farmers], "Kuch activities complete aur kuch pending hain.").merge(code: "J")
     ]
     # Full target/participation rows are available on their dedicated report
     # pages. The dashboard renders summary boxes only, so building those large
@@ -2087,14 +2082,19 @@ class ModulesController < ApplicationController
     target_map = 0
     completed_target_map = 0
     pending_target_map = 0
+    farmer_key_lookup = training_farmer_status_key_lookup(Array(target_rows).flat_map do |row|
+      Array(row[:assigned_farmer_ids]) + Array(row[:completed_farmer_ids])
+    end)
 
     Array(target_rows).each do |row|
       assigned_ids = unique_training_farmer_ids(row[:assigned_farmer_ids])
       completed_ids = unique_training_farmer_ids(row[:completed_farmer_ids])
+      assigned_keys = assigned_ids.map { |farmer_id| farmer_key_lookup[farmer_id.to_s] || farmer_id.to_s }.reject(&:blank?).uniq
+      completed_keys = completed_ids.map { |farmer_id| farmer_key_lookup[farmer_id.to_s] || farmer_id.to_s }.reject(&:blank?).uniq.to_set
 
-      assigned_ids.each do |farmer_id|
-        state = farmer_states[farmer_id]
-        if completed_ids.include?(farmer_id)
+      assigned_keys.each do |farmer_key|
+        state = farmer_states[farmer_key]
+        if completed_keys.include?(farmer_key)
           state[:completed] = true
           completed_target_map += 1
         else
@@ -2116,6 +2116,18 @@ class ModulesController < ApplicationController
       green_farmers: farmer_states.count { |_farmer_id, state| state[:completed] && !state[:pending] },
       yellow_farmers: farmer_states.count { |_farmer_id, state| state[:completed] && state[:pending] }
     }
+  end
+
+  def training_farmer_status_key_lookup(farmer_ids)
+    farmer_ids = Array(farmer_ids).map(&:to_s).reject(&:blank?).uniq
+    return {} if farmer_ids.blank?
+
+    tracenet_by_id = model_ready?(:Afl) ? Afl.where(id: farmer_ids).pluck(:id, :tracenet_no).to_h : {}
+    farmer_ids.index_with do |farmer_id|
+      tracenet = tracenet_by_id[farmer_id.to_i].presence || tracenet_by_id[farmer_id].presence
+      normalized_tracenet = dashboard_text_value(tracenet)
+      normalized_tracenet.present? && normalized_tracenet.casecmp("NULL") != 0 ? "tracenet:#{normalized_tracenet}" : "afl:#{farmer_id}"
+    end
   end
 
   def activity_overview_afl_master_count(targets)
