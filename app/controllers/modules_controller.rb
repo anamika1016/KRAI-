@@ -3355,7 +3355,7 @@ class ModulesController < ApplicationController
       completed_count = [attendance_count, assigned_count].min
       if attendance_count >= 3
         counts[:green] += assigned_count
-      elsif completed_count.positive? && completed_count < assigned_count
+      else
         counts[:yellow] += assigned_count
       end
       if attendance_count.zero?
@@ -3809,10 +3809,8 @@ class ModulesController < ApplicationController
           completed = completed_keys.include?(activity_key)
           status = if attendance_count >= 3
             "green"
-          elsif completed_count.positive? && completed_count < assigned_count
-            "yellow"
           else
-            "red"
+            "yellow"
           end
 
           {
