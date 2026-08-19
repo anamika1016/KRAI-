@@ -29,6 +29,16 @@ class ModulesControllerSortingTest < ActiveSupport::TestCase
     assert_equal "yellow", row[:status]
   end
 
+  test "training FCOC filters match full label and short AFL office names" do
+    controller = ModulesController.new
+
+    assert controller.send(:training_fcoc_text_matches?, "Sausar", "FCO-C Sausar")
+    assert controller.send(:training_fcoc_text_matches?, "FCO-C Turekela", "Turekela")
+    assert_not controller.send(:training_fcoc_text_matches?, "Sausar", "FCO-C Turekela")
+
+    assert_equal ["fco-c sausar", "sausar"], controller.send(:training_fcoc_filter_values, "FCO-C Sausar")
+  end
+
   test "Jeevika Jankar bill list puts submitted and pending bills before approved bills" do
     controller = ModulesController.new
     current_month = Date.current.beginning_of_month
