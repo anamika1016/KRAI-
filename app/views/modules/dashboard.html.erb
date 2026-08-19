@@ -676,12 +676,18 @@
               <strong><%= card[:value] %></strong>
               <small><%= card[:caption] %></small>
               <b>View List</b>
+              <% if card[:code].present? %>
+                <small><%= card[:code] %></small>
+              <% end %>
             <% end %>
           <% else %>
             <div class="<%= card_class %>">
               <span><%= card[:title] %></span>
               <strong><%= card[:value] %></strong>
               <small><%= card[:caption] %></small>
+              <% if card[:code].present? %>
+                <small><%= card[:code] %></small>
+              <% end %>
             </div>
           <% end %>
         <% end %>

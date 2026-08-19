@@ -796,20 +796,19 @@ class ModulesController < ApplicationController
       end
     end
     @activity_overview_cards = [
-      dashboard_card("AFL", activity_overview_afl_count, "Selected filters ke AFL master farmers."),
-      dashboard_card("Mapped Farmers (Distinct)", activity_overview_totals[:mapped_farmers], "Selected activities ke unique mapped farmers.", farmer_training_participation_path(activity_overview_farmer_path_params(status: "unique"))),
+      dashboard_card("AFL", activity_overview_afl_count, "Selected filters ke AFL master farmers.").merge(code: "A"),
+      dashboard_card("Mapped Farmers (Distinct)", activity_overview_totals[:mapped_farmers], "Selected activities ke unique mapped farmers.", farmer_training_participation_path(activity_overview_farmer_path_params(status: "unique"))).merge(code: "B"),
+      dashboard_card("Green Farmers (Distinct)", activity_overview_totals[:green_farmers], "Har selected activity me completion hua.").merge(code: "I"),
+      dashboard_card("Yellow Farmers (Distinct)", activity_overview_totals[:yellow_farmers], "Kuch activities complete aur kuch pending hain.").merge(code: "J"),
+      dashboard_card("Red Farmers (Distinct)", activity_overview_totals[:red_farmers], "Kisi selected activity me completion nahi hua.").merge(code: "H"),
       dashboard_card(
         "Target Map",
         activity_overview_totals[:target_map],
         "Farmer × activity mappings. Same farmer har mapped activity ke liye count hoga."
-      ),
-      dashboard_card("Pending Farmers (Distinct)", activity_overview_totals[:pending_farmers], "Selected activities me training pending unique farmers."),
-      dashboard_card("Complete Farmers (Distinct)", activity_overview_totals[:complete_farmers], "Selected activities me training complete unique farmers."),
-      dashboard_card("Pending Target Map", activity_overview_totals[:pending_target_map], "Pending farmer × activity mappings; same farmer ki har pending activity count hogi."),
-      dashboard_card("Completed Target Map", activity_overview_totals[:completed_target_map], "Complete farmer × activity mappings; same farmer ki har complete activity count hogi."),
-      dashboard_card("Red Farmers (Distinct)", activity_overview_totals[:red_farmers], "Kisi selected activity me completion nahi hua."),
-      dashboard_card("Green Farmers (Distinct)", activity_overview_totals[:green_farmers], "Har selected activity me completion hua."),
-      dashboard_card("Yellow Farmers (Distinct)", activity_overview_totals[:yellow_farmers], "Kuch activities complete aur kuch pending hain.")
+      ).merge(code: "C"),
+      dashboard_card("Pending Target Map", activity_overview_totals[:pending_target_map], "Pending farmer × activity mappings; same farmer ki har pending activity count hogi.").merge(code: "F"),
+      dashboard_card("Completed Target Map", activity_overview_totals[:completed_target_map], "Complete farmer × activity mappings; same farmer ki har complete activity count hogi.").merge(code: "G"),
+      dashboard_card("Pending Farmers (Distinct)", activity_overview_totals[:pending_farmers], "Selected activities me training pending unique farmers.").merge(code: "D")
     ]
     # Full target/participation rows are available on their dedicated report
     # pages. The dashboard renders summary boxes only, so building those large
