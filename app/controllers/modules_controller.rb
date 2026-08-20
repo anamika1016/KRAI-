@@ -2974,16 +2974,28 @@ class ModulesController < ApplicationController
   end
 
   def weekly_activity_target_status_cards(targets, month_name: nil, fcoc_name: nil, week_number: nil, include_activity_filters: true)
-    rows = weekly_activity_target_farmer_status_rows(targets, month_name: month_name, fcoc_name: fcoc_name, week_number: week_number)
-    totals = weekly_activity_target_status_counts_for_rows(rows)
-    target_quantity = training_mapped_farmer_distinct_count_for_participation(
-      month_name: month_name,
-      fcoc_name: fcoc_name,
-      targets: targets
-    )
-    completed_quantity = totals[:green]
-    partial_quantity = totals[:yellow]
-    pending_quantity = totals[:red]
+    if week_number.blank? && !weekly_activity_other_targets?(targets)
+      participation_counts = training_participation_dashboard_counts(
+        month_name: month_name,
+        fcoc_name: fcoc_name,
+        records: dashboard_training_participation_records(month_name: month_name, fcoc_name: fcoc_name)
+      )
+      target_quantity = participation_counts[:total]
+      completed_quantity = participation_counts[:green]
+      partial_quantity = participation_counts[:yellow]
+      pending_quantity = participation_counts[:red]
+    else
+      rows = weekly_activity_target_farmer_status_rows(targets, month_name: month_name, fcoc_name: fcoc_name, week_number: week_number)
+      totals = weekly_activity_target_status_counts_for_rows(rows)
+      target_quantity = training_mapped_farmer_distinct_count_for_participation(
+        month_name: month_name,
+        fcoc_name: fcoc_name,
+        targets: targets
+      )
+      completed_quantity = totals[:green]
+      partial_quantity = totals[:yellow]
+      pending_quantity = totals[:red]
+    end
     filter_params = dashboard_weekly_report_filter_params
     filter_params.except!(:activity, :training_sub_activity) unless include_activity_filters
     filter_params.delete(:training_month)
