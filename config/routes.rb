@@ -111,6 +111,7 @@ Rails.application.routes.draw do
   get "dashboard/farmer-training-participation", to: "modules#farmer_training_participation", as: :farmer_training_participation
   get "dashboard/farmer-training-target-status", to: "modules#farmer_training_target_status", as: :farmer_training_target_status
   get "dashboard/weekly-activity-target-report", to: "modules#weekly_activity_target_report", as: :weekly_activity_target_report
+  get "dashboard/ics-wise-farmer-report", to: "modules#ics_wise_farmer_report", as: :ics_wise_farmer_report
   get "dashboard/farmer-participation-report", to: "modules#farmer_participation_report", as: :farmer_participation_report
 
   resources :users, except: [:show] do

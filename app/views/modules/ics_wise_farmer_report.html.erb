@@ -1,0 +1,177 @@
+<% content_for :title, "ICS Wise Farmer Report" %>
+<% filter_params = {
+  training_month: @ics_report_selected_month_value.presence,
+  training_fcoc: @ics_report_selected_fcoc.presence,
+  ics: @ics_report_selected_ics.presence
+}.compact_blank %>
+<% summary = @ics_report_summary || { farmers: 0, main_activities: 0, sub_activities: 0, achievement: 0 } %>
+<% rows = Array(@ics_report_rows) %>
+
+<section class="dashboard-page">
+  <div class="dashboard-topbar">
+    <div>
+      <p class="vrp-eyebrow">ICS Report</p>
+      <h1>ICS Wise Farmer Report</h1>
+      <p>View ICS-wise farmer summary, fetch data, and export the report.</p>
+    </div>
+
+    <div class="dashboard-actions">
+      <%= link_to "Back to Dashboard", dashboard_path, class: "list-btn active" %>
+      <%= link_to "Export Excel", ics_wise_farmer_report_path(filter_params.merge(format: :xlsx)), class: "list-btn export" %>
+    </div>
+  </div>
+
+  <section class="module-card">
+    <div class="module-card-header">
+      <div>
+        <h2>Report Filters</h2>
+        <p>Select month, FCOC, and ICS to load the report.</p>
+      </div>
+    </div>
+
+    <%= form_with url: ics_wise_farmer_report_path, method: :get, local: true, html: { class: "dashboard-filter-bar" } do %>
+      <div class="dashboard-filter-grid">
+        <div class="dashboard-filter-field">
+          <label for="ics_report_month">Month</label>
+          <select name="training_month" id="ics_report_month" class="form-select dashboard-filter-select">
+            <option value="all" <%= "selected" if @ics_report_selected_month_value.to_s == "all" %>>All</option>
+            <% Array(@ics_report_month_options).each do |month_name| %>
+              <option value="<%= month_name %>" <%= "selected" if @ics_report_selected_month_value.to_s == month_name.to_s %>><%= month_name %></option>
+            <% end %>
+          </select>
+        </div>
+
+        <div class="dashboard-filter-field">
+          <label for="ics_report_fcoc">FCOC</label>
+          <select name="training_fcoc" id="ics_report_fcoc" class="form-select dashboard-filter-select">
+            <option value="">All FCOC</option>
+            <% Array(@ics_report_fcoc_options).each do |fcoc| %>
+              <option value="<%= fcoc %>" <%= "selected" if @ics_report_selected_fcoc.to_s == fcoc.to_s %>><%= fcoc %></option>
+            <% end %>
+          </select>
+        </div>
+
+        <div class="dashboard-filter-field dashboard-filter-field--activity">
+          <label for="ics_report_ics">ICS</label>
+          <select name="ics" id="ics_report_ics" class="form-select dashboard-filter-select">
+            <option value="">All ICS</option>
+            <% Array(@ics_report_options).each do |option| %>
+              <option value="<%= option %>" <%= "selected" if @ics_report_selected_ics.to_s == option.to_s %>><%= option %></option>
+            <% end %>
+          </select>
+        </div>
+
+        <div class="dashboard-filter-actions">
+          <%= submit_tag "Fetch Data", class: "list-btn active" %>
+          <%= link_to "Clear", ics_wise_farmer_report_path, class: "table-action" %>
+        </div>
+      </div>
+    <% end %>
+  </section>
+
+  <% if @ics_report_selected_ics.present? %>
+    <section class="module-card training-participation-status-card">
+      <div class="training-participation-boxes compact">
+        <div class="training-participation-box total">
+          <span>AFL</span>
+          <strong><%= summary[:farmers].to_i %></strong>
+          <small>Visible AFL farmers in the selected ICS.</small>
+        </div>
+        <div class="training-participation-box total">
+          <span>Main Activity Count</span>
+          <strong><%= summary[:main_activities].to_i %></strong>
+          <small>Total main activities in the selected ICS.</small>
+        </div>
+        <div class="training-participation-box total">
+          <span>Sub Activity Count</span>
+          <strong><%= summary[:sub_activities].to_i %></strong>
+          <small>Total sub activities in the selected ICS.</small>
+        </div>
+        <div class="training-participation-box total">
+          <span>Achievement</span>
+          <strong><%= summary[:achievement].to_i %></strong>
+          <small>Worked distinct farmers in the selected ICS.</small>
+        </div>
+      </div>
+    </section>
+  <% end %>
+
+  <section class="module-card">
+    <div class="module-card-header">
+      <div>
+        <h2>Farmer List</h2>
+        <p class="module-subtitle">
+          Total rows: <%= rows.size %>
+          <% if @ics_report_selected_month.present? %> | Month: <%= @ics_report_selected_month %><% end %>
+          <% if @ics_report_selected_fcoc.present? %> | FCOC: <%= @ics_report_selected_fcoc %><% end %>
+          <% if @ics_report_selected_ics.present? %> | ICS: <%= @ics_report_selected_ics %><% end %>
+        </p>
+      </div>
+      <button type="button" class="list-btn export" data-export-table="ics_wise_farmer_report_table" data-export-include-all="true">Export</button>
+    </div>
+
+    <% if @ics_report_selected_ics.present? && rows.any? %>
+      <div class="table-shell">
+        <table class="module-table compact-table" id="ics_wise_farmer_report_table" data-paginated-table data-page-size="20">
+          <thead>
+            <tr>
+              <th>ICS</th>
+              <th>Farmer Name</th>
+              <th>Father Name</th>
+              <th>Mobile No.</th>
+              <th>Tracenet No.</th>
+              <th>Village</th>
+              <th>Jeevika Jankar</th>
+              <th>Month</th>
+              <th>Main Activity</th>
+              <th>Sub Activity</th>
+              <th>Training Date</th>
+              <th>Register</th>
+              <th>Photo</th>
+            </tr>
+          </thead>
+          <tbody>
+            <% rows.each do |row| %>
+              <tr>
+                <td><%= row[:ics].presence || "-" %></td>
+                <td><%= row[:farmer_name].presence || "-" %></td>
+                <td><%= row[:father_name].presence || "-" %></td>
+                <td><%= row[:mobile_no].presence || "-" %></td>
+                <td><%= row[:tracenet_no].presence || "-" %></td>
+                <td><%= row[:village].presence || "-" %></td>
+                <td><%= row[:vrp_name].presence || "-" %></td>
+                <td><%= row[:month].presence || "-" %></td>
+                <td><%= row[:main_activity].presence || "-" %></td>
+                <td><%= row[:sub_activity].presence || "-" %></td>
+                <td><%= row[:training_dates].presence || "-" %></td>
+                <td>
+                  <% if Array(row[:training_register_urls]).any? %>
+                    <% Array(row[:training_register_urls]).each_with_index do |url, index| %>
+                      <%= link_to "Register #{index + 1}", url, class: "table-action", target: "_blank", rel: "noopener" %>
+                    <% end %>
+                  <% else %>
+                    -
+                  <% end %>
+                </td>
+                <td>
+                  <% if Array(row[:training_photo_urls]).any? %>
+                    <% Array(row[:training_photo_urls]).each_with_index do |url, index| %>
+                      <%= link_to "Photo #{index + 1}", url, class: "table-action", target: "_blank", rel: "noopener" %>
+                    <% end %>
+                  <% else %>
+                    -
+                  <% end %>
+                </td>
+              </tr>
+            <% end %>
+          </tbody>
+        </table>
+      </div>
+      <div class="table-pagination" data-pagination-for="ics_wise_farmer_report_table"></div>
+    <% elsif @ics_report_selected_ics.blank? %>
+      <div class="training-empty-state">Select an ICS to fetch the farmer report.</div>
+    <% else %>
+      <div class="training-empty-state">No farmer training data was found for the selected ICS.</div>
+    <% end %>
+  </section>
+</section>

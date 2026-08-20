@@ -11,7 +11,6 @@
 <% participation_path_params[:training_month] = participation_selected_month if participation_selected_month.present? %>
 <% participation_path_params[:training_fcoc] = participation_fcoc_filter_value if participation_fcoc_filter_value.present? %>
 <% unique_status_path_params = participation_path_params.merge(status: "unique") %>
-<% completed_map_status_path_params = participation_path_params.merge(status: "completed_map") %>
 
 <section class="module-card training-participation-status-card dashboard-status-panel training-status-panel">
   <div class="module-card-header training-participation-status-header">
@@ -55,12 +54,12 @@
       <div class="training-participation-box total">
         <span>Total registered farmer afl</span>
         <strong><%= (@training_registered_farmer_count || @training_unique_farmer_count).to_i %></strong>
-        <small>Selected filters ke registered AFL farmers.</small>
+        <small>Registered AFL farmers for the selected filters.</small>
       </div>
       <%= link_to farmer_training_participation_path(unique_status_path_params), class: "training-participation-box total", data: { dashboard_card: true } do %>
         <span>Mapped Farmer Distinct</span>
         <strong><%= @training_mapped_farmer_count.to_i %></strong>
-        <small>Selected month me farmer training se mapped unique farmers.</small>
+        <small>Unique mapped farmers for the selected month.</small>
         <b>View List</b>
       <% end %>
       <% status_cards.each do |card| %>
@@ -70,12 +69,6 @@
           <small><%= card[:caption] %></small>
           <b>View List</b>
         <% end %>
-      <% end %>
-      <%= link_to farmer_training_participation_path(completed_map_status_path_params), class: "training-participation-box completed", data: { dashboard_card: true } do %>
-        <span>Multiple Total Complete Training</span>
-        <strong><%= @training_completed_target_map_count.to_i %></strong>
-        <small>Multiple total target map me completed training count.</small>
-        <b>View List</b>
       <% end %>
     <% else %>
       <div class="training-empty-state">No farmer training target data found.</div>
