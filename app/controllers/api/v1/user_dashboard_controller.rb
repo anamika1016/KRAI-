@@ -2,27 +2,27 @@ module Api
   module V1
     class UserDashboardController < BaseController
       def show
-        calculation_stage = "authentication"
+        @calculation_stage = "authentication"
         return render_vrp_error if current_api_user.is_a?(Vrp)
 
-        calculation_stage = "dashboard_context"
+        @calculation_stage = "dashboard_context"
         calculator = dashboard_calculator
-        calculation_stage = "visible_vrps_and_targets"
+        @calculation_stage = "visible_vrps_and_targets"
         vrps, targets, options = filtered_scope(calculator)
-        calculation_stage = "visible_bills"
+        @calculation_stage = "visible_bills"
         bills = filtered_bills(calculator, vrps)
         set_filtered_scope(calculator, vrps, targets, bills)
 
-        calculation_stage = "participation_month_options"
+        @calculation_stage = "participation_month_options"
         months = calculator.send(:dashboard_month_options_for_targets, targets)
         participation_month = selected_month(:participation_month, months, calculator, targets)
         participation_fcoc = params[:participation_fcoc].presence || calculator.send(:dashboard_default_visible_fcoc, options[:fcos])
-        calculation_stage = "participation_records"
+        @calculation_stage = "participation_records"
         records = calculator.send(:dashboard_training_participation_records, month_name: participation_month, fcoc_name: participation_fcoc)
-        calculation_stage = "participation_counts"
+        @calculation_stage = "participation_counts"
         participation = calculator.send(:training_participation_dashboard_counts,
           month_name: participation_month, fcoc_name: participation_fcoc, records: records)
-        calculation_stage = "weekly_targets"
+        @calculation_stage = "weekly_targets"
         weekly_month = selected_month(:weekly_target_month, months, calculator)
         weekly_targets = calculator.send(:dashboard_targets_for_month, targets, weekly_month)
         weekly_fcoc = params[:weekly_target_fcoc].presence || calculator.send(:dashboard_default_visible_fcoc, options[:fcos])
@@ -31,7 +31,7 @@ module Api
         end
         weekly = calculator.send(:weekly_activity_target_status_totals, weekly_targets, week_number: selected_week)
 
-        calculation_stage = "response_payload"
+        @calculation_stage = "response_payload"
         render json: {
           success: true,
           message: "User dashboard fetched successfully.",
@@ -47,12 +47,14 @@ module Api
           generated_at: Time.current.iso8601
         }, status: :ok
       rescue StandardError => error
-        Rails.logger.error("User dashboard API failed at #{calculation_stage}: #{error.class}: #{error.message}\n#{error.backtrace&.first(15)&.join("\n")}")
+        Rails.logger.error("User dashboard API failed at #{@calculation_stage}: #{error.class}: #{error.message}\n#{error.backtrace&.first(15)&.join("\n")}")
         render json: {
           success: false,
           message: "User dashboard could not be loaded.",
           error: "dashboard_calculation_failed",
-          failed_stage: calculation_stage,
+          failed_stage: @calculation_stage,
+          exception: error.class.name,
+          missing_method: (error.name.to_s if error.respond_to?(:name)),
           request_id: request.request_id
         }, status: :internal_server_error
       end
@@ -71,9 +73,13 @@ module Api
       end
 
       def filtered_scope(calculator)
+        @calculation_stage = "dashboard_vrps"
         vrps = calculator.send(:dashboard_vrps).to_a
+        @calculation_stage = "dashboard_target_mappings"
         targets = calculator.send(:dashboard_target_mappings).to_a
+        @calculation_stage = "dashboard_search_filter"
         vrps, targets = search_scope(vrps, targets)
+        @calculation_stage = "dashboard_activity_filters"
         options = { main_activities: values(targets, :main_activity_name) }
         selected_main_activity = params[:main_activity].presence
         selected_sub_activity = params[:sub_activity].presence
@@ -90,9 +96,12 @@ module Api
           vrps = vrps.select { |v| targets.any? { |t| t.vrp_id == v.id } }
         end
         options[:fcos] = values(vrps, :fcoc)
+        @calculation_stage = "dashboard_fcoc_filter"
         vrps, targets = filter_vrps(vrps, targets, :fcoc, params[:fcoc].presence || params[:fco])
         options[:cluster_incharges] = values(vrps, :cluster_incharge)
+        @calculation_stage = "dashboard_cluster_filter"
         vrps, targets = filter_vrps(vrps, targets, :cluster_incharge, params[:cluster_incharge])
+        @calculation_stage = "dashboard_ics_filter"
         options[:ics_names] = targets.filter_map { |target| (target.ics_name.presence || target.ics_id).to_s.strip.presence }.uniq.sort
         selected_ics = params[:ics].presence || params[:ics_name]
         if selected_ics.present?
@@ -100,13 +109,16 @@ module Api
           vrps = vrps.select { |vrp| targets.any? { |target| target.vrp_id == vrp.id } }
         end
         options[:months] = values(targets, :month_name)
+        @calculation_stage = "dashboard_month_filter"
         if params[:month].present?
           targets = targets.select { |t| same?(t.month_name, params[:month]) }
           vrps = vrps.select { |v| targets.any? { |t| t.vrp_id == v.id } }
         end
         options[:post_wise_names] = values(vrps, :role)
+        @calculation_stage = "dashboard_post_filter"
         vrps, targets = filter_vrps(vrps, targets, :role, params[:post].presence || params[:post_wise_name])
         options[:vrps] = vrps.map { |v| { id: v.id, name: v.name, user_name: v.user_name } }
+        @calculation_stage = "dashboard_vrp_filter"
         if params[:vrp_id].present?
           vrps = vrps.select { |v| v.id.to_s == params[:vrp_id].to_s }
           targets = targets.select { |t| t.vrp_id.to_s == params[:vrp_id].to_s }
