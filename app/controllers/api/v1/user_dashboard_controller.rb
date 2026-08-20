@@ -2,19 +2,27 @@ module Api
   module V1
     class UserDashboardController < BaseController
       def show
+        calculation_stage = "authentication"
         return render_vrp_error if current_api_user.is_a?(Vrp)
 
+        calculation_stage = "dashboard_context"
         calculator = dashboard_calculator
+        calculation_stage = "visible_vrps_and_targets"
         vrps, targets, options = filtered_scope(calculator)
+        calculation_stage = "visible_bills"
         bills = filtered_bills(calculator, vrps)
         set_filtered_scope(calculator, vrps, targets, bills)
 
+        calculation_stage = "participation_month_options"
         months = calculator.send(:dashboard_month_options_for_targets, targets)
         participation_month = selected_month(:participation_month, months, calculator, targets)
         participation_fcoc = params[:participation_fcoc].presence || calculator.send(:dashboard_default_visible_fcoc, options[:fcos])
+        calculation_stage = "participation_records"
         records = calculator.send(:dashboard_training_participation_records, month_name: participation_month, fcoc_name: participation_fcoc)
+        calculation_stage = "participation_counts"
         participation = calculator.send(:training_participation_dashboard_counts,
           month_name: participation_month, fcoc_name: participation_fcoc, records: records)
+        calculation_stage = "weekly_targets"
         weekly_month = selected_month(:weekly_target_month, months, calculator)
         weekly_targets = calculator.send(:dashboard_targets_for_month, targets, weekly_month)
         weekly_fcoc = params[:weekly_target_fcoc].presence || calculator.send(:dashboard_default_visible_fcoc, options[:fcos])
@@ -23,6 +31,7 @@ module Api
         end
         weekly = calculator.send(:weekly_activity_target_status_totals, weekly_targets, week_number: selected_week)
 
+        calculation_stage = "response_payload"
         render json: {
           success: true,
           message: "User dashboard fetched successfully.",
@@ -38,11 +47,13 @@ module Api
           generated_at: Time.current.iso8601
         }, status: :ok
       rescue StandardError => error
-        Rails.logger.error("User dashboard API failed: #{error.class}: #{error.message}\n#{error.backtrace&.first(15)&.join("\n")}")
+        Rails.logger.error("User dashboard API failed at #{calculation_stage}: #{error.class}: #{error.message}\n#{error.backtrace&.first(15)&.join("\n")}")
         render json: {
           success: false,
           message: "User dashboard could not be loaded.",
-          error: "dashboard_calculation_failed"
+          error: "dashboard_calculation_failed",
+          failed_stage: calculation_stage,
+          request_id: request.request_id
         }, status: :internal_server_error
       end
 
