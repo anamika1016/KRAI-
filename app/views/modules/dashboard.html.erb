@@ -471,8 +471,6 @@
         <% end %>
         <% weekly_report_params = dashboard_weekly_report_filter_params %>
         <% weekly_report_params.delete(:training_month) %>
-        <% weekly_report_params.delete(:activity) %>
-        <% weekly_report_params.delete(:training_sub_activity) %>
         <% weekly_report_params[:training_month] = weekly_selected_month if weekly_selected_month.present? %>
         <% weekly_report_params[:training_fcoc] = weekly_fcoc_filter_value if weekly_fcoc_filter_value.present? %>
         <% weekly_report_params[:week] = weekly_week_filter_value if weekly_week_filter_value.present? %>

@@ -655,7 +655,7 @@ class ModulesController < ApplicationController
       .uniq
       .compact_blank
       .sort_by { |m| dashboard_month_index(m) || 0 }
-    weekly_target_scope = dashboard_participation_targets
+    weekly_target_scope = t_scope.dup
     # Monthly reporting is for the completed month by default (for example,
     # opening the dashboard in August shows July). Users can still choose All
     # Months or another month from the filter.
@@ -820,8 +820,8 @@ class ModulesController < ApplicationController
     end
     weekly_dashboard_targets = filter_weekly_activity_targets(
       weekly_dashboard_targets,
-      activity: nil,
-      sub_activity: nil,
+      activity: params[:activity].presence || params[:main_activity].presence,
+      sub_activity: params[:training_sub_activity].presence || params[:sub_activity].presence,
       fcoc: @weekly_target_fcoc_filter_value
     )
     preload_training_farmers_for_targets!(weekly_dashboard_targets)
@@ -829,8 +829,7 @@ class ModulesController < ApplicationController
       weekly_dashboard_targets,
       month_name: @weekly_dashboard_selected_month,
       fcoc_name: @weekly_target_fcoc_filter_value,
-      week_number: @weekly_target_week_filter_value,
-      include_activity_filters: false
+      week_number: @weekly_target_week_filter_value
     )
     @dashboard_cards = dashboard_cards
     @dashboard_generated_at = Time.current
