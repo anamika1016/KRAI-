@@ -444,7 +444,14 @@ class VrpsController < ApplicationController
   def visible_vrps
     return Vrp.all if current_app_user.blank? || admin_user?
 
-    own_vrps
+    mapped_vrps = cluster_mapped_vrps.to_a
+    base_vrps = if cluster_incharge_login? || mapped_vrps.any?
+      mapped_vrps
+    else
+      own_vrps.to_a
+    end
+
+    (base_vrps + approval_related_vrps).uniq
   end
 
   def approval_progress_steps_for(vrp)

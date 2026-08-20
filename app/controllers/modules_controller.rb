@@ -3245,6 +3245,7 @@ class ModulesController < ApplicationController
       end
     end
 
+    preload_training_target_mappings_for_records!(records)
     @dashboard_training_participation_records_cache[cache_key] = records
   end
 
@@ -3875,6 +3876,12 @@ class ModulesController < ApplicationController
 
   def training_participation_target_memberships(targets)
     targets = Array(targets)
+    # Prime all farmer IDs in one query. Without this, each target mapping can
+    # issue its own AFL existence query while the memberships are built.
+    valid_farmer_ids = training_participation_existing_farmer_id_set(targets).to_a
+    # Farmer identity keys use TraceNet numbers where available. Load those
+    # farmers in batches before the target loop instead of one SELECT per ID.
+    training_farmers_by_id(valid_farmer_ids)
     targets.each_with_object({}) do |target, memberships|
       training_participation_target_farmer_ids(target).each do |farmer_id|
         unique_farmer_key = training_participation_target_farmer_key(farmer_id)
@@ -3988,12 +3995,14 @@ class ModulesController < ApplicationController
       farmer_ids.each { |farmer_id| target_sets_by_farmer_id[farmer_id.to_s] << target_set }
     end
 
-    ModuleRecord
+    records = ModuleRecord
       .where(module_slug: "training-form")
       .order(created_at: :desc)
       .select { |record| active_module_record?(record) }
       .select { |record| month_name.blank? || normalize_dashboard_text(training_record_month_name(record)) == normalize_dashboard_text(month_name) }
-      .each_with_object(Hash.new { |hash, key| hash[key] = { attendance_count: 0, training_dates: [], completed_activity_keys: [] } }) do |record, details|
+
+    preload_training_target_mappings_for_records!(records)
+    records.each_with_object(Hash.new { |hash, key| hash[key] = { attendance_count: 0, training_dates: [], completed_activity_keys: [] } }) do |record, details|
         selected_farmer_ids = training_record_selected_farmer_ids(record)
         candidate_target_sets = selected_farmer_ids.flat_map { |farmer_id| target_sets_by_farmer_id[farmer_id.to_s] }.uniq
         matching_membership_keys = candidate_target_sets.each_with_object([]) do |(target, farmer_ids), keys|
@@ -4836,8 +4845,10 @@ class ModulesController < ApplicationController
 
     @training_participation_existing_farmer_ids_cache ||= {}
     missing_ids = ids.reject { |id| @training_participation_existing_farmer_ids_cache.key?(id) }
-    existing_ids = Afl.where(id: missing_ids).pluck(:id).map(&:to_s).to_set
-    missing_ids.each { |id| @training_participation_existing_farmer_ids_cache[id] = existing_ids.include?(id) }
+    if missing_ids.any?
+      existing_ids = Afl.where(id: missing_ids).pluck(:id).map(&:to_s).to_set
+      missing_ids.each { |id| @training_participation_existing_farmer_ids_cache[id] = existing_ids.include?(id) }
+    end
 
     Set.new(ids.select { |id| @training_participation_existing_farmer_ids_cache[id] })
   end
@@ -5012,6 +5023,34 @@ class ModulesController < ApplicationController
     return @training_record_target_mapping_cache[mapping_id] = @dashboard_target_mapping_index[mapping_id] if @dashboard_target_mapping_index.key?(mapping_id)
 
     @training_record_target_mapping_cache[mapping_id] = TargetMapping.includes(:vrp).find_by(id: mapping_id)
+  end
+
+  # Training forms may reference thousands of target mapping IDs. Resolve all
+  # of them once per request instead of falling back to one SELECT per ID.
+  def preload_training_target_mappings_for_records!(records)
+    return unless model_ready?(:TargetMapping)
+
+    mapping_ids = Array(records).flat_map do |record|
+      Array(record.data["target_mapping_ids"].presence || record.data["target_mapping_id"])
+    end.map(&:to_s).reject(&:blank?).uniq
+    return if mapping_ids.blank?
+
+    @training_record_target_mapping_cache ||= {}
+    @dashboard_target_mapping_index ||= dashboard_target_mappings.index_by { |target| target.id.to_s }
+
+    mapping_ids.each do |mapping_id|
+      if @dashboard_target_mapping_index.key?(mapping_id)
+        @training_record_target_mapping_cache[mapping_id] = @dashboard_target_mapping_index[mapping_id]
+      end
+    end
+
+    missing_ids = mapping_ids.reject { |mapping_id| @training_record_target_mapping_cache.key?(mapping_id) }
+    return if missing_ids.blank?
+
+    missing_ids.each { |mapping_id| @training_record_target_mapping_cache[mapping_id] = nil }
+    TargetMapping.includes(:vrp).where(id: missing_ids).find_each do |target|
+      @training_record_target_mapping_cache[target.id.to_s] = target
+    end
   end
 
   def training_record_target_location_matches?(record, target)
@@ -8094,10 +8133,7 @@ class ModulesController < ApplicationController
     block = normalize_dashboard_text(first_present_data(record, "block", "block_name", "cd_block_name"))
     return "" if state.blank? || district.blank? || block.blank?
 
-    ModuleRecord
-      .where(module_slug: ["gram-panchayat-master", "lg-directory-list"])
-      .select { |candidate| active_module_record?(candidate) }
-      .find do |candidate|
+    gram_panchayat_location_records.find do |candidate|
         code_matches = %w[gp_code gram_code gram_panchayat_code gram_panchayat_id gram_panchayat gram_panchayat_name gp_name gram_name name].any? do |key|
           normalize_dashboard_text(candidate.data[key]) == normalized_code
         end
@@ -8853,6 +8889,12 @@ class ModulesController < ApplicationController
       end
   end
 
+  def gram_panchayat_location_records
+    @gram_panchayat_location_records ||= ModuleRecord
+      .where(module_slug: ["gram-panchayat-master", "lg-directory-list"])
+      .select { |candidate| active_module_record?(candidate) }
+  end
+
   def normalized_access_value(value)
     value.to_s.strip.downcase
   end
@@ -9071,7 +9113,11 @@ class ModulesController < ApplicationController
     normalized_label = normalize_dashboard_user_label(label.to_s.sub(/\s*\([^)]*\)\s*\z/, ""))
     return false if normalized_label.blank?
 
-    User.order(:first_name, :last_name, :user_name).any? do |user|
+    @user_record_cluster_incharge_label_cache ||= {}
+    return @user_record_cluster_incharge_label_cache[normalized_label] if @user_record_cluster_incharge_label_cache.key?(normalized_label)
+
+    @dashboard_cluster_role_users ||= User.order(:first_name, :last_name, :user_name).to_a
+    @user_record_cluster_incharge_label_cache[normalized_label] = @dashboard_cluster_role_users.any? do |user|
       user_labels = [
         user.respond_to?(:full_name) ? user.full_name : nil,
         user.respond_to?(:user_name) ? user.user_name : nil,
@@ -10330,6 +10376,10 @@ class ModulesController < ApplicationController
   end
 
   def generic_field_options(field)
+    @generic_field_options_cache ||= {}
+    cache_key = [(@slug || current_slug).to_s, field.to_s]
+    return @generic_field_options_cache[cache_key] if @generic_field_options_cache.key?(cache_key)
+
     key = field.parameterize(separator: "_")
     candidate_keys = [
       key,
@@ -10340,7 +10390,7 @@ class ModulesController < ApplicationController
       "#{key.delete_prefix('select_')}_name"
     ].uniq
 
-    ModuleRecord
+    @generic_field_options_cache[cache_key] = ModuleRecord
       .where.not(module_slug: @slug || current_slug)
       .order(created_at: :desc)
       .select { |record| active_module_record?(record) }
@@ -10350,8 +10400,13 @@ class ModulesController < ApplicationController
 
   def values_from_module(module_slug, field_key)
     return approver_options if module_slug == "new-user" && field_key == "approver_name_with_role"
+
+    @values_from_module_cache ||= {}
+    cache_key = [module_slug.to_s, field_key.to_s]
+    return @values_from_module_cache[cache_key] if @values_from_module_cache.key?(cache_key)
+
     if module_slug == "gram-panchayat-master" && field_key == "gram_panchayat_name"
-      return ModuleRecord
+      return @values_from_module_cache[cache_key] = ModuleRecord
         .where(module_slug: module_slug)
         .order(created_at: :desc)
         .select { |record| active_module_record?(record) }
@@ -10368,7 +10423,7 @@ class ModulesController < ApplicationController
     field_keys << "vrp_type_name" if module_slug == "add-vrp-type" && field_key == "jeevika_jankar_type_name"
     field_keys << "jeevika_jankar_type_name" if module_slug == "add-vrp-type" && field_key == "vrp_type_name"
 
-    ModuleRecord
+    @values_from_module_cache[cache_key] = ModuleRecord
       .where(module_slug: module_slug)
       .order(created_at: :desc)
       .select { |record| active_module_record?(record) }
@@ -10456,8 +10511,12 @@ class ModulesController < ApplicationController
   end
 
   def model_ready?(name)
+    @model_ready_cache ||= {}
+    key = name.to_s
+    return @model_ready_cache[key] if @model_ready_cache.key?(key)
+
     klass = name.to_s.safe_constantize
-    klass.present? && (!klass.respond_to?(:table_exists?) || klass.table_exists?)
+    @model_ready_cache[key] = klass.present? && (!klass.respond_to?(:table_exists?) || klass.table_exists?)
   end
 
   def dashboard_vrp_previous_status(vrp)

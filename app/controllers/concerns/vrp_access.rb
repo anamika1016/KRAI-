@@ -298,10 +298,7 @@ module VrpAccess
     creator_identities = vrp_creator_identities(vrp)
     return @approval_steps_for_cache[cache_key] = [] if creator_identities.blank?
 
-    matching_records = ModuleRecord
-      .where(module_slug: "approval-master")
-      .order(created_at: :asc)
-      .select do |record|
+    matching_records = cached_vrp_approval_master_records.select do |record|
         record_stakeholder = record.data["stakeholder_name"].to_s
         record_vrp_name = record.data["vrp_name"].to_s
 
@@ -321,6 +318,13 @@ module VrpAccess
       .sort_by { |record| approval_sequence(record) }
 
     @approval_steps_for_cache[cache_key] = matching_records
+  end
+
+  def cached_vrp_approval_master_records
+    @cached_vrp_approval_master_records ||= ModuleRecord
+      .where(module_slug: "approval-master")
+      .order(created_at: :asc)
+      .to_a
   end
 
   def approval_sequence(record)
@@ -571,13 +575,13 @@ module VrpAccess
     return current_app_user&.dig("role") if vrp.created_by_id.blank?
 
     if model_ready?(:User)
-      role = User.find_by(id: vrp.created_by_id)&.role
+      role = cached_vrp_creator_user(vrp.created_by_id)&.role
       return role if role.present?
     end
 
     return current_app_user&.dig("role") unless model_ready?(:ModuleRecord)
 
-    ModuleRecord.find_by(id: vrp.created_by_id)&.data&.[]("role").presence ||
+    cached_vrp_creator_record(vrp.created_by_id)&.data&.[]("role").presence ||
       current_app_user&.dig("role")
   end
 
@@ -585,39 +589,39 @@ module VrpAccess
     return current_app_user&.dig("stakeholder") if vrp.created_by_id.blank?
 
     if model_ready?(:User)
-      stakeholder = User.find_by(id: vrp.created_by_id)&.stakeholder
+      stakeholder = cached_vrp_creator_user(vrp.created_by_id)&.stakeholder
       return stakeholder if stakeholder.present?
     end
 
     return current_app_user&.dig("stakeholder") unless model_ready?(:ModuleRecord)
 
-    ModuleRecord.find_by(id: vrp.created_by_id)&.data&.[]("stakeholder").presence || current_app_user&.dig("stakeholder")
+    cached_vrp_creator_record(vrp.created_by_id)&.data&.[]("stakeholder").presence || current_app_user&.dig("stakeholder")
   end
 
   def vrp_creator_identities(vrp)
     identities = []
 
     if vrp.created_by_id.present? && model_ready?(:User)
-      user = User.find_by(id: vrp.created_by_id)
+      user = cached_vrp_creator_user(vrp.created_by_id)
       identities << user_approval_identity(user) if user
     end
 
     if model_ready?(:User)
       matched_users = []
-      matched_users << User.find_by(email: vrp.email) if vrp.email.present?
-      matched_users << User.find_by(mobile_no: vrp.mobile_no) if vrp.mobile_no.present?
+      matched_users << cached_vrp_creator_user_by(email: vrp.email) if vrp.email.present?
+      matched_users << cached_vrp_creator_user_by(mobile_no: vrp.mobile_no) if vrp.mobile_no.present?
       matched_users.compact.uniq.each do |user|
         identities << user_approval_identity(user)
       end
     end
 
     if vrp.created_by_id.present? && model_ready?(:ModuleRecord)
-      record = ModuleRecord.find_by(id: vrp.created_by_id)
+      record = cached_vrp_creator_record(vrp.created_by_id)
       identities << record_approval_identity(record) if record
     end
 
     if model_ready?(:ModuleRecord)
-      matched_records = ModuleRecord.where(module_slug: "new-user").select do |record|
+      matched_records = cached_vrp_creator_records.select do |record|
         (vrp.email.present? && record.data["email"].to_s.casecmp(vrp.email.to_s).zero?) ||
           (vrp.mobile_no.present? && record.data["mobile_no"].to_s == vrp.mobile_no.to_s)
       end
@@ -631,6 +635,34 @@ module VrpAccess
     identities
       .select { |identity| identity[:stakeholder].present? && (identity[:role].present? || identity_user_name_values(identity).present?) }
       .uniq
+  end
+
+  def cached_vrp_creator_user(id)
+    @cached_vrp_creator_users ||= {}
+    key = id.to_s
+    return @cached_vrp_creator_users[key] if @cached_vrp_creator_users.key?(key)
+
+    @cached_vrp_creator_users[key] = User.find_by(id: id)
+  end
+
+  def cached_vrp_creator_user_by(attributes)
+    @cached_vrp_creator_users_by ||= {}
+    key = attributes.to_a.sort_by { |name, _value| name.to_s }
+    return @cached_vrp_creator_users_by[key] if @cached_vrp_creator_users_by.key?(key)
+
+    @cached_vrp_creator_users_by[key] = User.find_by(attributes)
+  end
+
+  def cached_vrp_creator_record(id)
+    @cached_vrp_creator_records_by_id ||= {}
+    key = id.to_s
+    return @cached_vrp_creator_records_by_id[key] if @cached_vrp_creator_records_by_id.key?(key)
+
+    @cached_vrp_creator_records_by_id[key] = ModuleRecord.find_by(id: id)
+  end
+
+  def cached_vrp_creator_records
+    @cached_vrp_creator_records ||= ModuleRecord.where(module_slug: "new-user").to_a
   end
 
   def current_approval_identity
