@@ -9063,6 +9063,28 @@ class ModulesController < ApplicationController
     role_text.downcase.include?("cluster")
   end
 
+  # Hierarchy labels do not always contain the role in parentheses. In that
+  # case resolve the matching registered User and inspect its saved role.
+  def user_record_cluster_incharge_label?(label)
+    return false unless model_ready?(:User)
+
+    normalized_label = normalize_dashboard_user_label(label.to_s.sub(/\s*\([^)]*\)\s*\z/, ""))
+    return false if normalized_label.blank?
+
+    User.order(:first_name, :last_name, :user_name).any? do |user|
+      user_labels = [
+        user.respond_to?(:full_name) ? user.full_name : nil,
+        user.respond_to?(:user_name) ? user.user_name : nil,
+        user.respond_to?(:name) ? user.name : nil
+      ].compact_blank.map { |value| normalize_dashboard_user_label(value) }
+      next false unless user_labels.include?(normalized_label)
+
+      role = (user.respond_to?(:role_name) ? user.role_name : nil).presence ||
+        (user.respond_to?(:role) ? user.role : nil)
+      role.to_s.downcase.include?("cluster")
+    end
+  end
+
   def hierarchy_cluster_incharge_labels
     return [] unless model_ready?(:ModuleRecord)
 
