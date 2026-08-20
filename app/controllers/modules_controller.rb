@@ -3157,8 +3157,11 @@ class ModulesController < ApplicationController
     rows.map do |row|
       assigned_count = row[:assigned_activity_count].to_i
       completed_count = row[:completed_activity_count].to_i
-      pending_count = [assigned_count - completed_count, 0].max
       progress_percent = assigned_count.positive? ? ((completed_count.to_f / assigned_count) * 100).round : 0
+      status_class = row[:status].to_s
+      target_quantity = 1
+      completed_quantity = %w[green yellow].include?(status_class) ? 1 : 0
+      pending_quantity = status_class == "red" ? 1 : 0
 
       row.merge(
         week: week_label,
@@ -3170,12 +3173,12 @@ class ModulesController < ApplicationController
         fco: "-",
         cluster_incharge: "-",
         post: "-",
-        target_quantity: assigned_count,
-        completed_quantity: completed_count,
-        pending_quantity: pending_count,
+        target_quantity: target_quantity,
+        completed_quantity: completed_quantity,
+        pending_quantity: pending_quantity,
         progress_percent: progress_percent,
-        status_class: row[:status],
-        status_label: training_target_status_label(row[:status]),
+        status_class: status_class,
+        status_label: training_target_status_label(status_class),
         training_register_urls: row[:training_register_urls],
         training_photo_urls: row[:training_photo_urls]
       )
