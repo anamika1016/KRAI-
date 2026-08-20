@@ -655,7 +655,7 @@ class ModulesController < ApplicationController
       .uniq
       .compact_blank
       .sort_by { |m| dashboard_month_index(m) || 0 }
-    weekly_target_scope = t_scope.dup
+    weekly_target_scope = dashboard_participation_targets
     # Monthly reporting is for the completed month by default (for example,
     # opening the dashboard in August shows July). Users can still choose All
     # Months or another month from the filter.
@@ -820,8 +820,8 @@ class ModulesController < ApplicationController
     end
     weekly_dashboard_targets = filter_weekly_activity_targets(
       weekly_dashboard_targets,
-      activity: params[:activity].presence || params[:main_activity].presence,
-      sub_activity: params[:training_sub_activity].presence || params[:sub_activity].presence,
+      activity: nil,
+      sub_activity: nil,
       fcoc: @weekly_target_fcoc_filter_value
     )
     preload_training_farmers_for_targets!(weekly_dashboard_targets)
@@ -829,7 +829,8 @@ class ModulesController < ApplicationController
       weekly_dashboard_targets,
       month_name: @weekly_dashboard_selected_month,
       fcoc_name: @weekly_target_fcoc_filter_value,
-      week_number: @weekly_target_week_filter_value
+      week_number: @weekly_target_week_filter_value,
+      include_activity_filters: false
     )
     @dashboard_cards = dashboard_cards
     @dashboard_generated_at = Time.current
@@ -2973,7 +2974,7 @@ class ModulesController < ApplicationController
     jeevika_bill_current_approver?(record)
   end
 
-  def weekly_activity_target_status_cards(targets, month_name: nil, fcoc_name: nil, week_number: nil)
+  def weekly_activity_target_status_cards(targets, month_name: nil, fcoc_name: nil, week_number: nil, include_activity_filters: true)
     rows = weekly_activity_target_farmer_status_rows(targets, month_name: month_name, fcoc_name: fcoc_name, week_number: week_number)
     totals = weekly_activity_target_status_counts_for_rows(rows)
     target_quantity = totals[:total]
@@ -2981,6 +2982,7 @@ class ModulesController < ApplicationController
     partial_quantity = totals[:yellow]
     pending_quantity = totals[:red]
     filter_params = dashboard_weekly_report_filter_params
+    filter_params.except!(:activity, :training_sub_activity) unless include_activity_filters
     filter_params.delete(:training_month)
     filter_params[:training_month] = month_name if month_name.present?
     filter_params[:training_fcoc] = fcoc_name if fcoc_name.present?
@@ -3632,7 +3634,7 @@ class ModulesController < ApplicationController
 
     sql = <<~SQL.squish
       SELECT COUNT(DISTINCT CASE
-        WHEN LOWER(BTRIM(COALESCE(a.tracenet_no, ''))) NOT IN ('', 'null') THEN CONCAT('tracenet:', LOWER(BTRIM(a.tracenet_no)))
+        WHEN LOWER(BTRIM(COALESCE(a.tracenet_no, ''))) NOT IN ('', 'null') THEN CONCAT('tracenet:', LOWER(BTRIM(a.tracenet_no)), '|name:', LOWER(BTRIM(COALESCE(a.farmer_name, ''))))
         ELSE CONCAT('id:', a.id::text)
       END) AS unique_farmer_count
       FROM target_mappings t
@@ -3948,7 +3950,8 @@ class ModulesController < ApplicationController
 
     farmer = training_farmers_by_id([farmer_id])[farmer_id]
     tracenet = normalize_dashboard_text(farmer&.tracenet_no)
-    tracenet.present? && tracenet != "null" ? "tracenet:#{tracenet}" : "id:#{farmer_id}"
+    farmer_name = normalize_dashboard_text(farmer&.farmer_name)
+    tracenet.present? && tracenet != "null" ? "tracenet:#{tracenet}|name:#{farmer_name}" : "id:#{farmer_id}"
   end
 
   def training_participation_farmer_rows_from_records(records)
