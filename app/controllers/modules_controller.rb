@@ -3037,9 +3037,8 @@ class ModulesController < ApplicationController
       end
     end
     if fcoc.present?
-      selected_fcoc = normalize_dashboard_text(fcoc)
       filtered_targets = filtered_targets.select do |target|
-        normalize_dashboard_text(target.vrp&.fcoc) == selected_fcoc
+        training_target_matches_fcoc?(target, fcoc)
       end
     end
     filtered_targets
@@ -3626,15 +3625,20 @@ class ModulesController < ApplicationController
       binds[:fco_ids] = fco_ids
     end
     if fco_names.any?
-      fcoc_conditions << "LOWER(BTRIM(t.fco_name)) IN (:fco_names)"
+      fcoc_conditions << "(LOWER(BTRIM(t.fco_name)) IN (:fco_names) OR LOWER(BTRIM(v.fcoc)) IN (:fco_names))"
       binds[:fco_names] = fco_names.map { |name| normalize_dashboard_text(name) }.reject(&:blank?).uniq
     end
     conditions << "(#{fcoc_conditions.join(' OR ')})" if fcoc_conditions.any?
 
     sql = <<~SQL.squish
-      SELECT COUNT(DISTINCT j.value) AS unique_afl_count
+      SELECT COUNT(DISTINCT CASE
+        WHEN LOWER(BTRIM(COALESCE(a.tracenet_no, ''))) NOT IN ('', 'null') THEN CONCAT('tracenet:', LOWER(BTRIM(a.tracenet_no)))
+        ELSE CONCAT('id:', a.id::text)
+      END) AS unique_farmer_count
       FROM target_mappings t
       CROSS JOIN LATERAL jsonb_array_elements_text(t.afl_ids::jsonb) AS j(value)
+      JOIN afls a ON a.id::text = j.value
+      LEFT JOIN vrps v ON v.id = t.vrp_id
       WHERE #{conditions.join(' AND ')}
     SQL
 
@@ -3940,7 +3944,11 @@ class ModulesController < ApplicationController
 
   def training_participation_target_farmer_key(farmer_id)
     farmer_id = farmer_id.to_s.strip
-    "id:#{farmer_id}"
+    return "id:#{farmer_id}" if farmer_id.blank?
+
+    farmer = training_farmers_by_id([farmer_id])[farmer_id]
+    tracenet = normalize_dashboard_text(farmer&.tracenet_no)
+    tracenet.present? && tracenet != "null" ? "tracenet:#{tracenet}" : "id:#{farmer_id}"
   end
 
   def training_participation_farmer_rows_from_records(records)
