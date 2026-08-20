@@ -2384,14 +2384,21 @@ class ModulesController < ApplicationController
   def approved_other_target_completed_farmer_ids_for(target_mapping_id)
     return [] unless model_ready?(:ModuleRecord)
 
-    ModuleRecord
+    approved_other_target_completed_farmer_ids_by_target[target_mapping_id.to_s] || []
+  end
+
+  def approved_other_target_completed_farmer_ids_by_target
+    @approved_other_target_completed_farmer_ids_by_target ||= ModuleRecord
       .where(module_slug: OTHER_TARGET_MODULE_SLUGS)
       .order(created_at: :asc)
       .select { |record| approved_other_target_record?(record) }
-      .select { |record| record.data["target_mapping_id"].to_s == target_mapping_id.to_s }
-      .flat_map { |record| Array(record.data["selected_farmer_ids"]).map(&:to_s) }
-      .reject(&:blank?)
-      .uniq
+      .each_with_object(Hash.new { |hash, key| hash[key] = [] }) do |record, ids_by_target|
+        target_mapping_id = record.data["target_mapping_id"].to_s
+        next if target_mapping_id.blank?
+
+        farmer_ids = Array(record.data["selected_farmer_ids"]).map(&:to_s).reject(&:blank?)
+        ids_by_target[target_mapping_id] |= farmer_ids
+      end
   end
 
   def vrp_target_farmer_headers
@@ -3321,7 +3328,7 @@ class ModulesController < ApplicationController
   def training_participation_population_rows(month_name:, fcoc_name:, records:, targets: nil)
     targets ||= training_participation_targets_for_dashboard(month_name: month_name, fcoc_name: fcoc_name)
     memberships = training_participation_target_memberships(targets)
-    return training_participation_farmer_rows_from_records(records) if memberships.blank?
+    return [] if memberships.blank?
 
     attendance_details = training_attendance_details_for_targets(targets, month_name: month_name)
     farmers_by_id = training_farmers_by_id(training_participation_valid_farmer_ids_for_targets(targets))
@@ -3373,11 +3380,13 @@ class ModulesController < ApplicationController
   def training_participation_dashboard_counts(month_name:, fcoc_name:, records:)
     targets = training_participation_targets_for_dashboard(month_name: month_name, fcoc_name: fcoc_name)
     memberships = training_participation_target_memberships(targets)
+    mapped_farmer_total = training_mapped_farmer_distinct_count_for_targets(targets)
     if memberships.blank?
-      counts = training_participation_status_counts_from_records(records)
+      counts = { green: 0, yellow: 0, red: 0, pending: 0, completed: 0, total: 0 }
       counts[:registered_farmer_total] = training_registered_afl_farmer_count_for_participation(targets, fcoc_name: fcoc_name)
       counts[:target_map_total] = 0
       counts[:completed_target_map_total] = 0
+      counts[:total] = mapped_farmer_total
       return counts
     end
 
@@ -3416,7 +3425,7 @@ class ModulesController < ApplicationController
       completed: 0,
       completed_target_map_total: 0,
       registered_farmer_total: training_registered_afl_farmer_count_for_participation(targets, fcoc_name: fcoc_name),
-      total: memberships.size,
+      total: mapped_farmer_total,
       target_map_total: memberships.values.sum { |membership| membership[:assigned_activity_count].to_i }
     }
     memberships.each do |membership_key, membership|
@@ -3436,27 +3445,31 @@ class ModulesController < ApplicationController
     counts
   end
 
+  def training_mapped_farmer_distinct_count_for_targets(targets)
+    return 0 unless model_ready?(:TargetMapping)
+
+    target_ids = Array(targets).map { |target| target.id.to_s.presence }.compact.uniq
+    return 0 if target_ids.blank?
+
+    @training_mapped_farmer_distinct_count_cache ||= {}
+    cache_key = target_ids.sort.join(",")
+    return @training_mapped_farmer_distinct_count_cache[cache_key] if @training_mapped_farmer_distinct_count_cache.key?(cache_key)
+
+    relation = TargetMapping.where(id: target_ids)
+    sql = <<~SQL.squish
+      SELECT COUNT(DISTINCT j.value) AS unique_afl_count
+      FROM target_mappings t
+      CROSS JOIN LATERAL jsonb_array_elements_text(t.afl_ids::jsonb) AS j(value)
+      WHERE t.afl_ids IS NOT NULL
+        AND j.value <> ''
+        AND t.id IN (#{relation.select(:id).to_sql})
+    SQL
+
+    @training_mapped_farmer_distinct_count_cache[cache_key] = ActiveRecord::Base.connection.select_value(sql).to_i
+  end
+
   def training_registered_afl_farmer_count_for_participation(targets, fcoc_name: nil)
-    return 0 unless model_ready?(:Afl)
-
-    scope = Afl.all
-    fco_values = if fcoc_name.present?
-      training_fcoc_filter_values(fcoc_name)
-    else
-      Array(targets).flat_map do |target|
-        training_fcoc_filter_values(
-          target.fco_id.to_s.strip.presence,
-          target.fco_name.to_s.strip.presence,
-          target.vrp&.fcoc.to_s.strip.presence
-        )
-      end.compact_blank.uniq
-    end
-    scope = vrp_filter_afl_mapping_scope(scope, :fco_id, :fco, fco_values, fco_values) if fco_values.any?
-
-    scope.distinct.pluck(:id, :tracenet_no).map do |id, tracenet_no|
-      tracenet = normalize_dashboard_text(tracenet_no)
-      tracenet.present? && tracenet != "null" ? "tracenet:#{tracenet}" : "id:#{id}"
-    end.uniq.size
+    training_mapped_farmer_distinct_count_for_targets(targets)
   end
 
   def training_participation_dashboard_status_cards(counts, month_name:, fcoc_name:)
@@ -3719,14 +3732,7 @@ class ModulesController < ApplicationController
 
   def training_participation_target_farmer_key(farmer_id)
     farmer_id = farmer_id.to_s.strip
-    return "id:#{farmer_id}" if farmer_id.blank?
-
-    @training_participation_farmer_key_cache ||= {}
-    return @training_participation_farmer_key_cache[farmer_id] if @training_participation_farmer_key_cache.key?(farmer_id)
-
-    farmer = training_farmers_by_id([farmer_id])[farmer_id]
-    tracenet = normalize_dashboard_text(farmer&.tracenet_no)
-    @training_participation_farmer_key_cache[farmer_id] = tracenet.present? ? "tracenet:#{tracenet}" : "id:#{farmer_id}"
+    "id:#{farmer_id}"
   end
 
   def training_participation_farmer_rows_from_records(records)
