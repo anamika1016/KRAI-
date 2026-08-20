@@ -2976,7 +2976,11 @@ class ModulesController < ApplicationController
   def weekly_activity_target_status_cards(targets, month_name: nil, fcoc_name: nil, week_number: nil, include_activity_filters: true)
     rows = weekly_activity_target_farmer_status_rows(targets, month_name: month_name, fcoc_name: fcoc_name, week_number: week_number)
     totals = weekly_activity_target_status_counts_for_rows(rows)
-    target_quantity = totals[:total]
+    target_quantity = training_mapped_farmer_distinct_count_for_participation(
+      month_name: month_name,
+      fcoc_name: fcoc_name,
+      targets: targets
+    )
     completed_quantity = totals[:green]
     partial_quantity = totals[:yellow]
     pending_quantity = totals[:red]
@@ -3633,7 +3637,7 @@ class ModulesController < ApplicationController
 
     sql = <<~SQL.squish
       SELECT COUNT(DISTINCT CASE
-        WHEN LOWER(BTRIM(COALESCE(a.tracenet_no, ''))) NOT IN ('', 'null') THEN CONCAT('tracenet:', LOWER(BTRIM(a.tracenet_no)), '|name:', LOWER(BTRIM(COALESCE(a.farmer_name, ''))))
+        WHEN LOWER(BTRIM(COALESCE(a.tracenet_no, ''))) NOT IN ('', 'null') THEN CONCAT('tracenet:', LOWER(BTRIM(a.tracenet_no)))
         ELSE CONCAT('id:', a.id::text)
       END) AS unique_farmer_count
       FROM target_mappings t
@@ -3949,8 +3953,7 @@ class ModulesController < ApplicationController
 
     farmer = training_farmers_by_id([farmer_id])[farmer_id]
     tracenet = normalize_dashboard_text(farmer&.tracenet_no)
-    farmer_name = normalize_dashboard_text(farmer&.farmer_name)
-    tracenet.present? && tracenet != "null" ? "tracenet:#{tracenet}|name:#{farmer_name}" : "id:#{farmer_id}"
+    tracenet.present? && tracenet != "null" ? "tracenet:#{tracenet}" : "id:#{farmer_id}"
   end
 
   def training_participation_farmer_rows_from_records(records)
