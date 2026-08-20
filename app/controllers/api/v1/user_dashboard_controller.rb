@@ -10,12 +10,18 @@ module Api
         set_filtered_scope(calculator, vrps, targets, bills)
 
         months = calculator.send(:dashboard_month_options_for_targets, targets)
-        participation_month = selected_month(:participation_month, months, calculator)
-        records = calculator.send(:dashboard_training_participation_records, month_name: participation_month)
-        participation = calculator.send(:training_participation_status_counts_from_records, records)
+        participation_month = selected_month(:participation_month, months, calculator, targets)
+        participation_fcoc = params[:participation_fcoc].presence || calculator.send(:dashboard_default_visible_fcoc, options[:fcos])
+        records = calculator.send(:dashboard_training_participation_records, month_name: participation_month, fcoc_name: participation_fcoc)
+        participation = calculator.send(:training_participation_dashboard_counts,
+          month_name: participation_month, fcoc_name: participation_fcoc, records: records)
         weekly_month = selected_month(:weekly_target_month, months, calculator)
         weekly_targets = calculator.send(:dashboard_targets_for_month, targets, weekly_month)
-        weekly = calculator.send(:training_target_status_counts, weekly_targets)
+        weekly_fcoc = params[:weekly_target_fcoc].presence || calculator.send(:dashboard_default_visible_fcoc, options[:fcos])
+        if weekly_fcoc.present?
+          weekly_targets = weekly_targets.select { |target| same?(target.vrp&.fcoc, weekly_fcoc) }
+        end
+        weekly = calculator.send(:weekly_activity_target_status_totals, weekly_targets, week_number: selected_week)
 
         render json: {
           success: true,
@@ -25,12 +31,19 @@ module Api
           filters: applied_filters,
           filter_options: options,
           cards: card_payload(calculator, vrps, targets, bills),
-          farmer_training_participation_status: participation_payload(participation, participation_month, months),
-          weekly_activity_target_status: weekly_payload(weekly, weekly_month),
+          farmer_training_participation_status: participation_payload(participation, participation_month, participation_fcoc, months),
+          weekly_activity_target_status: weekly_payload(weekly, weekly_month, weekly_fcoc),
           monthly_target_summary: monthly_summary(targets),
           hierarchy: hierarchy_payload(calculator),
           generated_at: Time.current.iso8601
         }, status: :ok
+      rescue StandardError => error
+        Rails.logger.error("User dashboard API failed: #{error.class}: #{error.message}\n#{error.backtrace&.first(15)&.join("\n")}")
+        render json: {
+          success: false,
+          message: "User dashboard could not be loaded.",
+          error: "dashboard_calculation_failed"
+        }, status: :internal_server_error
       end
 
       private
@@ -50,11 +63,19 @@ module Api
         vrps = calculator.send(:dashboard_vrps).to_a
         targets = calculator.send(:dashboard_target_mappings).to_a
         vrps, targets = search_scope(vrps, targets)
-        options = { activities: activity_options(targets) }
-
-        selected_activity = params[:main_activity].presence || params[:activity].presence || default_farmer_activity(targets)
-        if selected_activity.present?
-          targets = targets.select { |t| same?(t.main_activity_name, selected_activity) || same?(t.activity_name, selected_activity) }
+        options = { main_activities: values(targets, :main_activity_name) }
+        selected_main_activity = params[:main_activity].presence
+        selected_sub_activity = params[:sub_activity].presence
+        legacy_activity = params[:activity].presence
+        if selected_main_activity.present?
+          targets = targets.select { |target| same?(target.main_activity_name, selected_main_activity) }
+        elsif legacy_activity.present?
+          targets = targets.select { |target| same?(target.main_activity_name, legacy_activity) || same?(target.activity_name, legacy_activity) }
+        end
+        options[:sub_activities] = values(targets, :activity_name)
+        targets = targets.select { |target| same?(target.activity_name, selected_sub_activity) } if selected_sub_activity.present?
+        options[:activities] = (options[:main_activities] + options[:sub_activities]).uniq.sort
+        if selected_main_activity.present? || selected_sub_activity.present? || legacy_activity.present?
           vrps = vrps.select { |v| targets.any? { |t| t.vrp_id == v.id } }
         end
         options[:fcos] = values(vrps, :fcoc)
@@ -99,10 +120,27 @@ module Api
 
       def filtered_bills(calculator, vrps)
         ids = vrps.map { |v| v.id.to_s }
-        filters_active = %i[search activity main_activity fcoc fco cluster_incharge ics ics_name month post post_wise_name vrp_id].any? { |key| params[key].present? }
+        filters_active = %i[search activity main_activity sub_activity fcoc fco cluster_incharge ics ics_name month post post_wise_name vrp_id].any? { |key| params[key].present? }
         records = ModuleRecord.where(module_slug: "jeevika-jankar-bill-process").to_a
           .select { |record| calculator.send(:jeevika_jankar_bill_record_visible?, record) }
+        if calculator.send(:module_cluster_incharge_login?)
+          records.select! do |record|
+            bill_vrp = calculator.send(:jeevika_bill_vrp, record)
+            bill_vrp.present? && ids.include?(bill_vrp.id.to_s)
+          end
+        end
+        records = records
           .select { |record| ids.include?(record.data["select_vrp"].to_s) || !filters_active }
+        if params[:activity].present? || params[:main_activity].present? || params[:sub_activity].present?
+          records.select! do |record|
+            calculator.send(:jeevika_bill_detail_rows, record).any? do |item|
+              legacy_match = params[:activity].blank? || same?(item["main_activity"], params[:activity]) || same?(item["activity"], params[:activity])
+              main_match = params[:main_activity].blank? || same?(item["main_activity"], params[:main_activity])
+              sub_match = params[:sub_activity].blank? || same?(item["activity"], params[:sub_activity])
+              legacy_match && main_match && sub_match
+            end
+          end
+        end
         params[:month].present? ? records.select { |record| same?(record.data["bill_month"], params[:month]) } : records
       end
 
@@ -112,8 +150,8 @@ module Api
         calculator.instance_variable_set(:@filtered_bills, bills)
       end
 
-      def selected_month(key, months, calculator)
-        value = params[key].presence || Date.current.prev_month.strftime("%B")
+      def selected_month(key, months, calculator, targets = nil)
+        value = params[key].presence || calculator.send(:default_vrp_dashboard_month, months, targets)
         value.to_s.casecmp("all").zero? ? nil : value
       end
 
@@ -126,21 +164,38 @@ module Api
           total_registered_vrp: vrps.size,
           final_approved_vrp: calculator.send(:dashboard_approved_vrps, vrps).size,
           vrp_pending_approval: calculator.send(:dashboard_pending_approval_vrps, vrps).size,
-          vrp_targets_assigned: targets.size,
+          vrp_targets_assigned: calculator.send(:dashboard_target_record_count, targets),
           activities_assigned: activities.size,
           bill_approved: bills.count { |bill| calculator.send(:dashboard_bill_approved?, bill) },
           bill_pending: bills.count { |bill| calculator.send(:dashboard_bill_pending?, bill) }
         }
       end
 
-      def participation_payload(counts, month, months)
-        { selected_month: month, month_options: months, total_training_farmer: counts[:total].to_i,
-          green: counts[:green].to_i, yellow: counts[:yellow].to_i, red: counts[:red].to_i, pending: counts[:pending].to_i }
+      def participation_payload(counts, month, fcoc, months)
+        {
+          selected_month: month,
+          selected_fcoc: fcoc,
+          month_options: months,
+          registered_farmer_total: counts[:registered_farmer_total].to_i,
+          total_unique_farmers: counts[:total].to_i,
+          total_training_farmer: counts[:target_map_total].to_i,
+          completed_target_map_total: counts[:completed_target_map_total].to_i,
+          green: counts[:green].to_i,
+          yellow: counts[:yellow].to_i,
+          red: counts[:red].to_i,
+          pending: counts[:pending].to_i
+        }
       end
 
-      def weekly_payload(counts, month)
-        { selected_month: month, total_targets: counts[:total].to_i, green: counts[:green].to_i,
-          yellow: counts[:yellow].to_i, red: counts[:red].to_i }
+      def weekly_payload(totals, month, fcoc)
+        {
+          selected_month: month,
+          selected_fcoc: fcoc,
+          selected_week: selected_week,
+          target_mila: number(totals[:target]),
+          completed: number(totals[:completed]),
+          pending: number(totals[:pending])
+        }
       end
 
       def hierarchy_payload(calculator)
@@ -161,7 +216,7 @@ module Api
       end
 
       def applied_filters
-        %i[search activity main_activity fcoc fco cluster_incharge ics ics_name month post post_wise_name vrp_id participation_month weekly_target_month]
+        %i[search activity main_activity sub_activity fcoc fco cluster_incharge ics ics_name month post post_wise_name vrp_id participation_month participation_fcoc weekly_target_month weekly_target_fcoc weekly_target_week]
           .to_h { |key| [key, params[key]] }.compact_blank
       end
 
@@ -169,8 +224,9 @@ module Api
         targets.flat_map { |t| [t.main_activity_name, t.activity_name] }.compact_blank.uniq.sort
       end
 
-      def default_farmer_activity(targets)
-        targets.map(&:main_activity_name).compact_blank.find { |activity| same?(activity, "Farmer Activity") }
+      def selected_week
+        week = params[:weekly_target_week].to_i if params[:weekly_target_week].present?
+        (1..4).include?(week) ? week : nil
       end
 
       def values(records, attribute)
