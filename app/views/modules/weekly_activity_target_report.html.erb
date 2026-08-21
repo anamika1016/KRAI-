@@ -148,7 +148,10 @@
             <th>TraceNet No</th>
             <th>ICS</th>
             <th>Village</th>
-            <th>VRP</th>
+            <th>FCOC</th>
+            <th>ClusterCoordinator</th>
+            <th>Jeevika Jankar Name</th>
+            <th>Registered By</th>
             <th>Month</th>
             <th>Main Activity</th>
             <th>Sub Activity</th>
@@ -175,7 +178,10 @@
                 <td><%= row[:tracenet_no].presence || "-" %></td>
                 <td><%= row[:ics].presence || "-" %></td>
                 <td><%= row[:village].presence || "-" %></td>
-                <td><%= row[:vrp] %></td>
+                <td><%= row[:fco].presence || row[:fcoc].presence || "-" %></td>
+                <td><%= row[:cluster_incharge].presence || "-" %></td>
+                <td><%= row[:vrp].presence || "-" %></td>
+                <td><%= row[:registered_by].presence || "-" %></td>
                 <td><%= row[:month] %></td>
                 <td class="dashboard-activity-cell"><%= row[:main_activity] %></td>
                 <td class="dashboard-activity-cell"><%= row[:sub_activity] %></td>
@@ -205,7 +211,7 @@
             <% end %>
           <% else %>
             <tr>
-              <td colspan="16">
+              <td colspan="19">
                 <%= @weekly_report_status.present? ? "No weekly target data found for selected status and filters." : "Total, Green, Yellow or Red box par click karke uski list dekhein." %>
               </td>
             </tr>

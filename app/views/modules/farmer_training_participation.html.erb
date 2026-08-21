@@ -72,7 +72,10 @@
             <th>TraceNet No</th>
             <th>ICS</th>
             <th>Village</th>
-            <th>VRP</th>
+            <th>FCOC</th>
+            <th>ClusterCoordinator</th>
+            <th>Jeevika Jankar Name</th>
+            <th>Registered By</th>
             <th>Target Month</th>
             <th>Main Activity</th>
             <th>Sub Activity</th>
@@ -98,7 +101,10 @@
                 <td><%= row[:tracenet_no].presence || "-" %></td>
                 <td><%= row[:ics].presence || "-" %></td>
                 <td><%= row[:village].presence || "-" %></td>
+                <td><%= row[:fcoc].presence || "-" %></td>
+                <td><%= row[:cluster_incharge].presence || "-" %></td>
                 <td><%= row[:vrp].presence || "-" %></td>
+                <td><%= row[:registered_by].presence || "-" %></td>
                 <td><%= row[:months].presence || "-" %></td>
                 <td><%= row[:main_activities].presence || "-" %></td>
                 <td><%= row[:sub_activities].presence || "-" %></td>
@@ -130,7 +136,7 @@
             <% end %>
           <% else %>
             <tr>
-              <td colspan="15">No farmers found for this status.</td>
+              <td colspan="18">No farmers found for this status.</td>
             </tr>
           <% end %>
         </tbody>

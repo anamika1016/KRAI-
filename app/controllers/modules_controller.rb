@@ -3186,9 +3186,11 @@ class ModulesController < ApplicationController
         vrp: row[:vrp],
         main_activity: row[:main_activities],
         sub_activity: row[:sub_activities],
-        fco: "-",
-        cluster_incharge: "-",
-        post: "-",
+        fco: row[:fcoc],
+        cluster_incharge: row[:cluster_incharge],
+        post: row[:jeevika_jankar_name],
+        target_owner: row[:jeevika_jankar_name],
+        registered_by: row[:registered_by],
         target_quantity: target_quantity,
         completed_quantity: completed_quantity,
         pending_quantity: pending_quantity,
@@ -3259,7 +3261,9 @@ class ModulesController < ApplicationController
         sub_activity: target.activity_name.presence || "-",
         fco: target.fco_name.presence || target.fco_id.presence || "-",
         cluster_incharge: target.vrp&.cluster_incharge.presence || "-",
-        post: target.vrp&.role.presence || "-",
+        post: target.vrp&.name.presence || "-",
+        target_owner: target.vrp&.name.presence || "-",
+        registered_by: target_mapping_registered_by_name(target),
         target_quantity: target_quantity,
         completed_quantity: completed_quantity,
         pending_quantity: pending_quantity,
@@ -3288,14 +3292,16 @@ class ModulesController < ApplicationController
         "Week",
         "Month",
         "Completion Date",
-        "VRP",
+        "Jeevika Jankar Name",
         "FCO",
         "Cluster Incharge",
-        "Post",
+        "Registered By",
         "Main Activity",
         "Sub Activity",
         "ICS",
         "Village",
+        "FCOC",
+        "ClusterCoordinator",
         "Target",
         "Completed",
         "Pending",
@@ -3313,11 +3319,13 @@ class ModulesController < ApplicationController
           row[:vrp],
           row[:fco],
           row[:cluster_incharge],
-          row[:post],
+          row[:registered_by],
           row[:main_activity],
           row[:sub_activity],
           row[:ics],
           row[:village],
+          row[:fco].presence || row[:fcoc],
+          row[:cluster_incharge],
           dashboard_quantity(row[:target_quantity]),
           dashboard_quantity(row[:completed_quantity]),
           dashboard_quantity(row[:pending_quantity]),
@@ -3517,6 +3525,11 @@ class ModulesController < ApplicationController
         ics: membership[:ics].presence || dashboard_text_value(farmer&.ics_name).presence || dashboard_text_value(farmer&.ics_id).presence || "-",
         village: membership[:village].presence || dashboard_text_value(farmer&.village_name).presence || dashboard_text_value(farmer&.village_id).presence || "-",
         vrp: membership[:vrp].presence || "-",
+        fcoc: membership[:fcoc].presence || "-",
+        cluster_incharge: membership[:cluster_incharge].presence || "-",
+        jeevika_jankar_name: membership[:jeevika_jankar_name].presence || membership[:vrp].presence || "-",
+        target_owner: membership[:jeevika_jankar_name].presence || membership[:vrp].presence || "-",
+        registered_by: membership[:registered_by].presence || "-",
         months: membership[:months].presence || month_name.presence || "-",
         main_activities: membership[:main_activities].presence || "-",
         sub_activities: membership[:sub_activities].presence || "-",
@@ -3982,6 +3995,11 @@ class ModulesController < ApplicationController
         ics: [],
         village: [],
         vrp: [],
+        fcoc: [],
+        cluster_incharge: [],
+        jeevika_jankar_name: [],
+        target_owner: [],
+        registered_by: [],
         main_activities: [],
         sub_activities: [],
         training_dates: [],
@@ -4014,6 +4032,11 @@ class ModulesController < ApplicationController
         membership[:ics] |= [record.data["ics_block"].presence || record.data["ics"]].map(&:to_s).map(&:strip).reject(&:blank?)
         membership[:village] |= [record.data["gram_name"].presence || record.data["village"]].map(&:to_s).map(&:strip).reject(&:blank?)
         membership[:vrp] |= [record.data["trainer_name"].presence || record.data["jeevika_jankar_name"].presence || record.data["vrp_name"]].map(&:to_s).map(&:strip).reject(&:blank?)
+        membership[:fcoc] |= [summary[:department].presence || record.data["fco"].presence || record.data["fcoc"].presence || record.data["fco_name"]].map(&:to_s).map(&:strip).reject(&:blank?)
+        membership[:cluster_incharge] |= [record.data["cluster_incharge"].presence || record.data["cluster_coordinator"]].map(&:to_s).map(&:strip).reject(&:blank?)
+        membership[:jeevika_jankar_name] |= [record.data["trainer_name"].presence || record.data["jeevika_jankar_name"].presence || record.data["vrp_name"]].map(&:to_s).map(&:strip).reject(&:blank?)
+        membership[:target_owner] |= [record.data["trainer_name"].presence || record.data["jeevika_jankar_name"].presence || record.data["vrp_name"]].map(&:to_s).map(&:strip).reject(&:blank?)
+        membership[:registered_by] |= [record.data["created_by_name"].presence || record.data["created_by_username"]].map(&:to_s).map(&:strip).reject(&:blank?)
         membership[:main_activities] |= [summary[:training_topic].to_s.strip].reject(&:blank?)
         membership[:sub_activities] |= [summary[:training_subject].to_s.strip].reject(&:blank?)
         membership[:training_dates] |= [training_date].reject(&:blank?)
@@ -4040,6 +4063,11 @@ class ModulesController < ApplicationController
         ics: membership[:ics].presence&.join(", ") || dashboard_text_value(farmer&.ics_name).presence || dashboard_text_value(farmer&.ics_id).presence || "-",
         village: membership[:village].presence&.join(", ") || dashboard_text_value(farmer&.village_name).presence || dashboard_text_value(farmer&.village_id).presence || "-",
         vrp: membership[:vrp].presence&.join(", ") || "-",
+        fcoc: membership[:fcoc].presence&.join(", ") || "-",
+        cluster_incharge: membership[:cluster_incharge].presence&.join(", ") || "-",
+        jeevika_jankar_name: membership[:jeevika_jankar_name].presence&.join(", ") || membership[:vrp].presence&.join(", ") || "-",
+        target_owner: membership[:jeevika_jankar_name].presence&.join(", ") || membership[:target_owner].presence&.join(", ") || membership[:vrp].presence&.join(", ") || "-",
+        registered_by: membership[:registered_by].presence&.join(", ") || "-",
         months: membership[:months].presence&.join(", ") || "-",
         main_activities: membership[:main_activities].presence&.join(", ") || "-",
         sub_activities: membership[:sub_activities].presence&.join(", ") || "-",
@@ -4099,6 +4127,11 @@ class ModulesController < ApplicationController
         ics: membership[:ics].presence || dashboard_text_value(farmer&.ics_name).presence || dashboard_text_value(farmer&.ics_id).presence || "-",
         village: membership[:village].presence || dashboard_text_value(farmer&.village_name).presence || dashboard_text_value(farmer&.village_id).presence || "-",
         vrp: membership[:vrp].presence || "-",
+        fcoc: membership[:fcoc].presence || "-",
+        cluster_incharge: membership[:cluster_incharge].presence || "-",
+        jeevika_jankar_name: membership[:jeevika_jankar_name].presence || membership[:vrp].presence || "-",
+        target_owner: membership[:jeevika_jankar_name].presence || membership[:target_owner].presence || membership[:vrp].presence || "-",
+        registered_by: membership[:registered_by].presence || "-",
         months: membership[:months].presence || "-",
         main_activities: membership[:main_activities].presence || "-",
         sub_activities: membership[:sub_activities].presence || "-",
@@ -4132,6 +4165,11 @@ class ModulesController < ApplicationController
           ics: [],
           village: [],
           vrp: [],
+          fcoc: [],
+          cluster_incharge: [],
+          jeevika_jankar_name: [],
+          target_owner: [],
+          registered_by: [],
           main_activities: [],
           sub_activities: [],
           assigned_activity_keys: [],
@@ -4143,6 +4181,11 @@ class ModulesController < ApplicationController
         memberships[membership_key][:ics] |= [target_ics_label(target).to_s.strip].reject(&:blank?)
         memberships[membership_key][:village] |= [target_village_label(target).to_s.strip].reject(&:blank?)
         memberships[membership_key][:vrp] |= [target.vrp&.name.to_s.strip].reject(&:blank?)
+        memberships[membership_key][:fcoc] |= [target.fco_name.to_s.strip, target.vrp&.fcoc.to_s.strip].reject(&:blank?)
+        memberships[membership_key][:cluster_incharge] |= [target.vrp&.cluster_incharge.to_s.strip].reject(&:blank?)
+        memberships[membership_key][:jeevika_jankar_name] |= [target.vrp&.name.to_s.strip].reject(&:blank?)
+        memberships[membership_key][:target_owner] |= [target.vrp&.name.to_s.strip].reject(&:blank?)
+        memberships[membership_key][:registered_by] |= [target_mapping_registered_by_name(target)].reject(&:blank?)
         memberships[membership_key][:main_activities] |= [target.main_activity_name.to_s.strip].reject(&:blank?)
         memberships[membership_key][:sub_activities] |= [target.activity_name.to_s.strip].reject(&:blank?)
         memberships[membership_key][:assigned_activity_keys] |= training_participation_target_activity_keys(target)
@@ -4200,6 +4243,11 @@ class ModulesController < ApplicationController
             ics: target_ics_label(target).presence || dashboard_text_value(farmer&.ics_name).presence || dashboard_text_value(farmer&.ics_id).presence || "-",
             village: target_village_label(target).presence || dashboard_text_value(farmer&.village_name).presence || dashboard_text_value(farmer&.village_id).presence || "-",
             vrp: target.vrp&.name.presence || "-",
+            fcoc: target.fco_name.presence || target.vrp&.fcoc.presence || target.fco_id.presence || "-",
+            cluster_incharge: target.vrp&.cluster_incharge.presence || "-",
+            jeevika_jankar_name: target.vrp&.name.presence || "-",
+            target_owner: target.vrp&.name.presence || "-",
+            registered_by: target_mapping_registered_by_name(target),
             months: target.month_name.to_s.presence || "-",
             main_activities: activity_entry[:main_activity].presence || target.main_activity_name.to_s.presence || "-",
             sub_activities: activity_entry[:sub_activity].presence || target.activity_name.to_s.presence || "-",
@@ -4217,6 +4265,35 @@ class ModulesController < ApplicationController
       end
     end
     rows_by_map_key.values.sort_by { |row| [row[:status], row[:farmer_name].to_s.downcase, row[:sub_activities].to_s.downcase] }
+  end
+
+  def target_mapping_registered_by_name(target)
+    return "-" unless target.respond_to?(:created_by_id) && target.created_by_id.present?
+
+    creator_type = target.created_by_type.to_s
+    user = if creator_type == "User" && model_ready?(:User)
+      cached_user_find_by(id: target.created_by_id)
+    end
+    if user
+      return [user.try(:first_name), user.try(:last_name)].compact_blank.join(" ").presence ||
+        user.try(:full_name).presence ||
+        user.try(:user_name).presence ||
+        "User ##{target.created_by_id}"
+    end
+
+    record = if creator_type == "ModuleRecord" && model_ready?(:ModuleRecord)
+      cached_module_record_find_by_id(target.created_by_id)
+    end
+    if record
+      return [
+        record.data["name"],
+        [record.data["first_name"], record.data["last_name"]].compact_blank.join(" "),
+        record.data["user_name"],
+        record.data["email"]
+      ].compact_blank.first || "User ##{target.created_by_id}"
+    end
+
+    "User ##{target.created_by_id}"
   end
 
   def training_attendance_details_for_targets(targets, month_name: nil, week_number: nil)
@@ -4422,7 +4499,10 @@ class ModulesController < ApplicationController
       "TraceNet No",
       "ICS",
       "Village",
-      "VRP",
+      "FCOC",
+      "ClusterCoordinator",
+      "Jeevika Jankar Name",
+      "Registered By",
       "Target Months",
       "Main Activities",
       "Sub Activities",
@@ -4445,7 +4525,10 @@ class ModulesController < ApplicationController
         row[:tracenet_no],
         row[:ics],
         row[:village],
-        row[:vrp],
+        row[:fcoc],
+        row[:cluster_incharge],
+        row[:jeevika_jankar_name].presence || row[:target_owner].presence || row[:vrp],
+        row[:registered_by],
         row[:months],
         row[:main_activities],
         row[:sub_activities],
