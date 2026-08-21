@@ -7853,22 +7853,24 @@ class ModulesController < ApplicationController
       .order(updated_at: :desc)
       .select { |record| approved_other_target_record?(record) }
       .each_with_object({}) do |record, index|
-        target_mapping_id = record.data["target_mapping_id"].to_s
-        next if target_mapping_id.blank?
+        target_mapping_ids = other_target_record_target_mapping_ids(record)
+        next if target_mapping_ids.blank?
 
         achievement = decimal_value(record.data["achievement"])
         next if achievement.nil?
 
-        entry = index[target_mapping_id] ||= {
-          achievement: 0.0,
-          source_modules: [],
-          source_record_ids: [],
-          achieved_dates: []
-        }
-        entry[:achievement] += achievement.to_f
-        entry[:source_modules] |= [record.module_slug]
-        entry[:source_record_ids] |= [record.id.to_s]
-        entry[:achieved_dates] |= [(parse_module_date(record.data["achievement_date"]) || record.updated_at.to_date).to_s]
+        target_mapping_ids.each do |target_mapping_id|
+          entry = index[target_mapping_id] ||= {
+            achievement: 0.0,
+            source_modules: [],
+            source_record_ids: [],
+            achieved_dates: []
+          }
+          entry[:achievement] += achievement.to_f
+          entry[:source_modules] |= [record.module_slug]
+          entry[:source_record_ids] |= [record.id.to_s]
+          entry[:achieved_dates] |= [(parse_module_date(record.data["achievement_date"]) || record.updated_at.to_date).to_s]
+        end
       end.transform_values do |entry|
         {
           achievement: entry[:achievement],
@@ -7877,6 +7879,41 @@ class ModulesController < ApplicationController
           achieved_at: entry[:achieved_dates].join(", ")
         }
       end
+  end
+
+  def other_target_record_target_mapping_ids(record)
+    saved_id = record.data["target_mapping_id"].to_s.strip
+    return [saved_id] if saved_id.present? && model_ready?(:TargetMapping) && TargetMapping.exists?(id: saved_id)
+    return [saved_id] if saved_id.present? && !model_ready?(:TargetMapping)
+    return [] unless model_ready?(:TargetMapping)
+
+    data = record.data || {}
+    selected_vrp = normalize_dashboard_text(data["jeevika_jankar_id"].presence || data["jeevika_jankar_name"].presence || data["select_vrp"])
+    selected_month = normalize_dashboard_text(data["month"])
+    selected_ics = normalize_dashboard_text(data["ics"])
+    selected_village = normalize_dashboard_text(data["village"])
+    selected_topic = normalize_dashboard_text(data["training_topic"].presence || data["main_activity"])
+    selected_subject = normalize_dashboard_text(data["training_subject"].presence || data["sub_activity"])
+    return [] if [selected_vrp, selected_month, selected_ics, selected_village, selected_topic, selected_subject].any?(&:blank?)
+
+    TargetMapping.includes(:vrp).select do |target|
+      other_target_record_matches_target?(target, selected_vrp, selected_month, selected_ics, selected_village, selected_topic, selected_subject)
+    end.map { |target| target.id.to_s }
+  end
+
+  def other_target_record_matches_target?(target, selected_vrp, selected_month, selected_ics, selected_village, selected_topic, selected_subject)
+    vrp_values = [
+      target.vrp_id,
+      target.vrp&.name,
+      target.vrp&.user_name
+    ].map { |value| normalize_dashboard_text(value) }.reject(&:blank?)
+
+    vrp_values.include?(selected_vrp) &&
+      normalize_dashboard_text(target.month_name) == selected_month &&
+      normalize_dashboard_text(target.ics_name.presence || target.ics_id) == selected_ics &&
+      normalize_dashboard_text(target.village_name.presence || target.village_id) == selected_village &&
+      normalize_dashboard_text(target.main_activity_name) == selected_topic &&
+      normalize_dashboard_text(target.activity_name) == selected_subject
   end
 
   def approved_other_target_record?(record)
