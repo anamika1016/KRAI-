@@ -43,4 +43,61 @@ class ModulesControllerDashboardTest < ActiveSupport::TestCase
 
     assert_equal 101, ModulesController.new.send(:dashboard_target_record_count, targets)
   end
+
+  test "cluster visible vrps only includes explicitly mapped cluster incharge vrps" do
+    mapped_vrp = create_vrp(
+      name: "Mapped Cluster JJ",
+      user_name: "mapped_cluster_jj",
+      mobile_no: "9876500001",
+      email: "mapped-cluster-jj@example.com",
+      aadhar_no: "123456780001",
+      cluster_incharge: "Ashvin Durve"
+    )
+    hierarchy_only_vrp = create_vrp(
+      name: "Hierarchy Only JJ",
+      user_name: "hierarchy_only_jj",
+      mobile_no: "9876500002",
+      email: "hierarchy-only-jj@example.com",
+      aadhar_no: "123456780002",
+      cluster_incharge: "Other Cluster"
+    )
+
+    controller = ModulesController.new
+    controller.define_singleton_method(:model_ready?) { |model_name| model_name.to_s == "Vrp" }
+    controller.define_singleton_method(:current_cluster_incharge_labels) { ["Ashvin Durve"] }
+    controller.define_singleton_method(:cluster_label_matches?) { |expected, actual| expected.to_s == actual.to_s }
+    controller.define_singleton_method(:dashboard_hierarchy_vrps) { [hierarchy_only_vrp] }
+
+    assert_equal [mapped_vrp.id], controller.send(:module_cluster_visible_vrp_ids)
+  end
+
+  private
+
+  def create_vrp(attributes = {})
+    defaults = {
+      name: "Dashboard VRP",
+      father_husband_name: "Test Father",
+      gender: :male,
+      date_of_birth: Date.new(1990, 1, 1),
+      date_of_joining: Date.current,
+      aadhar_no: "123456789012",
+      account_no: "1234567890",
+      bank_name: "Test Bank",
+      branch: "Test Branch",
+      ifsc_code: "TEST0123456",
+      address: "Test Address",
+      mobile_no: "9876543210",
+      email: "vrp#{SecureRandom.hex(4)}@example.com",
+      experience_in_years: 1,
+      office_detail_id: 0,
+      to_office_detail_id: 0,
+      vrp_type_ids: [1],
+      gram_panchayat_ids: [1],
+      village_ids: [1],
+      is_active: true,
+      is_deleted: false
+    }
+
+    Vrp.create!(defaults.merge(attributes))
+  end
 end

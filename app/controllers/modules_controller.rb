@@ -3636,15 +3636,21 @@ class ModulesController < ApplicationController
       fco_names = (fco_names + training_fcoc_filter_values(fcoc_name)).compact_blank.uniq
     end
 
+    target_ids = Array(targets).filter_map { |target| target.respond_to?(:id) ? target.id : nil }.uniq
     cache_key = [
       normalize_dashboard_text(month_name),
       fco_ids.sort.join(","),
-      fco_names.sort.join(",")
+      fco_names.sort.join(","),
+      module_mapped_vrp_scope_active? ? target_ids.sort.join(",") : nil
     ].join("|")
     return @training_mapped_farmer_distinct_count_cache[cache_key] if @training_mapped_farmer_distinct_count_cache.key?(cache_key)
 
     conditions = ["t.afl_ids IS NOT NULL", "j.value <> ''"]
     binds = {}
+    if module_mapped_vrp_scope_active? && target_ids.any?
+      conditions << "t.id IN (:target_ids)"
+      binds[:target_ids] = target_ids
+    end
     if month_name.present?
       conditions << "LOWER(BTRIM(t.month_name)) = :month_name"
       binds[:month_name] = normalize_dashboard_text(month_name)
@@ -7695,11 +7701,10 @@ class ModulesController < ApplicationController
       .order(:name, :id)
       .select { |vrp| module_cluster_vrp_visible?(vrp) }
 
-    # Some legacy/current hierarchy mappings link VRPs through their creator
-    # or user account without copying the cluster label onto the VRP row. A
-    # cluster dashboard must include both forms of mapping.
     hierarchy_mapped_vrps = module_cluster_incharge_login? ? dashboard_hierarchy_vrps : []
-    @module_cluster_visible_vrps = (directly_mapped_vrps + hierarchy_mapped_vrps).uniq(&:id).sort_by do |vrp|
+    visible_vrps = directly_mapped_vrps.presence || hierarchy_mapped_vrps
+
+    @module_cluster_visible_vrps = visible_vrps.uniq(&:id).sort_by do |vrp|
       [vrp.name.to_s, vrp.id]
     end
   end
