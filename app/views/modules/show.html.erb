@@ -2255,7 +2255,12 @@
                   if (!panel || panel.dataset.forceSelectableFarmers === "true") return;
                   panel.dataset.forceSelectableFarmers = "true";
 
+                  let syncQueued = false;
                   const syncSelectableFarmers = () => {
+                    if (syncQueued) return;
+                    syncQueued = true;
+                    window.requestAnimationFrame(() => {
+                      syncQueued = false;
                     panel.querySelectorAll("[data-training-farmer-checkbox]").forEach((checkbox) => {
                       checkbox.disabled = false;
                     });
@@ -2276,13 +2281,16 @@
                       selectAllButton.disabled = boxes.length === 0;
                       selectAllButton.textContent = boxes.length > 0 && selected === boxes.length ? "Clear all" : "Select all";
                     }
+                    });
                   };
 
-                  panel.addEventListener("click", (event) => {
-                    const selectAllButton = event.target.closest("[data-training-farmer-select-all-button]");
-                    if (!selectAllButton) return;
-                    const boxes = Array.from(panel.querySelectorAll("[data-training-farmer-checkbox]"));
-                    const shouldSelect = boxes.some((checkbox) => !checkbox.checked);
+	                  panel.addEventListener("click", (event) => {
+	                    const selectAllButton = event.target.closest("[data-training-farmer-select-all-button]");
+	                    if (!selectAllButton) return;
+	                    event.preventDefault();
+	                    event.stopImmediatePropagation();
+	                    const boxes = Array.from(panel.querySelectorAll("[data-training-farmer-checkbox]"));
+	                    const shouldSelect = boxes.some((checkbox) => !checkbox.checked);
                     boxes.forEach((checkbox) => {
                       checkbox.disabled = false;
                       checkbox.checked = shouldSelect;
@@ -2301,7 +2309,7 @@
                     syncSelectableFarmers();
                   }, true);
 
-                  new MutationObserver(syncSelectableFarmers).observe(panel, { childList: true, subtree: true, attributes: true, attributeFilter: ["disabled", "class"] });
+                  new MutationObserver(syncSelectableFarmers).observe(panel, { childList: true, subtree: true });
                   syncSelectableFarmers();
                 })();
               </script>
