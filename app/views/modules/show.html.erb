@@ -2235,10 +2235,6 @@
               <div class="training-farmer-panel" data-training-farmer-panel data-selected-farmer-ids="<%= json_escape((selected_training_farmer_ids || []).to_json) %>">
                 <div class="target-mapping-toolbar">
                   <strong>Target Farmers</strong>
-                  <label class="training-select-all">
-                    <input type="checkbox" data-training-farmer-select-all>
-                    <span>Select all</span>
-                  </label>
                   <button type="button" class="list-btn active training-select-all-button" data-training-farmer-select-all-button>Select all</button>
                   <span data-training-farmer-count>0 farmer selected</span>
                 </div>
@@ -2264,8 +2260,6 @@
                     panel.querySelectorAll("[data-training-farmer-checkbox]").forEach((checkbox) => {
                       checkbox.disabled = false;
                     });
-                    panel.querySelectorAll(".training-included-badge").forEach((badge) => badge.remove());
-                    panel.querySelectorAll(".already-included").forEach((item) => item.classList.remove("already-included"));
                     const boxes = Array.from(panel.querySelectorAll("[data-training-farmer-checkbox]"));
                     const selected = boxes.filter((checkbox) => checkbox.checked).length;
                     const selectAll = panel.querySelector("[data-training-farmer-select-all]");
@@ -2285,7 +2279,7 @@
                   };
 
 	                  panel.addEventListener("click", (event) => {
-	                    const selectAllButton = event.target.closest("[data-training-farmer-select-all-button]");
+                    const selectAllButton = event.target.closest("[data-training-farmer-select-all-button]");
 	                    if (!selectAllButton) return;
 	                    event.preventDefault();
 	                    event.stopImmediatePropagation();

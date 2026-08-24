@@ -2285,11 +2285,13 @@ function initDeferredLayoutPage() {
 	        ].filter(Boolean).join(" | ");
 	        const isSelected = selectedFarmerIds.has(String(farmer.id));
 	        const checked = isSelected ? " checked" : "";
+	        const includedClass = farmer.already_included ? " already-included" : "";
+	        const includedBadge = farmer.already_included ? '<b class="training-included-badge">Already Completed</b>' : "";
 	        return `
-	          <label class="vrp-ics-farmer-item">
+	          <label class="vrp-ics-farmer-item${includedClass}">
 	            <input type="checkbox" name="module_record[selected_farmer_ids][]" value="${escapeHtml(farmer.id)}" data-training-farmer-checkbox${checked}>
 	            <span>
-	              <strong>${escapeHtml(farmer.farmer_name || `Farmer #${farmer.id}`)}</strong>
+	              <strong>${escapeHtml(farmer.farmer_name || `Farmer #${farmer.id}`)} ${includedBadge}</strong>
 	              <small>${escapeHtml(meta)}</small>
 	            </span>
 	          </label>
