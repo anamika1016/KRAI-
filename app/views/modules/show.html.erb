@@ -2245,12 +2245,68 @@
                 <div class="target-mapping-toolbar farmer-search-toolbar">
                   <input type="search" placeholder="Search target farmers" data-training-farmer-search>
                 </div>
-                <div class="training-empty-state" data-training-farmer-search-empty hidden>No target farmers matched your search.</div>
-                <div class="vrp-ics-farmer-list" data-training-farmer-list>
-                  Select Village Name to load target farmers.
-                </div>
+              <div class="training-empty-state" data-training-farmer-search-empty hidden>No target farmers matched your search.</div>
+              <div class="vrp-ics-farmer-list" data-training-farmer-list>
+                Select Village Name to load target farmers.
               </div>
-            <% end %>
+              <script>
+                (() => {
+                  const panel = document.currentScript.closest("[data-training-farmer-panel]");
+                  if (!panel || panel.dataset.forceSelectableFarmers === "true") return;
+                  panel.dataset.forceSelectableFarmers = "true";
+
+                  const syncSelectableFarmers = () => {
+                    panel.querySelectorAll("[data-training-farmer-checkbox]").forEach((checkbox) => {
+                      checkbox.disabled = false;
+                    });
+                    panel.querySelectorAll(".training-included-badge").forEach((badge) => badge.remove());
+                    panel.querySelectorAll(".already-included").forEach((item) => item.classList.remove("already-included"));
+                    const boxes = Array.from(panel.querySelectorAll("[data-training-farmer-checkbox]"));
+                    const selected = boxes.filter((checkbox) => checkbox.checked).length;
+                    const selectAll = panel.querySelector("[data-training-farmer-select-all]");
+                    const selectAllButton = panel.querySelector("[data-training-farmer-select-all-button]");
+                    const count = panel.querySelector("[data-training-farmer-count]");
+                    if (count) count.textContent = `${selected} selected / ${boxes.length} mapped farmers`;
+                    if (selectAll) {
+                      selectAll.disabled = boxes.length === 0;
+                      selectAll.checked = boxes.length > 0 && selected === boxes.length;
+                      selectAll.indeterminate = selected > 0 && selected < boxes.length;
+                    }
+                    if (selectAllButton) {
+                      selectAllButton.disabled = boxes.length === 0;
+                      selectAllButton.textContent = boxes.length > 0 && selected === boxes.length ? "Clear all" : "Select all";
+                    }
+                  };
+
+                  panel.addEventListener("click", (event) => {
+                    const selectAllButton = event.target.closest("[data-training-farmer-select-all-button]");
+                    if (!selectAllButton) return;
+                    const boxes = Array.from(panel.querySelectorAll("[data-training-farmer-checkbox]"));
+                    const shouldSelect = boxes.some((checkbox) => !checkbox.checked);
+                    boxes.forEach((checkbox) => {
+                      checkbox.disabled = false;
+                      checkbox.checked = shouldSelect;
+                      checkbox.dispatchEvent(new Event("change", { bubbles: true }));
+                    });
+                    syncSelectableFarmers();
+                  }, true);
+
+                  panel.addEventListener("change", (event) => {
+                    if (!event.target.matches("[data-training-farmer-select-all]")) return;
+                    panel.querySelectorAll("[data-training-farmer-checkbox]").forEach((checkbox) => {
+                      checkbox.disabled = false;
+                      checkbox.checked = event.target.checked;
+                      checkbox.dispatchEvent(new Event("change", { bubbles: true }));
+                    });
+                    syncSelectableFarmers();
+                  }, true);
+
+                  new MutationObserver(syncSelectableFarmers).observe(panel, { childList: true, subtree: true, attributes: true, attributeFilter: ["disabled", "class"] });
+                  syncSelectableFarmers();
+                })();
+              </script>
+            </div>
+          <% end %>
           <% end %>
         </div>
 
