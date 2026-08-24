@@ -2150,7 +2150,7 @@ function initDeferredLayoutPage() {
 	      return Array.from(farmersById.values());
 	    };
 
-	    const selectedFarmerBoxes = () => Array.from(formShell.querySelectorAll("[data-training-farmer-checkbox]:checked:not(:disabled)"));
+	    const selectedFarmerBoxes = () => Array.from(formShell.querySelectorAll("[data-training-farmer-checkbox]:checked"));
 	    const allFarmerBoxes = () => Array.from(formShell.querySelectorAll("[data-training-farmer-checkbox]"));
 	    const farmerBoxes = () => Array.from(formShell.querySelectorAll("[data-training-farmer-checkbox]:not(:disabled)"));
 	    const applyTrainingFarmerSearch = () => {
@@ -2179,12 +2179,7 @@ function initDeferredLayoutPage() {
 	      const count = selectedFarmerBoxes().length;
 	      const boxes = farmerBoxes();
 	      const mappedCount = allFarmerBoxes().length;
-	      const completedCount = Math.max(mappedCount - boxes.length, 0);
-	      if (farmerCount) {
-	        farmerCount.textContent = completedCount > 0
-	          ? `${count} selected / ${boxes.length} available / ${mappedCount} mapped farmers`
-	          : `${count} selected / ${mappedCount} mapped farmers`;
-	      }
+	      if (farmerCount) farmerCount.textContent = `${count} selected / ${mappedCount} mapped farmers`;
 	      if (farmerCountInput) farmerCountInput.value = String(count);
 	      if (farmerSelectAll) {
 	        farmerSelectAll.checked = boxes.length > 0 && count === boxes.length;
@@ -2290,13 +2285,11 @@ function initDeferredLayoutPage() {
 	        ].filter(Boolean).join(" | ");
 	        const isSelected = selectedFarmerIds.has(String(farmer.id));
 	        const checked = isSelected ? " checked" : "";
-	        const includedClass = farmer.already_included ? " already-included" : "";
-	        const includedBadge = farmer.already_included ? '<b class="training-included-badge">Already Completed</b>' : "";
 	        return `
-	          <label class="vrp-ics-farmer-item${includedClass}">
+	          <label class="vrp-ics-farmer-item">
 	            <input type="checkbox" name="module_record[selected_farmer_ids][]" value="${escapeHtml(farmer.id)}" data-training-farmer-checkbox${checked}>
 	            <span>
-	              <strong>${escapeHtml(farmer.farmer_name || `Farmer #${farmer.id}`)} ${includedBadge}</strong>
+	              <strong>${escapeHtml(farmer.farmer_name || `Farmer #${farmer.id}`)}</strong>
 	              <small>${escapeHtml(meta)}</small>
 	            </span>
 	          </label>
