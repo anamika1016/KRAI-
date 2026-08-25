@@ -220,11 +220,13 @@ module Api
           .reject { |id, name| id.blank? && name.blank? }
           .uniq
           .size
-        targeted_farmer_count = targets.flat_map { |target| calculator.send(:target_farmer_ids, target) }.map(&:to_s).reject(&:blank?).uniq.size
-        farmer_target_mapping = participation[:target_map_total].to_i
-        farmer_achievement = participation[:completed_target_map_total].to_i
-        activity_target_mapping = weekly[:target]
-        activity_achievement = weekly[:completed]
+        targeted_farmer_count = participation[:total].to_i
+        farmer_target_mapping = participation[:total].to_i
+        farmer_achievement = participation[:green].to_i
+        farmer_pending = participation[:red].to_i + participation[:yellow].to_i
+        activity_target_mapping = participation[:total].to_i
+        activity_achievement = participation[:green].to_i
+        activity_pending = participation[:red].to_i + participation[:yellow].to_i
 
         {
           total_mapped_villages: village_count,
@@ -233,10 +235,10 @@ module Api
           total_mapped_sub_activities: sub_activity_count,
           farmer_wise_target_mapping: farmer_target_mapping,
           farmer_wise_achievement: farmer_achievement,
-          farmer_wise_pending_achievement: [farmer_target_mapping - farmer_achievement, 0].max,
+          farmer_wise_pending_achievement: farmer_pending,
           activity_wise_target_mapping: number(activity_target_mapping),
           activity_wise_achievement: number(activity_achievement),
-          activity_wise_pending_achievement: number([activity_target_mapping.to_f - activity_achievement.to_f, 0].max)
+          activity_wise_pending_achievement: number(activity_pending)
         }
       end
 
