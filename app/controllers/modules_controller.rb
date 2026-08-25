@@ -1944,6 +1944,7 @@ class ModulesController < ApplicationController
       completed = [completed.to_f, effective_target].min
       pending = [effective_target - completed, 0].max
       week_targets = target.respond_to?(:weekly_target_values) ? target.weekly_target_values : [0, 0, 0, 0]
+      weekly_completed_farmer_ids = training_weekly_achievement_farmer_ids(target, assigned_farmer_ids)
 
       {
         month: target.month_name,
@@ -1959,6 +1960,7 @@ class ModulesController < ApplicationController
         target_record: target,
         assigned_farmer_ids: assigned_farmer_ids,
         completed_farmer_ids: completed_farmer_ids,
+        weekly_completed_farmer_ids: weekly_completed_farmer_ids,
         training_completion: training_completion,
         completion_uses_farmer_ids: completion_uses_farmer_ids,
         target: effective_target,
@@ -1966,6 +1968,10 @@ class ModulesController < ApplicationController
         week_2: week_targets[1],
         week_3: week_targets[2],
         week_4: week_targets[3],
+        week_1_achieved: Array(weekly_completed_farmer_ids[0]).size,
+        week_2_achieved: Array(weekly_completed_farmer_ids[1]).size,
+        week_3_achieved: Array(weekly_completed_farmer_ids[2]).size,
+        week_4_achieved: Array(weekly_completed_farmer_ids[3]).size,
         opg_training: target.opg_training_target,
         general_training: target.week_wise_opg_target,
         input_demo_inm: target.input_demo_inm_target,
@@ -1978,21 +1984,16 @@ class ModulesController < ApplicationController
     end
 
     raw_rows.group_by do |row|
-      [
-        normalize_dashboard_text(row[:month]),
-        normalize_dashboard_text(row[:completion_date]),
-        normalize_dashboard_text(row[:fco]),
-        normalize_dashboard_text(row[:ics]),
-        normalize_dashboard_text(row[:village]),
-        Array(row[:assigned_farmer_ids]).map(&:to_s).sort,
-        row[:target].to_f
-      ]
+      row[:target_record].present? ? dashboard_target_assignment_key(row[:target_record]) : row[:target_mapping_id]
     end.values.map do |rows|
       first = rows.first
       main_activities = rows.map { |row| row[:main_activity].to_s.strip }.reject(&:blank?).uniq
       sub_activities = rows.map { |row| row[:activity].to_s.strip }.reject(&:blank?).uniq
       effective_target = first[:target].to_f
       assigned_farmer_ids = rows.flat_map { |row| Array(row[:assigned_farmer_ids]).map(&:to_s) }.reject(&:blank?).uniq
+      weekly_completed_farmer_ids = 4.times.map do |index|
+        unique_training_farmer_ids(rows.flat_map { |row| Array(row[:weekly_completed_farmer_ids])[index] || [] }) & assigned_farmer_ids
+      end
       training_completion_rows = rows.select { |row| row[:training_completion] }
       farmer_completion_rows = training_completion_rows.presence || rows.select { |row| row[:completion_uses_farmer_ids] }
       completed_farmer_ids = unique_training_farmer_ids(
@@ -2025,6 +2026,10 @@ class ModulesController < ApplicationController
         week_2: rows.map { |row| row[:week_2].to_f }.max,
         week_3: rows.map { |row| row[:week_3].to_f }.max,
         week_4: rows.map { |row| row[:week_4].to_f }.max,
+        week_1_achieved: weekly_completed_farmer_ids[0].size,
+        week_2_achieved: weekly_completed_farmer_ids[1].size,
+        week_3_achieved: weekly_completed_farmer_ids[2].size,
+        week_4_achieved: weekly_completed_farmer_ids[3].size,
         opg_training: rows.map { |row| row[:opg_training].to_f }.max,
         general_training: rows.map { |row| row[:general_training].to_f }.max,
         input_demo_inm: rows.map { |row| row[:input_demo_inm].to_f }.max,
@@ -2904,6 +2909,13 @@ class ModulesController < ApplicationController
   end
 
   def dashboard_target_assignment_key(target)
+    group_key = target.mapping_group_key.to_s.strip if target.respond_to?(:mapping_group_key)
+    return [:mapping_group_key, group_key] if group_key.present?
+
+    [:target_mapping_id, target.id]
+  end
+
+  def dashboard_target_assignment_signature(target)
     [
       target.vrp_id,
       target.fco_name.presence || target.fco_id,

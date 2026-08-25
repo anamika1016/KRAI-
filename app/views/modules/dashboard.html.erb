@@ -104,7 +104,7 @@
               <th>Farmers</th>
               <th>Main Activity</th>
               <th>Sub Activity</th>
-              <th>Target</th>
+              <th>Targeted Farmer</th>
               <th>Week 1</th>
               <th>Week 2</th>
               <th>Week 3</th>
@@ -195,11 +195,12 @@
               <th>Village</th>
               <th>Main Activity</th>
               <th>Sub Activity</th>
-              <th>Total Target</th>
+              <th>Targeted Farmer</th>
               <% if selected_target_week == "all" %>
                 <th>Week 1 Plan</th><th>Week 2 Plan</th><th>Week 3 Plan</th><th>Week 4 Plan</th>
               <% else %>
                 <th><%= target_week_options.to_h.key(selected_target_week) %> Plan</th>
+                <th><%= target_week_options.to_h.key(selected_target_week) %> Achieved</th>
               <% end %>
               <th>Overall Completed</th>
               <th>Overall Pending</th>
@@ -233,6 +234,7 @@
                     <td><%= quantity.call(row[:week_1]) %></td><td><%= quantity.call(row[:week_2]) %></td><td><%= quantity.call(row[:week_3]) %></td><td><%= quantity.call(row[:week_4]) %></td>
                   <% else %>
                     <td><%= quantity.call(row[selected_target_week.to_sym]) %></td>
+                    <td><%= quantity.call(row["#{selected_target_week}_achieved".to_sym]) %></td>
                   <% end %>
                   <td><%= quantity.call(row[:completed]) %></td>
                   <td><%= quantity.call(row[:pending]) %></td>
@@ -241,7 +243,7 @@
               <% end %>
             <% else %>
               <tr>
-                <td colspan="<%= selected_target_week == 'all' ? 12 : 9 %>">No weekly target plan has been assigned yet.</td>
+                <td colspan="<%= selected_target_week == 'all' ? 12 : 10 %>">No weekly target plan has been assigned yet.</td>
               </tr>
             <% end %>
           </tbody>

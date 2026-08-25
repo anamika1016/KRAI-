@@ -147,12 +147,16 @@ class TargetMappingsController < ApplicationController
   end
 
   def build_target_mappings_for_selected_activities
-    target_activity_combinations.map do |main_activity, sub_activity|
+    combinations = target_activity_combinations
+    group_key = SecureRandom.uuid if combinations.many?
+
+    combinations.map do |main_activity, sub_activity|
       plan = weekly_plan_for(main_activity, sub_activity)
       target_mapping = TargetMapping.new(single_target_mapping_attributes.merge(
         main_activity_name: main_activity,
         activity_name: sub_activity,
-        target_quantity: plan&.fetch("monthly", nil).presence || single_target_mapping_attributes[:target_quantity]
+        target_quantity: plan&.fetch("monthly", nil).presence || single_target_mapping_attributes[:target_quantity],
+        mapping_group_key: group_key || SecureRandom.uuid
       ).merge(weekly_target_attributes(plan)))
       target_mapping.vrp_ics_mapping_id = nil
       normalize_location_values(target_mapping)
@@ -357,6 +361,13 @@ class TargetMappingsController < ApplicationController
   end
 
   def target_group_signature(target)
+    group_key = target.mapping_group_key.to_s.strip if target.respond_to?(:mapping_group_key)
+    return [:mapping_group_key, group_key] if group_key.present?
+
+    [:target_mapping_id, target.id]
+  end
+
+  def target_assignment_signature(target)
     [
       target.vrp_id,
       target.fco_name.presence || target.fco_id,

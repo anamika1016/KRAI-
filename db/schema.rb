@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2026_08_17_114500) do
+ActiveRecord::Schema[8.1].define(version: 2026_08_25_090000) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "pg_catalog.plpgsql"
 
@@ -380,6 +380,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_08_17_114500) do
     t.decimal "input_demo_inm_target", precision: 18, scale: 4
     t.decimal "input_demo_pm_target", precision: 18, scale: 4
     t.string "main_activity_name"
+    t.string "mapping_group_key"
     t.string "month_name", null: false
     t.decimal "opg_training_target", precision: 18, scale: 4
     t.decimal "target_quantity", precision: 18, scale: 4, null: false
@@ -396,6 +397,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_08_17_114500) do
     t.index ["created_by_type", "created_by_id", "updated_at"], name: "index_target_mappings_on_creator_and_updated_at", order: { updated_at: :desc }
     t.index ["created_by_type", "created_by_id"], name: "index_target_mappings_on_creator"
     t.index ["fco_id", "ics_id", "village_id", "main_activity_name", "activity_name"], name: "index_target_mappings_on_activity_scope"
+    t.index ["mapping_group_key"], name: "index_target_mappings_on_mapping_group_key"
     t.index ["updated_at"], name: "index_target_mappings_on_updated_at", order: :desc
     t.index ["vrp_ics_mapping_id"], name: "index_target_mappings_on_vrp_ics_mapping_id"
     t.index ["vrp_id", "updated_at"], name: "index_target_mappings_on_vrp_and_updated_at", order: { updated_at: :desc }
