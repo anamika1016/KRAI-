@@ -18,7 +18,7 @@ class TargetMappingsController < ApplicationController
     @main_activity_options = module_options("add-activity-group", "main_activity_name", "activity_group_name")
     @main_activity_type_map = main_activity_type_map
     @target_sub_activity_map = target_sub_activity_map
-    @target_mappings = visible_target_mappings.includes(:vrp, :vrp_ics_mapping).order(updated_at: :desc)
+    @target_mappings = filtered_visible_target_mappings.includes(:vrp, :vrp_ics_mapping).order(updated_at: :desc)
     @target_mapping_rows = grouped_target_mapping_rows(@target_mappings)
     farmer_ids = @target_mappings.flat_map { |target| Array(target.afl_ids) }.map(&:to_s).reject(&:blank?).uniq
     @target_farmers_by_id = farmer_ids.each_slice(5_000).flat_map do |ids|
@@ -29,6 +29,18 @@ class TargetMappingsController < ApplicationController
     @edit_target = visible_target_mappings.find_by(id: params[:edit_id]) if params[:edit_id].present? && @admin_mapping_actions
     @edit_payload = edit_payload(@edit_target)
     @sub_activity_options = target_sub_activity_options(@edit_target&.main_activity_name)
+
+    respond_to do |format|
+      format.html
+      format.xlsx do
+        send_xlsx(
+          headers: target_mapping_export_headers,
+          rows: target_mapping_export_rows(@target_mapping_rows),
+          filename: "target-mappings-#{Time.current.strftime("%Y%m%d%H%M")}.xlsx",
+          sheet_name: "Target Mappings"
+        )
+      end
+    end
   end
 
   def create
@@ -1138,6 +1150,17 @@ class TargetMappingsController < ApplicationController
     TargetMapping.where(created_by_type: current_app_user["record_type"], created_by_id: current_app_user["id"])
   end
 
+  def filtered_visible_target_mappings
+    scope = visible_target_mappings
+    scope = scope.where(vrp_id: params[:vrp_id]) if params[:vrp_id].present?
+    scope = scope.where(month_name: params[:month]) if params[:month].present?
+    scope = scope.where(main_activity_name: params[:main_activity]) if params[:main_activity].present?
+    scope = scope.where(activity_name: params[:sub_activity]) if params[:sub_activity].present?
+    scope = scope.where(fco_id: params[:fcoc]).or(scope.where(fco_name: params[:fcoc])) if params[:fcoc].present?
+    scope = scope.where(ics_id: params[:ics]).or(scope.where(ics_name: params[:ics])) if params[:ics].present?
+    scope
+  end
+
   def visible_vrp_ics_mappings
     return VrpIcsMapping.all if admin_login?
     return VrpIcsMapping.where(vrp_id: current_app_user["id"]) if non_admin_vrp_login?
@@ -1244,6 +1267,58 @@ class TargetMappingsController < ApplicationController
         target_quantity: grouped_targets.map { |row| row.target_quantity.to_f }.max,
         weekly_values: merged_weekly_values
       }
+    end
+  end
+
+  def target_mapping_export_headers
+    [
+      "Jeevika Jankar",
+      "FCO",
+      "ICS",
+      "Village",
+      "Month",
+      "Completion Date",
+      "Main Activity",
+      "Sub Activity",
+      "OPG Training",
+      "General Training/Meeting",
+      "Input Demo INM",
+      "Input Demo PM",
+      "FFS",
+      "Farmer Target",
+      "Week 1",
+      "Week 2",
+      "Week 3",
+      "Week 4",
+      "Mapped Farmers"
+    ]
+  end
+
+  def target_mapping_export_rows(rows)
+    Array(rows).map do |row|
+      target = row[:target]
+      week_targets = Array(row[:weekly_values]).presence || target.weekly_target_values
+      [
+        target.vrp&.name,
+        target.fco_name.presence || target.fco_id,
+        target.ics_name.presence || target.ics_id,
+        target.village_name.presence || target.village_id,
+        target.month_name,
+        target.completion_date&.strftime("%d-%m-%Y") || "-",
+        Array(row[:main_activities]).join(", "),
+        Array(row[:sub_activities]).join(", "),
+        target_number_value(target.opg_training_target),
+        target_number_value(target.week_wise_opg_target),
+        target_number_value(target.input_demo_inm_target),
+        target_number_value(target.input_demo_pm_target),
+        target_number_value(target.ffs_target),
+        target_number_value(row[:target_quantity]),
+        week_targets[0],
+        week_targets[1],
+        week_targets[2],
+        week_targets[3],
+        Array(row[:farmer_ids]).size
+      ]
     end
   end
 

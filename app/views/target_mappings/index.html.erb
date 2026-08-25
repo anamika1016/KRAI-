@@ -237,6 +237,7 @@
             <span>⌕</span>
             <input type="search" placeholder="Search targets" data-table-search="target_mapping_list">
           </div>
+          <%= link_to "Export Excel", target_mappings_path(request.query_parameters.merge(format: :xlsx)), class: "list-btn export" %>
         </div>
       </div>
       <div class="table-shell">

@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2026_08_25_090000) do
+ActiveRecord::Schema[8.1].define(version: 2026_08_25_100000) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "pg_catalog.plpgsql"
 
@@ -254,6 +254,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_08_25_090000) do
     t.string "module_slug", null: false
     t.datetime "updated_at", null: false
     t.index "(((data)::jsonb ->> 'mobile_no'::text))", name: "index_module_records_new_users_on_mobile_no", where: "((module_slug)::text = 'new-user'::text)"
+    t.index "(((data)::jsonb ->> 'target_mapping_id'::text))", name: "index_module_records_other_targets_on_target_mapping_id", where: "((module_slug)::text = ANY ((ARRAY['seed-distribution-target'::character varying, 'papl360-target'::character varying])::text[]))"
     t.index "lower(((data)::jsonb ->> 'email'::text))", name: "index_module_records_new_users_on_lower_email", where: "((module_slug)::text = 'new-user'::text)"
     t.index "lower(((data)::jsonb ->> 'user_name'::text))", name: "index_module_records_new_users_on_lower_user_name", where: "((module_slug)::text = 'new-user'::text)"
     t.index "lower(btrim(((data)::jsonb ->> 'month'::text)))", name: "index_training_forms_on_normalized_month", where: "((module_slug)::text = 'training-form'::text)"
@@ -397,9 +398,15 @@ ActiveRecord::Schema[8.1].define(version: 2026_08_25_090000) do
     t.index ["created_by_type", "created_by_id", "updated_at"], name: "index_target_mappings_on_creator_and_updated_at", order: { updated_at: :desc }
     t.index ["created_by_type", "created_by_id"], name: "index_target_mappings_on_creator"
     t.index ["fco_id", "ics_id", "village_id", "main_activity_name", "activity_name"], name: "index_target_mappings_on_activity_scope"
+    t.index ["fco_id", "month_name"], name: "index_target_mappings_on_fco_and_month"
+    t.index ["fco_name", "month_name"], name: "index_target_mappings_on_fco_name_and_month"
+    t.index ["ics_id", "month_name"], name: "index_target_mappings_on_ics_and_month"
+    t.index ["ics_name", "month_name"], name: "index_target_mappings_on_ics_name_and_month"
     t.index ["mapping_group_key"], name: "index_target_mappings_on_mapping_group_key"
+    t.index ["month_name", "main_activity_name", "activity_name"], name: "index_target_mappings_on_month_and_activities"
     t.index ["updated_at"], name: "index_target_mappings_on_updated_at", order: :desc
     t.index ["vrp_ics_mapping_id"], name: "index_target_mappings_on_vrp_ics_mapping_id"
+    t.index ["vrp_id", "month_name", "main_activity_name", "activity_name"], name: "index_target_mappings_on_vrp_month_and_activities"
     t.index ["vrp_id", "updated_at"], name: "index_target_mappings_on_vrp_and_updated_at", order: { updated_at: :desc }
     t.index ["vrp_id", "vrp_ics_mapping_id", "month_name", "activity_name"], name: "index_target_mappings_on_scope"
     t.index ["vrp_id"], name: "index_target_mappings_on_vrp_id"

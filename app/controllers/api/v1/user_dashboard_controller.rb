@@ -40,6 +40,7 @@ module Api
           filters: applied_filters,
           filter_options: options,
           cards: card_payload(calculator, vrps, targets, bills),
+          dashboard_summary: dashboard_summary_payload(calculator, targets, participation, weekly),
           farmer_training_participation_status: participation_payload(participation, participation_month, participation_fcoc, months),
           weekly_activity_target_status: weekly_payload(weekly, weekly_month, weekly_fcoc),
           monthly_target_summary: monthly_summary(targets),
@@ -194,6 +195,51 @@ module Api
         }
       end
 
+      def dashboard_summary_payload(calculator, targets, participation, weekly)
+        items = dashboard_summary_values(calculator, targets, participation, weekly)
+        {
+          language: dashboard_language,
+          items: items.map do |key, value|
+            labels = DASHBOARD_SUMMARY_LABELS.fetch(key)
+            {
+              key: key,
+              label: labels.fetch(dashboard_language),
+              label_en: labels.fetch(:en),
+              label_hi: labels.fetch(:hi),
+              value: value
+            }
+          end,
+          values: items
+        }
+      end
+
+      def dashboard_summary_values(calculator, targets, participation, weekly)
+        main_activity_count = targets.filter_map { |target| target.main_activity_name.to_s.strip.presence }.uniq.size
+        sub_activity_count = targets.filter_map { |target| target.activity_name.to_s.strip.presence }.uniq.size
+        village_count = targets.map { |target| [target.village_id.to_s.strip, target.village_name.to_s.strip.downcase] }
+          .reject { |id, name| id.blank? && name.blank? }
+          .uniq
+          .size
+        targeted_farmer_count = targets.flat_map { |target| calculator.send(:target_farmer_ids, target) }.map(&:to_s).reject(&:blank?).uniq.size
+        farmer_target_mapping = participation[:target_map_total].to_i
+        farmer_achievement = participation[:completed_target_map_total].to_i
+        activity_target_mapping = weekly[:target]
+        activity_achievement = weekly[:completed]
+
+        {
+          total_mapped_villages: village_count,
+          targeted_farmers: targeted_farmer_count,
+          total_mapped_main_activities: main_activity_count,
+          total_mapped_sub_activities: sub_activity_count,
+          farmer_wise_target_mapping: farmer_target_mapping,
+          farmer_wise_achievement: farmer_achievement,
+          farmer_wise_pending_achievement: [farmer_target_mapping - farmer_achievement, 0].max,
+          activity_wise_target_mapping: number(activity_target_mapping),
+          activity_wise_achievement: number(activity_achievement),
+          activity_wise_pending_achievement: number([activity_target_mapping.to_f - activity_achievement.to_f, 0].max)
+        }
+      end
+
       def participation_payload(counts, month, fcoc, months)
         {
           selected_month: month,
@@ -263,6 +309,54 @@ module Api
       def number(value)
         value.to_f == value.to_i ? value.to_i : value.to_f.round(2)
       end
+
+      def dashboard_language
+        value = params[:language].presence || params[:lang].presence || params[:locale].presence
+        value.to_s.downcase.start_with?("hi") ? :hi : :en
+      end
+
+      DASHBOARD_SUMMARY_LABELS = {
+        total_mapped_villages: {
+          en: "Total Mapped Villages",
+          hi: "कुल मैप किए गए गाँव"
+        },
+        targeted_farmers: {
+          en: "Targeted Farmers",
+          hi: "लक्षित किसानों की संख्या"
+        },
+        total_mapped_main_activities: {
+          en: "Total Mapped Main Activities",
+          hi: "कुल मैप की गई मुख्य गतिविधियाँ"
+        },
+        total_mapped_sub_activities: {
+          en: "Total Mapped Sub-Activities",
+          hi: "कुल मैप की गई उप-गतिविधियाँ"
+        },
+        farmer_wise_target_mapping: {
+          en: "Farmer-wise Target Mapping",
+          hi: "किसान-वार लक्ष्य मैपिंग"
+        },
+        farmer_wise_achievement: {
+          en: "Farmer-wise Achievement",
+          hi: "किसान-वार उपलब्धि"
+        },
+        farmer_wise_pending_achievement: {
+          en: "Farmer-wise Pending Achievement",
+          hi: "किसान-वार लंबित उपलब्धि"
+        },
+        activity_wise_target_mapping: {
+          en: "Activity-wise Target Mapping",
+          hi: "गतिविधि-वार लक्ष्य मैपिंग"
+        },
+        activity_wise_achievement: {
+          en: "Activity-wise Achievement",
+          hi: "गतिविधि-वार उपलब्धि"
+        },
+        activity_wise_pending_achievement: {
+          en: "Activity-wise Pending Achievement",
+          hi: "गतिविधि-वार लंबित उपलब्धि"
+        }
+      }.freeze
     end
   end
 end

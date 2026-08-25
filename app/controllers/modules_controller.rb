@@ -831,6 +831,7 @@ class ModulesController < ApplicationController
       fcoc_name: @weekly_target_fcoc_filter_value,
       week_number: @weekly_target_week_filter_value
     )
+    @dashboard_summary_cards = dashboard_summary_cards(t_scope, participation_dashboard_counts, dashboard_weekly_summary_totals(@dashboard_weekly_target_cards))
     @dashboard_cards = dashboard_cards
     @dashboard_generated_at = Time.current
 
@@ -2896,6 +2897,67 @@ class ModulesController < ApplicationController
     cards << dashboard_group_card("FCO-wise Jeevika Jankar", fco_summary_items, style: "fco")
 
     cards
+  end
+
+  def dashboard_summary_cards(targets, participation_counts, weekly_totals)
+    village_count = Array(targets).map { |target| [target.village_id.to_s.strip, target.village_name.to_s.strip.downcase] }
+      .reject { |id, name| id.blank? && name.blank? }
+      .uniq
+      .size
+    targeted_farmer_count = Array(targets).flat_map { |target| target_farmer_ids(target) }.map(&:to_s).reject(&:blank?).uniq.size
+    farmer_target_mapping = participation_counts[:target_map_total].to_i
+    farmer_achievement = participation_counts[:completed_target_map_total].to_i
+    activity_target_mapping = weekly_totals[:target].to_f
+    activity_achievement = weekly_totals[:completed].to_f
+
+    [
+      dashboard_summary_card("Total Mapped Villages", village_count, "Filtered mapped villages", target_mappings_path(dashboard_summary_target_params), dashboard_path(dashboard_summary_target_params.merge(format: :xlsx))),
+      dashboard_summary_card("Targeted Farmers", targeted_farmer_count, "Unique targeted farmers", farmer_training_participation_path(dashboard_summary_participation_params(status: "unique")), farmer_training_participation_path(dashboard_summary_participation_params(status: "unique", format: :xlsx))),
+      dashboard_summary_card("Total Mapped Main Activities", Array(targets).filter_map { |target| target.main_activity_name.to_s.strip.presence }.uniq.size, "Filtered main activities", target_mappings_path(dashboard_summary_target_params), dashboard_path(dashboard_summary_target_params.merge(format: :xlsx))),
+      dashboard_summary_card("Total Mapped Sub-Activities", Array(targets).filter_map { |target| target.activity_name.to_s.strip.presence }.uniq.size, "Filtered sub-activities", target_mappings_path(dashboard_summary_target_params), dashboard_path(dashboard_summary_target_params.merge(format: :xlsx))),
+      dashboard_summary_card("Farmer-wise Target Mapping", farmer_target_mapping, "Farmer activity target entries", farmer_training_participation_path(dashboard_summary_participation_params(status: "total")), farmer_training_participation_path(dashboard_summary_participation_params(status: "total", format: :xlsx))),
+      dashboard_summary_card("Farmer-wise Achievement", farmer_achievement, "Completed farmer target entries", farmer_training_participation_path(dashboard_summary_participation_params(status: "green")), farmer_training_participation_path(dashboard_summary_participation_params(status: "green", format: :xlsx))),
+      dashboard_summary_card("Farmer-wise Pending Achievement", [farmer_target_mapping - farmer_achievement, 0].max, "Pending farmer target entries", farmer_training_participation_path(dashboard_summary_participation_params(status: "red")), farmer_training_participation_path(dashboard_summary_participation_params(status: "red", format: :xlsx))),
+      dashboard_summary_card("Activity-wise Target Mapping", dashboard_quantity(activity_target_mapping), "Activity target quantity", weekly_activity_target_report_path(dashboard_summary_weekly_params(status: "total")), weekly_activity_target_report_path(dashboard_summary_weekly_params(status: "total", format: :xlsx))),
+      dashboard_summary_card("Activity-wise Achievement", dashboard_quantity(activity_achievement), "Completed activity quantity", weekly_activity_target_report_path(dashboard_summary_weekly_params(status: "green")), weekly_activity_target_report_path(dashboard_summary_weekly_params(status: "green", format: :xlsx))),
+      dashboard_summary_card("Activity-wise Pending Achievement", dashboard_quantity([activity_target_mapping - activity_achievement, 0].max), "Pending activity quantity", weekly_activity_target_report_path(dashboard_summary_weekly_params(status: "red")), weekly_activity_target_report_path(dashboard_summary_weekly_params(status: "red", format: :xlsx)))
+    ]
+  end
+
+  def dashboard_weekly_summary_totals(cards)
+    cards_by_status = Array(cards).index_by { |card| card[:status].to_s }
+    {
+      target: cards_by_status.dig("total", :value).to_f,
+      completed: cards_by_status.dig("green", :value).to_f,
+      pending: cards_by_status.dig("red", :value).to_f
+    }
+  end
+
+  def dashboard_summary_card(title, value, caption, path, export_path)
+    dashboard_card(title, value, caption, path).merge(export_path: export_path)
+  end
+
+  def dashboard_summary_target_params
+    params.permit(:main_activity, :sub_activity, :fcoc, :ics, :month, :vrp_id).to_h.compact_blank
+  end
+
+  def dashboard_summary_participation_params(status:, format: nil)
+    {
+      status: status,
+      training_month: @participation_selected_month,
+      training_fcoc: @participation_fcoc_filter_value,
+      format: format
+    }.compact_blank
+  end
+
+  def dashboard_summary_weekly_params(status:, format: nil)
+    {
+      status: status,
+      training_month: @weekly_dashboard_selected_month,
+      training_fcoc: @weekly_target_fcoc_filter_value,
+      week: @weekly_target_week_filter_value,
+      format: format
+    }.compact_blank
   end
 
   # A target assignment can create one TargetMapping row per selected activity.
@@ -5546,6 +5608,9 @@ class ModulesController < ApplicationController
 
     rows << ["Dashboard Cards"]
     rows << ["Title", "Value", "Caption"]
+    Array(@dashboard_summary_cards).each do |card|
+      rows << [card[:title], card[:value], card[:caption]]
+    end
     Array(@dashboard_cards).each do |card|
       title = card.is_a?(Hash) ? card[:title] : card[0]
       value = card.is_a?(Hash) ? card[:value] : card[1]

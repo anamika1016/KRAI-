@@ -409,6 +409,31 @@
     </div>
   <% end %>
 
+  <% dashboard_summary_cards = Array(@dashboard_summary_cards) %>
+  <% if dashboard_summary_cards.any? %>
+    <section class="module-card training-participation-status-card dashboard-status-panel dashboard-summary-panel" id="dashboard_summary_boxes">
+      <div class="module-card-header training-participation-status-header">
+        <div>
+          <h2>Dashboard Summary</h2>
+          <p>Filtered target, achievement, farmer, village, and activity summary.</p>
+        </div>
+      </div>
+
+      <div class="training-participation-boxes dashboard-summary-boxes">
+        <% dashboard_summary_cards.each do |card| %>
+          <div class="training-participation-box total dashboard-summary-box">
+            <span><%= card[:title] %></span>
+            <strong><%= card[:value] %></strong>
+            <small><%= card[:caption] %></small>
+            <div class="dashboard-summary-actions">
+              <%= link_to "View List", card[:path], class: "table-action", data: { dashboard_card: true } %>
+            </div>
+          </div>
+        <% end %>
+      </div>
+    </section>
+  <% end %>
+
   <% main_activity_filter_value = params[:main_activity].presence || @dashboard_main_activity_filter_value.presence %>
   <% normalized_main_activity_filter = main_activity_filter_value.to_s.downcase.strip %>
   <% farmer_activity_mode = @dashboard_farmer_activity_mode ||
