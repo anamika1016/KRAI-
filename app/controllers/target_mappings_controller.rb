@@ -1156,8 +1156,8 @@ class TargetMappingsController < ApplicationController
     scope = scope.where(month_name: params[:month]) if params[:month].present?
     scope = scope.where(main_activity_name: params[:main_activity]) if params[:main_activity].present?
     scope = scope.where(activity_name: params[:sub_activity]) if params[:sub_activity].present?
-    scope = scope.where(fco_id: params[:fcoc]).or(scope.where(fco_name: params[:fcoc])) if params[:fcoc].present?
-    scope = scope.where(ics_id: params[:ics]).or(scope.where(ics_name: params[:ics])) if params[:ics].present?
+    scope = scope.where("fco_id = :fcoc OR fco_name = :fcoc", fcoc: params[:fcoc]) if params[:fcoc].present?
+    scope = scope.where("ics_id = :ics OR ics_name = :ics", ics: params[:ics]) if params[:ics].present?
     scope
   end
 

@@ -831,7 +831,7 @@ class ModulesController < ApplicationController
       fcoc_name: @weekly_target_fcoc_filter_value,
       week_number: @weekly_target_week_filter_value
     )
-    @dashboard_summary_cards = dashboard_summary_cards(t_scope, participation_dashboard_counts)
+    @dashboard_summary_cards = dashboard_summary_cards(t_scope, participation_dashboard_counts, weekly_activity_target_status_totals(weekly_dashboard_targets, week_number: @weekly_target_week_filter_value))
     @dashboard_cards = dashboard_cards
     @dashboard_generated_at = Time.current
 
@@ -895,13 +895,8 @@ class ModulesController < ApplicationController
       )
       population_rows.select { |row| row[:status] == "red" }
     elsif selected_status == "pending_achievement"
-      population_rows = training_participation_population_rows(
-        month_name: selected_month,
-        fcoc_name: selected_fcoc,
-        records: training_records,
-        targets: participation_targets
-      )
-      population_rows.select { |row| %w[red yellow].include?(row[:status]) }
+      target_map_rows = training_participation_target_map_rows(participation_targets, month_name: selected_month)
+      target_map_rows.select { |row| row[:completed_activity_count].to_i < row[:assigned_activity_count].to_i }
     elsif %w[green yellow pending].include?(selected_status)
       population_rows = training_participation_population_rows(
         month_name: selected_month,
@@ -2938,26 +2933,26 @@ class ModulesController < ApplicationController
     cards
   end
 
-  def dashboard_summary_cards(targets, participation_counts)
+  def dashboard_summary_cards(targets, participation_counts, weekly_totals)
     village_count = Array(targets).map { |target| [target.village_id.to_s.strip, target.village_name.to_s.strip.downcase] }
       .reject { |id, name| id.blank? && name.blank? }
       .uniq
       .size
     targeted_farmer_count = participation_counts[:total].to_i
-    farmer_target_mapping = participation_counts[:total].to_i
-    farmer_achievement = participation_counts[:green].to_i
-    farmer_pending = participation_counts[:red].to_i + participation_counts[:yellow].to_i
-    activity_target_mapping = participation_counts[:total].to_i
-    activity_achievement = participation_counts[:green].to_i
-    activity_pending = participation_counts[:red].to_i + participation_counts[:yellow].to_i
+    farmer_target_mapping = participation_counts[:target_map_total].to_i
+    farmer_achievement = participation_counts[:completed_target_map_total].to_i
+    farmer_pending = [farmer_target_mapping - farmer_achievement, 0].max
+    activity_target_mapping = weekly_totals[:target].to_f
+    activity_achievement = weekly_totals[:completed].to_f
+    activity_pending = weekly_totals[:pending].to_f
 
     [
       dashboard_summary_card("Total Mapped Villages", village_count, "Filtered mapped villages", target_mappings_path(dashboard_summary_target_params), dashboard_path(dashboard_summary_target_params.merge(format: :xlsx))),
       dashboard_summary_card("Targeted Farmers", targeted_farmer_count, "Unique targeted farmers", farmer_training_participation_path(dashboard_summary_participation_params(status: "unique")), farmer_training_participation_path(dashboard_summary_participation_params(status: "unique", format: :xlsx))),
       dashboard_summary_card("Total Mapped Main Activities", Array(targets).filter_map { |target| target.main_activity_name.to_s.strip.presence }.uniq.size, "Filtered main activities", target_mappings_path(dashboard_summary_target_params), dashboard_path(dashboard_summary_target_params.merge(format: :xlsx))),
       dashboard_summary_card("Total Mapped Sub-Activities", Array(targets).filter_map { |target| target.activity_name.to_s.strip.presence }.uniq.size, "Filtered sub-activities", target_mappings_path(dashboard_summary_target_params), dashboard_path(dashboard_summary_target_params.merge(format: :xlsx))),
-      dashboard_summary_card("Farmer-wise Target Mapping", farmer_target_mapping, "Farmer-wise mapped target list", farmer_training_participation_path(dashboard_summary_participation_params(status: "unique")), farmer_training_participation_path(dashboard_summary_participation_params(status: "unique", format: :xlsx))),
-      dashboard_summary_card("Farmer-wise Achievement", farmer_achievement, "Completed farmer target entries", farmer_training_participation_path(dashboard_summary_participation_params(status: "green")), farmer_training_participation_path(dashboard_summary_participation_params(status: "green", format: :xlsx))),
+      dashboard_summary_card("Farmer-wise Target Mapping", farmer_target_mapping, "Farmer activity target entries", farmer_training_participation_path(dashboard_summary_participation_params(status: "total")), farmer_training_participation_path(dashboard_summary_participation_params(status: "total", format: :xlsx))),
+      dashboard_summary_card("Farmer-wise Achievement", farmer_achievement, "Completed farmer target entries", farmer_training_participation_path(dashboard_summary_participation_params(status: "completed_map")), farmer_training_participation_path(dashboard_summary_participation_params(status: "completed_map", format: :xlsx))),
       dashboard_summary_card("Farmer-wise Pending Achievement", farmer_pending, "Pending farmer target entries", farmer_training_participation_path(dashboard_summary_participation_params(status: "pending_achievement")), farmer_training_participation_path(dashboard_summary_participation_params(status: "pending_achievement", format: :xlsx))),
       dashboard_summary_card("Activity-wise Target Mapping", dashboard_quantity(activity_target_mapping), "Activity target quantity", weekly_activity_target_report_path(dashboard_summary_weekly_params(status: "total")), weekly_activity_target_report_path(dashboard_summary_weekly_params(status: "total", format: :xlsx))),
       dashboard_summary_card("Activity-wise Achievement", dashboard_quantity(activity_achievement), "Completed activity quantity", weekly_activity_target_report_path(dashboard_summary_weekly_params(status: "green")), weekly_activity_target_report_path(dashboard_summary_weekly_params(status: "green", format: :xlsx))),
@@ -2970,7 +2965,7 @@ class ModulesController < ApplicationController
   end
 
   def dashboard_summary_target_params
-    params.permit(:main_activity, :sub_activity, :fcoc, :ics, :month, :vrp_id).to_h
+    @dashboard_summary_target_params ||= params.permit(:main_activity, :sub_activity, :fcoc, :ics, :month, :vrp_id).to_h
       .reverse_merge(
         "month" => @dashboard_month_filter_value,
         "fcoc" => @dashboard_fcoc_filter_value

@@ -221,12 +221,12 @@ module Api
           .uniq
           .size
         targeted_farmer_count = participation[:total].to_i
-        farmer_target_mapping = participation[:total].to_i
-        farmer_achievement = participation[:green].to_i
-        farmer_pending = participation[:red].to_i + participation[:yellow].to_i
-        activity_target_mapping = participation[:total].to_i
-        activity_achievement = participation[:green].to_i
-        activity_pending = participation[:red].to_i + participation[:yellow].to_i
+        farmer_target_mapping = participation[:target_map_total].to_i
+        farmer_achievement = participation[:completed_target_map_total].to_i
+        farmer_pending = [farmer_target_mapping - farmer_achievement, 0].max
+        activity_target_mapping = weekly[:target]
+        activity_achievement = weekly[:completed]
+        activity_pending = weekly[:pending]
 
         {
           total_mapped_villages: village_count,
