@@ -1925,6 +1925,7 @@ class ModulesController < ApplicationController
     activity_settings = jeevika_jankar_main_activity_settings
     sub_activity_settings = jeevika_jankar_sub_activity_settings(activity_settings)
     other_target_achievement_index = approved_other_target_achievement_index
+    group_key_counts = dashboard_target_mapping_group_key_counts(targets)
 
     raw_rows = Array(targets).map do |target|
       assigned_farmer_ids = target_farmer_ids(target)
@@ -1984,7 +1985,7 @@ class ModulesController < ApplicationController
     end
 
     raw_rows.group_by do |row|
-      row[:target_record].present? ? dashboard_target_assignment_key(row[:target_record]) : row[:target_mapping_id]
+      row[:target_record].present? ? dashboard_target_assignment_key(row[:target_record], group_key_counts) : row[:target_mapping_id]
     end.values.map do |rows|
       first = rows.first
       main_activities = rows.map { |row| row[:main_activity].to_s.strip }.reject(&:blank?).uniq
@@ -2905,14 +2906,19 @@ class ModulesController < ApplicationController
   end
 
   def dashboard_target_assignment_groups(targets)
-    Array(targets).group_by { |target| dashboard_target_assignment_key(target) }.values
+    group_key_counts = dashboard_target_mapping_group_key_counts(targets)
+    Array(targets).group_by { |target| dashboard_target_assignment_key(target, group_key_counts) }.values
   end
 
-  def dashboard_target_assignment_key(target)
+  def dashboard_target_assignment_key(target, group_key_counts = nil)
     group_key = target.mapping_group_key.to_s.strip if target.respond_to?(:mapping_group_key)
-    return [:mapping_group_key, group_key] if group_key.present?
+    group_key_counts ||= dashboard_target_mapping_group_key_counts(dashboard_target_mappings)
+    return [:mapping_group_key, group_key] if group_key.present? && group_key_counts[group_key].to_i > 1
 
-    [:target_mapping_id, target.id]
+    dashboard_target_assignment_signature(target) + [
+      normalize_dashboard_text(target.main_activity_name),
+      normalize_dashboard_text(target.activity_name)
+    ]
   end
 
   def dashboard_target_assignment_signature(target)
@@ -2930,6 +2936,12 @@ class ModulesController < ApplicationController
       target.ffs_target.to_s,
       Array(target.afl_ids).map(&:to_s).reject(&:blank?).sort
     ]
+  end
+
+  def dashboard_target_mapping_group_key_counts(targets)
+    Array(targets).filter_map do |target|
+      target.mapping_group_key.to_s.strip.presence if target.respond_to?(:mapping_group_key)
+    end.tally
   end
 
   def dashboard_reports

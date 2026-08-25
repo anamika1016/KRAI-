@@ -156,7 +156,7 @@ class TargetMappingsController < ApplicationController
         main_activity_name: main_activity,
         activity_name: sub_activity,
         target_quantity: plan&.fetch("monthly", nil).presence || single_target_mapping_attributes[:target_quantity],
-        mapping_group_key: group_key || SecureRandom.uuid
+        mapping_group_key: group_key
       ).merge(weekly_target_attributes(plan)))
       target_mapping.vrp_ics_mapping_id = nil
       normalize_location_values(target_mapping)
@@ -360,11 +360,15 @@ class TargetMappingsController < ApplicationController
     end
   end
 
-  def target_group_signature(target)
+  def target_group_signature(target, group_key_counts = nil)
     group_key = target.mapping_group_key.to_s.strip if target.respond_to?(:mapping_group_key)
-    return [:mapping_group_key, group_key] if group_key.present?
+    group_key_counts ||= target_mapping_group_key_counts(visible_target_mappings)
+    return [:mapping_group_key, group_key] if group_key.present? && group_key_counts[group_key].to_i > 1
 
-    [:target_mapping_id, target.id]
+    target_assignment_signature(target) + [
+      normalized_activity_value(target.main_activity_name),
+      normalized_activity_value(target.activity_name)
+    ]
   end
 
   def target_assignment_signature(target)
@@ -1223,21 +1227,9 @@ class TargetMappingsController < ApplicationController
   end
 
   def grouped_target_mapping_rows(targets)
+    group_key_counts = target_mapping_group_key_counts(targets)
     Array(targets).group_by do |target|
-      [
-        target.vrp_id,
-        target.fco_name.presence || target.fco_id,
-        target.ics_name.presence || target.ics_id,
-        target.village_name.presence || target.village_id,
-        target.month_name,
-        target.completion_date,
-        target.opg_training_target.to_s,
-        target.week_wise_opg_target.to_s,
-        target.input_demo_inm_target.to_s,
-        target.input_demo_pm_target.to_s,
-        target.ffs_target.to_s,
-        Array(target.afl_ids).map(&:to_s).reject(&:blank?).sort
-      ]
+      target_group_signature(target, group_key_counts)
     end.map do |_key, grouped_targets|
       target = grouped_targets.first
       weekly_values = grouped_targets.map { |row| Array(row.weekly_target_values).map(&:to_i) }
@@ -1253,6 +1245,12 @@ class TargetMappingsController < ApplicationController
         weekly_values: merged_weekly_values
       }
     end
+  end
+
+  def target_mapping_group_key_counts(targets)
+    Array(targets).filter_map do |target|
+      target.mapping_group_key.to_s.strip.presence if target.respond_to?(:mapping_group_key)
+    end.tally
   end
 
   def editable_targets_for_payload(target)
