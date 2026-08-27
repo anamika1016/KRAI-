@@ -442,6 +442,20 @@
           <h2>Dashboard Summary</h2>
           <p>Filtered target, achievement, farmer, village, and activity summary.</p>
         </div>
+        <div class="dashboard-actions">
+          <%= form_with url: dashboard_path, method: :get, local: true, html: { class: "dashboard-month-filter" } do %>
+            <% params.permit(:search, :activity, :main_activity, :sub_activity, :fcoc, :cluster_incharge, :ics, :post, :vrp_id).each do |key, value| %>
+              <%= hidden_field_tag key, value if value.present? %>
+            <% end %>
+            <label class="dashboard-month-select">
+              <span>Month</span>
+              <%= select_tag :month,
+                    options_for_select([["All Months", ""]] + (@filter_month_options || []).map { |month| [month, month] }, @dashboard_month_filter_value),
+                    class: "form-select dashboard-filter-select",
+                    data: { dashboard_filter_select: true } %>
+            </label>
+          <% end %>
+        </div>
       </div>
 
       <div class="training-participation-boxes dashboard-summary-boxes">

@@ -660,14 +660,9 @@ class ModulesController < ApplicationController
       .compact_blank
       .sort_by { |m| dashboard_month_index(m) || 0 }
     weekly_target_scope = t_scope.dup
-    # Monthly reporting is for the completed month by default (for example,
-    # opening the dashboard in August shows July). Users can still choose All
-    # Months or another month from the filter.
-    previous_month = Date.current.prev_month.strftime("%B")
-    scoped_target_months = t_scope.filter_map { |target| target.month_name.to_s.strip.presence }.uniq
-    default_dashboard_month = scoped_target_months.any? { |month| normalize_dashboard_text(month) == normalize_dashboard_text(previous_month) } ?
-      previous_month :
-      default_vrp_dashboard_month([], t_scope)
+    # Monthly dashboard summary opens on the current month by default. Users can
+    # still choose All Months or another month from the filter.
+    default_dashboard_month = Date.current.strftime("%B")
     @dashboard_month_filter_value = params[:month].presence || default_dashboard_month
     if @dashboard_month_filter_value.present?
       m = @dashboard_month_filter_value.to_s
@@ -2953,8 +2948,8 @@ class ModulesController < ApplicationController
     [
       dashboard_summary_card("Total Mapped Villages", village_count, "Filtered mapped villages", target_mappings_path(dashboard_summary_target_params), dashboard_path(dashboard_summary_target_params.merge(format: :xlsx))),
       dashboard_summary_card("Targeted Farmers", targeted_farmer_count, "Unique targeted farmers", farmer_training_participation_path(dashboard_summary_participation_params(status: "unique")), farmer_training_participation_path(dashboard_summary_participation_params(status: "unique", format: :xlsx))),
-      dashboard_summary_card("Total Mapped Main Activities", Array(targets).count { |target| target.main_activity_name.to_s.strip.present? }, "Filtered main activities", target_mappings_path(dashboard_summary_target_params), dashboard_path(dashboard_summary_target_params.merge(format: :xlsx))),
-      dashboard_summary_card("Total Mapped Sub-Activities", Array(targets).count { |target| target.activity_name.to_s.strip.present? }, "Filtered sub-activities", target_mappings_path(dashboard_summary_target_params), dashboard_path(dashboard_summary_target_params.merge(format: :xlsx))),
+      dashboard_summary_card("Total Mapped Main Activities", Array(targets).filter_map { |target| normalize_dashboard_text(target.main_activity_name).presence }.uniq.size, "Filtered main activities", target_mappings_path(dashboard_summary_target_params), dashboard_path(dashboard_summary_target_params.merge(format: :xlsx))),
+      dashboard_summary_card("Total Mapped Sub-Activities", Array(targets).filter_map { |target| normalize_dashboard_text(target.activity_name).presence }.uniq.size, "Filtered sub-activities", target_mappings_path(dashboard_summary_target_params), dashboard_path(dashboard_summary_target_params.merge(format: :xlsx))),
       dashboard_summary_card("Farmer-wise Target Mapping", farmer_target_mapping, "Farmer activity target entries", farmer_training_participation_path(dashboard_summary_participation_params(status: "total")), farmer_training_participation_path(dashboard_summary_participation_params(status: "total", format: :xlsx))),
       dashboard_summary_card("Farmer-wise Achievement", farmer_achievement, "Completed farmer target entries", farmer_training_participation_path(dashboard_summary_participation_params(status: "completed_map")), farmer_training_participation_path(dashboard_summary_participation_params(status: "completed_map", format: :xlsx))),
       dashboard_summary_card("Farmer-wise Pending Achievement", farmer_pending, "Pending farmer target entries", farmer_training_participation_path(dashboard_summary_participation_params(status: "pending_achievement")), farmer_training_participation_path(dashboard_summary_participation_params(status: "pending_achievement", format: :xlsx))),
