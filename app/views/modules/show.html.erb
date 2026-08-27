@@ -2066,6 +2066,11 @@
             <% raw_field_value = @record&.data&.[](field_key) %>
             <% field_value = raw_field_value.is_a?(Array) ? raw_field_value.join(", ") : raw_field_value.to_s %>
             <% field_value = module_record_field_value(@record, field).to_s if @record.present? && field_value.blank? %>
+            <% if @slug == "training-form" && field_value.blank? %>
+              <% field_value = @record&.data&.[]("trainee_department").to_s if field == "FCO Name" %>
+              <% field_value = @record&.data&.[]("internal_trainer_name_1").to_s if field == "Cluster Coordinator Name" %>
+              <% field_value = @record&.data&.[]("internal_trainer_name_2").to_s if field == "Agronomist Name" %>
+            <% end %>
             <% field_value = @record&.data&.[]("role_name").to_s if field == "Role" && field_value.blank? %>
             <% field_value = (@record&.data&.[]("category_name").presence || @record&.data&.[]("office")).to_s if field == "Office Name" && field_value.blank? %>
             <% field_value = "Training" if @slug == "add-activity-group" && field == "Main Activity Type" && field_value.blank? %>
@@ -2075,7 +2080,7 @@
               <% field_value = @record&.data&.[]("parent_office").present? ? "Sub Parent Office" : "Parent Office" if @record.present? %>
             <% end %>
             <% if @slug == "training-form" && field_value.blank? %>
-              <% field_value = training_trainee_department_default if field == "Trainee Department" %>
+              <% field_value = training_trainee_department_default if field == "FCO Name" %>
               <% field_value = current_app_user&.dig("name").to_s if field == "Trainer Name" %>
               <% field_value = current_app_user&.dig("mobile_no").to_s if field == "Trainer Contact" %>
               <% field_value = (selected_training_farmer_ids || []).size.to_s if field == "Farmer Count" %>
@@ -2096,7 +2101,7 @@
             <% if other_target_form && @record.blank? && field == "Completion Date" && field_value.blank? %>
               <% field_value = Date.current.to_s %>
             <% end %>
-            <% optional_training_fields = ["Internal Trainer Name 1", "Internal Trainer Name 2"] %>
+            <% optional_training_fields = [] %>
             <% form_required = (@slug == "training-form" && !optional_training_fields.include?(field)) || other_target_form || add_farmer_form %>
             <% required_attr = form_required ? "required" : nil %>
             <label>
@@ -2228,7 +2233,7 @@
               <% elsif other_target_form && field == "Achievement" %>
                 <input name="module_record[<%= field_key %>]" type="number" min="0" step="any" placeholder="Enter Achievement" value="<%= field_value %>" data-seed-achievement required>
               <% else %>
-                <input name="module_record[<%= field_key %>]" type="text" placeholder="Enter <%= resource_person_label(field) %>" value="<%= field_value %>" <%= "readonly" if @slug == "training-form" && ["Trainee Department", "Trainer Name", "Trainer Contact"].include?(field) && current_app_user&.dig("record_type").to_s == "Vrp" %> <%= "data-user-management-role-input" if @slug == "role-management" && field == "User Management Role" %> <%= required_attr %>>
+                <input name="module_record[<%= field_key %>]" type="text" placeholder="Enter <%= resource_person_label(field) %>" value="<%= field_value %>" <%= "readonly" if @slug == "training-form" && ["FCO Name", "Trainee Department", "Trainer Name", "Trainer Contact"].include?(field) && current_app_user&.dig("record_type").to_s == "Vrp" %> <%= "data-user-management-role-input" if @slug == "role-management" && field == "User Management Role" %> <%= required_attr %>>
               <% end %>
             </label>
             <% if @slug == "training-form" && field == "Training Photo Upload with Geo Tag" %>

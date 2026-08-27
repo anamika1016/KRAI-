@@ -369,7 +369,10 @@ class FarmerTargetApi
     trainer_name, trainer_contact = training_trainer_defaults
     data["trainer_name"] = trainer_name if trainer_name.present?
     data["trainer_contact"] = trainer_contact if trainer_contact.present?
-    data["trainee_department"] = training_trainee_department_default if data["trainee_department"].blank?
+    data["fco_name"] = data["fco_name"].presence || data["trainee_department"].presence || training_trainee_department_default
+    data["trainee_department"] = data["fco_name"] if data["trainee_department"].blank?
+    data["cluster_coordinator_name"] = data["cluster_coordinator_name"].presence || data["internal_trainer_name_1"].presence
+    data["agronomist_name"] = data["agronomist_name"].presence || data["internal_trainer_name_2"].presence
     data["main_activity_type"] = data["main_activity_type"].presence || "Training"
     data["main_activity"] = data["main_activity"].presence || data["training_topic"].presence
     data["sub_activity"] = data["sub_activity"].presence || data["training_subject"].presence
@@ -468,9 +471,13 @@ class FarmerTargetApi
       "month" => "Month",
       "ics_block" => "ICS Name",
       "gram_name" => "Village Name",
-      "trainee_department" => "Trainee Department",
+      "fco_name" => "FCO Name",
       "trainer_name" => "Trainer Name",
       "trainer_contact" => "Trainer Contact",
+      "cluster_coordinator_name" => "Cluster Coordinator Name",
+      "agronomist_name" => "Agronomist Name",
+      "papl_staff_name" => "PAPL Staff Name",
+      "external_input" => "External Input",
       "training_date" => "Training Date",
       "training_location" => "Training Location",
       "main_activity" => "Main Activity",

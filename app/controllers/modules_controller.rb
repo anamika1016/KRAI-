@@ -116,11 +116,13 @@ class ModulesController < ApplicationController
         "Month",
         "ICS / Block",
         "Gram Name",
-        "Trainee Department",
+        "FCO Name",
         "Trainer Name",
         "Trainer Contact",
-        "Internal Trainer Name 1",
-        "Internal Trainer Name 2",
+        "Cluster Coordinator Name",
+        "Agronomist Name",
+        "PAPL Staff Name",
+        "External Input",
         "Training Date",
         "Training Location",
         "Main Activity",
@@ -145,8 +147,10 @@ class ModulesController < ApplicationController
         "ICS / Block",
         "Gram Name",
         "Trainer Name",
-        "Internal Trainer Name 1",
-        "Internal Trainer Name 2",
+        "Cluster Coordinator Name",
+        "Agronomist Name",
+        "PAPL Staff Name",
+        "External Input",
         "Training Date",
         "Training Location",
         "Main Activity",
@@ -2949,8 +2953,8 @@ class ModulesController < ApplicationController
     [
       dashboard_summary_card("Total Mapped Villages", village_count, "Filtered mapped villages", target_mappings_path(dashboard_summary_target_params), dashboard_path(dashboard_summary_target_params.merge(format: :xlsx))),
       dashboard_summary_card("Targeted Farmers", targeted_farmer_count, "Unique targeted farmers", farmer_training_participation_path(dashboard_summary_participation_params(status: "unique")), farmer_training_participation_path(dashboard_summary_participation_params(status: "unique", format: :xlsx))),
-      dashboard_summary_card("Total Mapped Main Activities", Array(targets).filter_map { |target| target.main_activity_name.to_s.strip.presence }.uniq.size, "Filtered main activities", target_mappings_path(dashboard_summary_target_params), dashboard_path(dashboard_summary_target_params.merge(format: :xlsx))),
-      dashboard_summary_card("Total Mapped Sub-Activities", Array(targets).filter_map { |target| target.activity_name.to_s.strip.presence }.uniq.size, "Filtered sub-activities", target_mappings_path(dashboard_summary_target_params), dashboard_path(dashboard_summary_target_params.merge(format: :xlsx))),
+      dashboard_summary_card("Total Mapped Main Activities", Array(targets).count { |target| target.main_activity_name.to_s.strip.present? }, "Filtered main activities", target_mappings_path(dashboard_summary_target_params), dashboard_path(dashboard_summary_target_params.merge(format: :xlsx))),
+      dashboard_summary_card("Total Mapped Sub-Activities", Array(targets).count { |target| target.activity_name.to_s.strip.present? }, "Filtered sub-activities", target_mappings_path(dashboard_summary_target_params), dashboard_path(dashboard_summary_target_params.merge(format: :xlsx))),
       dashboard_summary_card("Farmer-wise Target Mapping", farmer_target_mapping, "Farmer activity target entries", farmer_training_participation_path(dashboard_summary_participation_params(status: "total")), farmer_training_participation_path(dashboard_summary_participation_params(status: "total", format: :xlsx))),
       dashboard_summary_card("Farmer-wise Achievement", farmer_achievement, "Completed farmer target entries", farmer_training_participation_path(dashboard_summary_participation_params(status: "completed_map")), farmer_training_participation_path(dashboard_summary_participation_params(status: "completed_map", format: :xlsx))),
       dashboard_summary_card("Farmer-wise Pending Achievement", farmer_pending, "Pending farmer target entries", farmer_training_participation_path(dashboard_summary_participation_params(status: "pending_achievement")), farmer_training_participation_path(dashboard_summary_participation_params(status: "pending_achievement", format: :xlsx))),
@@ -8693,6 +8697,9 @@ class ModulesController < ApplicationController
       "District Code" => ["district_code"],
       "Jeevika Jankar Type" => ["jeevika_jankar_type", "vrp_type", "select_vrp_type"],
       "Jeevika Jankar Type Name" => ["jeevika_jankar_type_name", "vrp_type_name", "position_type_name"],
+      "FCO Name" => ["fco_name", "trainee_department", "department", "fcoc_name"],
+      "Cluster Coordinator Name" => ["cluster_coordinator_name", "internal_trainer_name_1"],
+      "Agronomist Name" => ["agronomist_name", "internal_trainer_name_2"],
       "Main Activity" => ["main_activity", "training_topic", "activity_group", "activity_group_name"],
       "Sub Activity" => ["sub_activity", "training_subject", "activity_name", "vrp_activity_name"],
       "State Name" => ["state_name", "state"],
@@ -9115,7 +9122,10 @@ class ModulesController < ApplicationController
     trainer_name, trainer_contact = training_trainer_defaults
     data["trainer_name"] = trainer_name if trainer_name.present?
     data["trainer_contact"] = trainer_contact if trainer_contact.present?
-    data["trainee_department"] = training_trainee_department_default if data["trainee_department"].blank?
+    data["fco_name"] = data["fco_name"].presence || data["trainee_department"].presence || training_trainee_department_default
+    data["trainee_department"] = data["fco_name"] if data["trainee_department"].blank?
+    data["cluster_coordinator_name"] = data["cluster_coordinator_name"].presence || data["internal_trainer_name_1"].presence
+    data["agronomist_name"] = data["agronomist_name"].presence || data["internal_trainer_name_2"].presence
     data["main_activity_type"] = data["main_activity_type"].presence || "Training"
     raw_main_activities = data["main_activity"].presence || data["training_topic"].presence
     main_activities = Array(raw_main_activities).map(&:to_s).map(&:strip).reject(&:blank?).uniq
@@ -9728,9 +9738,13 @@ class ModulesController < ApplicationController
       "month" => "Month",
       "ics_block" => "ICS Name",
       "gram_name" => "Village Name",
-      "trainee_department" => "Trainee Department",
+      "fco_name" => "FCO Name",
       "trainer_name" => "Trainer Name",
       "trainer_contact" => "Trainer Contact",
+      "cluster_coordinator_name" => "Cluster Coordinator Name",
+      "agronomist_name" => "Agronomist Name",
+      "papl_staff_name" => "PAPL Staff Name",
+      "external_input" => "External Input",
       "training_date" => "Training Date",
       "training_location" => "Training Location",
       "main_activity" => "Main Activity",
@@ -9879,10 +9893,11 @@ class ModulesController < ApplicationController
 
   def module_select_field?(field)
     return false if current_slug == "training-topic-mapping" && ["Department", "Training Topic", "Training Subject"].include?(field)
-    return false if record_source_slug == "training-form" && field == "Trainee Department"
+    return false if record_source_slug == "training-form" && ["Trainee Department", "FCO Name", "External Input"].include?(field)
     return false if other_target_record_source? && field == "Department"
     return true if current_slug == "parent-office-add" && field == "Parent Office"
     return true if training_target_field?(field)
+    return true if training_people_field?(field)
     return true if training_activity_field?(field)
     return true if seed_distribution_target_field?(field)
 
@@ -9893,6 +9908,7 @@ class ModulesController < ApplicationController
   def module_field_options(field)
     return parent_office_parent_options if current_slug == "parent-office-add" && field == "Parent Office"
     return training_target_field_options(field) if training_target_field?(field)
+    return training_people_field_options(field) if training_people_field?(field)
     return training_activity_field_options(field) if training_activity_field?(field)
     return seed_distribution_target_field_options(field) if seed_distribution_target_field?(field)
 
@@ -9914,6 +9930,41 @@ class ModulesController < ApplicationController
 
   def training_activity_field?(field)
     record_source_slug == "training-form" && ["Main Activity", "Sub Activity"].include?(field)
+  end
+
+  def training_people_field?(field)
+    record_source_slug == "training-form" && ["Cluster Coordinator Name", "Agronomist Name", "PAPL Staff Name"].include?(field)
+  end
+
+  def training_people_field_options(field)
+    case field
+    when "Cluster Coordinator Name"
+      cluster_coordinator_options
+    when "Agronomist Name"
+      agronomist_options
+    when "PAPL Staff Name"
+      papl_staff_options
+    else
+      []
+    end
+  end
+
+  def cluster_coordinator_options
+    (
+      registered_user_options_matching(/cluster/i) +
+      registered_vrp_cluster_names
+    ).compact_blank.uniq
+  end
+
+  def agronomist_options
+    registered_user_options_matching(/agronomist/i)
+  end
+
+  def papl_staff_options
+    (
+      registered_app_user_names +
+      registered_module_user_names
+    ).compact_blank.uniq
   end
 
   def seed_distribution_target_field?(field)
@@ -10531,6 +10582,74 @@ class ModulesController < ApplicationController
       registered_user_names_for_option(attribute, value) +
       registered_module_user_names_for_option(attribute, value)
     ).compact_blank.uniq
+  end
+
+  def registered_user_options_matching(pattern)
+    (
+      registered_app_user_rows_matching(pattern) +
+      registered_module_user_rows_matching(pattern)
+    ).compact_blank.uniq
+  end
+
+  def registered_app_user_rows_matching(pattern)
+    return [] unless model_ready?(:User)
+
+    User.order(updated_at: :desc).filter_map do |user|
+      values = [
+        user.try(:role),
+        user.try(:role_name),
+        user.try(:stakeholder_role),
+        user.try(:user_management_role),
+        user.try(:person_type)
+      ].map(&:to_s)
+      next unless values.any? { |value| value.match?(pattern) }
+
+      user.full_name.presence || user.user_name.presence
+    end
+  end
+
+  def registered_module_user_rows_matching(pattern)
+    return [] unless model_ready?(:ModuleRecord)
+
+    ModuleRecord
+      .where(module_slug: "new-user")
+      .order(updated_at: :desc)
+      .select { |record| active_module_record?(record) }
+      .filter_map do |record|
+        values = [
+          record.data["role"],
+          record.data["role_name"],
+          record.data["stakeholder_role"],
+          record.data["user_management_role"],
+          record.data["person_type"]
+        ].map(&:to_s)
+        next unless values.any? { |value| value.match?(pattern) }
+
+        [record.data["first_name"], record.data["last_name"]].compact_blank.join(" ").presence || record.data["user_name"].presence
+      end
+  end
+
+  def registered_vrp_cluster_names
+    return [] unless model_ready?(:Vrp)
+    return [] unless Vrp.column_names.include?("cluster_incharge")
+
+    Vrp.order(updated_at: :desc).pluck(:cluster_incharge).compact_blank.uniq
+  end
+
+  def registered_app_user_names
+    return [] unless model_ready?(:User)
+
+    User.order(updated_at: :desc).filter_map { |user| user.full_name.presence || user.user_name.presence }
+  end
+
+  def registered_module_user_names
+    return [] unless model_ready?(:ModuleRecord)
+
+    ModuleRecord
+      .where(module_slug: "new-user")
+      .order(updated_at: :desc)
+      .select { |record| active_module_record?(record) }
+      .filter_map { |record| [record.data["first_name"], record.data["last_name"]].compact_blank.join(" ").presence || record.data["user_name"].presence }
   end
 
   def registered_vrp_names_for_option(attribute, value)
