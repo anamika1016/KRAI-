@@ -2436,7 +2436,11 @@ class ModulesController < ApplicationController
     else assigned_ids
     end
 
-    rows = vrp_target_farmer_rows(target, farmer_ids, completed_ids)
+    rows = if farmer_ids.any?
+      vrp_target_farmer_rows(target, farmer_ids, completed_ids)
+    else
+      vrp_target_farmer_fallback_rows(selected_targets, scope)
+    end
     title = {
       "assigned" => "Assigned Farmers",
       "completed" => "Completed Farmers",
@@ -2450,6 +2454,37 @@ class ModulesController < ApplicationController
     ].compact_blank.join(" | ")
 
     dashboard_detail_payload("target_farmers", title, caption, rows.size, vrp_target_farmer_headers, rows)
+  end
+
+  def vrp_target_farmer_fallback_rows(targets, scope)
+    targets = Array(targets)
+    return [] if targets.blank? || scope.to_s == "completed"
+
+    target = targets.first
+    fallback_count = case scope.to_s
+    when "pending"
+      rows = vrp_dashboard_target_progress_rows(targets, vrp_dashboard_bills(target.vrp))
+      rows.sum { |row| row[:pending].to_f }.to_i
+    else
+      targets.sum { |row| row.farmer_count.to_i.nonzero? || row.target_quantity.to_i }
+    end
+    return [] if fallback_count <= 0
+
+    Array.new(fallback_count) do |index|
+      [
+        "Mapped Farmer #{index + 1}",
+        "-",
+        "-",
+        "-",
+        "-",
+        dashboard_text_value(target.ics_name).presence || dashboard_text_value(target.ics_id).presence || "-",
+        dashboard_text_value(target.village_name).presence || dashboard_text_value(target.village_id).presence || "-",
+        dashboard_text_value(target.month_name).presence || "-",
+        targets.map(&:main_activity_name).compact_blank.uniq.join(", ").presence || "-",
+        targets.map(&:activity_name).compact_blank.uniq.join(", ").presence || "-",
+        scope.to_s == "pending" ? "Pending" : "Assigned"
+      ]
+    end
   end
 
   def vrp_dashboard_completed_farmer_ids_for_target(target)
@@ -2581,7 +2616,8 @@ class ModulesController < ApplicationController
             "target_farmers",
             target_id: row[:target_mapping_id],
             target_ids: Array(row[:target_mapping_ids].presence || row[:target_mapping_id]).join(","),
-            farmer_scope: farmer_scope
+            farmer_scope: farmer_scope,
+            training_month: row[:month]
           )
         }
       ]
