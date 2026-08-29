@@ -2122,10 +2122,7 @@ class ModulesController < ApplicationController
     status_sets = vrp_dashboard_farmer_status_sets(rows)
     mapped_farmer_count = status_sets[:mapped].size
     achieved_farmer_count = status_sets[:green].size
-    pending_farmer_count = [
-      (status_sets[:red] + status_sets[:yellow]).uniq.size,
-      pending_target_total.to_f
-    ].max
+    pending_farmer_count = (status_sets[:red] + status_sets[:yellow]).uniq.size
     month_params = { training_month: selected_month }.compact_blank
 
     [
@@ -2343,8 +2340,7 @@ class ModulesController < ApplicationController
       dashboard_detail_payload(key, "AFL", "Distinct farmers mapped to you through ICS.", rows.size, ["Farmer", "Father Name", "Mobile", "TraceNet No", "ICS", "Village", "Status"], rows)
     when "pending_farmers"
       rows = vrp_dashboard_pending_farmer_rows(target_rows)
-      total = [rows.size, vrp_dashboard_target_totals(target_rows)[:pending].to_f].max
-      dashboard_detail_payload(key, "Pending Farmers", "Pending farmer target entries for the selected month.", dashboard_quantity(total), vrp_target_farmer_headers, rows)
+      dashboard_detail_payload(key, "Pending Farmers", "Pending mapped farmers for the selected month.", rows.size, vrp_target_farmer_headers, rows)
     when "complete_farmers", "red_farmers", "green_farmers", "yellow_farmers"
       status_key = key.delete_suffix("_farmers").to_sym
       farmer_ids = farmer_status_sets.fetch(status_key, [])
@@ -2408,16 +2404,18 @@ class ModulesController < ApplicationController
     end
     farmers_by_id = model_ready?(:Afl) && farmer_ids.any? ? Afl.where(id: farmer_ids).index_by { |farmer| farmer.id.to_s } : {}
 
-    farmer_ids.map do |farmer_id|
+    farmer_ids.filter_map do |farmer_id|
       farmer = farmers_by_id[farmer_id.to_s]
+      next unless farmer
+
       [
-        dashboard_text_value(farmer&.farmer_name).presence || "Farmer ##{farmer_id}",
-        dashboard_text_value(farmer&.father_name).presence || "-",
-        dashboard_text_value(farmer&.mobile_no).presence || "-",
-        dashboard_text_value(farmer&.tracenet_no).presence || "-",
-        dashboard_text_value(farmer&.ics_name).presence || dashboard_text_value(farmer&.ics_id).presence || "-",
-        dashboard_text_value(farmer&.village_name).presence || dashboard_text_value(farmer&.village_id).presence || "-",
-        dashboard_text_value(farmer&.status).presence || "-"
+        dashboard_text_value(farmer.farmer_name).presence || "-",
+        dashboard_text_value(farmer.father_name).presence || "-",
+        dashboard_text_value(farmer.mobile_no).presence || "-",
+        dashboard_text_value(farmer.tracenet_no).presence || "-",
+        dashboard_text_value(farmer.ics_name).presence || dashboard_text_value(farmer.ics_id).presence || "-",
+        dashboard_text_value(farmer.village_name).presence || dashboard_text_value(farmer.village_id).presence || "-",
+        dashboard_text_value(farmer.status).presence || "-"
       ]
     end
   end
@@ -2506,58 +2504,17 @@ class ModulesController < ApplicationController
 
   def vrp_dashboard_pending_farmer_rows(target_rows)
     Array(target_rows).flat_map do |row|
-      pending_quantity = row[:pending].to_f
-      next [] unless pending_quantity.positive?
-
       target = row[:target_record]
-      selected_targets = Array(row[:target_mapping_ids].presence || row[:target_mapping_id]).filter_map do |target_id|
-        row[:target_record] if target_id.to_s == row[:target_mapping_id].to_s
-      end
-      selected_targets = [target].compact if selected_targets.blank?
       completed_ids = Array(row[:completed_farmer_ids]).map(&:to_s).reject(&:blank?).uniq
       pending_ids = Array(row[:assigned_farmer_ids]).map(&:to_s).reject(&:blank?).uniq - completed_ids
-      actual_rows = target ? vrp_target_farmer_rows(target, pending_ids, completed_ids) : []
-      gap_count = [pending_quantity.to_i - actual_rows.size, 0].max
-      fallback_rows = if gap_count.positive? && target
-        vrp_target_farmer_fallback_rows(selected_targets, "pending", fallback_count: gap_count)
-      else
-        []
-      end
+      next [] if pending_ids.blank?
 
-      actual_rows + fallback_rows
+      target ? vrp_target_farmer_rows(target, pending_ids, completed_ids) : []
     end
   end
 
-  def vrp_target_farmer_fallback_rows(targets, scope, fallback_count: nil)
-    targets = Array(targets)
-    return [] if targets.blank? || scope.to_s == "completed"
-
-    target = targets.first
-    fallback_count ||= case scope.to_s
-    when "pending"
-      rows = vrp_dashboard_target_progress_rows(targets, vrp_dashboard_bills(target.vrp))
-      rows.sum { |row| row[:pending].to_f }.to_i
-    else
-      targets.sum { |row| row.farmer_count.to_i.nonzero? || row.target_quantity.to_i }
-    end
-    return [] if fallback_count <= 0
-
-    Array.new(fallback_count) do |index|
-      unmapped_pending = scope.to_s == "pending"
-      [
-        unmapped_pending ? "Unmapped Pending Farmer #{index + 1}" : "Mapped Farmer #{index + 1}",
-        unmapped_pending ? "Target quantity is higher than mapped farmer list" : "-",
-        unmapped_pending ? "Add/map farmer in target to search by details" : "-",
-        "-",
-        "-",
-        dashboard_text_value(target.ics_name).presence || dashboard_text_value(target.ics_id).presence || "-",
-        dashboard_text_value(target.village_name).presence || dashboard_text_value(target.village_id).presence || "-",
-        dashboard_text_value(target.month_name).presence || "-",
-        targets.map(&:main_activity_name).compact_blank.uniq.join(", ").presence || "-",
-        targets.map(&:activity_name).compact_blank.uniq.join(", ").presence || "-",
-        unmapped_pending ? "Pending" : "Assigned"
-      ]
-    end
+  def vrp_target_farmer_fallback_rows(_targets, _scope, fallback_count: nil)
+    []
   end
 
   def vrp_target_farmer_ids_from_training_mappings(targets)
@@ -2634,17 +2591,19 @@ class ModulesController < ApplicationController
   def vrp_target_farmer_rows(target, farmer_ids, completed_ids)
     farmers_by_id = model_ready?(:Afl) && farmer_ids.any? ? Afl.where(id: farmer_ids).index_by { |farmer| farmer.id.to_s } : {}
 
-    Array(farmer_ids).map do |farmer_id|
+    Array(farmer_ids).filter_map do |farmer_id|
       farmer = farmers_by_id[farmer_id.to_s]
+      next unless farmer
+
       completed = completed_ids.include?(farmer_id.to_s)
       [
-        dashboard_text_value(farmer&.farmer_name).presence || "Farmer ##{farmer_id}",
-        dashboard_text_value(farmer&.father_name).presence || "-",
-        dashboard_text_value(farmer&.mobile_no).presence || "-",
-        dashboard_text_value(farmer&.tracenet_no).presence || "-",
-        dashboard_text_value(farmer&.khasara_no).presence || "-",
-        dashboard_text_value(farmer&.ics_name).presence || dashboard_text_value(farmer&.ics_id).presence || dashboard_text_value(target.ics_name).presence || dashboard_text_value(target.ics_id).presence || "-",
-        dashboard_text_value(farmer&.village_name).presence || dashboard_text_value(farmer&.village_id).presence || dashboard_text_value(target.village_name).presence || dashboard_text_value(target.village_id).presence || "-",
+        dashboard_text_value(farmer.farmer_name).presence || "-",
+        dashboard_text_value(farmer.father_name).presence || "-",
+        dashboard_text_value(farmer.mobile_no).presence || "-",
+        dashboard_text_value(farmer.tracenet_no).presence || "-",
+        dashboard_text_value(farmer.khasara_no).presence || "-",
+        dashboard_text_value(farmer.ics_name).presence || dashboard_text_value(farmer.ics_id).presence || dashboard_text_value(target.ics_name).presence || dashboard_text_value(target.ics_id).presence || "-",
+        dashboard_text_value(farmer.village_name).presence || dashboard_text_value(farmer.village_id).presence || dashboard_text_value(target.village_name).presence || dashboard_text_value(target.village_id).presence || "-",
         dashboard_text_value(target.month_name).presence || "-",
         dashboard_text_value(target.main_activity_name).presence || "-",
         dashboard_text_value(target.activity_name).presence || "-",
