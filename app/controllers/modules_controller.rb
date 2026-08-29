@@ -1965,7 +1965,7 @@ class ModulesController < ApplicationController
         other_target_achievement_index: other_target_achievement_index
       )
       target_quantity = target.target_quantity.to_f
-      effective_target = target_quantity
+      effective_target = assigned_farmer_ids.any? ? assigned_farmer_ids.size.to_f : target_quantity
       completed = [completed.to_f, effective_target].min
       pending = [effective_target - completed, 0].max
       week_targets = target.respond_to?(:weekly_target_values) ? target.weekly_target_values : [0, 0, 0, 0]
