@@ -4437,8 +4437,11 @@ class ModulesController < ApplicationController
     records = ModuleRecord
       .where(module_slug: "training-form")
       .order(created_at: :desc)
+    if month_name.present?
+      records = records.where("LOWER(BTRIM(data::jsonb ->> 'month')) = ?", month_name.to_s.strip.downcase)
+    end
+    records = records
       .select { |record| active_module_record?(record) }
-      .select { |record| month_name.blank? || normalize_dashboard_text(training_record_month_name(record)) == normalize_dashboard_text(month_name) }
       .select { |record| week_number.blank? || training_record_week_number(record) == week_number.to_i }
 
     preload_training_target_mappings_for_records!(records)

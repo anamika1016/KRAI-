@@ -540,15 +540,15 @@
         <% weekly_report_params[:training_month] = weekly_selected_month if weekly_selected_month.present? %>
         <% weekly_report_params[:training_fcoc] = weekly_fcoc_filter_value if weekly_fcoc_filter_value.present? %>
         <% weekly_report_params[:week] = weekly_week_filter_value if weekly_week_filter_value.present? %>
-        <%= link_to "Open Weekly Report", weekly_activity_target_report_path(weekly_report_params), class: "list-btn active" %>
-        <%= link_to "Export Excel", weekly_activity_target_report_path(weekly_report_params.merge(format: :xlsx)), class: "list-btn export" %>
+        <%= link_to "Open Weekly Report", weekly_activity_target_report_path(weekly_report_params), class: "list-btn active", data: { turbo: false, turbo_prefetch: false } %>
+        <%= link_to "Export Excel", weekly_activity_target_report_path(weekly_report_params.merge(format: :xlsx)), class: "list-btn export", data: { turbo: false, turbo_prefetch: false } %>
       </div>
     </div>
 
     <div class="training-participation-boxes">
       <% if weekly_cards.any? %>
         <% weekly_cards.each do |card| %>
-          <%= link_to card[:path], class: "training-participation-box #{card[:status]}", data: { dashboard_card: true } do %>
+          <%= link_to card[:path], class: "training-participation-box #{card[:status]}", data: { dashboard_card: true, turbo: false, turbo_prefetch: false } do %>
             <span><%= card[:title] %></span>
             <strong><%= card[:value] %></strong>
             <small><%= card[:caption] %></small>
