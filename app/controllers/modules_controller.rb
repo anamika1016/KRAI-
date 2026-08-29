@@ -828,7 +828,8 @@ class ModulesController < ApplicationController
       weekly_dashboard_targets,
       month_name: @weekly_dashboard_selected_month,
       fcoc_name: @weekly_target_fcoc_filter_value,
-      week_number: @weekly_target_week_filter_value
+      week_number: @weekly_target_week_filter_value,
+      participation_counts: participation_dashboard_counts
     )
     @dashboard_summary_cards = dashboard_summary_cards(
       t_scope,
@@ -3040,7 +3041,12 @@ class ModulesController < ApplicationController
   end
 
   def dashboard_target_mapping_group_key_counts(targets)
-    Array(targets).filter_map do |target|
+    targets = Array(targets)
+    @dashboard_target_mapping_group_key_counts_cache ||= {}
+    cache_key = targets.map { |target| target.respond_to?(:id) ? target.id : target.object_id }.join(":")
+    return @dashboard_target_mapping_group_key_counts_cache[cache_key] if @dashboard_target_mapping_group_key_counts_cache.key?(cache_key)
+
+    @dashboard_target_mapping_group_key_counts_cache[cache_key] = targets.filter_map do |target|
       target.mapping_group_key.to_s.strip.presence if target.respond_to?(:mapping_group_key)
     end.tally
   end
@@ -3098,9 +3104,9 @@ class ModulesController < ApplicationController
     jeevika_bill_current_approver?(record)
   end
 
-  def weekly_activity_target_status_cards(targets, month_name: nil, fcoc_name: nil, week_number: nil, include_activity_filters: true)
+  def weekly_activity_target_status_cards(targets, month_name: nil, fcoc_name: nil, week_number: nil, include_activity_filters: true, participation_counts: nil)
     if week_number.blank? && !weekly_activity_other_targets?(targets)
-      participation_counts = training_participation_dashboard_counts(
+      participation_counts ||= training_participation_dashboard_counts(
         month_name: month_name,
         fcoc_name: fcoc_name,
         records: dashboard_training_participation_records(month_name: month_name, fcoc_name: fcoc_name)
