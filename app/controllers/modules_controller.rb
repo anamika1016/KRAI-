@@ -2121,8 +2121,8 @@ class ModulesController < ApplicationController
   def vrp_dashboard_summary_cards(rows, village_count:, main_activity_count:, sub_activity_count:, mapped_village_farmer_count:, assigned_target_total:, achieved_target_total:, pending_target_total:, selected_month:)
     status_sets = vrp_dashboard_farmer_status_sets(rows)
     mapped_farmer_count = status_sets[:mapped].size
-    achieved_farmer_count = status_sets[:green].size
-    pending_farmer_count = (status_sets[:red] + status_sets[:yellow]).uniq.size
+    achieved_farmer_count = vrp_dashboard_green_farmer_count(status_sets)
+    pending_farmer_count = vrp_dashboard_pending_farmer_count(status_sets)
     month_params = { training_month: selected_month }.compact_blank
 
     [
@@ -2138,6 +2138,14 @@ class ModulesController < ApplicationController
       dashboard_card("Activity-wise Achievement", dashboard_quantity(achieved_target_total), "Completed activity quantity", vrp_dashboard_list_path("achieved_target", month_params)),
       dashboard_card("Activity-wise Pending Achievement", dashboard_quantity(pending_target_total), "Pending activity quantity", vrp_dashboard_list_path("pending_target", month_params))
     ]
+  end
+
+  def vrp_dashboard_green_farmer_count(status_sets)
+    Array(status_sets[:green]).uniq.size
+  end
+
+  def vrp_dashboard_pending_farmer_count(status_sets)
+    (Array(status_sets[:red]) + Array(status_sets[:yellow])).uniq.size
   end
 
   def vrp_activity_overview_totals(targets, bills: [])
