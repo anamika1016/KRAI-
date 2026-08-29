@@ -830,7 +830,15 @@ class ModulesController < ApplicationController
       fcoc_name: @weekly_target_fcoc_filter_value,
       week_number: @weekly_target_week_filter_value
     )
-    @dashboard_summary_cards = dashboard_summary_cards(t_scope, participation_dashboard_counts, weekly_activity_target_status_totals(weekly_dashboard_targets, week_number: @weekly_target_week_filter_value))
+    @dashboard_summary_cards = dashboard_summary_cards(
+      t_scope,
+      participation_dashboard_counts,
+      dashboard_weekly_activity_summary_totals(
+        weekly_dashboard_targets,
+        participation_dashboard_counts,
+        week_number: @weekly_target_week_filter_value
+      )
+    )
     @dashboard_cards = dashboard_cards
     @dashboard_generated_at = Time.current
 
@@ -3198,6 +3206,17 @@ class ModulesController < ApplicationController
       totals[:completed] += completed_quantity
       totals[:pending] += [target_quantity - completed_quantity, 0].max
     end
+  end
+
+  def dashboard_weekly_activity_summary_totals(targets, participation_counts, week_number: nil)
+    return weekly_activity_target_status_totals(targets, week_number: week_number) if week_number.present?
+    return weekly_activity_target_status_totals(targets, week_number: week_number) if weekly_activity_other_targets?(targets)
+
+    {
+      target: participation_counts[:total].to_f,
+      completed: participation_counts[:green].to_f + participation_counts[:yellow].to_f,
+      pending: participation_counts[:red].to_f
+    }
   end
 
   def weekly_activity_target_groups(targets)
