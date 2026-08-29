@@ -1957,15 +1957,19 @@ class ModulesController < ApplicationController
       activity_setting = jeevika_jankar_activity_setting_for(target, activity_settings, sub_activity_settings)
       training_completion = activity_setting.blank? || training_main_activity_type?(activity_setting[:main_activity_type])
       completion_uses_farmer_ids = activity_setting.blank? || training_main_activity_type?(activity_setting[:main_activity_type]) || completed_farmer_ids.any?
-      completed = vrp_target_completed_quantity(
-        target,
-        bills,
-        activity_settings: activity_settings,
-        sub_activity_settings: sub_activity_settings,
-        other_target_achievement_index: other_target_achievement_index
-      )
       target_quantity = target.target_quantity.to_f
       effective_target = assigned_farmer_ids.any? ? assigned_farmer_ids.size.to_f : target_quantity
+      completed = if training_completion && assigned_farmer_ids.any?
+        completed_farmer_ids.size.to_f
+      else
+        vrp_target_completed_quantity(
+          target,
+          bills,
+          activity_settings: activity_settings,
+          sub_activity_settings: sub_activity_settings,
+          other_target_achievement_index: other_target_achievement_index
+        )
+      end
       completed = [completed.to_f, effective_target].min
       pending = [effective_target - completed, 0].max
       week_targets = target.respond_to?(:weekly_target_values) ? target.weekly_target_values : [0, 0, 0, 0]
@@ -2121,7 +2125,7 @@ class ModulesController < ApplicationController
   def vrp_dashboard_summary_cards(rows, village_count:, main_activity_count:, sub_activity_count:, mapped_village_farmer_count:, assigned_target_total:, achieved_target_total:, pending_target_total:, selected_month:)
     status_sets = vrp_dashboard_farmer_status_sets(rows)
     mapped_farmer_count = status_sets[:mapped].size
-    achieved_farmer_count = vrp_dashboard_green_farmer_count(status_sets)
+    achieved_farmer_count = vrp_dashboard_completed_farmer_count(status_sets)
     pending_farmer_count = vrp_dashboard_pending_farmer_count(status_sets)
     month_params = { training_month: selected_month }.compact_blank
 
@@ -2132,7 +2136,7 @@ class ModulesController < ApplicationController
       dashboard_card("Total Mapped Main Activities", main_activity_count, "Filtered main activities", vrp_dashboard_list_path("main_activities", month_params)),
       dashboard_card("Total Mapped Sub-Activities", sub_activity_count, "Filtered sub-activities", vrp_dashboard_list_path("sub_activities", month_params)),
       dashboard_card("Farmer-wise Target Mapping", mapped_farmer_count, "Farmer-wise mapped target list", vrp_dashboard_list_path("mapped_farmers", month_params)),
-      dashboard_card("Farmer-wise Achievement", achieved_farmer_count, "Completed farmer target entries", vrp_dashboard_list_path("green_farmers", month_params)),
+      dashboard_card("Farmer-wise Achievement", achieved_farmer_count, "Completed farmer target entries", vrp_dashboard_list_path("complete_farmers", month_params)),
       dashboard_card("Farmer-wise Pending Achievement", pending_farmer_count, "Pending farmer target entries", vrp_dashboard_list_path("pending_farmers", month_params)),
       dashboard_card("Activity-wise Target Mapping", dashboard_quantity(assigned_target_total), "Activity target quantity", vrp_dashboard_list_path("assigned_target", month_params)),
       dashboard_card("Activity-wise Achievement", dashboard_quantity(achieved_target_total), "Completed activity quantity", vrp_dashboard_list_path("achieved_target", month_params)),
@@ -2140,8 +2144,8 @@ class ModulesController < ApplicationController
     ]
   end
 
-  def vrp_dashboard_green_farmer_count(status_sets)
-    Array(status_sets[:green]).uniq.size
+  def vrp_dashboard_completed_farmer_count(status_sets)
+    (Array(status_sets[:green]) + Array(status_sets[:yellow])).uniq.size
   end
 
   def vrp_dashboard_pending_farmer_count(status_sets)
@@ -2293,9 +2297,11 @@ class ModulesController < ApplicationController
 
     month_name = normalize_dashboard_text(targets.first.month_name)
     vrp_id = targets.first.vrp_id.to_s
+    target_ids = targets.map { |target| target.id.to_s }.reject(&:blank?).sort
     @dashboard_training_form_farmer_ids_by_scope ||= {}
-    cache_key = [month_name, vrp_id]
-    @dashboard_training_form_farmer_ids_by_scope[cache_key] ||= dashboard_training_form_records(targets, [])
+    cache_key = [month_name, vrp_id, target_ids]
+    @dashboard_training_form_farmer_ids_by_scope[cache_key] ||= targets
+      .flat_map { |target| training_records_matching_dashboard_target(target, target_farmer_ids(target)) }
       .flat_map { |record| training_record_selected_farmer_ids(record) }
       .uniq
   end
