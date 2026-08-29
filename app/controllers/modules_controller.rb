@@ -1690,6 +1690,7 @@ class ModulesController < ApplicationController
     @training_total_training_farmer_count = participation_dashboard_counts[:target_map_total].presence || training_total_farmer_count_from_records(participation_records)
     @training_completed_target_map_count = participation_dashboard_counts[:completed_target_map_total].to_i
     village_count = @vrp_village_rows.size
+    mapped_village_farmer_count = vrp_dashboard_afl_farmer_rows_for_target_villages(filtered_targets).size
     preload_training_farmers_for_targets!(filtered_targets)
     @vrp_target_rows = vrp_dashboard_target_progress_rows(filtered_targets, bills)
     target_totals = vrp_dashboard_target_totals(@vrp_target_rows)
@@ -1711,6 +1712,7 @@ class ModulesController < ApplicationController
       village_count: village_count,
       main_activity_count: main_activity_count,
       sub_activity_count: sub_activity_count,
+      mapped_village_farmer_count: mapped_village_farmer_count,
       assigned_target_total: assigned_target_total,
       achieved_target_total: achieved_target_total,
       pending_target_total: pending_target_total,
@@ -2116,15 +2118,19 @@ class ModulesController < ApplicationController
     }
   end
 
-  def vrp_dashboard_summary_cards(rows, village_count:, main_activity_count:, sub_activity_count:, assigned_target_total:, achieved_target_total:, pending_target_total:, selected_month:)
+  def vrp_dashboard_summary_cards(rows, village_count:, main_activity_count:, sub_activity_count:, mapped_village_farmer_count:, assigned_target_total:, achieved_target_total:, pending_target_total:, selected_month:)
     status_sets = vrp_dashboard_farmer_status_sets(rows)
     mapped_farmer_count = status_sets[:mapped].size
     achieved_farmer_count = status_sets[:green].size
-    pending_farmer_count = (status_sets[:red] + status_sets[:yellow]).uniq.size
+    pending_farmer_count = [
+      (status_sets[:red] + status_sets[:yellow]).uniq.size,
+      pending_target_total.to_f
+    ].max
     month_params = { training_month: selected_month }.compact_blank
 
     [
       dashboard_card("Total Mapped Villages", village_count, "Filtered mapped villages", vrp_dashboard_list_path("mapped_villages", month_params)),
+      dashboard_card("Farmers in Mapped Villages", mapped_village_farmer_count, "AFL farmers in filtered mapped villages", vrp_dashboard_list_path("mapped_village_farmers", month_params)),
       dashboard_card("Targeted Farmers", mapped_farmer_count, "Unique targeted farmers", vrp_dashboard_list_path("mapped_farmers", month_params)),
       dashboard_card("Total Mapped Main Activities", main_activity_count, "Filtered main activities", vrp_dashboard_list_path("main_activities", month_params)),
       dashboard_card("Total Mapped Sub-Activities", sub_activity_count, "Filtered sub-activities", vrp_dashboard_list_path("sub_activities", month_params)),
@@ -2329,10 +2335,17 @@ class ModulesController < ApplicationController
     when "mapped_farmers"
       rows = vrp_dashboard_mapped_farmer_rows(mappings, targets, include_mapping_fallback: filters[:training_month].blank?)
       dashboard_detail_payload(key, "Mapped Farmers", "Unique farmers linked to your target rows.", rows.size, ["Farmer", "Father Name", "Mobile", "TraceNet No", "ICS", "Village", "Status"], rows)
+    when "mapped_village_farmers"
+      rows = vrp_dashboard_afl_farmer_rows_for_target_villages(targets)
+      dashboard_detail_payload(key, "Farmers in Mapped Villages", "AFL farmers available in filtered mapped villages.", rows.size, ["Farmer", "Father Name", "Mobile", "TraceNet No", "ICS", "Village", "Status"], rows)
     when "ics_mapped_farmers"
       rows = vrp_dashboard_mapped_farmer_rows(mappings, [], include_mapping_fallback: true)
       dashboard_detail_payload(key, "AFL", "Distinct farmers mapped to you through ICS.", rows.size, ["Farmer", "Father Name", "Mobile", "TraceNet No", "ICS", "Village", "Status"], rows)
-    when "pending_farmers", "complete_farmers", "red_farmers", "green_farmers", "yellow_farmers"
+    when "pending_farmers"
+      rows = vrp_dashboard_pending_farmer_rows(target_rows)
+      total = [rows.size, vrp_dashboard_target_totals(target_rows)[:pending].to_f].max
+      dashboard_detail_payload(key, "Pending Farmers", "Pending farmer target entries for the selected month.", dashboard_quantity(total), vrp_target_farmer_headers, rows)
+    when "complete_farmers", "red_farmers", "green_farmers", "yellow_farmers"
       status_key = key.delete_suffix("_farmers").to_sym
       farmer_ids = farmer_status_sets.fetch(status_key, [])
       rows = vrp_dashboard_mapped_farmer_rows(mappings, targets, include_mapping_fallback: false, farmer_ids: farmer_ids)
@@ -2409,6 +2422,37 @@ class ModulesController < ApplicationController
     end
   end
 
+  def vrp_dashboard_afl_farmer_rows_for_target_villages(targets)
+    return [] unless model_ready?(:Afl)
+
+    targets = Array(targets)
+    return [] if targets.blank?
+
+    village_ids = targets.filter_map { |target| target.village_id.to_s.strip.presence }.uniq
+    village_names = targets.filter_map { |target| target.village_name.to_s.strip.presence }.uniq
+    return [] if village_ids.blank? && village_names.blank?
+
+    scope = vrp_filter_afl_mapping_scope(Afl.all, :village_id, :village_name, village_ids, village_names)
+
+    seen_keys = Set.new
+    scope.order(:village_name, :farmer_name, :id).filter_map do |farmer|
+      tracenet = dashboard_text_value(farmer.tracenet_no)
+      key = tracenet.present? && tracenet.casecmp("NULL") != 0 ? "tracenet:#{tracenet.downcase}" : "afl:#{farmer.id}"
+      next if seen_keys.include?(key)
+
+      seen_keys << key
+      [
+        dashboard_text_value(farmer.farmer_name).presence || "Farmer ##{farmer.id}",
+        dashboard_text_value(farmer.father_name).presence || "-",
+        dashboard_text_value(farmer.mobile_no).presence || "-",
+        tracenet.presence || "-",
+        dashboard_text_value(farmer.ics_name).presence || dashboard_text_value(farmer.ics_id).presence || "-",
+        dashboard_text_value(farmer.village_name).presence || dashboard_text_value(farmer.village_id).presence || "-",
+        dashboard_text_value(farmer.status).presence || "-"
+      ]
+    end
+  end
+
   def vrp_dashboard_target_farmer_payload(targets, filters)
     requested_ids = filters[:target_ids].to_s.split(",").map(&:strip).reject(&:blank?)
     requested_ids = [filters[:target_id].to_s] if requested_ids.blank? && filters[:target_id].present?
@@ -2418,6 +2462,8 @@ class ModulesController < ApplicationController
     return dashboard_detail_payload("target_farmers", "Target Farmers", "Target record not found.", 0, vrp_target_farmer_headers, []) unless target
 
     assigned_ids = selected_targets.flat_map { |row| target_farmer_ids(row) }.map(&:to_s).reject(&:blank?).uniq
+    training_mapping_farmer_ids = vrp_target_farmer_ids_from_training_mappings(selected_targets)
+    assigned_ids = training_mapping_farmer_ids if assigned_ids.blank? && training_mapping_farmer_ids.any?
     activity_settings = jeevika_jankar_main_activity_settings
     sub_activity_settings = jeevika_jankar_sub_activity_settings(activity_settings)
     training_targets = selected_targets.select do |row|
@@ -2429,6 +2475,8 @@ class ModulesController < ApplicationController
     else
       unique_training_farmer_ids(selected_targets.flat_map { |row| vrp_dashboard_completed_farmer_ids_for_target(row) }) & assigned_ids
     end
+    training_mapping_completed_ids = vrp_target_completed_farmer_ids_from_training_mappings(selected_targets)
+    completed_ids = training_mapping_completed_ids & assigned_ids if completed_ids.blank? && training_mapping_completed_ids.any?
     pending_ids = assigned_ids - completed_ids
     farmer_ids = case scope
     when "completed" then completed_ids
@@ -2456,12 +2504,36 @@ class ModulesController < ApplicationController
     dashboard_detail_payload("target_farmers", title, caption, rows.size, vrp_target_farmer_headers, rows)
   end
 
-  def vrp_target_farmer_fallback_rows(targets, scope)
+  def vrp_dashboard_pending_farmer_rows(target_rows)
+    Array(target_rows).flat_map do |row|
+      pending_quantity = row[:pending].to_f
+      next [] unless pending_quantity.positive?
+
+      target = row[:target_record]
+      selected_targets = Array(row[:target_mapping_ids].presence || row[:target_mapping_id]).filter_map do |target_id|
+        row[:target_record] if target_id.to_s == row[:target_mapping_id].to_s
+      end
+      selected_targets = [target].compact if selected_targets.blank?
+      completed_ids = Array(row[:completed_farmer_ids]).map(&:to_s).reject(&:blank?).uniq
+      pending_ids = Array(row[:assigned_farmer_ids]).map(&:to_s).reject(&:blank?).uniq - completed_ids
+      actual_rows = target ? vrp_target_farmer_rows(target, pending_ids, completed_ids) : []
+      gap_count = [pending_quantity.to_i - actual_rows.size, 0].max
+      fallback_rows = if gap_count.positive? && target
+        vrp_target_farmer_fallback_rows(selected_targets, "pending", fallback_count: gap_count)
+      else
+        []
+      end
+
+      actual_rows + fallback_rows
+    end
+  end
+
+  def vrp_target_farmer_fallback_rows(targets, scope, fallback_count: nil)
     targets = Array(targets)
     return [] if targets.blank? || scope.to_s == "completed"
 
     target = targets.first
-    fallback_count = case scope.to_s
+    fallback_count ||= case scope.to_s
     when "pending"
       rows = vrp_dashboard_target_progress_rows(targets, vrp_dashboard_bills(target.vrp))
       rows.sum { |row| row[:pending].to_f }.to_i
@@ -2471,10 +2543,11 @@ class ModulesController < ApplicationController
     return [] if fallback_count <= 0
 
     Array.new(fallback_count) do |index|
+      unmapped_pending = scope.to_s == "pending"
       [
-        "Mapped Farmer #{index + 1}",
-        "-",
-        "-",
+        unmapped_pending ? "Unmapped Pending Farmer #{index + 1}" : "Mapped Farmer #{index + 1}",
+        unmapped_pending ? "Target quantity is higher than mapped farmer list" : "-",
+        unmapped_pending ? "Add/map farmer in target to search by details" : "-",
         "-",
         "-",
         dashboard_text_value(target.ics_name).presence || dashboard_text_value(target.ics_id).presence || "-",
@@ -2482,9 +2555,44 @@ class ModulesController < ApplicationController
         dashboard_text_value(target.month_name).presence || "-",
         targets.map(&:main_activity_name).compact_blank.uniq.join(", ").presence || "-",
         targets.map(&:activity_name).compact_blank.uniq.join(", ").presence || "-",
-        scope.to_s == "pending" ? "Pending" : "Assigned"
+        unmapped_pending ? "Pending" : "Assigned"
       ]
     end
+  end
+
+  def vrp_target_farmer_ids_from_training_mappings(targets)
+    vrp_target_training_mappings(targets)
+      .flat_map { |mapping| Array(mapping[:farmers]).filter_map { |farmer| farmer[:id].presence } }
+      .map(&:to_s)
+      .reject(&:blank?)
+      .uniq
+  end
+
+  def vrp_target_completed_farmer_ids_from_training_mappings(targets)
+    vrp_target_training_mappings(targets)
+      .flat_map { |mapping| Array(mapping[:completed_farmer_ids]) }
+      .map(&:to_s)
+      .reject(&:blank?)
+      .uniq
+  end
+
+  def vrp_target_training_mappings(targets)
+    targets = Array(targets)
+    return [] if targets.blank?
+
+    target_ids = targets.map { |target| target.id.to_s }.reject(&:blank?).uniq
+    mappings = training_target_mappings.select { |mapping| target_ids.include?(mapping[:target_mapping_id].to_s) }
+    return mappings if mappings.any?
+
+    targets.flat_map do |target|
+      training_target_mappings.select do |mapping|
+        normalize_dashboard_text(mapping[:month]) == normalize_dashboard_text(target.month_name) &&
+          normalize_dashboard_text(mapping[:ics]) == normalize_dashboard_text(target.ics_name.presence || target.ics_id) &&
+          normalize_dashboard_text(mapping[:village]) == normalize_dashboard_text(target.village_name.presence || target.village_id) &&
+          dashboard_training_activity_text_matches?(mapping[:main_activity], normalize_dashboard_text(target.main_activity_name)) &&
+          dashboard_training_activity_text_matches?(mapping[:sub_activity], normalize_dashboard_text(target.activity_name))
+      end
+    end.uniq { |mapping| mapping[:target_mapping_id].to_s }
   end
 
   def vrp_dashboard_completed_farmer_ids_for_target(target)
