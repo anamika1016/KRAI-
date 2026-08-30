@@ -155,7 +155,7 @@ module Api
         options = {}
         options[:main_activities] = targets.map(&:main_activity_name).compact_blank.uniq.sort
         options[:activities] = options[:main_activities]
-        selected_main_activity = params[:main_activity].presence
+        selected_main_activity = params[:main_activity].presence || default_farmer_activity_filter(web, options[:main_activities])
         selected_sub_activity = params[:sub_activity].presence
         legacy_activity = params[:activity].presence
         if selected_main_activity.present?
@@ -198,8 +198,9 @@ module Api
 
         options[:months] = (targets.map(&:month_name) + web.send(:month_master_month_options)).compact_blank.uniq
           .sort_by { |month| web.send(:dashboard_month_index, month) || 0 }
-        if params[:month].present?
-          targets.select! { |target| target.month_name == params[:month] }
+        selected_month = params[:month].presence || Date.current.strftime("%B")
+        if selected_month.present?
+          targets.select! { |target| target.month_name == selected_month }
           vrp_ids = targets.map(&:vrp_id).uniq
           vrps.select! { |vrp| vrp_ids.include?(vrp.id) }
         end
@@ -243,11 +244,24 @@ module Api
           normalized_fcoc = web.send(:normalize_dashboard_text, weekly_fcoc)
           weekly_targets.select! { |target| web.send(:normalize_dashboard_text, target.vrp&.fcoc) == normalized_fcoc }
         end
-        weekly_rows = web.send(:weekly_activity_target_report_rows, weekly_targets, week_number: dashboard_list_week_number)
+        weekly_rows = web.send(:weekly_activity_target_farmer_status_rows,
+          weekly_targets,
+          month_name: weekly_month,
+          fcoc_name: weekly_fcoc,
+          week_number: dashboard_list_week_number)
+        weekly_status_counts = web.send(:weekly_activity_target_status_counts_for_rows, weekly_rows)
+        weekly_summary_totals = web.send(:dashboard_weekly_activity_summary_totals,
+          weekly_targets,
+          participation_counts,
+          week_number: dashboard_list_week_number)
         weekly_counts = {
-          target_mila: number(weekly_rows.sum { |row| row[:target_quantity].to_f }),
-          completed: number(weekly_rows.sum { |row| row[:completed_quantity].to_f }),
-          pending: number(weekly_rows.sum { |row| row[:pending_quantity].to_f }),
+          target_assigned: weekly_status_counts[:total].to_i,
+          completed: weekly_status_counts[:green].to_i,
+          partial: weekly_status_counts[:yellow].to_i,
+          pending: weekly_status_counts[:red].to_i,
+          activity_target_mapping: number(weekly_summary_totals[:target]),
+          activity_wise_achievement: number(weekly_summary_totals[:completed]),
+          activity_wise_pending_achievement: number(weekly_summary_totals[:pending]),
           target_records: weekly_rows.size
         }
 
@@ -273,10 +287,11 @@ module Api
           participation_month_value: participation_value,
           weekly_targets: weekly_targets,
           weekly_rows: weekly_rows,
+          weekly_summary_totals: weekly_summary_totals,
           ics_rows: ics_rows
         }
         {
-          filters: admin_filter_payload.merge(main_activity: selected_main_activity, sub_activity: selected_sub_activity, fcoc: selected_fcoc, post: selected_post),
+          filters: admin_filter_payload.merge(main_activity: selected_main_activity, sub_activity: selected_sub_activity, fcoc: selected_fcoc, month: selected_month, post: selected_post),
           filter_options: options,
           sections: card_data,
           cards: card_data.values_at(:registration, :target_assignment, :billing).reduce({}, &:merge),
@@ -424,6 +439,16 @@ module Api
           "final_approved" => "Final Approved Jeevika Jankar List",
           "pending_approval" => "Pending Approval Jeevika Jankar List",
           "target_records" => "Jeevika Jankar Target Records List",
+          "total_mapped_villages" => "Total Mapped Villages List",
+          "targeted_farmers" => "Targeted Farmers List",
+          "total_mapped_main_activities" => "Total Mapped Main Activities List",
+          "total_mapped_sub_activities" => "Total Mapped Sub-Activities List",
+          "farmer_wise_target_mapping" => "Farmer-wise Target Mapping List",
+          "farmer_wise_achievement" => "Farmer-wise Achievement List",
+          "farmer_wise_pending_achievement" => "Farmer-wise Pending Achievement List",
+          "activity_wise_target_mapping" => "Activity-wise Target Mapping List",
+          "activity_wise_achievement" => "Activity-wise Achievement List",
+          "activity_wise_pending_achievement" => "Activity-wise Pending Achievement List",
           "without_target" => "Jeevika Jankar Without Target List",
           "activities_assigned" => "Jeevika Jankar Activities Assigned List",
           "without_activity" => "Jeevika Jankar Without Activity List",
@@ -439,6 +464,10 @@ module Api
           "training_red" => "Red Training Farmers List",
           "training_pending" => "Pending Training Farmers List",
           "weekly_targets" => "Weekly Target List",
+          "weekly_target_assigned" => "Weekly Target Assigned List",
+          "weekly_completed" => "Weekly Completed List",
+          "weekly_partial" => "Weekly Partial List",
+          "weekly_pending" => "Weekly Pending List",
           "ics_farmers" => "ICS-wise Farmer List"
         }
       end
@@ -466,6 +495,21 @@ module Api
           web.send(:dashboard_pending_approval_vrps, vrps).map { |vrp| admin_vrp_list_row(vrp, assigned_ids, activity_ids) }
         when "target_records"
           grouped_admin_targets(targets)
+        when "total_mapped_villages"
+          grouped_admin_villages(targets)
+        when "targeted_farmers"
+          web.send(:training_afl_farmer_rows_for_participation,
+            month_name: dashboard_list_participation_month, fcoc_name: params[:participation_fcoc].presence)
+        when "total_mapped_main_activities"
+          grouped_admin_activities(targets, :main_activity_name, "Main Activity")
+        when "total_mapped_sub_activities"
+          grouped_admin_activities(targets, :activity_name, "Sub Activity")
+        when "farmer_wise_target_mapping"
+          dashboard_participation_target_map_rows(web, context)
+        when "farmer_wise_achievement"
+          dashboard_participation_target_map_rows(web, context).select { |row| row[:completed_activity_count].to_i.positive? }
+        when "farmer_wise_pending_achievement"
+          dashboard_participation_target_map_rows(web, context).select { |row| row[:completed_activity_count].to_i < row[:assigned_activity_count].to_i }
         when "without_target"
           vrps.reject { |vrp| assigned_ids.include?(vrp.id.to_s) }.map { |vrp| admin_vrp_list_row(vrp, assigned_ids, activity_ids) }
         when "activities_assigned"
@@ -492,8 +536,14 @@ module Api
         when "training_green", "training_yellow", "training_red", "training_pending"
           status = list_type.delete_prefix("training_")
           context[:participation_population].select { |row| row[:status] == status }
-        when "weekly_targets"
+        when "weekly_targets", "weekly_target_assigned", "activity_wise_target_mapping"
           context[:weekly_rows]
+        when "weekly_completed", "activity_wise_achievement"
+          context[:weekly_rows].select { |row| row[:status_class].to_s == "green" }
+        when "weekly_partial"
+          context[:weekly_rows].select { |row| row[:status_class].to_s == "yellow" }
+        when "weekly_pending", "activity_wise_pending_achievement"
+          context[:weekly_rows].select { |row| row[:status_class].to_s == "red" }
         when "ics_farmers"
           context[:ics_rows]
         end
@@ -562,6 +612,50 @@ module Api
             sub_activities: rows.map(&:activity_name).compact_blank.uniq
           )
         end
+      end
+
+      def grouped_admin_villages(targets)
+        Array(targets).group_by { |target| [target.village_id.to_s, target.village_name.to_s.downcase.strip] }
+          .values.map.with_index(1) do |rows, index|
+            first = rows.first
+            {
+              id: first.village_id.presence || index,
+              name: first.village_name.presence || first.village_id,
+              assignment_status: "Mapped",
+              target_records: rows.size,
+              target_quantity: number(rows.sum { |row| row.target_quantity.to_f }),
+              fcos: rows.filter_map { |row| row.vrp&.fcoc.presence || row.fco_name.presence || row.fco_id }.uniq,
+              ics_names: rows.filter_map { |row| row.ics_name.presence || row.ics_id }.uniq,
+              months: rows.filter_map(&:month_name).uniq
+            }
+          end
+      end
+
+      def grouped_admin_activities(targets, attribute, label)
+        Array(targets).group_by { |target| target.public_send(attribute).to_s.downcase.strip }
+          .reject { |name, _rows| name.blank? }
+          .values.map.with_index(1) do |rows, index|
+            first = rows.first
+            name = first.public_send(attribute)
+            {
+              id: index,
+              name: name,
+              activity_type: label,
+              assignment_status: "Mapped",
+              target_records: rows.size,
+              target_quantity: number(rows.sum { |row| row.target_quantity.to_f }),
+              jeevika_jankar_count: rows.filter_map(&:vrp_id).uniq.size,
+              farmer_count: rows.flat_map { |row| mapped_farmer_ids(row) }.uniq.size,
+              months: rows.filter_map(&:month_name).uniq
+            }
+          end
+      end
+
+      def dashboard_participation_target_map_rows(web, context)
+        targets = web.send(:training_participation_targets_for_dashboard,
+          month_name: dashboard_list_participation_month,
+          fcoc_name: params[:participation_fcoc].presence || params[:training_fcoc].presence)
+        web.send(:training_participation_target_map_rows, targets, month_name: dashboard_list_participation_month)
       end
 
       def admin_bill_list_row(bill, vrps)
@@ -656,6 +750,14 @@ module Api
           vrp_id: params[:vrp_id],
           sub_activity: params[:sub_activity]
         }
+      end
+
+      def default_farmer_activity_filter(web, activity_options)
+        Array(activity_options).find do |activity|
+          %w[Farmer\ Activity Farmers'\ Training Farmers\ Training].any? do |label|
+            web.send(:normalize_dashboard_text, activity) == web.send(:normalize_dashboard_text, label)
+          end
+        end
       end
 
       def filter_value_matches?(actual, selected)

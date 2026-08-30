@@ -29,7 +29,16 @@ module Api
         if weekly_fcoc.present?
           weekly_targets = weekly_targets.select { |target| same?(target.vrp&.fcoc, weekly_fcoc) }
         end
-        weekly = calculator.send(:weekly_activity_target_status_totals, weekly_targets, week_number: selected_week)
+        weekly_rows = calculator.send(:weekly_activity_target_farmer_status_rows,
+          weekly_targets,
+          month_name: weekly_month,
+          fcoc_name: weekly_fcoc,
+          week_number: selected_week)
+        weekly_counts = calculator.send(:weekly_activity_target_status_counts_for_rows, weekly_rows)
+        weekly = calculator.send(:dashboard_weekly_activity_summary_totals,
+          weekly_targets,
+          participation,
+          week_number: selected_week).merge(status_counts: weekly_counts, rows_count: weekly_rows.size)
 
         @calculation_stage = "response_payload"
         render json: {
@@ -82,7 +91,7 @@ module Api
         vrps, targets = search_scope(vrps, targets)
         @calculation_stage = "dashboard_activity_filters"
         options = { main_activities: values(targets, :main_activity_name) }
-        selected_main_activity = params[:main_activity].presence
+        selected_main_activity = params[:main_activity].presence || default_farmer_activity_filter(calculator, options[:main_activities])
         selected_sub_activity = params[:sub_activity].presence
         legacy_activity = params[:activity].presence
         if selected_main_activity.present?
@@ -111,8 +120,9 @@ module Api
         end
         options[:months] = values(targets, :month_name)
         @calculation_stage = "dashboard_month_filter"
-        if params[:month].present?
-          targets = targets.select { |t| same?(t.month_name, params[:month]) }
+        selected_dashboard_month = params[:month].presence || Date.current.strftime("%B")
+        if selected_dashboard_month.present?
+          targets = targets.select { |t| same?(t.month_name, selected_dashboard_month) }
           vrps = vrps.select { |v| targets.any? { |t| t.vrp_id == v.id } }
         end
         options[:post_wise_names] = values(vrps, :role)
@@ -259,13 +269,17 @@ module Api
       end
 
       def weekly_payload(totals, month, fcoc)
+        status_counts = totals[:status_counts] || {}
         {
           selected_month: month,
           selected_fcoc: fcoc,
           selected_week: selected_week,
           target_mila: number(totals[:target]),
           completed: number(totals[:completed]),
-          pending: number(totals[:pending])
+          partial: status_counts[:yellow].to_i,
+          pending: number(totals[:pending]),
+          target_assigned: status_counts[:total].to_i,
+          rows_count: totals[:rows_count].to_i
         }
       end
 
@@ -306,6 +320,14 @@ module Api
 
       def same?(left, right)
         left.to_s.strip.casecmp(right.to_s.strip).zero?
+      end
+
+      def default_farmer_activity_filter(calculator, activity_options)
+        Array(activity_options).find do |activity|
+          %w[Farmer\ Activity Farmers'\ Training Farmers\ Training].any? do |label|
+            calculator.send(:normalize_dashboard_text, activity) == calculator.send(:normalize_dashboard_text, label)
+          end
+        end
       end
 
       def number(value)
