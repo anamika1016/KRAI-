@@ -2330,9 +2330,10 @@ class ModulesController < ApplicationController
     @dashboard_training_form_records_by_scope ||= {}
     cache_key = [normalize_dashboard_text(month_name), targets.first.vrp_id.to_s, assigned_farmer_ids.sort.join(",")]
 
-    @dashboard_training_form_records_by_scope[cache_key] ||= dashboard_training_form_records_for_month(month_name, farmer_ids: assigned_farmer_ids)
+    @dashboard_training_form_records_by_scope[cache_key] ||= dashboard_training_form_records_for_month(month_name)
       .select do |record|
-        training_record_vrp_scope_matches?(record, vrp)
+        (training_record_selected_farmer_ids(record) & assigned_farmer_ids).any? &&
+          training_record_vrp_scope_matches?(record, vrp)
       end
       .uniq(&:id)
   end
@@ -2340,13 +2341,11 @@ class ModulesController < ApplicationController
   def dashboard_training_form_records_for_month(month_name, farmer_ids: nil)
     month = month_name.to_s.strip.downcase
     @dashboard_training_form_records_by_month ||= {}
-    farmer_ids = Array(farmer_ids).map(&:to_s).reject(&:blank?).uniq
-    cache_key = [month, farmer_ids.sort.join(",")]
+    cache_key = month
     return @dashboard_training_form_records_by_month[cache_key] if @dashboard_training_form_records_by_month.key?(cache_key)
 
     scope = ModuleRecord.where(module_slug: "training-form").order(created_at: :desc)
     scope = scope.where("LOWER(BTRIM(data::jsonb ->> 'month')) = ?", month) if month.present?
-    scope = training_record_scope_for_farmer_ids(scope, farmer_ids) if farmer_ids.any?
     @dashboard_training_form_records_by_month[cache_key] = scope
       .select { |record| active_module_record?(record) }
       .select { |record| training_record_countable?(record) }
@@ -2598,17 +2597,32 @@ class ModulesController < ApplicationController
   end
 
   def approved_other_target_completed_farmer_ids_by_target
-    @approved_other_target_completed_farmer_ids_by_target ||= ModuleRecord
+    return @approved_other_target_completed_farmer_ids_by_target if defined?(@approved_other_target_completed_farmer_ids_by_target)
+
+    @approved_other_target_completed_farmer_ids_by_target = Hash.new { |hash, key| hash[key] = [] }
+    return @approved_other_target_completed_farmer_ids_by_target unless model_ready?(:ModuleRecord)
+
+    records = ModuleRecord
       .where(module_slug: OTHER_TARGET_MODULE_SLUGS)
       .order(created_at: :asc)
       .select { |record| approved_other_target_record?(record) }
-      .each_with_object(Hash.new { |hash, key| hash[key] = [] }) do |record, ids_by_target|
-        target_mapping_ids = other_target_record_target_mapping_ids(record)
-        next if target_mapping_ids.blank?
 
-        farmer_ids = Array(record.data["selected_farmer_ids"]).map(&:to_s).reject(&:blank?)
-        target_mapping_ids.each { |target_mapping_id| ids_by_target[target_mapping_id] |= farmer_ids }
-      end
+    index_other_target_records_by_target(records, @approved_other_target_completed_farmer_ids_by_target)
+  end
+
+  def index_other_target_records_by_target(records, result, target_ids: nil)
+    allowed_ids = Array(target_ids).map(&:to_s).reject(&:blank?)
+
+    Array(records).each do |record|
+      matched_target_ids = other_target_record_target_mapping_ids(record)
+      matched_target_ids &= allowed_ids if allowed_ids.present?
+      next if matched_target_ids.blank?
+
+      farmer_ids = Array(record.data["selected_farmer_ids"]).map(&:to_s).reject(&:blank?)
+      matched_target_ids.each { |target_mapping_id| result[target_mapping_id] |= farmer_ids }
+    end
+
+    result
   end
 
   def vrp_target_farmer_headers
@@ -8275,8 +8289,8 @@ class ModulesController < ApplicationController
 
   def other_target_record_target_mapping_ids(record)
     saved_id = record.data["target_mapping_id"].to_s.strip
-    direct_ids = []
-    direct_ids << saved_id if saved_id.present? && (!model_ready?(:TargetMapping) || TargetMapping.exists?(id: saved_id))
+    target_by_id = other_target_candidate_targets_by_id
+    direct_ids = saved_id.present? && (target_by_id.blank? || target_by_id.key?(saved_id)) ? [saved_id] : []
     return direct_ids if direct_ids.present? && !model_ready?(:TargetMapping)
     return [] unless model_ready?(:TargetMapping)
 
@@ -8289,11 +8303,34 @@ class ModulesController < ApplicationController
     selected_subject = normalize_dashboard_text(data["training_subject"].presence || data["sub_activity"])
     return direct_ids if [selected_vrp, selected_month, selected_ics, selected_village, selected_topic, selected_subject].any?(&:blank?)
 
-    matched_ids = TargetMapping.includes(:vrp).select do |target|
+    matched_ids = other_target_candidate_targets.select do |target|
       other_target_record_matches_target?(target, selected_vrp, selected_month, selected_ics, selected_village, selected_topic, selected_subject)
     end.map { |target| target.id.to_s }
 
     (direct_ids + matched_ids).uniq
+  end
+
+  def other_target_candidate_targets
+    @other_target_candidate_targets ||= begin
+      targets = if defined?(@filtered_targets) && @filtered_targets.present?
+        @filtered_targets
+      elsif defined?(@vrp_target_rows) && @vrp_target_rows.present?
+        @vrp_target_rows.filter_map { |row| row[:target_record] }
+      elsif defined?(@jeevika_jankar_bill_rows) && @jeevika_jankar_bill_rows.present?
+        ids = @jeevika_jankar_bill_rows.flat_map { |row| Array(row[:target_mapping_ids].presence || row[:target_mapping_id]) }.map(&:to_s).reject(&:blank?).uniq
+        ids.present? && model_ready?(:TargetMapping) ? TargetMapping.includes(:vrp).where(id: ids).to_a : []
+      elsif model_ready?(:TargetMapping)
+        TargetMapping.includes(:vrp).to_a
+      else
+        []
+      end
+
+      Array(targets).compact.uniq { |target| target.id.to_s }
+    end
+  end
+
+  def other_target_candidate_targets_by_id
+    @other_target_candidate_targets_by_id ||= other_target_candidate_targets.index_by { |target| target.id.to_s }
   end
 
   def other_target_record_matches_target?(target, selected_vrp, selected_month, selected_ics, selected_village, selected_topic, selected_subject)
@@ -10515,17 +10552,11 @@ class ModulesController < ApplicationController
       .reject { |record| record.id.to_s == params[:id].to_s }
       .select { |record| blocking_other_target_record?(record) }
 
-    records_by_target = records.each_with_object(Hash.new { |hash, key| hash[key] = [] }) do |record, result|
-      target_ids = other_target_record_target_mapping_ids(record) & missing_targets_by_id.keys
-      target_ids.each { |target_id| result[target_id] << record }
-    end
+    records_by_target = index_other_target_records_by_target(records, Hash.new { |hash, key| hash[key] = [] }, target_ids: missing_targets_by_id.keys)
 
     @other_target_completed_farmer_ids_by_target.merge!(missing_targets_by_id.transform_values do |target|
       mapped_farmer_ids = target_farmer_ids(target)
-      completed_ids = Array(records_by_target[target.id.to_s])
-        .flat_map { |record| Array(record.data["selected_farmer_ids"]).map(&:to_s) }
-        .reject(&:blank?)
-        .uniq
+      completed_ids = Array(records_by_target[target.id.to_s]).map(&:to_s).reject(&:blank?).uniq
       mapped_farmer_ids.present? ? (completed_ids & mapped_farmer_ids) : completed_ids
     end)
   end
