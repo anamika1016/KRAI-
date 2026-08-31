@@ -565,8 +565,9 @@ class ModulesController < ApplicationController
     preload_dashboard_vrp_identity_records!(v_scope)
 
     # Apply search filter (if search query is present)
-    if params[:search].present?
-      q = params[:search].to_s.downcase.strip
+    search_query = dashboard_filter_param(:search)
+    if search_query.present?
+      q = search_query.to_s.downcase.strip
       v_scope = v_scope.select do |v|
         v.name.to_s.downcase.include?(q) ||
           v.mobile_no.to_s.include?(q) ||
@@ -588,7 +589,7 @@ class ModulesController < ApplicationController
     @filter_main_activity_options = t_scope.map(&:main_activity_name).uniq.compact_blank.sort
     # Open the dashboard on the farmer-training view when it is available;
     # an explicitly selected activity always takes precedence.
-    @dashboard_main_activity_filter_value = params[:main_activity].presence ||
+    @dashboard_main_activity_filter_value = dashboard_filter_param(:main_activity) ||
       @filter_main_activity_options.find do |activity|
         normalize_dashboard_text(activity) == normalize_dashboard_text("Farmer Activity") ||
           normalize_dashboard_text(activity) == normalize_dashboard_text("Farmers' Training") ||
@@ -602,8 +603,8 @@ class ModulesController < ApplicationController
     ].any? { |value| normalized_dashboard_main_activity == normalize_dashboard_text(value) } ||
       normalized_dashboard_main_activity.include?(normalize_dashboard_text("Training"))
     selected_main_activity = @dashboard_main_activity_filter_value
-    selected_sub_activity = params[:sub_activity].presence
-    legacy_activity = params[:activity].presence
+    selected_sub_activity = dashboard_filter_param(:sub_activity)
+    legacy_activity = dashboard_filter_param(:activity)
     if selected_main_activity.present?
       t_scope = t_scope.select { |t| normalize_dashboard_text(t.main_activity_name) == normalize_dashboard_text(selected_main_activity) }
     elsif legacy_activity.present?
@@ -621,7 +622,7 @@ class ModulesController < ApplicationController
     # 2. FCO Filter (depends on selected Activity)
     @filter_fcoc_options = v_scope.map(&:fcoc).uniq.compact_blank.sort
     default_visible_fcoc = dashboard_default_visible_fcoc(@filter_fcoc_options)
-    @dashboard_fcoc_filter_value = params[:fcoc].presence || default_visible_fcoc
+    @dashboard_fcoc_filter_value = dashboard_filter_param(:fcoc) || default_visible_fcoc
     if @dashboard_fcoc_filter_value.present?
       f = @dashboard_fcoc_filter_value.to_s
       v_scope = v_scope.select { |v| v.fcoc == f }
@@ -638,8 +639,9 @@ class ModulesController < ApplicationController
       canonical_label = current_cluster_labels.find { |label| cluster_label_matches?(label, saved_label) }
       (canonical_label.presence || saved_label).sub(/\s*\([^)]*\)\s*\z/, "").strip
     end.uniq { |label| normalize_dashboard_text(label) }.sort
-    if params[:cluster_incharge].present?
-      ci = params[:cluster_incharge].to_s
+    selected_cluster_incharge = dashboard_filter_param(:cluster_incharge)
+    if selected_cluster_incharge.present?
+      ci = selected_cluster_incharge.to_s
       v_scope = v_scope.select { |v| cluster_label_matches?(ci, v.cluster_incharge) }
       v_ids = v_scope.map(&:id)
       t_scope = t_scope.select { |t| t.vrp_id.present? && v_ids.include?(t.vrp_id) }
@@ -647,8 +649,9 @@ class ModulesController < ApplicationController
 
     # 4. ICS Filter
     @filter_ics_options = t_scope.map { |t| t.ics_name.presence || t.ics_id }.uniq.compact_blank.sort
-    if params[:ics].present?
-      selected_ics = params[:ics].to_s
+    selected_ics_filter = dashboard_filter_param(:ics)
+    if selected_ics_filter.present?
+      selected_ics = selected_ics_filter.to_s
       t_scope = t_scope.select { |t| (t.ics_name.presence || t.ics_id).to_s == selected_ics }
       v_ids = t_scope.map(&:vrp_id).uniq
       v_scope = v_scope.select { |v| v_ids.include?(v.id) }
@@ -663,7 +666,7 @@ class ModulesController < ApplicationController
     # Monthly dashboard summary opens on the current month by default. Users can
     # still choose All Months or another month from the filter.
     default_dashboard_month = Date.current.strftime("%B")
-    @dashboard_month_filter_value = params[:month].presence || default_dashboard_month
+    @dashboard_month_filter_value = dashboard_filter_param(:month) || default_dashboard_month
     if @dashboard_month_filter_value.present?
       m = @dashboard_month_filter_value.to_s
       t_scope = t_scope.select { |t| t.month_name == m }
@@ -673,8 +676,9 @@ class ModulesController < ApplicationController
 
     # 6. Post Filter (depends on all above)
     @filter_post_options = v_scope.map(&:role).uniq.compact_blank.sort
-    if params[:post].present?
-      p_filter = params[:post].to_s
+    selected_post_filter = dashboard_filter_param(:post)
+    if selected_post_filter.present?
+      p_filter = selected_post_filter.to_s
       v_scope = v_scope.select { |v| v.role == p_filter }
       v_ids = v_scope.map(&:id)
       t_scope = t_scope.select { |t| t.vrp_id.present? && v_ids.include?(t.vrp_id) }
@@ -682,8 +686,9 @@ class ModulesController < ApplicationController
 
     # 7. VRP Name Filter (depends on all above)
     @filter_vrp_options = v_scope.map { |v| [v.name, v.id] }.uniq.sort_by(&:first)
-    if params[:vrp_id].present?
-      vid = params[:vrp_id].to_i
+    selected_vrp_filter = dashboard_filter_param(:vrp_id)
+    if selected_vrp_filter.present?
+      vid = selected_vrp_filter.to_i
       v_scope = v_scope.select { |v| v.id == vid }
       t_scope = t_scope.select { |t| t.vrp_id == vid }
     end
@@ -694,11 +699,20 @@ class ModulesController < ApplicationController
     # ─── BILL FILTERING ───
     filtered_vrp_ids = @filtered_vrps.map { |v| v.id.to_s }
     dashboard_filters_active = [
-      params[:search], params[:activity], params[:main_activity], params[:sub_activity], params[:fcoc], params[:cluster_incharge],
-      params[:ics], params[:month], params[:post], params[:vrp_id]
+      dashboard_filter_param(:search), dashboard_filter_param(:activity), dashboard_filter_param(:main_activity),
+      dashboard_filter_param(:sub_activity), dashboard_filter_param(:fcoc), dashboard_filter_param(:cluster_incharge),
+      dashboard_filter_param(:ics), dashboard_filter_param(:month), dashboard_filter_param(:post), dashboard_filter_param(:vrp_id)
     ].any?(&:present?)
 
-    bill_records = ModuleRecord.where(module_slug: "jeevika-jankar-bill-process").to_a
+    bill_scope = ModuleRecord.where(module_slug: "jeevika-jankar-bill-process")
+    if dashboard_filters_active || module_cluster_incharge_login?
+      bill_scope = filtered_vrp_ids.any? ? bill_scope.where("data::jsonb ->> 'select_vrp' IN (?)", filtered_vrp_ids) : ModuleRecord.none
+    end
+    selected_bill_month = dashboard_filter_param(:month)
+    if selected_bill_month.present?
+      bill_scope = bill_scope.where("LOWER(BTRIM(data::jsonb ->> 'bill_month')) = ?", selected_bill_month.to_s.strip.downcase)
+    end
+    bill_records = bill_scope.to_a
     unless admin_dashboard_user?
       bill_records = bill_records.select { |r| jeevika_jankar_bill_record_visible?(r) }
     end
@@ -726,10 +740,13 @@ class ModulesController < ApplicationController
     end
 
     # Restrict bills by Selected Activity
-    if params[:activity].present? || params[:main_activity].present? || params[:sub_activity].present?
-      act = params[:activity].to_s
-      main_activity = params[:main_activity].to_s
-      sub_activity = params[:sub_activity].to_s
+    selected_bill_activity = dashboard_filter_param(:activity)
+    selected_bill_main_activity = dashboard_filter_param(:main_activity)
+    selected_bill_sub_activity = dashboard_filter_param(:sub_activity)
+    if selected_bill_activity.present? || selected_bill_main_activity.present? || selected_bill_sub_activity.present?
+      act = selected_bill_activity.to_s
+      main_activity = selected_bill_main_activity.to_s
+      sub_activity = selected_bill_sub_activity.to_s
       bill_records = bill_records.select do |r|
         items = jeevika_bill_detail_rows(r)
         items.any? do |item|
@@ -739,12 +756,6 @@ class ModulesController < ApplicationController
           legacy_matches && main_matches && sub_matches
         end
       end
-    end
-
-    # Restrict bills by Selected Month
-    if params[:month].present?
-      m = params[:month].to_s
-      bill_records = bill_records.select { |r| r.data["bill_month"] == m }
     end
 
     @filtered_bills = bill_records
@@ -763,9 +774,9 @@ class ModulesController < ApplicationController
     @training_selected_month = selected_month
     @training_selected_sub_activity = selected_sub_activity
     default_status_month = default_vrp_dashboard_month(@training_month_options, targets)
-    @participation_month_filter_value = params[:participation_month].presence || default_status_month
+    @participation_month_filter_value = dashboard_filter_param(:participation_month) || default_status_month
     @participation_selected_month = @participation_month_filter_value == "all" ? nil : @participation_month_filter_value
-    @participation_fcoc_filter_value = params[:participation_fcoc].presence || dashboard_default_visible_fcoc(@filter_fcoc_options)
+    @participation_fcoc_filter_value = dashboard_filter_param(:participation_fcoc) || dashboard_default_visible_fcoc(@filter_fcoc_options)
     participation_records = dashboard_training_participation_records(month_name: @participation_selected_month, fcoc_name: @participation_fcoc_filter_value)
     participation_dashboard_counts = training_participation_dashboard_counts(
       month_name: @participation_selected_month,
@@ -785,8 +796,8 @@ class ModulesController < ApplicationController
     preload_training_farmers_for_targets!(month_targets)
     visible_vrp_ids = @filtered_vrps.map(&:id)
     ics_mappings = model_ready?(:VrpIcsMapping) ? VrpIcsMapping.where(vrp_id: visible_vrp_ids).to_a : []
-    if params[:ics].present?
-      selected_ics = normalize_dashboard_text(params[:ics])
+    if selected_ics_filter.present?
+      selected_ics = normalize_dashboard_text(selected_ics_filter)
       ics_mappings.select! do |mapping|
         normalize_dashboard_text(mapping.ics_name.presence || mapping.ics_id) == selected_ics
       end
@@ -794,33 +805,33 @@ class ModulesController < ApplicationController
     # Full target/participation rows are available on their dedicated report
     # pages. The dashboard renders summary boxes only, so building those large
     # unused datasets here needlessly multiplies queries and memory usage.
-    @ics_farmer_report_month_value = params[:ics_report_month].presence || @participation_month_filter_value
+    @ics_farmer_report_month_value = dashboard_filter_param(:ics_report_month) || @participation_month_filter_value
     @ics_farmer_report_selected_month = @ics_farmer_report_month_value == "all" ? nil : @ics_farmer_report_month_value
     ics_report_targets = training_participation_targets_for_dashboard(
       month_name: @ics_farmer_report_selected_month,
       fcoc_name: @participation_fcoc_filter_value
     )
     @ics_farmer_report_options = ics_farmer_report_options([], ics_report_targets)
-    @ics_farmer_report_selected_ics = params[:ics_report_ics].to_s.presence
+    @ics_farmer_report_selected_ics = dashboard_filter_param(:ics_report_ics)
     @ics_farmer_report_summary = ics_farmer_report_summary([], selected_ics: @ics_farmer_report_selected_ics)
-    @weekly_target_month_filter_value = params[:weekly_target_month].presence || default_status_month
+    @weekly_target_month_filter_value = dashboard_filter_param(:weekly_target_month) || default_status_month
     @weekly_dashboard_selected_month = @weekly_target_month_filter_value == "all" ? nil : @weekly_target_month_filter_value
-    @weekly_target_fcoc_filter_value = params[:weekly_target_fcoc].presence || dashboard_default_visible_fcoc(@filter_fcoc_options)
-    @weekly_target_week_filter_value = params[:weekly_target_week].to_i if params[:weekly_target_week].present?
+    @weekly_target_fcoc_filter_value = dashboard_filter_param(:weekly_target_fcoc) || dashboard_default_visible_fcoc(@filter_fcoc_options)
+    @weekly_target_week_filter_value = dashboard_filter_param(:weekly_target_week).to_i if dashboard_filter_param(:weekly_target_week).present?
     @weekly_target_week_filter_value = nil unless (1..4).include?(@weekly_target_week_filter_value)
     weekly_dashboard_targets = dashboard_targets_for_month(weekly_target_scope, @weekly_dashboard_selected_month)
-    if params[:post].present?
-      selected_post = params[:post].to_s
+    if selected_post_filter.present?
+      selected_post = selected_post_filter.to_s
       weekly_dashboard_targets = weekly_dashboard_targets.select { |target| target.vrp&.role.to_s == selected_post }
     end
-    if params[:vrp_id].present?
-      selected_vrp_id = params[:vrp_id].to_s
+    if selected_vrp_filter.present?
+      selected_vrp_id = selected_vrp_filter.to_s
       weekly_dashboard_targets = weekly_dashboard_targets.select { |target| target.vrp_id.to_s == selected_vrp_id }
     end
     weekly_dashboard_targets = filter_weekly_activity_targets(
       weekly_dashboard_targets,
-      activity: params[:activity].presence || params[:main_activity].presence,
-      sub_activity: params[:training_sub_activity].presence || params[:sub_activity].presence,
+      activity: dashboard_filter_param(:activity, :main_activity),
+      sub_activity: dashboard_filter_param(:training_sub_activity, :sub_activity),
       fcoc: @weekly_target_fcoc_filter_value
     )
     preload_training_farmers_for_targets!(weekly_dashboard_targets)
@@ -859,9 +870,9 @@ class ModulesController < ApplicationController
 
 
   def farmer_training_participation
-    selected_month = params[:training_month].presence
-    selected_sub_activity = params[:training_sub_activity].presence
-    selected_fcoc = params[:training_fcoc].presence
+    selected_month = dashboard_filter_param(:training_month, :month)
+    selected_sub_activity = dashboard_filter_param(:training_sub_activity, :sub_activity)
+    selected_fcoc = dashboard_filter_param(:training_fcoc, :fcoc)
     selected_status = normalize_training_participation_status(params[:status]) || "green"
     training_records = dashboard_training_participation_records(month_name: selected_month, sub_activity_name: selected_sub_activity, fcoc_name: selected_fcoc)
     participation_targets = training_participation_targets_for_dashboard(
@@ -966,8 +977,8 @@ class ModulesController < ApplicationController
 
   def farmer_training_target_status
     targets = dashboard_participation_targets
-    selected_month = params[:training_month].presence
-    selected_sub_activity = params[:training_sub_activity].presence
+    selected_month = dashboard_filter_param(:training_month, :month)
+    selected_sub_activity = dashboard_filter_param(:training_sub_activity, :sub_activity)
     selected_status = normalize_training_target_status(params[:status]) || "green"
     filtered_targets = if selected_month.present? && selected_sub_activity.present?
       dashboard_targets_for_filters(targets, selected_month, selected_sub_activity)
@@ -1103,10 +1114,10 @@ class ModulesController < ApplicationController
 
   def weekly_activity_target_report
     targets = dashboard_participation_targets
-    selected_month = params[:training_month].presence || params[:month].presence
-    selected_activity = params[:activity].presence || params[:main_activity].presence
-    selected_sub_activity = params[:training_sub_activity].presence || params[:sub_activity].presence
-    selected_fcoc = params[:training_fcoc].presence || params[:fcoc].presence
+    selected_month = dashboard_filter_param(:training_month, :month)
+    selected_activity = dashboard_filter_param(:activity, :main_activity)
+    selected_sub_activity = dashboard_filter_param(:training_sub_activity, :sub_activity)
+    selected_fcoc = dashboard_filter_param(:training_fcoc, :fcoc)
     selected_week = params[:week].to_i if params[:week].present?
     selected_week = nil unless (1..4).include?(selected_week)
     requested_status = params[:status].to_s.downcase.presence
@@ -6059,6 +6070,21 @@ class ModulesController < ApplicationController
 
     values = Array(options).map(&:to_s).map(&:strip).reject(&:blank?).uniq
     values.one? ? values.first : nil
+  end
+
+  def dashboard_filter_param(*keys)
+    keys.each do |key|
+      value = params[key].to_s.strip
+      next if dashboard_all_filter_value?(value)
+
+      return value if value.present?
+    end
+    nil
+  end
+
+  def dashboard_all_filter_value?(value)
+    normalized = value.to_s.strip.downcase
+    normalized.blank? || normalized == "all" || normalized.start_with?("all ")
   end
 
   def dashboard_vrps

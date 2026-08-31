@@ -13,7 +13,7 @@ module Api
 
         targets = TargetMapping.where(vrp_id: vrp.id).order(:month_name, :main_activity_name, :activity_name, :id).to_a
         months = targets.filter_map { |target| target.month_name.to_s.strip.presence }.uniq
-        selected_month = params[:month].presence || params[:training_month].presence || default_month(months)
+        selected_month = filter_param(:month, :training_month) || default_month(months)
         targets = targets.select { |target| same_text?(target.month_name, selected_month) } if selected_month.present?
         progress = web_parity_progress(targets, vrp)
         assigned = progress.sum { |row| row[:assigned].to_f }
@@ -73,7 +73,7 @@ module Api
         population = context[:participation_population]
         trained_rows = web.send(:training_participation_farmer_rows_from_records, records)
         unique_rows = web.send(:training_afl_farmer_rows_for_participation,
-          month_name: context[:participation_month], fcoc_name: params[:participation_fcoc].presence || params[:training_fcoc].presence)
+          month_name: context[:participation_month], fcoc_name: filter_param(:participation_fcoc, :training_fcoc))
         status_counts = web.send(:training_participation_status_counts_from_rows, population)
 
         rows = case status
@@ -90,7 +90,7 @@ module Api
           title: participation_list_title(status),
           status: status,
           selected_month: context[:participation_month_value],
-          selected_fcoc: params[:participation_fcoc].presence || params[:training_fcoc].presence,
+          selected_fcoc: filter_param(:participation_fcoc, :training_fcoc),
           totals: {
             total_training_farmer: web.send(:training_total_farmer_count_from_records, records),
             total_unique_farmers_distinct: unique_rows.size,
@@ -110,7 +110,7 @@ module Api
       def admin_dashboard_request?
         user = current_api_user_payload
         user["user_type"].to_s.casecmp("admin").zero? &&
-          (request.path.include?("/admin-dashboard") || params[:vrp_id].blank?)
+          (request.path.include?("/admin-dashboard") || filter_param(:vrp_id).blank?)
       end
 
       def render_admin_dashboard
@@ -135,11 +135,13 @@ module Api
 
         all_vrps = web.send(:dashboard_vrps).to_a
         all_targets = web.send(:dashboard_target_mappings).to_a
+        preload_dashboard_associations!(all_targets)
         vrps = all_vrps.dup
         targets = all_targets.dup
 
-        if params[:search].present?
-          query = params[:search].to_s.downcase.strip
+        search_query = filter_param(:search)
+        if search_query.present?
+          query = search_query.to_s.downcase.strip
           vrps.select! do |vrp|
             [vrp.name, vrp.mobile_no, vrp.role, vrp.fcoc, vrp.cluster_incharge].any? do |value|
               value.to_s.downcase.include?(query)
@@ -155,14 +157,14 @@ module Api
         options = {}
         options[:main_activities] = targets.map(&:main_activity_name).compact_blank.uniq.sort
         options[:activities] = options[:main_activities]
-        selected_main_activity = params[:main_activity].presence || default_farmer_activity_filter(web, options[:main_activities])
-        selected_sub_activity = params[:sub_activity].presence
-        legacy_activity = params[:activity].presence
+        selected_main_activity = filter_param(:main_activity) || default_farmer_activity_filter(web, options[:main_activities])
+        selected_sub_activity = filter_param(:sub_activity)
+        legacy_activity = filter_param(:activity)
         if selected_main_activity.present?
           normalized_main = web.send(:normalize_dashboard_text, selected_main_activity)
           targets.select! { |target| web.send(:normalize_dashboard_text, target.main_activity_name) == normalized_main }
         elsif legacy_activity.present?
-          targets.select! { |target| target.main_activity_name == params[:activity] || target.activity_name == params[:activity] }
+          targets.select! { |target| target.main_activity_name == legacy_activity || target.activity_name == legacy_activity }
         end
         options[:sub_activities] = targets.map(&:activity_name).compact_blank.uniq.sort
         if selected_sub_activity.present?
@@ -170,53 +172,56 @@ module Api
           targets.select! { |target| web.send(:normalize_dashboard_text, target.activity_name) == normalized_sub }
         end
         if selected_main_activity.present? || selected_sub_activity.present? || legacy_activity.present?
-          vrp_ids = targets.map(&:vrp_id).uniq
-          vrps.select! { |vrp| vrp_ids.include?(vrp.id) }
+          vrp_ids = id_lookup(targets, :vrp_id)
+          vrps.select! { |vrp| vrp_ids.key?(vrp.id.to_s) }
         end
 
-        selected_fcoc = params[:fcoc].presence || params[:fco].presence
+        selected_fcoc = filter_param(:fcoc, :fco)
         options[:fcos] = vrps.map(&:fcoc).compact_blank.uniq.sort
         if selected_fcoc.present?
           vrps.select! { |vrp| vrp.fcoc == selected_fcoc }
-          vrp_ids = vrps.map(&:id)
-          targets.select! { |target| target.vrp_id.present? && vrp_ids.include?(target.vrp_id) }
+          vrp_ids = id_lookup(vrps)
+          targets.select! { |target| target.vrp_id.present? && vrp_ids.key?(target.vrp_id.to_s) }
         end
 
         options[:cluster_incharges] = vrps.map(&:cluster_incharge).compact_blank.uniq.sort
-        if params[:cluster_incharge].present?
-          vrps.select! { |vrp| web.send(:cluster_label_matches?, params[:cluster_incharge], vrp.cluster_incharge) }
-          vrp_ids = vrps.map(&:id)
-          targets.select! { |target| target.vrp_id.present? && vrp_ids.include?(target.vrp_id) }
+        selected_cluster_incharge = filter_param(:cluster_incharge)
+        if selected_cluster_incharge.present?
+          vrps.select! { |vrp| web.send(:cluster_label_matches?, selected_cluster_incharge, vrp.cluster_incharge) }
+          vrp_ids = id_lookup(vrps)
+          targets.select! { |target| target.vrp_id.present? && vrp_ids.key?(target.vrp_id.to_s) }
         end
 
         options[:ics] = targets.map { |target| target.ics_name.presence || target.ics_id }.compact_blank.uniq.sort
-        if params[:ics].present?
-          targets.select! { |target| (target.ics_name.presence || target.ics_id).to_s == params[:ics].to_s }
-          vrp_ids = targets.map(&:vrp_id).uniq
-          vrps.select! { |vrp| vrp_ids.include?(vrp.id) }
+        selected_ics = filter_param(:ics, :ics_name)
+        if selected_ics.present?
+          targets.select! { |target| (target.ics_name.presence || target.ics_id).to_s == selected_ics.to_s }
+          vrp_ids = id_lookup(targets, :vrp_id)
+          vrps.select! { |vrp| vrp_ids.key?(vrp.id.to_s) }
         end
 
         options[:months] = (targets.map(&:month_name) + web.send(:month_master_month_options)).compact_blank.uniq
           .sort_by { |month| web.send(:dashboard_month_index, month) || 0 }
-        selected_month = params[:month].presence || Date.current.strftime("%B")
+        selected_month = filter_param(:month) || Date.current.strftime("%B")
         if selected_month.present?
           targets.select! { |target| target.month_name == selected_month }
-          vrp_ids = targets.map(&:vrp_id).uniq
-          vrps.select! { |vrp| vrp_ids.include?(vrp.id) }
+          vrp_ids = id_lookup(targets, :vrp_id)
+          vrps.select! { |vrp| vrp_ids.key?(vrp.id.to_s) }
         end
 
-        selected_post = params[:post].presence || params[:post_wise_name].presence
+        selected_post = filter_param(:post, :post_wise_name)
         options[:posts] = vrps.map(&:role).compact_blank.uniq.sort
         if selected_post.present?
           vrps.select! { |vrp| vrp.role == selected_post }
-          vrp_ids = vrps.map(&:id)
-          targets.select! { |target| target.vrp_id.present? && vrp_ids.include?(target.vrp_id) }
+          vrp_ids = id_lookup(vrps)
+          targets.select! { |target| target.vrp_id.present? && vrp_ids.key?(target.vrp_id.to_s) }
         end
 
         options[:jeevika_jankars] = vrps.map { |vrp| { id: vrp.id, name: vrp.name, user_name: vrp.user_name } }
           .uniq { |row| row[:id] }.sort_by { |row| row[:name].to_s.downcase }
-        if params[:vrp_id].present?
-          selected_vrp_id = params[:vrp_id].to_i
+        selected_vrp_filter = filter_param(:vrp_id)
+        if selected_vrp_filter.present?
+          selected_vrp_id = selected_vrp_filter.to_i
           vrps.select! { |vrp| vrp.id == selected_vrp_id }
           targets.select! { |target| target.vrp_id == selected_vrp_id }
         end
@@ -228,17 +233,17 @@ module Api
 
         months = web.send(:dashboard_month_options_for_targets, targets)
         default_month = web.send(:default_vrp_dashboard_month, months)
-        participation_value = params[:participation_month].presence || params[:training_month].presence || default_month
+        participation_value = filter_param(:participation_month, :training_month) || default_month
         participation_month = participation_value == "all" ? nil : participation_value
-        participation_fcoc = params[:participation_fcoc].presence || params[:training_fcoc].presence
+        participation_fcoc = filter_param(:participation_fcoc, :training_fcoc)
         participation_records = web.send(:dashboard_training_participation_records, month_name: participation_month, fcoc_name: participation_fcoc)
         population = web.send(:training_participation_population_rows,
           month_name: participation_month, fcoc_name: participation_fcoc, records: participation_records)
         participation_counts = web.send(:training_participation_status_counts_from_rows, population)
 
-        weekly_value = params[:weekly_target_month].presence || default_month
+        weekly_value = filter_param(:weekly_target_month) || default_month
         weekly_month = weekly_value == "all" ? nil : weekly_value
-        weekly_fcoc = params[:weekly_target_fcoc].presence
+        weekly_fcoc = filter_param(:weekly_target_fcoc)
         weekly_targets = web.send(:dashboard_targets_for_month, targets, weekly_month)
         if weekly_fcoc.present?
           normalized_fcoc = web.send(:normalize_dashboard_text, weekly_fcoc)
@@ -265,12 +270,12 @@ module Api
           target_records: weekly_rows.size
         }
 
-        ics_month_value = params[:ics_report_month].presence || participation_value
+        ics_month_value = filter_param(:ics_report_month) || participation_value
         ics_month = ics_month_value == "all" ? nil : ics_month_value
         ics_targets = web.send(:training_participation_targets_for_dashboard, month_name: ics_month, fcoc_name: participation_fcoc)
         ics_records = web.send(:dashboard_training_participation_records, month_name: ics_month, fcoc_name: participation_fcoc)
         ics_options = web.send(:ics_farmer_report_options, ics_records, ics_targets)
-        selected_ics = params[:ics_report_ics].to_s.presence
+        selected_ics = filter_param(:ics_report_ics)
         ics_rows = selected_ics ? web.send(:ics_farmer_report_rows, ics_targets, ics_records, selected_ics: selected_ics) : []
         target_progress = admin_dashboard_progress(web, targets, vrps)
 
@@ -376,21 +381,33 @@ module Api
 
       def exact_dashboard_bills(web, vrps)
         filtered_vrp_ids = vrps.map { |vrp| vrp.id.to_s }
-        filters_active = %i[search activity main_activity sub_activity fcoc fco cluster_incharge ics month post post_wise_name vrp_id].any? { |key| params[key].present? }
-        bills = ModuleRecord.where(module_slug: "jeevika-jankar-bill-process").to_a.select do |record|
+        filters_active = %i[search activity main_activity sub_activity fcoc fco cluster_incharge ics ics_name month post post_wise_name vrp_id].any? { |key| filter_param(key).present? }
+        scope = ModuleRecord.where(module_slug: "jeevika-jankar-bill-process")
+        if filters_active
+          return [] if filtered_vrp_ids.blank?
+
+          scope = scope.where("data::jsonb ->> 'select_vrp' IN (?)", filtered_vrp_ids)
+        end
+        selected_bill_month = filter_param(:month)
+        if selected_bill_month.present?
+          scope = scope.where("LOWER(BTRIM(data::jsonb ->> 'bill_month')) = ?", selected_bill_month.to_s.strip.downcase)
+        end
+        bills = scope.to_a.select do |record|
           record.data.present? && (filtered_vrp_ids.include?(record.data["select_vrp"].to_s) || !filters_active)
         end
-        if params[:activity].present? || params[:main_activity].present? || params[:sub_activity].present?
+        selected_activity = filter_param(:activity)
+        selected_main_activity = filter_param(:main_activity)
+        selected_sub_activity = filter_param(:sub_activity)
+        if selected_activity.present? || selected_main_activity.present? || selected_sub_activity.present?
           bills.select! do |record|
             web.send(:jeevika_bill_detail_rows, record).any? do |item|
-              legacy_matches = params[:activity].blank? || item["main_activity"] == params[:activity] || item["activity"] == params[:activity]
-              main_matches = params[:main_activity].blank? || web.send(:normalize_dashboard_text, item["main_activity"]) == web.send(:normalize_dashboard_text, params[:main_activity])
-              sub_matches = params[:sub_activity].blank? || web.send(:normalize_dashboard_text, item["activity"]) == web.send(:normalize_dashboard_text, params[:sub_activity])
+              legacy_matches = selected_activity.blank? || item["main_activity"] == selected_activity || item["activity"] == selected_activity
+              main_matches = selected_main_activity.blank? || web.send(:normalize_dashboard_text, item["main_activity"]) == web.send(:normalize_dashboard_text, selected_main_activity)
+              sub_matches = selected_sub_activity.blank? || web.send(:normalize_dashboard_text, item["activity"]) == web.send(:normalize_dashboard_text, selected_sub_activity)
               legacy_matches && main_matches && sub_matches
             end
           end
         end
-        bills.select! { |record| record.data["bill_month"] == params[:month] } if params[:month].present?
         bills
       end
 
@@ -499,7 +516,7 @@ module Api
           grouped_admin_villages(targets)
         when "targeted_farmers"
           web.send(:training_afl_farmer_rows_for_participation,
-            month_name: dashboard_list_participation_month, fcoc_name: params[:participation_fcoc].presence)
+            month_name: dashboard_list_participation_month, fcoc_name: filter_param(:participation_fcoc, :training_fcoc))
         when "total_mapped_main_activities"
           grouped_admin_activities(targets, :main_activity_name, "Main Activity")
         when "total_mapped_sub_activities"
@@ -530,7 +547,7 @@ module Api
             .map { |vrp| admin_vrp_list_row(vrp, assigned_ids, activity_ids) }
         when "training_unique_farmers"
           web.send(:training_afl_farmer_rows_for_participation,
-            month_name: dashboard_list_participation_month, fcoc_name: params[:participation_fcoc].presence)
+            month_name: dashboard_list_participation_month, fcoc_name: filter_param(:participation_fcoc, :training_fcoc))
         when "training_total"
           web.send(:training_participation_farmer_rows_from_records, context[:participation_records])
         when "training_green", "training_yellow", "training_red", "training_pending"
@@ -654,7 +671,7 @@ module Api
       def dashboard_participation_target_map_rows(web, context)
         targets = web.send(:training_participation_targets_for_dashboard,
           month_name: dashboard_list_participation_month,
-          fcoc_name: params[:participation_fcoc].presence || params[:training_fcoc].presence)
+          fcoc_name: filter_param(:participation_fcoc, :training_fcoc))
         web.send(:training_participation_target_map_rows, targets, month_name: dashboard_list_participation_month)
       end
 
@@ -673,7 +690,7 @@ module Api
       end
 
       def dashboard_list_participation_month
-        value = params[:participation_month].presence || params[:training_month].presence || @admin_dashboard_api_context&.dig(:participation_month)
+        value = filter_param(:participation_month, :training_month) || @admin_dashboard_api_context&.dig(:participation_month)
         value == "all" ? nil : value
       end
 
@@ -721,35 +738,35 @@ module Api
 
       def filter_admin_vrps(vrps)
         vrps.select do |vrp|
-          filter_value_matches?(vrp.fcoc, params[:fco]) &&
-            filter_value_matches?(vrp.cluster_incharge, params[:cluster_incharge]) &&
-            filter_value_matches?(vrp.role, params[:post_wise_name]) &&
-            (params[:vrp_id].blank? || vrp.id.to_s == params[:vrp_id].to_s)
+          filter_value_matches?(vrp.fcoc, filter_param(:fco, :fcoc)) &&
+            filter_value_matches?(vrp.cluster_incharge, filter_param(:cluster_incharge)) &&
+            filter_value_matches?(vrp.role, filter_param(:post_wise_name, :post)) &&
+            (filter_param(:vrp_id).blank? || vrp.id.to_s == filter_param(:vrp_id).to_s)
         end
       end
 
       def filter_admin_targets(targets)
         targets.select do |target|
-          filter_value_matches?(target.month_name, params[:month]) &&
-            filter_value_matches?(target.main_activity_name, params[:activity]) &&
-            filter_value_matches?(target.activity_name, params[:sub_activity])
+          filter_value_matches?(target.month_name, filter_param(:month)) &&
+            filter_value_matches?(target.main_activity_name, filter_param(:activity, :main_activity)) &&
+            filter_value_matches?(target.activity_name, filter_param(:sub_activity))
         end
       end
 
       def admin_vrp_filters_present?
-        %i[fco cluster_incharge post_wise_name vrp_id].any? { |key| params[key].present? }
+        %i[fco cluster_incharge post_wise_name vrp_id].any? { |key| filter_param(key).present? }
       end
 
       def admin_filter_payload
         {
-          activity: params[:activity],
-          fco: params[:fco],
-          cluster_incharge: params[:cluster_incharge],
-          month: params[:month],
-          post_wise_name: params[:post_wise_name],
-          vrp_id: params[:vrp_id],
-          sub_activity: params[:sub_activity]
-        }
+          activity: filter_param(:activity, :main_activity),
+          fco: filter_param(:fco, :fcoc),
+          cluster_incharge: filter_param(:cluster_incharge),
+          month: filter_param(:month),
+          post_wise_name: filter_param(:post_wise_name, :post),
+          vrp_id: filter_param(:vrp_id),
+          sub_activity: filter_param(:sub_activity)
+        }.compact
       end
 
       def default_farmer_activity_filter(web, activity_options)
@@ -762,6 +779,31 @@ module Api
 
       def filter_value_matches?(actual, selected)
         selected.blank? || same_text?(actual, selected)
+      end
+
+      def filter_param(*keys)
+        keys.each do |key|
+          value = params[key].to_s.strip
+          next if all_filter_value?(value)
+
+          return value if value.present?
+        end
+        nil
+      end
+
+      def all_filter_value?(value)
+        normalized = value.to_s.strip.downcase
+        normalized.blank? || normalized == "all" || normalized.start_with?("all ")
+      end
+
+      def preload_dashboard_associations!(targets)
+        ActiveRecord::Associations::Preloader.new(records: targets, associations: :vrp).call if targets.any?
+      rescue StandardError => error
+        Rails.logger.debug("Admin dashboard preload skipped: #{error.class}: #{error.message}")
+      end
+
+      def id_lookup(records, attribute = :id)
+        records.each_with_object({}) { |record, lookup| lookup[record.public_send(attribute).to_s] = true }
       end
 
       def training_participation_status(targets)
@@ -782,8 +824,8 @@ module Api
       def target_dashboard_payload(targets)
         sub_activities = targets.filter_map { |target| target.activity_name.to_s.strip.presence }.uniq.sort
         {
-          selected_month: params[:month],
-          selected_sub_activity: params[:sub_activity],
+          selected_month: filter_param(:month),
+          selected_sub_activity: filter_param(:sub_activity),
           sub_activity_options: sub_activities,
           rows: targets.map { |target| progress_payload(target) }
         }
@@ -817,7 +859,8 @@ module Api
       def current_dashboard_vrp
         user = current_api_user_payload
         return Vrp.find_by(id: user["id"]) if user["record_type"] == "Vrp"
-        return Vrp.find_by(id: params[:vrp_id]) if user["user_type"].to_s.casecmp("admin").zero? && params[:vrp_id].present?
+        selected_vrp_id = filter_param(:vrp_id)
+        return Vrp.find_by(id: selected_vrp_id) if user["user_type"].to_s.casecmp("admin").zero? && selected_vrp_id.present?
       end
 
       def default_month(months)

@@ -16,7 +16,7 @@ module Api
         @calculation_stage = "participation_month_options"
         months = calculator.send(:dashboard_month_options_for_targets, targets)
         participation_month = selected_month(:participation_month, months, calculator, targets)
-        participation_fcoc = params[:participation_fcoc].presence || calculator.send(:dashboard_default_visible_fcoc, options[:fcos])
+        participation_fcoc = filter_param(:participation_fcoc) || calculator.send(:dashboard_default_visible_fcoc, options[:fcos])
         @calculation_stage = "participation_records"
         records = calculator.send(:dashboard_training_participation_records, month_name: participation_month, fcoc_name: participation_fcoc)
         @calculation_stage = "participation_counts"
@@ -25,7 +25,7 @@ module Api
         @calculation_stage = "weekly_targets"
         weekly_month = selected_month(:weekly_target_month, months, calculator)
         weekly_targets = calculator.send(:dashboard_targets_for_month, targets, weekly_month)
-        weekly_fcoc = params[:weekly_target_fcoc].presence || calculator.send(:dashboard_default_visible_fcoc, options[:fcos])
+        weekly_fcoc = filter_param(:weekly_target_fcoc) || calculator.send(:dashboard_default_visible_fcoc, options[:fcos])
         if weekly_fcoc.present?
           weekly_targets = weekly_targets.select { |target| same?(target.vrp&.fcoc, weekly_fcoc) }
         end
@@ -87,13 +87,14 @@ module Api
         vrps = calculator.send(:dashboard_vrps).to_a
         @calculation_stage = "dashboard_target_mappings"
         targets = calculator.send(:dashboard_target_mappings).to_a
+        preload_dashboard_associations!(targets)
         @calculation_stage = "dashboard_search_filter"
         vrps, targets = search_scope(vrps, targets)
         @calculation_stage = "dashboard_activity_filters"
         options = { main_activities: values(targets, :main_activity_name) }
-        selected_main_activity = params[:main_activity].presence || default_farmer_activity_filter(calculator, options[:main_activities])
-        selected_sub_activity = params[:sub_activity].presence
-        legacy_activity = params[:activity].presence
+        selected_main_activity = filter_param(:main_activity) || default_farmer_activity_filter(calculator, options[:main_activities])
+        selected_sub_activity = filter_param(:sub_activity)
+        legacy_activity = filter_param(:activity)
         if selected_main_activity.present?
           targets = targets.select { |target| same?(target.main_activity_name, selected_main_activity) }
         elsif legacy_activity.present?
@@ -103,79 +104,125 @@ module Api
         targets = targets.select { |target| same?(target.activity_name, selected_sub_activity) } if selected_sub_activity.present?
         options[:activities] = (options[:main_activities] + options[:sub_activities]).uniq.sort
         if selected_main_activity.present? || selected_sub_activity.present? || legacy_activity.present?
-          vrps = vrps.select { |v| targets.any? { |t| t.vrp_id == v.id } }
+          vrps = restrict_vrps_to_targets(vrps, targets)
         end
         options[:fcos] = values(vrps, :fcoc)
         @calculation_stage = "dashboard_fcoc_filter"
-        vrps, targets = filter_vrps(vrps, targets, :fcoc, params[:fcoc].presence || params[:fco])
+        vrps, targets = filter_vrps(vrps, targets, :fcoc, filter_param(:fcoc, :fco))
         options[:cluster_incharges] = values(vrps, :cluster_incharge)
         @calculation_stage = "dashboard_cluster_filter"
-        vrps, targets = filter_vrps(vrps, targets, :cluster_incharge, params[:cluster_incharge])
+        vrps, targets = filter_vrps(vrps, targets, :cluster_incharge, filter_param(:cluster_incharge))
         @calculation_stage = "dashboard_ics_filter"
         options[:ics_names] = targets.filter_map { |target| (target.ics_name.presence || target.ics_id).to_s.strip.presence }.uniq.sort
-        selected_ics = params[:ics].presence || params[:ics_name]
+        selected_ics = filter_param(:ics, :ics_name)
         if selected_ics.present?
           targets = targets.select { |target| same?(target.ics_name.presence || target.ics_id, selected_ics) }
-          vrps = vrps.select { |vrp| targets.any? { |target| target.vrp_id == vrp.id } }
+          vrps = restrict_vrps_to_targets(vrps, targets)
         end
         options[:months] = values(targets, :month_name)
         @calculation_stage = "dashboard_month_filter"
-        selected_dashboard_month = params[:month].presence || Date.current.strftime("%B")
+        selected_dashboard_month = filter_param(:month) || Date.current.strftime("%B")
         if selected_dashboard_month.present?
           targets = targets.select { |t| same?(t.month_name, selected_dashboard_month) }
-          vrps = vrps.select { |v| targets.any? { |t| t.vrp_id == v.id } }
+          vrps = restrict_vrps_to_targets(vrps, targets)
         end
         options[:post_wise_names] = values(vrps, :role)
         @calculation_stage = "dashboard_post_filter"
-        vrps, targets = filter_vrps(vrps, targets, :role, params[:post].presence || params[:post_wise_name])
+        vrps, targets = filter_vrps(vrps, targets, :role, filter_param(:post, :post_wise_name))
         options[:vrps] = vrps.map { |v| { id: v.id, name: v.name, user_name: v.user_name } }
         @calculation_stage = "dashboard_vrp_filter"
-        if params[:vrp_id].present?
-          vrps = vrps.select { |v| v.id.to_s == params[:vrp_id].to_s }
-          targets = targets.select { |t| t.vrp_id.to_s == params[:vrp_id].to_s }
+        selected_vrp_id = filter_param(:vrp_id)
+        if selected_vrp_id.present?
+          vrps = vrps.select { |v| v.id.to_s == selected_vrp_id.to_s }
+          targets = targets.select { |t| t.vrp_id.to_s == selected_vrp_id.to_s }
         end
         [vrps, targets, options]
       end
 
       def search_scope(vrps, targets)
-        return [vrps, targets] if params[:search].blank?
-        query = params[:search].to_s.downcase.strip
+        query = filter_param(:search)
+        return [vrps, targets] if query.blank?
+
+        query = query.to_s.downcase.strip
         vrps = vrps.select { |v| [v.name, v.mobile_no, v.role, v.fcoc, v.cluster_incharge].any? { |x| x.to_s.downcase.include?(query) } }
         targets = targets.select { |t| [t.vrp&.name, t.month_name, t.village_name, t.main_activity_name, t.activity_name].any? { |x| x.to_s.downcase.include?(query) } }
         [vrps, targets]
       end
 
+      def filter_param(*keys)
+        keys.each do |key|
+          value = params[key].to_s.strip
+          next if all_filter_value?(value)
+
+          return value if value.present?
+        end
+        nil
+      end
+
+      def all_filter_value?(value)
+        normalized = value.to_s.strip.downcase
+        normalized.blank? || normalized == "all" || normalized.start_with?("all ")
+      end
+
+      def preload_dashboard_associations!(targets)
+        ActiveRecord::Associations::Preloader.new(records: targets, associations: :vrp).call if targets.any?
+      rescue StandardError => error
+        Rails.logger.debug("User dashboard preload skipped: #{error.class}: #{error.message}")
+      end
+
       def filter_vrps(vrps, targets, attribute, selected)
         return [vrps, targets] if selected.blank?
         filtered = vrps.select { |v| same?(v.public_send(attribute), selected) }
-        ids = filtered.map(&:id)
-        [filtered, targets.select { |t| ids.include?(t.vrp_id) }]
+        ids = id_lookup(filtered)
+        [filtered, targets.select { |t| ids.key?(t.vrp_id.to_s) }]
+      end
+
+      def restrict_vrps_to_targets(vrps, targets)
+        ids = targets.each_with_object({}) { |target, lookup| lookup[target.vrp_id.to_s] = true }
+        vrps.select { |vrp| ids.key?(vrp.id.to_s) }
+      end
+
+      def id_lookup(records)
+        records.each_with_object({}) { |record, lookup| lookup[record.id.to_s] = true }
       end
 
       def filtered_bills(calculator, vrps)
-        ids = vrps.map { |v| v.id.to_s }
-        filters_active = %i[search activity main_activity sub_activity fcoc fco cluster_incharge ics ics_name month post post_wise_name vrp_id].any? { |key| params[key].present? }
-        records = ModuleRecord.where(module_slug: "jeevika-jankar-bill-process").to_a
+        ids = id_lookup(vrps)
+        filters_active = %i[search activity main_activity sub_activity fcoc fco cluster_incharge ics ics_name month post post_wise_name vrp_id].any? { |key| filter_param(key).present? }
+        scope = ModuleRecord.where(module_slug: "jeevika-jankar-bill-process")
+        if filters_active || calculator.send(:module_cluster_incharge_login?)
+          return [] if ids.blank?
+
+          scope = scope.where("data::jsonb ->> 'select_vrp' IN (?)", ids.keys)
+        end
+        selected_bill_month = filter_param(:month)
+        if selected_bill_month.present?
+          scope = scope.where("LOWER(BTRIM(data::jsonb ->> 'bill_month')) = ?", selected_bill_month.to_s.strip.downcase)
+        end
+        records = scope.to_a
           .select { |record| calculator.send(:jeevika_jankar_bill_record_visible?, record) }
         if calculator.send(:module_cluster_incharge_login?)
           records.select! do |record|
             bill_vrp = calculator.send(:jeevika_bill_vrp, record)
-            bill_vrp.present? && ids.include?(bill_vrp.id.to_s)
+            bill_vrp.present? && ids.key?(bill_vrp.id.to_s)
           end
         end
         records = records
-          .select { |record| ids.include?(record.data["select_vrp"].to_s) || !filters_active }
-        if params[:activity].present? || params[:main_activity].present? || params[:sub_activity].present?
+          .select { |record| ids.key?(record.data["select_vrp"].to_s) || !filters_active }
+        selected_activity = filter_param(:activity)
+        selected_main_activity = filter_param(:main_activity)
+        selected_sub_activity = filter_param(:sub_activity)
+        if selected_activity.present? || selected_main_activity.present? || selected_sub_activity.present?
           records.select! do |record|
             calculator.send(:jeevika_bill_detail_rows, record).any? do |item|
-              legacy_match = params[:activity].blank? || same?(item["main_activity"], params[:activity]) || same?(item["activity"], params[:activity])
-              main_match = params[:main_activity].blank? || same?(item["main_activity"], params[:main_activity])
-              sub_match = params[:sub_activity].blank? || same?(item["activity"], params[:sub_activity])
+              legacy_match = selected_activity.blank? || same?(item["main_activity"], selected_activity) || same?(item["activity"], selected_activity)
+              main_match = selected_main_activity.blank? || same?(item["main_activity"], selected_main_activity)
+              sub_match = selected_sub_activity.blank? || same?(item["activity"], selected_sub_activity)
               legacy_match && main_match && sub_match
             end
           end
         end
-        params[:month].present? ? records.select { |record| same?(record.data["bill_month"], params[:month]) } : records
+        records
       end
 
       def set_filtered_scope(calculator, vrps, targets, bills)
@@ -185,8 +232,7 @@ module Api
       end
 
       def selected_month(key, months, calculator, targets = nil)
-        value = params[key].presence || calculator.send(:default_vrp_dashboard_month, months, targets)
-        value.to_s.casecmp("all").zero? ? nil : value
+        filter_param(key) || calculator.send(:default_vrp_dashboard_month, months, targets)
       end
 
       def card_payload(calculator, vrps, targets, bills)
@@ -302,7 +348,8 @@ module Api
 
       def applied_filters
         %i[search activity main_activity sub_activity fcoc fco cluster_incharge ics ics_name month post post_wise_name vrp_id participation_month participation_fcoc weekly_target_month weekly_target_fcoc weekly_target_week]
-          .to_h { |key| [key, params[key]] }.compact_blank
+          .filter_map { |key| value = filter_param(key); [key, value] if value.present? }
+          .to_h
       end
 
       def activity_options(targets)
