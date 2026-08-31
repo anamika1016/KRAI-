@@ -2602,8 +2602,10 @@ class ModulesController < ApplicationController
     @approved_other_target_completed_farmer_ids_by_target = Hash.new { |hash, key| hash[key] = [] }
     return @approved_other_target_completed_farmer_ids_by_target unless model_ready?(:ModuleRecord)
 
-    records = ModuleRecord
-      .where(module_slug: OTHER_TARGET_MODULE_SLUGS)
+    records = ModuleRecord.where(module_slug: OTHER_TARGET_MODULE_SLUGS)
+    candidate_months = other_target_candidate_targets.map { |target| normalize_dashboard_text(target.month_name) }.reject(&:blank?).uniq
+    records = records.where("LOWER(BTRIM(data::jsonb ->> 'month')) IN (?)", candidate_months) if candidate_months.present?
+    records = records
       .order(created_at: :asc)
       .select { |record| approved_other_target_record?(record) }
 
@@ -7364,7 +7366,7 @@ class ModulesController < ApplicationController
     @jeevika_jankar_invoice_date = @record&.data&.[]("invoice_date").presence || Date.current.to_s
     @jeevika_jankar_bill_rows = jeevika_jankar_bill_rows
     @jeevika_jankar_achievement_summary = jeevika_jankar_achievement_summary(@jeevika_jankar_bill_rows)
-    @jeevika_jankar_target_summary = jeevika_jankar_dashboard_target_summary
+    @jeevika_jankar_target_summary ||= jeevika_jankar_target_summary_from_rows(@jeevika_jankar_bill_rows)
     @jeevika_jankar_saved_items = jeevika_jankar_saved_items
     @jeevika_jankar_existing_bills = jeevika_jankar_existing_bill_keys
   end
@@ -8219,6 +8221,43 @@ class ModulesController < ApplicationController
     end
   end
 
+  def jeevika_jankar_target_summary_from_rows(rows)
+    grouped_rows = Array(rows).group_by { |row| row[:target_mapping_id].to_s.presence || row[:training_session_key].to_s }
+
+    grouped_rows.values.each_with_object({}) do |target_rows, summary|
+      row = target_rows.first
+      vrp_id = row[:vrp_id].to_s
+      month_key = normalize_dashboard_text(row[:month_name])
+      next if vrp_id.blank? || month_key.blank?
+
+      target = target_rows.map { |item| bill_row_target_total(item) }.max.to_f
+      achievement = [target_rows.sum { |item| item[:achievement_count].to_f }, target].min
+      summary[vrp_id] ||= {}
+      summary[vrp_id][month_key] ||= { target: 0.0, achievement: 0.0 }
+      summary[vrp_id][month_key][:target] += target
+      summary[vrp_id][month_key][:achievement] += achievement
+    end.transform_values do |months|
+      months.transform_values do |totals|
+        assigned = totals[:target].to_f
+        achieved = [totals[:achievement].to_f, assigned].min
+        {
+          target: dashboard_quantity(assigned),
+          achievement: dashboard_quantity(achieved),
+          pending: dashboard_quantity([assigned - achieved, 0].max)
+        }
+      end
+    end
+  end
+
+  def bill_row_target_total(row)
+    if normalize_dashboard_text(row[:main_activity_type]) == "other"
+      row[:target_quantity].to_f
+    else
+      assigned = row[:assigned_count].to_f
+      assigned.positive? ? assigned : row[:target_quantity].to_f
+    end
+  end
+
   def jeevika_jankar_saved_items
     raw_items = @record&.data&.[]("bill_items")
     raw_items = raw_items.values if raw_items.is_a?(Hash)
@@ -8254,8 +8293,11 @@ class ModulesController < ApplicationController
   def approved_other_target_achievement_index
     return {} unless model_ready?(:ModuleRecord)
 
-    ModuleRecord
-      .where(module_slug: OTHER_TARGET_MODULE_SLUGS)
+    records = ModuleRecord.where(module_slug: OTHER_TARGET_MODULE_SLUGS)
+    candidate_months = other_target_candidate_targets.map { |target| normalize_dashboard_text(target.month_name) }.reject(&:blank?).uniq
+    records = records.where("LOWER(BTRIM(data::jsonb ->> 'month')) IN (?)", candidate_months) if candidate_months.present?
+
+    records
       .order(updated_at: :desc)
       .select { |record| approved_other_target_record?(record) }
       .each_with_object({}) do |record, index|
@@ -8371,7 +8413,9 @@ class ModulesController < ApplicationController
     targets = TargetMapping.includes(:vrp)
     targets = targets.where(vrp_id: current_vrp_record.id) if vrp_login_user? && current_vrp_record.present?
     targets = targets.where(vrp_id: module_cluster_visible_vrp_ids) if module_mapped_vrp_scope_active?
-    targets = targets.order(:month_name, :vrp_id, :village_name, :main_activity_name, :activity_name, :id)
+    targets = targets.order(:month_name, :vrp_id, :village_name, :main_activity_name, :activity_name, :id).to_a
+    @other_target_candidate_targets = targets
+    @other_target_candidate_targets_by_id = targets.index_by { |target| target.id.to_s }
     farmers_by_id = jeevika_jankar_farmers_by_id(targets)
     training_index = jeevika_jankar_training_index(targets)
     activity_settings = jeevika_jankar_main_activity_settings
@@ -8447,6 +8491,7 @@ class ModulesController < ApplicationController
       }
     end
 
+    @jeevika_jankar_target_summary = jeevika_jankar_target_summary_from_rows(rows)
     group_jeevika_jankar_training_bill_rows(rows)
   end
 
@@ -8659,7 +8704,12 @@ class ModulesController < ApplicationController
       result[target.vrp_id.to_s] |= Array(target.afl_ids).map(&:to_s).reject(&:blank?)
     end
     target_months = targets.map { |target| target.month_name.to_s }.reject(&:blank?).uniq
-    records = ModuleRecord.where(module_slug: "training-form").order(created_at: :desc).select { |record| active_module_record?(record) }
+    records = ModuleRecord.where(module_slug: "training-form").order(created_at: :desc)
+    if target_months.present?
+      normalized_months = target_months.map { |month| normalize_dashboard_text(month) }.uniq
+      records = records.where("LOWER(BTRIM(data::jsonb ->> 'month')) IN (?)", normalized_months)
+    end
+    records = records.select { |record| active_module_record?(record) }
 
     records.each_with_object(Hash.new { |hash, key| hash[key] = [] }) do |record, index|
       farmer_ids = Array(record.data["selected_farmer_ids"]).map(&:to_s).reject(&:blank?) & target_farmer_ids
