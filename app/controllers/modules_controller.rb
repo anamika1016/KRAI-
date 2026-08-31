@@ -10169,12 +10169,14 @@ class ModulesController < ApplicationController
   end
 
   def papl_staff_options
-    return training_people_options_for_current_vrp(:papl_staff) if vrp_login_user?
-
     (
       registered_app_user_names +
       registered_module_user_names
-    ).compact_blank.uniq { |name| normalize_dashboard_text(name) }.unshift("N/A").uniq
+    ).compact_blank
+      .select { |name| papl_staff_option_allowed?(name) }
+      .uniq { |name| normalize_dashboard_text(name) }
+      .unshift("N/A")
+      .uniq
   end
 
   def training_people_options_for_current_vrp(kind)
@@ -10898,6 +10900,11 @@ class ModulesController < ApplicationController
       .order(updated_at: :desc)
       .select { |record| active_module_record?(record) }
       .filter_map { |record| [record.data["first_name"], record.data["last_name"]].compact_blank.join(" ").presence || record.data["user_name"].presence }
+  end
+
+  def papl_staff_option_allowed?(name)
+    normalized_name = normalize_dashboard_text(name)
+    normalized_name.present? && normalized_name != "admin"
   end
 
   def registered_vrp_names_for_option(attribute, value)
