@@ -5258,7 +5258,7 @@ function initDeferredLayoutPage() {
         const achievementInput = row.querySelector("[data-jeevika-achievement]");
         const manualAchievement = row.dataset.achievementEntryMode === "self";
         const achievement = manualAchievement ? numberValue(achievementInput?.value) : numberValue(row.dataset.achievementCount);
-        const pendingBase = row.dataset.mainActivityType === "other" ? target : assigned;
+        const pendingBase = row.dataset.mainActivityType === "other" ? target : (assigned > 0 ? assigned : target);
         const pending = Math.max(pendingBase - achievement, 0);
         const rate = numberValue(row.querySelector("[data-jeevika-rate]")?.value);
         const amount = achievement * rate;
@@ -5268,7 +5268,7 @@ function initDeferredLayoutPage() {
         const pendingInput = row.querySelector("[data-jeevika-pending-input]");
         const farmerSummaryCount = row.nextElementSibling?.querySelector("[data-jeevika-farmer-achievement]");
 
-        totalTarget += target;
+        totalTarget += pendingBase;
         totalAchievement += achievement;
         grandTotal += amount;
         row.dataset.currentAchievement = String(achievement);

@@ -44,6 +44,46 @@ class ModulesControllerDashboardTest < ActiveSupport::TestCase
     assert_equal 101, ModulesController.new.send(:dashboard_target_record_count, targets)
   end
 
+  test "training activity matcher handles numbered and combined saved labels" do
+    controller = ModulesController.new
+
+    assert controller.send(
+      :dashboard_training_activity_text_matches?,
+      "1. Village level farmers groups",
+      "Village level farmers groups"
+    )
+    assert controller.send(
+      :dashboard_training_activity_text_matches?,
+      "1. Village level farmers groups, 2. Organic Nutrient Management (Module-4)",
+      "Village level farmers groups"
+    )
+    assert controller.send(
+      :dashboard_training_activity_text_matches?,
+      "Organic Nutrient Management",
+      "5. Organic Nutrient Management (Module-4)"
+    )
+  end
+
+  test "jeevika bill item totals use billable target base dynamically" do
+    totals = ModulesController.new.send(:jeevika_jankar_bill_item_totals, [
+      {
+        "main_activity_type" => "Training",
+        "target_quantity" => "209",
+        "assigned_count" => "208",
+        "achievement_count" => "208"
+      },
+      {
+        "main_activity_type" => "Other",
+        "target_quantity" => "12",
+        "assigned_count" => "0",
+        "achievement_count" => "15"
+      }
+    ])
+
+    assert_equal 220, totals[:target]
+    assert_equal 220, totals[:achievement]
+  end
+
   test "cluster visible vrps only includes explicitly mapped cluster incharge vrps" do
     mapped_vrp = create_vrp(
       name: "Mapped Cluster JJ",

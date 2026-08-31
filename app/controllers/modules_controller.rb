@@ -5748,9 +5748,19 @@ class ModulesController < ApplicationController
   # that session. Treat the individual module as belonging to that combined
   # target without allowing an unrelated activity to complete it.
   def dashboard_training_activity_text_matches?(record_value, target_value)
+    record_value = normalize_training_activity_label(record_value)
+    target_value = normalize_training_activity_label(target_value)
     return true if record_value.blank? || target_value.blank?
 
-    record_value == target_value || target_value.include?(record_value)
+    record_value == target_value || target_value.include?(record_value) || record_value.include?(target_value)
+  end
+
+  def normalize_training_activity_label(value)
+    normalize_dashboard_text(value)
+      .sub(/\A\d+[\.)]\s*/, "")
+      .gsub(/([,\n;])\s*\d+[\.)]\s*/, "\\1 ")
+      .squeeze(" ")
+      .strip
   end
 
   def training_record_vrp_scope_matches?(record, vrp)
@@ -7361,8 +7371,8 @@ class ModulesController < ApplicationController
         bill_month: data["bill_month"].presence || "-",
         activity_groups: summary[:activity_groups].presence || "-",
         activity_names: summary[:activity_names].presence || "-",
-        target: data["total_target"].presence || "0",
-        achievement: data["total_achievement"].presence || "0",
+        target: jeevika_jankar_bill_total_target(record),
+        achievement: jeevika_jankar_bill_total_achievement(record),
         amount: jeevika_jankar_bill_total_payment(record)
       }
     end
@@ -8985,8 +8995,7 @@ class ModulesController < ApplicationController
       item
     end
 
-    total_target = bill_items.sum { |item| item["target_quantity"].to_f }
-    total_achievement = bill_items.sum { |item| item["achievement_count"].to_f }
+    bill_totals = jeevika_jankar_bill_item_totals(bill_items)
 
     data["invoice_no"] = data["invoice_no"].presence || generated_jeevika_jankar_invoice_no
     data["invoice_date"] = data["invoice_date"].presence || Date.current.to_s
@@ -8994,13 +9003,48 @@ class ModulesController < ApplicationController
     data["main_activity_type"] = data["main_activity_type"].presence || "Training"
     data["achievement_entry_mode"] = data["achievement_entry_mode"].presence || "Auto Fill"
     data["bill_items"] = bill_items
-    data["total_target"] = dashboard_quantity(total_target)
-    data["total_achievement"] = dashboard_quantity(total_achievement)
+    data["total_target"] = dashboard_quantity(bill_totals[:target])
+    data["total_achievement"] = dashboard_quantity(bill_totals[:achievement])
     payment = decimal_value(data["grand_total"])
     data["grand_total"] = payment ? format("%.2f", payment) : data["grand_total"].to_s
     data["status"] = data["status"].presence || "Submitted (Not sent for approval)"
     data["record_state"] = data["record_state"].presence || "Active"
     data
+  end
+
+  def jeevika_jankar_bill_total_target(record)
+    totals = jeevika_jankar_bill_item_totals(record.data["bill_items"])
+    return dashboard_quantity(totals[:target]) if totals[:has_items]
+
+    record.data["total_target"].presence || "0"
+  end
+
+  def jeevika_jankar_bill_total_achievement(record)
+    totals = jeevika_jankar_bill_item_totals(record.data["bill_items"])
+    return dashboard_quantity(totals[:achievement]) if totals[:has_items]
+
+    record.data["total_achievement"].presence || "0"
+  end
+
+  def jeevika_jankar_bill_item_totals(items)
+    rows = items.is_a?(Hash) ? items.values : Array(items)
+    rows = rows.select { |item| item.respond_to?(:to_h) }.map(&:to_h)
+
+    totals = rows.each_with_object({ target: 0.0, achievement: 0.0, has_items: rows.any? }) do |item, result|
+      target_quantity = dashboard_numeric(item["target_quantity"])
+      assigned_count = dashboard_numeric(item["assigned_count"])
+      target = if normalize_dashboard_text(item["main_activity_type"]) == "other"
+        target_quantity
+      else
+        assigned_count.positive? ? assigned_count : target_quantity
+      end
+      achievement = dashboard_numeric(item["achievement_count"])
+
+      result[:target] += target
+      result[:achievement] += [achievement, target].min
+    end
+
+    totals
   end
 
   def jeevika_payment_detail_error_messages(raw_data, selected_bill_ids, selected_records)
