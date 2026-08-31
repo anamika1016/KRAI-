@@ -5252,6 +5252,7 @@ function initDeferredLayoutPage() {
       let totalTarget = 0;
       let totalAchievement = 0;
       let grandTotal = 0;
+      const totalsByTarget = new Map();
       rowInputs().forEach((row) => {
         const target = numberValue(row.dataset.targetQuantity);
         const assigned = numberValue(row.dataset.assignedCount);
@@ -5268,8 +5269,11 @@ function initDeferredLayoutPage() {
         const pendingInput = row.querySelector("[data-jeevika-pending-input]");
         const farmerSummaryCount = row.nextElementSibling?.querySelector("[data-jeevika-farmer-achievement]");
 
-        totalTarget += pendingBase;
-        totalAchievement += achievement;
+        const targetKey = row.dataset.targetMappingId || `row-${row.dataset.rowIndex || totalsByTarget.size}`;
+        const groupedTotal = totalsByTarget.get(targetKey) || { target: 0, achievement: 0 };
+        groupedTotal.target = Math.max(groupedTotal.target, pendingBase);
+        groupedTotal.achievement += achievement;
+        totalsByTarget.set(targetKey, groupedTotal);
         grandTotal += amount;
         row.dataset.currentAchievement = String(achievement);
         if (achievementDisplay) achievementDisplay.textContent = String(achievement);
@@ -5279,10 +5283,12 @@ function initDeferredLayoutPage() {
         if (amountInput) amountInput.value = amount.toFixed(2);
       });
 
+      totalsByTarget.forEach((groupedTotal) => {
+        totalTarget += groupedTotal.target;
+        totalAchievement += Math.min(groupedTotal.achievement, groupedTotal.target);
+      });
+
       if (totalTargetInput) totalTargetInput.value = String(totalTarget);
-      const currentRows = rowInputs();
-      const summaryAchievement = currentRows.length && currentRows.every((row) => row.dataset.mainActivityType === "training" && row.dataset.achievementEntryMode !== "self") ? selectedAchievementTotal() : null;
-      if (summaryAchievement !== null) totalAchievement = summaryAchievement;
       if (totalAchievementInput) totalAchievementInput.value = String(totalAchievement);
       if (grandTotalInput) grandTotalInput.value = grandTotal.toFixed(2);
       syncPaymentRemarks();
@@ -5332,7 +5338,7 @@ function initDeferredLayoutPage() {
         const pendingCount = Math.max(numberValue(pendingBase) - numberValue(achievementCount), 0);
 
         return `
-          <tr data-bill-row data-row-index="${index}" data-target-quantity="${escapeHtml(row.target_quantity)}" data-assigned-count="${escapeHtml(assignedCount)}" data-achievement-count="${escapeHtml(autoAchievementCount)}" data-current-achievement="${escapeHtml(achievementCount)}" data-main-activity-type="${escapeHtml(mainActivityType)}" data-achievement-entry-mode="${escapeHtml(achievementEntryMode)}">
+          <tr data-bill-row data-row-index="${index}" data-target-mapping-id="${escapeHtml(row.target_mapping_id || row.training_session_key || index)}" data-target-quantity="${escapeHtml(row.target_quantity)}" data-assigned-count="${escapeHtml(assignedCount)}" data-achievement-count="${escapeHtml(autoAchievementCount)}" data-current-achievement="${escapeHtml(achievementCount)}" data-main-activity-type="${escapeHtml(mainActivityType)}" data-achievement-entry-mode="${escapeHtml(achievementEntryMode)}">
             <td>
               ${hiddenInput(`${inputPrefix}[target_mapping_id]`, row.target_mapping_id)}
               ${hiddenInput(`${inputPrefix}[training_session_key]`, row.training_session_key || "")}

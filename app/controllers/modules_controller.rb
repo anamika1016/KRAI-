@@ -8225,8 +8225,9 @@ class ModulesController < ApplicationController
 
   def other_target_record_target_mapping_ids(record)
     saved_id = record.data["target_mapping_id"].to_s.strip
-    return [saved_id] if saved_id.present? && model_ready?(:TargetMapping) && TargetMapping.exists?(id: saved_id)
-    return [saved_id] if saved_id.present? && !model_ready?(:TargetMapping)
+    direct_ids = []
+    direct_ids << saved_id if saved_id.present? && (!model_ready?(:TargetMapping) || TargetMapping.exists?(id: saved_id))
+    return direct_ids if direct_ids.present? && !model_ready?(:TargetMapping)
     return [] unless model_ready?(:TargetMapping)
 
     data = record.data || {}
@@ -8236,11 +8237,13 @@ class ModulesController < ApplicationController
     selected_village = normalize_dashboard_text(data["village"])
     selected_topic = normalize_dashboard_text(data["training_topic"].presence || data["main_activity"])
     selected_subject = normalize_dashboard_text(data["training_subject"].presence || data["sub_activity"])
-    return [] if [selected_vrp, selected_month, selected_ics, selected_village, selected_topic, selected_subject].any?(&:blank?)
+    return direct_ids if [selected_vrp, selected_month, selected_ics, selected_village, selected_topic, selected_subject].any?(&:blank?)
 
-    TargetMapping.includes(:vrp).select do |target|
+    matched_ids = TargetMapping.includes(:vrp).select do |target|
       other_target_record_matches_target?(target, selected_vrp, selected_month, selected_ics, selected_village, selected_topic, selected_subject)
     end.map { |target| target.id.to_s }
+
+    (direct_ids + matched_ids).uniq
   end
 
   def other_target_record_matches_target?(target, selected_vrp, selected_month, selected_ics, selected_village, selected_topic, selected_subject)
@@ -8252,10 +8255,10 @@ class ModulesController < ApplicationController
 
     vrp_values.include?(selected_vrp) &&
       normalize_dashboard_text(target.month_name) == selected_month &&
-      normalize_dashboard_text(target.ics_name.presence || target.ics_id) == selected_ics &&
-      normalize_dashboard_text(target.village_name.presence || target.village_id) == selected_village &&
-      normalize_dashboard_text(target.main_activity_name) == selected_topic &&
-      normalize_dashboard_text(target.activity_name) == selected_subject
+      [target.ics_id, target.ics_name].map { |value| normalize_dashboard_text(value) }.reject(&:blank?).include?(selected_ics) &&
+      [target.village_id, target.village_name].map { |value| normalize_dashboard_text(value) }.reject(&:blank?).include?(selected_village) &&
+      dashboard_training_activity_text_matches?(selected_topic, target.main_activity_name) &&
+      dashboard_training_activity_text_matches?(selected_subject, target.activity_name)
   end
 
   def approved_other_target_record?(record)
@@ -9034,6 +9037,7 @@ class ModulesController < ApplicationController
   def jeevika_jankar_bill_item_totals(items)
     rows = items.is_a?(Hash) ? items.values : Array(items)
     rows = rows.select { |item| item.respond_to?(:to_h) }.map(&:to_h)
+    grouped_totals = {}
 
     totals = rows.each_with_object({ target: 0.0, achievement: 0.0, has_items: rows.any? }) do |item, result|
       target_quantity = dashboard_numeric(item["target_quantity"])
@@ -9044,9 +9048,21 @@ class ModulesController < ApplicationController
         assigned_count.positive? ? assigned_count : target_quantity
       end
       achievement = dashboard_numeric(item["achievement_count"])
+      target_key = item["target_mapping_id"].to_s.presence
 
-      result[:target] += target
-      result[:achievement] += [achievement, target].min
+      if target_key.present?
+        grouped_totals[target_key] ||= { target: 0.0, achievement: 0.0 }
+        grouped_totals[target_key][:target] = [grouped_totals[target_key][:target], target].max
+        grouped_totals[target_key][:achievement] += achievement
+      else
+        result[:target] += target
+        result[:achievement] += [achievement, target].min
+      end
+    end
+
+    grouped_totals.each_value do |grouped_total|
+      totals[:target] += grouped_total[:target]
+      totals[:achievement] += [grouped_total[:achievement], grouped_total[:target]].min
     end
 
     totals
@@ -10443,13 +10459,16 @@ class ModulesController < ApplicationController
     missing_targets_by_id = targets_by_id.reject { |id, _target| @other_target_completed_farmer_ids_by_target.key?(id) }
     return @other_target_completed_farmer_ids_by_target if missing_targets_by_id.blank?
 
-    records_by_target = ModuleRecord
+    records = ModuleRecord
       .where(module_slug: record_source_slug)
-      .where("data::jsonb ->> 'target_mapping_id' IN (?)", missing_targets_by_id.keys)
       .order(created_at: :asc)
       .reject { |record| record.id.to_s == params[:id].to_s }
       .select { |record| blocking_other_target_record?(record) }
-      .group_by { |record| record.data["target_mapping_id"].to_s }
+
+    records_by_target = records.each_with_object(Hash.new { |hash, key| hash[key] = [] }) do |record, result|
+      target_ids = other_target_record_target_mapping_ids(record) & missing_targets_by_id.keys
+      target_ids.each { |target_id| result[target_id] << record }
+    end
 
     @other_target_completed_farmer_ids_by_target.merge!(missing_targets_by_id.transform_values do |target|
       mapped_farmer_ids = target_farmer_ids(target)
