@@ -2584,15 +2584,11 @@ class ModulesController < ApplicationController
   end
 
   def vrp_dashboard_completed_farmer_ids_for_target(target)
-    activity_settings = jeevika_jankar_main_activity_settings
-    sub_activity_settings = jeevika_jankar_sub_activity_settings(activity_settings)
-    activity_setting = jeevika_jankar_activity_setting_for(target, activity_settings, sub_activity_settings)
-
-    if activity_setting.present? && !training_main_activity_type?(activity_setting[:main_activity_type])
+    farmer_ids = target_farmer_ids(target)
+    (
+      completed_training_farmer_ids_for(target, farmer_ids) +
       approved_other_target_completed_farmer_ids_for(target.id)
-    else
-      completed_training_farmer_ids_for(target, target_farmer_ids(target))
-    end
+    ).map(&:to_s).reject(&:blank?).uniq
   end
 
   def approved_other_target_completed_farmer_ids_for(target_mapping_id)
@@ -2607,11 +2603,11 @@ class ModulesController < ApplicationController
       .order(created_at: :asc)
       .select { |record| approved_other_target_record?(record) }
       .each_with_object(Hash.new { |hash, key| hash[key] = [] }) do |record, ids_by_target|
-        target_mapping_id = record.data["target_mapping_id"].to_s
-        next if target_mapping_id.blank?
+        target_mapping_ids = other_target_record_target_mapping_ids(record)
+        next if target_mapping_ids.blank?
 
         farmer_ids = Array(record.data["selected_farmer_ids"]).map(&:to_s).reject(&:blank?)
-        ids_by_target[target_mapping_id] |= farmer_ids
+        target_mapping_ids.each { |target_mapping_id| ids_by_target[target_mapping_id] |= farmer_ids }
       end
   end
 
