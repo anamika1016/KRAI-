@@ -4606,6 +4606,7 @@ class ModulesController < ApplicationController
       _target, farmer_ids = target_set
       farmer_ids.each { |farmer_id| target_sets_by_farmer_id[farmer_id.to_s] << target_set }
     end
+    target_farmer_ids = target_sets_by_farmer_id.keys
 
     records = ModuleRecord
       .where(module_slug: "training-form")
@@ -4613,6 +4614,7 @@ class ModulesController < ApplicationController
     if month_name.present?
       records = records.where("LOWER(BTRIM(data::jsonb ->> 'month')) = ?", month_name.to_s.strip.downcase)
     end
+    records = training_record_scope_for_farmer_ids(records, target_farmer_ids) if target_farmer_ids.any?
     records = records
       .select { |record| active_module_record?(record) }
       .select { |record| week_number.blank? || training_record_week_number(record) == week_number.to_i }
