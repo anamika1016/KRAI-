@@ -5689,7 +5689,29 @@ class ModulesController < ApplicationController
     mapped_targets.any? do |mapped_target|
       dashboard_target_assignment_key(mapped_target) == target_key ||
         dashboard_target_assignment_signature(mapped_target) == target_signature
-    end
+    end || training_record_target_fields_match?(record, target)
+  end
+
+  def training_record_target_fields_match?(record, target)
+    data = record.data || {}
+    record_month = normalize_dashboard_text(data["month"].presence || data["training_month"])
+    record_ics = normalize_dashboard_text(data["ics_block"].presence || data["ics"])
+    record_village = normalize_dashboard_text(data["gram_name"].presence || data["village"])
+    record_topics = training_activity_values(data["main_activities"].presence || data["main_activity"].presence || data["training_topic"])
+    record_subjects = training_activity_values(data["sub_activities"].presence || data["sub_activity"].presence || data["training_subject"])
+
+    return false if record_month.present? && record_month != normalize_dashboard_text(target.month_name)
+
+    target_ics_values = [target.ics_id, target.ics_name].map { |value| normalize_dashboard_text(value) }.reject(&:blank?)
+    target_village_values = [target.village_id, target.village_name].map { |value| normalize_dashboard_text(value) }.reject(&:blank?)
+    return false if record_ics.present? && target_ics_values.present? && !target_ics_values.include?(record_ics)
+    return false if record_village.present? && target_village_values.present? && !target_village_values.include?(record_village)
+
+    target_topic = normalize_dashboard_text(target.main_activity_name)
+    target_subject = normalize_dashboard_text(target.activity_name)
+    topic_matches = record_topics.blank? || record_topics.any? { |topic| dashboard_training_activity_text_matches?(topic, target_topic) }
+    subject_matches = record_subjects.blank? || record_subjects.any? { |subject| dashboard_training_activity_text_matches?(subject, target_subject) }
+    topic_matches && subject_matches
   end
 
   # Training forms can reference many target mapping IDs. Looking up each ID
@@ -7332,6 +7354,7 @@ class ModulesController < ApplicationController
     @jeevika_jankar_invoice_date = @record&.data&.[]("invoice_date").presence || Date.current.to_s
     @jeevika_jankar_bill_rows = jeevika_jankar_bill_rows
     @jeevika_jankar_achievement_summary = jeevika_jankar_achievement_summary(@jeevika_jankar_bill_rows)
+    @jeevika_jankar_target_summary = jeevika_jankar_dashboard_target_summary
     @jeevika_jankar_saved_items = jeevika_jankar_saved_items
     @jeevika_jankar_existing_bills = jeevika_jankar_existing_bill_keys
   end
@@ -8152,6 +8175,37 @@ class ModulesController < ApplicationController
       summary[vrp_id] ||= {}
       summary[vrp_id]["__all"] = summary[vrp_id].fetch("__all", 0) + row[:achievement_count].to_i
       summary[vrp_id][month_key] = summary[vrp_id].fetch(month_key, 0) + row[:achievement_count].to_i if month_key.present?
+    end
+  end
+
+  def jeevika_jankar_dashboard_target_summary
+    return {} unless model_ready?(:TargetMapping)
+
+    targets = TargetMapping.includes(:vrp)
+    targets = targets.where(vrp_id: current_vrp_record.id) if vrp_login_user? && current_vrp_record.present?
+    targets = targets.where(vrp_id: module_cluster_visible_vrp_ids) if module_mapped_vrp_scope_active?
+    rows = vrp_dashboard_target_progress_rows(targets.to_a, [])
+
+    rows.each_with_object({}) do |row, summary|
+      vrp_id = row[:target_record]&.vrp_id.to_s
+      month_key = normalize_dashboard_text(row[:month])
+      next if vrp_id.blank? || month_key.blank?
+
+      summary[vrp_id] ||= {}
+      summary[vrp_id][month_key] ||= { target: 0.0, achievement: 0.0, pending: 0.0 }
+      summary[vrp_id][month_key][:target] += row[:target].to_f
+      summary[vrp_id][month_key][:achievement] += row[:completed].to_f
+      summary[vrp_id][month_key][:pending] += row[:pending].to_f
+    end.transform_values do |months|
+      months.transform_values do |totals|
+        assigned = totals[:target].to_f
+        achieved = [totals[:achievement].to_f, assigned].min
+        {
+          target: dashboard_quantity(assigned),
+          achievement: dashboard_quantity(achieved),
+          pending: dashboard_quantity([assigned - achieved, 0].max)
+        }
+      end
     end
   end
 

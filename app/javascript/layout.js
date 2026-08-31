@@ -5116,17 +5116,20 @@ function initDeferredLayoutPage() {
     let savedItems = [];
     let existingBills = [];
     let achievementSummary = {};
+    let targetSummary = {};
 
     try {
       billRows = JSON.parse(billForm.dataset.billRows || "[]");
       savedItems = JSON.parse(billForm.dataset.savedItems || "[]");
       existingBills = JSON.parse(billForm.dataset.existingBills || "[]");
       achievementSummary = JSON.parse(billForm.dataset.achievementSummary || "{}");
+      targetSummary = JSON.parse(billForm.dataset.targetSummary || "{}");
     } catch (_error) {
       billRows = [];
       savedItems = [];
       existingBills = [];
       achievementSummary = {};
+      targetSummary = {};
     }
 
     const escapeHtml = (value) => String(value ?? "")
@@ -5287,6 +5290,14 @@ function initDeferredLayoutPage() {
         totalTarget += groupedTotal.target;
         totalAchievement += Math.min(groupedTotal.achievement, groupedTotal.target);
       });
+
+      const selectedVrp = String(vrpSelect?.value || "");
+      const selectedMonth = normalizedMonth(monthSelect?.value);
+      const dashboardTotals = selectedVrp && selectedMonth ? targetSummary?.[selectedVrp]?.[selectedMonth] : null;
+      if (dashboardTotals) {
+        totalTarget = numberValue(dashboardTotals.target);
+        totalAchievement = numberValue(dashboardTotals.achievement);
+      }
 
       if (totalTargetInput) totalTargetInput.value = String(totalTarget);
       if (totalAchievementInput) totalAchievementInput.value = String(totalAchievement);
