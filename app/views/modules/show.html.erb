@@ -2101,7 +2101,7 @@
             <% if other_target_form && @record.blank? && field == "Completion Date" && field_value.blank? %>
               <% field_value = Date.current.to_s %>
             <% end %>
-            <% optional_training_fields = [] %>
+            <% optional_training_fields = ["Cluster Coordinator Name", "Agronomist Name", "PAPL Staff Name", "External Input"] %>
             <% form_required = (@slug == "training-form" && !optional_training_fields.include?(field)) || other_target_form || add_farmer_form %>
             <% required_attr = form_required ? "required" : nil %>
             <label>

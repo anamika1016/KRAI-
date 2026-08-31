@@ -5679,12 +5679,17 @@ class ModulesController < ApplicationController
     mapping_ids = Array(record.data["target_mapping_ids"].presence || record.data["target_mapping_id"])
       .map(&:to_s).reject(&:blank?).uniq
     return true if mapping_ids.blank?
+    return true if mapping_ids.include?(target.id.to_s)
 
     mapped_targets = mapping_ids.filter_map { |mapping_id| training_target_mapping_for_dashboard(mapping_id) }
-    return false if mapped_targets.blank?
+    return true if mapped_targets.blank?
 
     target_key = dashboard_target_assignment_key(target)
-    mapped_targets.any? { |mapped_target| dashboard_target_assignment_key(mapped_target) == target_key }
+    target_signature = dashboard_target_assignment_signature(target)
+    mapped_targets.any? do |mapped_target|
+      dashboard_target_assignment_key(mapped_target) == target_key ||
+        dashboard_target_assignment_signature(mapped_target) == target_signature
+    end
   end
 
   # Training forms can reference many target mapping IDs. Looking up each ID
@@ -8662,8 +8667,8 @@ class ModulesController < ApplicationController
 
     topic_matches = Array(training_row[:training_topics].presence || training_row[:training_topic])
       .map { |topic| normalize_dashboard_text(topic) }
-      .include?(normalize_dashboard_text(target.main_activity_name))
-    subject_matches = normalize_dashboard_text(training_row[:training_subject]) == normalize_dashboard_text(target.activity_name)
+      .any? { |topic| dashboard_training_activity_text_matches?(topic, normalize_dashboard_text(target.main_activity_name)) }
+    subject_matches = dashboard_training_activity_text_matches?(training_row[:training_subject], normalize_dashboard_text(target.activity_name))
     topic_matches && subject_matches
   end
 
@@ -9989,10 +9994,6 @@ class ModulesController < ApplicationController
       "fco_name" => "FCO Name",
       "trainer_name" => "Trainer Name",
       "trainer_contact" => "Trainer Contact",
-      "cluster_coordinator_name" => "Cluster Coordinator Name",
-      "agronomist_name" => "Agronomist Name",
-      "papl_staff_name" => "PAPL Staff Name",
-      "external_input" => "External Input",
       "training_date" => "Training Date",
       "training_location" => "Training Location",
       "main_activity" => "Main Activity",

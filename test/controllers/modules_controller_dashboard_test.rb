@@ -2,6 +2,7 @@ require "test_helper"
 
 class ModulesControllerDashboardTest < ActiveSupport::TestCase
   Target = Struct.new(
+    :id,
     :vrp_id, :fco_name, :fco_id, :ics_name, :ics_id, :village_name,
     :village_id, :month_name, :completion_date, :opg_training_target,
     :week_wise_opg_target, :input_demo_inm_target, :input_demo_pm_target,
@@ -82,6 +83,63 @@ class ModulesControllerDashboardTest < ActiveSupport::TestCase
 
     assert_equal 220, totals[:target]
     assert_equal 220, totals[:achievement]
+  end
+
+  test "training form mapping id can complete another row in the same assignment" do
+    controller = ModulesController.new
+    assignment = {
+      vrp_id: 7,
+      fco_name: "Sausar",
+      ics_name: "ICS 1",
+      village_name: "Village 1",
+      month_name: "August",
+      completion_date: Date.new(2026, 8, 31),
+      afl_ids: %w[11 12],
+      opg_training_target: 0,
+      week_wise_opg_target: 0,
+      input_demo_inm_target: 0,
+      input_demo_pm_target: 0,
+      ffs_target: 0
+    }
+    saved_mapping = Target.new(**assignment, id: 101, main_activity_name: "Farmers WhatsApp Groups", activity_name: "Village level farmers groups")
+    dashboard_target = Target.new(**assignment, id: 102, main_activity_name: "Farmers WhatsApp Groups", activity_name: "Organic Nutrient Management")
+    record = Struct.new(:data).new("target_mapping_id" => saved_mapping.id.to_s)
+    controller.define_singleton_method(:training_target_mapping_for_dashboard) { |_mapping_id| saved_mapping }
+
+    assert controller.send(:training_record_target_assignment_matches?, record, dashboard_target)
+  end
+
+  test "training form optional people and external input fields are not required" do
+    controller = ModulesController.new
+    data = {
+      "month" => "August",
+      "ics_block" => "ICS 1",
+      "gram_name" => "Village 1",
+      "fco_name" => "FCO",
+      "trainer_name" => "Trainer",
+      "trainer_contact" => "9876543210",
+      "training_date" => "2026-08-31",
+      "training_location" => "Village 1",
+      "main_activity" => "Farmers WhatsApp Groups",
+      "sub_activity" => "Village level farmers groups",
+      "training_method" => "General Training/Meeting",
+      "training_description" => "Completed",
+      "male_count" => "1",
+      "female_count" => "1",
+      "farmer_count" => "2",
+      "total_farmer_count" => "2",
+      "selected_farmer_ids" => %w[11 12],
+      "next_farmer_training_date" => "2026-09-07",
+      "training_register_upload" => "register.pdf",
+      "training_photo_upload_with_geo_tag" => "photo.jpg"
+    }
+
+    messages = controller.send(:training_form_error_messages, data)
+
+    refute messages.any? { |message| message.include?("Cluster Coordinator Name") }
+    refute messages.any? { |message| message.include?("Agronomist Name") }
+    refute messages.any? { |message| message.include?("PAPL Staff Name") }
+    refute messages.any? { |message| message.include?("External Input") }
   end
 
   test "cluster visible vrps only includes explicitly mapped cluster incharge vrps" do
