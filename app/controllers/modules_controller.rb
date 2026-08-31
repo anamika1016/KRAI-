@@ -8449,9 +8449,18 @@ class ModulesController < ApplicationController
         }
       end
 
+      dashboard_completed_ids = vrp_dashboard_completed_farmer_ids_for_target(target) & farmer_ids
+      if dashboard_completed_ids.any?
+        farmer_rows.each do |row|
+          next unless dashboard_completed_ids.include?(row[:id].to_s)
+
+          row[:status] = "Completed in Target" if row[:status] == "Pending"
+        end
+      end
+
       trained_rows = farmer_rows.reject { |row| row[:status] == "Pending" }
       same_count = farmer_rows.count { |row| row[:status] == "Trained in Same Activity" }
-      other_count = farmer_rows.count { |row| row[:status] == "Trained in Other Activity" }
+      other_count = farmer_rows.count { |row| row[:status] == "Trained in Other Activity" || row[:status] == "Completed in Target" }
       achievement_count = trained_rows.size
       other_target_achievement = other_target_achievement_index[target.id.to_s]
 
@@ -8466,6 +8475,7 @@ class ModulesController < ApplicationController
           achievement_entry_mode = "Self"
         end
       end
+      achievement_count = [achievement_count.to_f, dashboard_completed_ids.size.to_f].max if dashboard_completed_ids.any?
       pending_base = training_main_activity_type?(main_activity_type) ? assigned_count : target_quantity
 
       {
@@ -8522,12 +8532,12 @@ class ModulesController < ApplicationController
       farmer_groups = group.flat_map { |row| Array(row[:farmer_details]) }.group_by { |farmer| farmer[:id].to_s }
       farmers = farmer_groups.values.map do |entries|
         entries.min_by do |farmer|
-          { "Trained in Same Activity" => 0, "Trained in Other Activity" => 1, "Pending" => 2 }.fetch(farmer[:status], 3)
+          { "Trained in Same Activity" => 0, "Completed in Target" => 1, "Trained in Other Activity" => 2, "Pending" => 3 }.fetch(farmer[:status], 4)
         end
       end
       trained = farmers.reject { |farmer| farmer[:status] == "Pending" }
       same_count = farmers.count { |farmer| farmer[:status] == "Trained in Same Activity" }
-      other_count = farmers.count { |farmer| farmer[:status] == "Trained in Other Activity" }
+      other_count = farmers.count { |farmer| farmer[:status] == "Trained in Other Activity" || farmer[:status] == "Completed in Target" }
       assigned_count = farmers.size
       achievement_count = [group.map { |row| row[:achievement_count].to_f }.max.to_f, trained.size.to_f].max
       achievement_count = [achievement_count, assigned_count].min if assigned_count.positive?
