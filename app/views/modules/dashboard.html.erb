@@ -49,7 +49,6 @@
               <div>
                 <span><%= title %></span>
                 <strong><%= value %></strong>
-                <small><%= caption %></small>
               </div>
               <b>↗</b>
             </article>
@@ -347,12 +346,12 @@
 
       <div class="dashboard-filter-field">
         <label for="dash_main_activity">Main Activity</label>
-        <%= f.select :main_activity, options_for_select([["All Main Activities", ""]] + Array(@filter_main_activity_options).map { |v| [v, v] }, @dashboard_main_activity_filter_value), {}, id: "dash_main_activity", class: "form-select dashboard-filter-select", data: { dashboard_filter_select: true } %>
+        <%= f.select :main_activity, options_for_select([["All Main Activities", ""]] + Array(@filter_main_activity_options).map { |v| [v, v] }, @dashboard_main_activity_filter_value), {}, id: "dash_main_activity", class: "form-select dashboard-filter-select" %>
       </div>
 
       <div class="dashboard-filter-field">
         <label for="dash_sub_activity">Sub Activity</label>
-        <%= f.select :sub_activity, options_for_select([["All Sub Activities", ""]] + Array(@filter_sub_activity_options).map { |v| [v, v] }, params[:sub_activity]), {}, id: "dash_sub_activity", class: "form-select dashboard-filter-select", data: { dashboard_filter_select: true } %>
+        <%= f.select :sub_activity, options_for_select([["All Sub Activities", ""]] + Array(@filter_sub_activity_options).map { |v| [v, v] }, params[:sub_activity]), {}, id: "dash_sub_activity", class: "form-select dashboard-filter-select" %>
       </div>
 
       <%# FCO %>
@@ -364,8 +363,7 @@
                 @dashboard_fcoc_filter_value
               ),
               {},
-              id: "dash_fcoc", class: "form-select dashboard-filter-select",
-              data: { dashboard_filter_select: true } %>
+              id: "dash_fcoc", class: "form-select dashboard-filter-select" %>
       </div>
 
       <%# ICS Name (cascades from the selected activity, FCO and Cluster Incharge) %>
@@ -377,8 +375,7 @@
                 params[:ics]
               ),
               {},
-              id: "dash_ics", class: "form-select dashboard-filter-select",
-              data: { dashboard_filter_select: true } %>
+              id: "dash_ics", class: "form-select dashboard-filter-select" %>
       </div>
 
       <%# Month %>
@@ -390,8 +387,7 @@
                 @dashboard_month_filter_value
               ),
               {},
-              id: "dash_month", class: "form-select dashboard-filter-select",
-              data: { dashboard_filter_select: true } %>
+              id: "dash_month", class: "form-select dashboard-filter-select" %>
       </div>
 
       <%# VRP Name %>
@@ -403,13 +399,12 @@
                 params[:vrp_id]
               ),
               {},
-              id: "dash_vrp", class: "form-select dashboard-filter-select",
-              data: { dashboard_filter_select: true } %>
+              id: "dash_vrp", class: "form-select dashboard-filter-select" %>
       </div>
 
       <div class="dashboard-filter-actions">
         <%= f.submit "Apply Filters", class: "list-btn active", id: "dash_apply_filters" %>
-        <%= link_to "Clear", dashboard_path, class: "table-action", id: "dash_clear_filters" %>
+        <%= link_to "Clear", dashboard_path, class: "table-action", id: "dash_clear_filters", data: { turbo: false, turbo_prefetch: false } %>
       </div>
     </div>
   <% end %>
@@ -428,7 +423,7 @@
       <% active_filters.each do |chip| %>
         <span class="filter-chip"><%= chip %></span>
       <% end %>
-      <%= link_to "✕ Clear All", dashboard_path, class: "filter-chip-clear" %>
+      <%= link_to "✕ Clear All", dashboard_path, class: "filter-chip-clear", data: { turbo: false, turbo_prefetch: false } %>
     </div>
   <% end %>
 
@@ -548,7 +543,6 @@
           <%= link_to card[:path], class: "training-participation-box #{card[:status]}", data: { dashboard_card: true, turbo: false, turbo_prefetch: false } do %>
             <span><%= card[:title] %></span>
             <strong><%= card[:value] %></strong>
-            <small><%= card[:caption] %></small>
             <b>View Report</b>
           <% end %>
         <% end %>

@@ -562,7 +562,6 @@ class ModulesController < ApplicationController
     # Start with all targets and VRPs in user scope
     t_scope = unfiltered_targets.to_a
     v_scope = unfiltered_vrps.to_a
-    preload_dashboard_vrp_identity_records!(v_scope)
 
     # Apply search filter (if search query is present)
     search_query = dashboard_filter_param(:search)
@@ -695,6 +694,7 @@ class ModulesController < ApplicationController
 
     @filtered_vrps = v_scope
     @filtered_targets = t_scope
+    preload_dashboard_vrp_identity_records!(@filtered_vrps)
 
     # ─── BILL FILTERING ───
     filtered_vrp_ids = @filtered_vrps.map { |v| v.id.to_s }
@@ -702,13 +702,16 @@ class ModulesController < ApplicationController
       dashboard_filter_param(:search), dashboard_filter_param(:activity), dashboard_filter_param(:main_activity),
       dashboard_filter_param(:sub_activity), dashboard_filter_param(:fcoc), dashboard_filter_param(:cluster_incharge),
       dashboard_filter_param(:ics), dashboard_filter_param(:month), dashboard_filter_param(:post), dashboard_filter_param(:vrp_id)
+    ].any?(&:present?) || [
+      @dashboard_main_activity_filter_value, selected_sub_activity, @dashboard_fcoc_filter_value,
+      selected_cluster_incharge, selected_ics_filter, @dashboard_month_filter_value, selected_post_filter, selected_vrp_filter
     ].any?(&:present?)
 
     bill_scope = ModuleRecord.where(module_slug: "jeevika-jankar-bill-process")
     if dashboard_filters_active || module_cluster_incharge_login?
       bill_scope = filtered_vrp_ids.any? ? bill_scope.where("data::jsonb ->> 'select_vrp' IN (?)", filtered_vrp_ids) : ModuleRecord.none
     end
-    selected_bill_month = dashboard_filter_param(:month)
+    selected_bill_month = dashboard_filter_param(:month) || @dashboard_month_filter_value
     if selected_bill_month.present?
       bill_scope = bill_scope.where("LOWER(BTRIM(data::jsonb ->> 'bill_month')) = ?", selected_bill_month.to_s.strip.downcase)
     end
@@ -3013,14 +3016,17 @@ class ModulesController < ApplicationController
   def dashboard_cards
     vrps = @filtered_vrps || dashboard_vrps
     targets = @filtered_targets || dashboard_target_mappings
-    assigned_vrp_ids = dashboard_target_mappings.filter_map { |target| target.vrp_id.to_s.presence }.uniq
-    unassigned_vrp_count = vrps.count { |vrp| !assigned_vrp_ids.include?(vrp.id.to_s) }
-    activity_assigned_vrp_ids = dashboard_target_mappings.filter_map do |target|
+    all_targets = dashboard_target_mappings
+    assigned_vrp_ids = all_targets.filter_map { |target| target.vrp_id.to_s.presence }.uniq
+    assigned_vrp_id_lookup = assigned_vrp_ids.index_with(true)
+    unassigned_vrp_count = vrps.count { |vrp| !assigned_vrp_id_lookup.key?(vrp.id.to_s) }
+    activity_assigned_vrp_ids = all_targets.filter_map do |target|
       next if target.main_activity_name.blank? && target.activity_name.blank?
 
       target.vrp_id.to_s.presence
     end.uniq
-    activity_unassigned_vrp_count = vrps.count { |vrp| !activity_assigned_vrp_ids.include?(vrp.id.to_s) }
+    activity_assigned_vrp_id_lookup = activity_assigned_vrp_ids.index_with(true)
+    activity_unassigned_vrp_count = vrps.count { |vrp| !activity_assigned_vrp_id_lookup.key?(vrp.id.to_s) }
     hierarchy_summary = user_hierarchy_dashboard_summary
     approved_vrps = dashboard_approved_vrps(vrps).size
     pending_approvals = dashboard_pending_approval_vrps(vrps).size
@@ -4444,13 +4450,17 @@ class ModulesController < ApplicationController
 
   def training_participation_target_memberships(targets)
     targets = Array(targets)
+    cache_key = targets.map { |target| target.id.to_s }.sort.join(":")
+    @training_participation_target_memberships_cache ||= {}
+    return @training_participation_target_memberships_cache[cache_key] if @training_participation_target_memberships_cache.key?(cache_key)
+
     # Prime all farmer IDs in one query. Without this, each target mapping can
     # issue its own AFL existence query while the memberships are built.
     valid_farmer_ids = training_participation_existing_farmer_id_set(targets).to_a
     # Farmer identity keys use TraceNet numbers where available. Load those
     # farmers in batches before the target loop instead of one SELECT per ID.
     training_farmers_by_id(valid_farmer_ids)
-    targets.each_with_object({}) do |target, memberships|
+    memberships = targets.each_with_object({}) do |target, memberships|
       training_participation_target_farmer_ids(target).each do |farmer_id|
         unique_farmer_key = training_participation_target_farmer_key(farmer_id)
         membership_key = training_participation_membership_key(unique_farmer_key, target.month_name)
@@ -4495,6 +4505,7 @@ class ModulesController < ApplicationController
         values.is_a?(Array) ? values.uniq.join(", ") : values
       end
     end
+    @training_participation_target_memberships_cache[cache_key] = memberships
   end
 
   def training_participation_target_map_rows(targets, month_name: nil)
@@ -8461,9 +8472,10 @@ class ModulesController < ApplicationController
   end
 
   def jeevika_jankar_main_activity_settings
-    return {} unless model_ready?(:ModuleRecord)
+    return @jeevika_jankar_main_activity_settings if defined?(@jeevika_jankar_main_activity_settings)
+    return @jeevika_jankar_main_activity_settings = {} unless model_ready?(:ModuleRecord)
 
-    ModuleRecord
+    @jeevika_jankar_main_activity_settings = ModuleRecord
       .where(module_slug: "add-activity-group")
       .order(created_at: :desc)
       .select { |record| active_module_record?(record) }
@@ -8480,9 +8492,10 @@ class ModulesController < ApplicationController
   end
 
   def training_setup_sub_activities_by_main
-    return {} unless model_ready?(:ModuleRecord)
+    return @training_setup_sub_activities_by_main if defined?(@training_setup_sub_activities_by_main)
+    return @training_setup_sub_activities_by_main = {} unless model_ready?(:ModuleRecord)
 
-    ModuleRecord
+    @training_setup_sub_activities_by_main = ModuleRecord
       .where(module_slug: "add-vrp-activity")
       .order(created_at: :desc)
       .select { |record| active_module_record?(record) }
@@ -8496,9 +8509,10 @@ class ModulesController < ApplicationController
   end
 
   def jeevika_jankar_sub_activity_settings(activity_settings)
-    return {} unless model_ready?(:ModuleRecord)
+    return @jeevika_jankar_sub_activity_settings if defined?(@jeevika_jankar_sub_activity_settings)
+    return @jeevika_jankar_sub_activity_settings = {} unless model_ready?(:ModuleRecord)
 
-    ModuleRecord
+    @jeevika_jankar_sub_activity_settings = ModuleRecord
       .where(module_slug: "add-vrp-activity")
       .order(created_at: :desc)
       .select { |record| active_module_record?(record) }
@@ -8656,9 +8670,10 @@ class ModulesController < ApplicationController
   end
 
   def active_month_master_rows
-    return [] unless model_ready?(:ModuleRecord)
+    return @active_month_master_rows if defined?(@active_month_master_rows)
+    return @active_month_master_rows = [] unless model_ready?(:ModuleRecord)
 
-    ModuleRecord
+    @active_month_master_rows = ModuleRecord
       .where(module_slug: "month-master")
       .order(created_at: :desc)
       .select { |record| active_module_record?(record) }
