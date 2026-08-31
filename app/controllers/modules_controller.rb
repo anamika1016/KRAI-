@@ -2325,23 +2325,26 @@ class ModulesController < ApplicationController
     month_name = targets.first.month_name
     vrp = targets.first.vrp
     @dashboard_training_form_records_by_scope ||= {}
-    cache_key = [normalize_dashboard_text(month_name), targets.first.vrp_id.to_s]
+    cache_key = [normalize_dashboard_text(month_name), targets.first.vrp_id.to_s, assigned_farmer_ids.sort.join(",")]
 
-    @dashboard_training_form_records_by_scope[cache_key] ||= dashboard_training_form_records_for_month(month_name)
+    @dashboard_training_form_records_by_scope[cache_key] ||= dashboard_training_form_records_for_month(month_name, farmer_ids: assigned_farmer_ids)
       .select do |record|
         training_record_vrp_scope_matches?(record, vrp)
       end
       .uniq(&:id)
   end
 
-  def dashboard_training_form_records_for_month(month_name)
+  def dashboard_training_form_records_for_month(month_name, farmer_ids: nil)
     month = month_name.to_s.strip.downcase
     @dashboard_training_form_records_by_month ||= {}
-    return @dashboard_training_form_records_by_month[month] if @dashboard_training_form_records_by_month.key?(month)
+    farmer_ids = Array(farmer_ids).map(&:to_s).reject(&:blank?).uniq
+    cache_key = [month, farmer_ids.sort.join(",")]
+    return @dashboard_training_form_records_by_month[cache_key] if @dashboard_training_form_records_by_month.key?(cache_key)
 
     scope = ModuleRecord.where(module_slug: "training-form").order(created_at: :desc)
     scope = scope.where("LOWER(BTRIM(data::jsonb ->> 'month')) = ?", month) if month.present?
-    @dashboard_training_form_records_by_month[month] = scope
+    scope = training_record_scope_for_farmer_ids(scope, farmer_ids) if farmer_ids.any?
+    @dashboard_training_form_records_by_month[cache_key] = scope
       .select { |record| active_module_record?(record) }
       .select { |record| training_record_countable?(record) }
   end
@@ -3664,10 +3667,13 @@ class ModulesController < ApplicationController
     cache_key = [normalize_dashboard_text(month_name), normalize_dashboard_text(sub_activity_name), normalize_dashboard_text(fcoc_name)]
     return @dashboard_training_participation_records_cache[cache_key] if @dashboard_training_participation_records_cache.key?(cache_key)
 
+    targets = training_participation_targets_for_dashboard(month_name: month_name, fcoc_name: fcoc_name, sub_activity_name: sub_activity_name)
+    farmer_ids = training_participation_valid_farmer_ids_for_targets(targets)
     records = ModuleRecord.where(module_slug: "training-form").order(created_at: :desc)
     if month_name.present?
       records = records.where("LOWER(BTRIM(data::jsonb ->> 'month')) = ?", month_name.to_s.strip.downcase)
     end
+    records = training_record_scope_for_farmer_ids(records, farmer_ids) if farmer_ids.any?
     records = records
       .select { |record| active_module_record?(record) }
       .select { |record| training_record_countable?(record) }
@@ -3691,6 +3697,20 @@ class ModulesController < ApplicationController
 
     preload_training_target_mappings_for_records!(records)
     @dashboard_training_participation_records_cache[cache_key] = records
+  end
+
+  def training_record_scope_for_farmer_ids(scope, farmer_ids)
+    farmer_ids = Array(farmer_ids).map(&:to_s).reject(&:blank?).uniq
+    return scope if farmer_ids.blank?
+
+    scope.where(
+      "EXISTS (
+        SELECT 1
+        FROM jsonb_array_elements_text(data::jsonb -> 'selected_farmer_ids') AS selected_farmer(value)
+        WHERE selected_farmer.value IN (?)
+      )",
+      farmer_ids
+    )
   end
 
   def training_afl_farmer_rows_for_participation(month_name: nil, fcoc_name: nil)
