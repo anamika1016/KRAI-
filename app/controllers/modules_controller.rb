@@ -7631,16 +7631,17 @@ class ModulesController < ApplicationController
   end
 
   def jeevika_bill_approved_by_rows(record)
-    jeevika_bill_approval_history(record)
+    approved_history = jeevika_bill_approval_history(record)
       .select { |history| history.data["action"].to_s == "Approved" }
-      .map do |history|
-        [
-          history.data["approval_level"].presence || "Approval",
-          history.data["approver"].presence || history.data["action_by"].presence || "-",
-          bill_display_datetime(history.data["action_at"]),
-          history.data["action_by"].presence
-        ]
-      end
+    approved_history.map.with_index do |history, index|
+      approval_label = index == approved_history.size - 1 ? "Finance Approval" : history.data["approval_level"].presence || "Approval"
+      [
+        approval_label,
+        history.data["approver"].presence || history.data["action_by"].presence || "-",
+        bill_display_datetime(history.data["action_at"]),
+        history.data["action_by"].presence
+      ]
+    end
   end
 
   def jeevika_bill_status_label(record)
@@ -10116,21 +10117,66 @@ class ModulesController < ApplicationController
   end
 
   def cluster_coordinator_options
+    return training_people_options_for_current_vrp(:cluster_coordinator) if vrp_login_user?
+
     (
       registered_user_options_matching(/cluster/i) +
       registered_vrp_cluster_names
-    ).compact_blank.uniq
+    ).compact_blank.uniq.unshift("N/A").uniq
   end
 
   def agronomist_options
-    registered_user_options_matching(/agronomist/i)
+    return training_people_options_for_current_vrp(:agronomist) if vrp_login_user?
+
+    registered_user_options_matching(/agronomist/i).compact_blank.uniq.unshift("N/A").uniq
   end
 
   def papl_staff_options
+    return training_people_options_for_current_vrp(:papl_staff) if vrp_login_user?
+
     (
       registered_app_user_names +
       registered_module_user_names
-    ).compact_blank.uniq
+    ).compact_blank.uniq.unshift("N/A").uniq
+  end
+
+  def training_people_options_for_current_vrp(kind)
+    values = ["N/A"]
+    vrp = current_vrp_record
+
+    case kind
+    when :cluster_coordinator
+      values << vrp&.cluster_incharge
+    when :agronomist
+      values << current_vrp_creator_name(vrp)
+    when :papl_staff
+      values << current_app_user&.dig("name")
+      values << current_app_user&.dig("username")
+    end
+
+    values.map(&:to_s).map(&:strip).reject(&:blank?).uniq
+  end
+
+  def current_vrp_creator_name(vrp)
+    return if vrp.blank? || vrp.created_by_id.blank?
+
+    if model_ready?(:User)
+      user = cached_user_find_by(id: vrp.created_by_id)
+      label = user&.full_name.presence || user&.user_name.presence
+      return label if label.present?
+    end
+
+    if model_ready?(:ModuleRecord)
+      record = cached_module_record_find_by_id(vrp.created_by_id)
+      label = [
+        [record&.data&.[]("first_name"), record&.data&.[]("last_name")].compact_blank.join(" "),
+        record&.data&.[]("user_name"),
+        record&.data&.[]("name")
+      ].compact_blank.first
+      return label if label.present?
+    end
+
+    nil
   end
 
   def seed_distribution_target_field?(field)

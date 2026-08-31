@@ -73,7 +73,6 @@
             <div class="training-participation-box total dashboard-summary-box">
               <span><%= card[:title] %></span>
               <strong><%= card[:value] %></strong>
-              <small><%= card[:caption] %></small>
               <div class="dashboard-summary-actions">
                 <%= link_to "View List", card[:path], class: "table-action", data: { dashboard_card: true } %>
               </div>
@@ -106,7 +105,6 @@
           <%= link_to card[:path], class: "#{title.parameterize}", title: card[:caption], data: { dashboard_card: true } do %>
             <span><%= title %></span>
             <strong><%= card[:value] %></strong>
-            <small><%= card[:caption] %></small>
           <% end %>
         <% end %>
       </div>
@@ -463,7 +461,6 @@
           <div class="training-participation-box total dashboard-summary-box">
             <span><%= card[:title] %></span>
             <strong><%= card[:value] %></strong>
-            <small><%= card[:caption] %></small>
             <div class="dashboard-summary-actions">
               <%= link_to "View List", card[:path], class: "table-action", data: { dashboard_card: true } %>
             </div>
