@@ -10174,7 +10174,7 @@ class ModulesController < ApplicationController
     (
       registered_app_user_names +
       registered_module_user_names
-    ).compact_blank.uniq.unshift("N/A").uniq
+    ).compact_blank.uniq { |name| normalize_dashboard_text(name) }.unshift("N/A").uniq
   end
 
   def training_people_options_for_current_vrp(kind)
@@ -10187,11 +10187,10 @@ class ModulesController < ApplicationController
     when :agronomist
       values << current_vrp_creator_name(vrp)
     when :papl_staff
-      values << current_app_user&.dig("name")
-      values << current_app_user&.dig("username")
+      values << current_app_user&.dig("name").presence || current_app_user&.dig("username")
     end
 
-    values.map(&:to_s).map(&:strip).reject(&:blank?).uniq
+    values.map(&:to_s).map(&:strip).reject(&:blank?).uniq { |name| normalize_dashboard_text(name) }
   end
 
   def current_vrp_creator_name(vrp)
