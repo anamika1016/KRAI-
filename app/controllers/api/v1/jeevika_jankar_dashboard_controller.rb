@@ -195,16 +195,16 @@ module Api
         options[:ics] = targets.map { |target| target.ics_name.presence || target.ics_id }.compact_blank.uniq.sort
         selected_ics = filter_param(:ics, :ics_name)
         if selected_ics.present?
-          targets.select! { |target| (target.ics_name.presence || target.ics_id).to_s == selected_ics.to_s }
+          targets.select! { |target| same_text?(target.ics_name.presence || target.ics_id, selected_ics) }
           vrp_ids = id_lookup(targets, :vrp_id)
           vrps.select! { |vrp| vrp_ids.key?(vrp.id.to_s) }
         end
 
         options[:months] = (targets.map(&:month_name) + web.send(:month_master_month_options)).compact_blank.uniq
           .sort_by { |month| web.send(:dashboard_month_index, month) || 0 }
-        selected_month = filter_param(:month) || Date.current.strftime("%B")
+        selected_month = params.key?(:month) ? filter_param(:month) : Date.current.strftime("%B")
         if selected_month.present?
-          targets.select! { |target| target.month_name == selected_month }
+          targets.select! { |target| same_text?(target.month_name, selected_month) }
           vrp_ids = id_lookup(targets, :vrp_id)
           vrps.select! { |vrp| vrp_ids.key?(vrp.id.to_s) }
         end

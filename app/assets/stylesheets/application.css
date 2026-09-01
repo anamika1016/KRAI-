@@ -7015,8 +7015,8 @@ body {
 
 .dashboard-filter-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
-  gap: 14px;
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  gap: 16px;
   align-items: end;
 }
 
@@ -7035,14 +7035,14 @@ body {
 
 .dashboard-filter-input,
 .dashboard-filter-select {
-  min-height: 38px;
-  padding: 6px 10px;
+  min-height: 46px;
+  padding: 9px 12px;
   border: 1px solid var(--vrp-line);
   border-radius: 6px;
   background: var(--vrp-panel-soft);
   color: var(--vrp-text);
   font: inherit;
-  font-size: 0.9rem;
+  font-size: 0.96rem;
   width: 100%;
   transition: border-color 0.18s;
 }
@@ -7423,7 +7423,7 @@ body {
 
 @media (max-width: 900px) {
   .dashboard-filter-grid {
-    grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+    grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
   }
 
   .vrp-status-grid {

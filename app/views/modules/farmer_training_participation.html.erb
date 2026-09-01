@@ -26,11 +26,11 @@
   <section class="module-card training-participation-status-card">
     <div class="training-participation-boxes compact">
       <%= link_to farmer_training_participation_path(filter_params.merge(status: "unique")), class: "training-participation-box total #{'is-active' if @training_participation_status == 'unique'}" do %>
-        <span>Mapped Farmer Distinct</span>
+        <span>Mapped Farmer</span>
         <strong><%= status_counts[:unique].to_i %></strong>
-        <small>Unique mapped farmers for the selected month.</small>
+        <small>Unique mapped farmers for the selected filters.</small>
       <% end %>
-      <% %w[red green yellow pending].each do |status| %>
+      <% %w[red yellow green pending].each do |status| %>
         <%= link_to farmer_training_participation_path(filter_params.merge(status: status)), class: "training-participation-box #{status} #{'is-active' if @training_participation_status == status}" do %>
           <span><%= status == "pending" ? "Pending Farmer" : training_participation_status_label(status) %></span>
           <strong><%= status_counts[status.to_sym].to_i %></strong>
@@ -49,14 +49,8 @@
           <% if @training_participation_total_pages.to_i > 1 %>
             | Page <%= @training_participation_page %> of <%= @training_participation_total_pages %>
           <% end %>
-          <% if @training_selected_month.present? %>
-            | Month: <%= @training_selected_month %>
-          <% end %>
           <% if @training_selected_sub_activity.present? %>
             | Sub Activity: <%= @training_selected_sub_activity %>
-          <% end %>
-          <% if @training_selected_fcoc.present? %>
-            | FCOC: <%= @training_selected_fcoc %>
           <% end %>
         </p>
       </div>

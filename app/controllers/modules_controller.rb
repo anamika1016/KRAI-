@@ -623,8 +623,8 @@ class ModulesController < ApplicationController
     default_visible_fcoc = dashboard_default_visible_fcoc(@filter_fcoc_options)
     @dashboard_fcoc_filter_value = dashboard_filter_param(:fcoc) || default_visible_fcoc
     if @dashboard_fcoc_filter_value.present?
-      f = @dashboard_fcoc_filter_value.to_s
-      v_scope = v_scope.select { |v| v.fcoc == f }
+      f = normalize_dashboard_text(@dashboard_fcoc_filter_value)
+      v_scope = v_scope.select { |v| normalize_dashboard_text(v.fcoc) == f }
       v_ids = v_scope.map(&:id)
       t_scope = t_scope.select { |t| t.vrp_id.present? && v_ids.include?(t.vrp_id) }
     end
@@ -662,13 +662,13 @@ class ModulesController < ApplicationController
       .compact_blank
       .sort_by { |m| dashboard_month_index(m) || 0 }
     weekly_target_scope = t_scope.dup
-    # Monthly dashboard summary opens on the current month by default. Users can
-    # still choose All Months or another month from the filter.
-    default_dashboard_month = Date.current.strftime("%B")
-    @dashboard_month_filter_value = dashboard_filter_param(:month) || default_dashboard_month
+    # Monthly dashboard summary opens on the previous month by default. Users
+    # can still choose All Months or another month from the filter.
+    default_dashboard_month = Date.current.prev_month.strftime("%B")
+    @dashboard_month_filter_value = params.key?(:month) ? dashboard_filter_param(:month) : default_dashboard_month
     if @dashboard_month_filter_value.present?
-      m = @dashboard_month_filter_value.to_s
-      t_scope = t_scope.select { |t| t.month_name == m }
+      m = normalize_dashboard_text(@dashboard_month_filter_value)
+      t_scope = t_scope.select { |t| normalize_dashboard_text(t.month_name) == m }
       v_ids = t_scope.map(&:vrp_id).uniq
       v_scope = v_scope.select { |v| v_ids.include?(v.id) }
     end
@@ -711,7 +711,7 @@ class ModulesController < ApplicationController
     if dashboard_filters_active || module_cluster_incharge_login?
       bill_scope = filtered_vrp_ids.any? ? bill_scope.where("data::jsonb ->> 'select_vrp' IN (?)", filtered_vrp_ids) : ModuleRecord.none
     end
-    selected_bill_month = dashboard_filter_param(:month) || @dashboard_month_filter_value
+    selected_bill_month = @dashboard_month_filter_value
     if selected_bill_month.present?
       bill_scope = bill_scope.where("LOWER(BTRIM(data::jsonb ->> 'bill_month')) = ?", selected_bill_month.to_s.strip.downcase)
     end
@@ -765,7 +765,7 @@ class ModulesController < ApplicationController
 
     targets = @filtered_targets
     @training_month_options = dashboard_month_options_for_targets(targets)
-    selected_month = dashboard_selected_training_month_name.presence || default_vrp_dashboard_month(@training_month_options, targets)
+    selected_month = dashboard_selected_training_month_name.presence || @dashboard_month_filter_value.presence || default_vrp_dashboard_month(@training_month_options, targets)
     month_targets = dashboard_targets_for_month(targets, selected_month)
     @training_sub_activity_options = dashboard_sub_activity_options_for_targets(month_targets, selected_month)
     requested_sub_activity = dashboard_selected_training_sub_activity_name
@@ -777,9 +777,9 @@ class ModulesController < ApplicationController
     @training_selected_month = selected_month
     @training_selected_sub_activity = selected_sub_activity
     default_status_month = default_vrp_dashboard_month(@training_month_options, targets)
-    @participation_month_filter_value = dashboard_filter_param(:participation_month) || default_status_month
+    @participation_month_filter_value = @dashboard_month_filter_value.presence || default_status_month
     @participation_selected_month = @participation_month_filter_value == "all" ? nil : @participation_month_filter_value
-    @participation_fcoc_filter_value = dashboard_filter_param(:participation_fcoc) || dashboard_default_visible_fcoc(@filter_fcoc_options)
+    @participation_fcoc_filter_value = @dashboard_fcoc_filter_value.presence || dashboard_default_visible_fcoc(@filter_fcoc_options)
     participation_records = dashboard_training_participation_records(month_name: @participation_selected_month, fcoc_name: @participation_fcoc_filter_value)
     participation_dashboard_counts = training_participation_dashboard_counts(
       month_name: @participation_selected_month,
@@ -808,7 +808,7 @@ class ModulesController < ApplicationController
     # Full target/participation rows are available on their dedicated report
     # pages. The dashboard renders summary boxes only, so building those large
     # unused datasets here needlessly multiplies queries and memory usage.
-    @ics_farmer_report_month_value = dashboard_filter_param(:ics_report_month) || @participation_month_filter_value
+    @ics_farmer_report_month_value = @participation_month_filter_value
     @ics_farmer_report_selected_month = @ics_farmer_report_month_value == "all" ? nil : @ics_farmer_report_month_value
     ics_report_targets = training_participation_targets_for_dashboard(
       month_name: @ics_farmer_report_selected_month,
@@ -817,9 +817,9 @@ class ModulesController < ApplicationController
     @ics_farmer_report_options = ics_farmer_report_options([], ics_report_targets)
     @ics_farmer_report_selected_ics = dashboard_filter_param(:ics_report_ics)
     @ics_farmer_report_summary = ics_farmer_report_summary([], selected_ics: @ics_farmer_report_selected_ics)
-    @weekly_target_month_filter_value = dashboard_filter_param(:weekly_target_month) || default_status_month
+    @weekly_target_month_filter_value = @dashboard_month_filter_value.presence || default_status_month
     @weekly_dashboard_selected_month = @weekly_target_month_filter_value == "all" ? nil : @weekly_target_month_filter_value
-    @weekly_target_fcoc_filter_value = dashboard_filter_param(:weekly_target_fcoc) || dashboard_default_visible_fcoc(@filter_fcoc_options)
+    @weekly_target_fcoc_filter_value = @dashboard_fcoc_filter_value.presence || dashboard_default_visible_fcoc(@filter_fcoc_options)
     @weekly_target_week_filter_value = dashboard_filter_param(:weekly_target_week).to_i if dashboard_filter_param(:weekly_target_week).present?
     @weekly_target_week_filter_value = nil unless (1..4).include?(@weekly_target_week_filter_value)
     weekly_dashboard_targets = dashboard_targets_for_month(weekly_target_scope, @weekly_dashboard_selected_month)
@@ -3026,30 +3026,15 @@ class ModulesController < ApplicationController
   end
 
   def dashboard_cards
-    vrps = @filtered_vrps || dashboard_vrps
-    targets = @filtered_targets || dashboard_target_mappings
-    all_targets = dashboard_target_mappings
-    assigned_vrp_ids = all_targets.filter_map { |target| target.vrp_id.to_s.presence }.uniq
-    assigned_vrp_id_lookup = assigned_vrp_ids.index_with(true)
-    unassigned_vrp_count = vrps.count { |vrp| !assigned_vrp_id_lookup.key?(vrp.id.to_s) }
-    activity_assigned_vrp_ids = all_targets.filter_map do |target|
-      next if target.main_activity_name.blank? && target.activity_name.blank?
-
-      target.vrp_id.to_s.presence
-    end.uniq
-    activity_assigned_vrp_id_lookup = activity_assigned_vrp_ids.index_with(true)
-    activity_unassigned_vrp_count = vrps.count { |vrp| !activity_assigned_vrp_id_lookup.key?(vrp.id.to_s) }
+    vrps = dashboard_vrps
     hierarchy_summary = user_hierarchy_dashboard_summary
     approved_vrps = dashboard_approved_vrps(vrps).size
     pending_approvals = dashboard_pending_approval_vrps(vrps).size
-    activity_count = targets.map { |target| [normalize_dashboard_text(target.main_activity_name), normalize_dashboard_text(target.activity_name)] }
-      .reject { |main_activity, sub_activity| main_activity.blank? && sub_activity.blank? }
-      .uniq
-      .size
 
-    # Count approved and pending bills (same visibility rules as bill list)
-    approved_bills = (@filtered_bills || []).count { |r| dashboard_bill_approved?(r) }
-    pending_bills = (@filtered_bills || []).count { |r| dashboard_bill_pending?(r) }
+    bill_records = ModuleRecord.where(module_slug: "jeevika-jankar-bill-process").to_a
+    bill_records = bill_records.select { |record| jeevika_jankar_bill_record_visible?(record) } unless admin_dashboard_user?
+    approved_bills = bill_records.count { |r| dashboard_bill_approved?(r) }
+    pending_bills = bill_records.count { |r| dashboard_bill_pending?(r) }
     billing_items = [{
       title: "Level 2 Users",
       value: hierarchy_summary[:level_2_total],
@@ -3066,12 +3051,6 @@ class ModulesController < ApplicationController
         { title: "Final Approved", value: approved_vrps, path: vrps_path },
         { title: "Pending Approval", value: pending_approvals, path: approvals_vrps_path }
       ], style: "registration"),
-      dashboard_group_card("Jeevika Jankar Target Assignment", [
-        { title: "Target Records", value: dashboard_target_record_count(targets), path: target_mappings_path },
-        { title: "Without Target", value: unassigned_vrp_count, path: vrps_path(target_assignment: "unassigned") },
-        { title: "Activities Assigned", value: activity_count, path: target_mappings_path },
-        { title: "Without Activity", value: activity_unassigned_vrp_count, path: vrps_path(activity_assignment: "unassigned") }
-      ], style: "assignment"),
       dashboard_group_card("Jeevika Jankar Billing", billing_items, style: "billing")
     ]
 
@@ -3294,23 +3273,23 @@ class ModulesController < ApplicationController
       },
       {
         status: "green",
-        title: "Completed",
+        title: "1 Training",
         value: completed_quantity.to_i,
-        caption: "All mapped trainings completed.",
+        caption: "Farmer attended exactly 1 training.",
         path: weekly_activity_target_report_path(filter_params.merge(status: "green"))
       },
       {
         status: "yellow",
-        title: "Partial",
+        title: "2+ Trainings",
         value: partial_quantity.to_i,
-        caption: "Some mapped work is complete and some is pending.",
+        caption: "Farmer attended 2 or more trainings.",
         path: weekly_activity_target_report_path(filter_params.merge(status: "yellow"))
       },
       {
         status: "red",
-        title: "Pending",
+        title: "No Training",
         value: pending_quantity.to_i,
-        caption: "No mapped work has been completed.",
+        caption: "Farmer not attended training. Missing training.",
         path: weekly_activity_target_report_path(filter_params.merge(status: "red"))
       }
     ]
@@ -3918,12 +3897,12 @@ class ModulesController < ApplicationController
       completed_count = [completed_activity_keys[membership_key].size, assigned_count].min
       counts[:completed_target_map_total] += completed_count
 
-      if completed_count >= assigned_count && assigned_count.positive?
-        counts[:green] += 1
-      elsif completed_count.positive?
-        counts[:yellow] += 1
-      elsif attendance_count.zero? || completed_count.zero?
+      if attendance_count.zero?
         counts[:red] += 1
+      elsif attendance_count == 1
+        counts[:green] += 1
+      else
+        counts[:yellow] += 1
       end
     end
     counts
@@ -4029,7 +4008,7 @@ class ModulesController < ApplicationController
   end
 
   def training_participation_dashboard_status_cards(counts, month_name:, fcoc_name:)
-    %w[red green yellow].map do |status|
+    %w[red yellow green].map do |status|
       path_params = { status: status }
       path_params[:training_month] = month_name if month_name.present?
       path_params[:training_fcoc] = fcoc_name if fcoc_name.present?
@@ -4758,19 +4737,16 @@ class ModulesController < ApplicationController
 
   def training_participation_status_for_activity_progress(attendance_count, completed_count, assigned_count, pending_available: false)
     attendance_count = attendance_count.to_i
-    completed_count = completed_count.to_i
-    assigned_count = assigned_count.to_i
-    return "green" if assigned_count.positive? && completed_count >= assigned_count
-    return "yellow" if completed_count.positive? && completed_count < assigned_count
+    return "yellow" if attendance_count >= 2
+    return "green" if attendance_count == 1
 
     "red"
   end
 
   def training_participation_status_for_count(count, pending_available: false)
     count = count.to_i
-    return "green" if count >= 3
-    return "completed" if count.positive?
-    return "pending" if pending_available
+    return "yellow" if count >= 2
+    return "green" if count == 1
 
     "red"
   end
@@ -4783,12 +4759,12 @@ class ModulesController < ApplicationController
   def training_participation_status_label(status)
     {
       "total" => "Multiple Total Target Map",
-      "unique" => "Mapped Farmer Distinct",
+      "unique" => "Mapped Farmer",
       "training_unique" => "Total Complete Farmers",
       "completed_map" => "Multiple Total Complete Training",
-      "green" => "Green",
-      "yellow" => "Yellow",
-      "red" => "Red",
+      "green" => "1 Training",
+      "yellow" => "2+ Trainings",
+      "red" => "No Training",
       "pending" => "Pending",
       "pending_achievement" => "Pending Achievement",
       "completed" => "Completed"
@@ -4798,12 +4774,12 @@ class ModulesController < ApplicationController
   def training_participation_status_caption(status)
     {
       "total" => "Farmer x mapped activity target entries.",
-      "unique" => "Unique mapped farmers for the selected month.",
+      "unique" => "Unique mapped farmers for the selected filters.",
       "training_unique" => "Mapped farmers with at least one completed training.",
       "completed_map" => "Multiple total target map me completed training count.",
-      "green" => "Mapped farmer activity completed.",
-      "yellow" => "Some mapped activities are complete and some are pending.",
-      "red" => "No mapped activity has been completed.",
+      "green" => "Farmer attended exactly 1 training.",
+      "yellow" => "Farmer attended 2 or more trainings.",
+      "red" => "Farmer not attended training. Missing training.",
       "pending" => "Month open and farmer training is still pending.",
       "pending_achievement" => "Red and yellow farmer achievement rows."
     }[status.to_s] || "Farmer training participation status."
@@ -5010,9 +4986,9 @@ class ModulesController < ApplicationController
 
   def training_target_status_label(status)
     {
-      "green" => "Green",
-      "yellow" => "Yellow",
-      "red" => "Red"
+      "green" => "1 Training",
+      "yellow" => "2+ Trainings",
+      "red" => "No Training"
     }[status.to_s] || "Target"
   end
 

@@ -1,9 +1,7 @@
-<% month_options = Array(@training_month_options || []) %>
 <% sub_activity_options = Array(@training_sub_activity_options || []) %>
 <% selected_month = @training_selected_month.to_s %>
 <% selected_sub_activity = @training_selected_sub_activity.to_s %>
 <% participation_selected_month = @participation_selected_month.to_s %>
-<% participation_month_filter_value = @participation_month_filter_value.to_s %>
 <% participation_fcoc_filter_value = @participation_fcoc_filter_value.to_s %>
 <% filters_ready = selected_month.present? && selected_sub_activity.present? %>
 <% status_cards = Array(@training_participation_status_cards || []).reject { |card| card[:status].to_s == "pending" } %>
@@ -17,33 +15,6 @@
     <div>
       <h2>Farmer Training Participation Status (Automatic)</h2>
     </div>
-    <%= form_with url: dashboard_path, method: :get, local: true, html: { class: "dashboard-month-filter" } do %>
-      <%= hidden_field_tag :weekly_target_month, @weekly_target_month_filter_value if @weekly_target_month_filter_value.present? %>
-      <%= hidden_field_tag :activity, params[:activity] if params[:activity].present? %>
-      <%= hidden_field_tag :fcoc, params[:fcoc] if params[:fcoc].present? %>
-      <%= hidden_field_tag :cluster_incharge, params[:cluster_incharge] if params[:cluster_incharge].present? %>
-      <%= hidden_field_tag :month, params[:month] if params[:month].present? %>
-      <%= hidden_field_tag :post, params[:post] if params[:post].present? %>
-      <%= hidden_field_tag :vrp_id, params[:vrp_id] if params[:vrp_id].present? %>
-      <label class="dashboard-month-select">
-        <span>Month</span>
-        <select name="participation_month" onchange="this.form.submit()">
-          <option value="all" <%= "selected" if participation_month_filter_value == "all" %>>All</option>
-          <% month_options.each do |option| %>
-            <option value="<%= option %>" <%= "selected" if participation_selected_month == option.to_s %>><%= option %></option>
-          <% end %>
-        </select>
-      </label>
-      <label class="dashboard-month-select">
-        <span>FCOC</span>
-        <select name="participation_fcoc" onchange="this.form.submit()">
-          <option value="">All FCOC</option>
-          <% Array(@filter_fcoc_options).each do |option| %>
-            <option value="<%= option %>" <%= "selected" if participation_fcoc_filter_value == option.to_s %>><%= option %></option>
-          <% end %>
-        </select>
-      </label>
-    <% end %>
     <%= link_to "Export Excel",
           farmer_training_participation_path(participation_path_params.merge(status: "total", format: :xlsx)),
           class: "list-btn export" %>
@@ -52,14 +23,14 @@
   <div class="training-participation-boxes compact">
     <% if status_cards.any? %>
       <div class="training-participation-box total">
-        <span>Total registered farmer afl</span>
+        <span>Total registered farmer</span>
         <strong><%= (@training_registered_farmer_count || @training_unique_farmer_count).to_i %></strong>
         <small>Registered AFL farmers for the selected filters.</small>
       </div>
       <%= link_to farmer_training_participation_path(unique_status_path_params), class: "training-participation-box total", data: { dashboard_card: true } do %>
-        <span>Mapped Farmer Distinct</span>
+        <span>Mapped Farmer</span>
         <strong><%= @training_mapped_farmer_count.to_i %></strong>
-        <small>Unique mapped farmers for the selected month.</small>
+        <small>Unique mapped farmers for the selected filters.</small>
         <b>View List</b>
       <% end %>
       <% status_cards.each do |card| %>

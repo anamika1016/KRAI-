@@ -314,23 +314,8 @@
     <% if params[:training_sub_activity].present? %>
       <%= hidden_field_tag :training_sub_activity, params[:training_sub_activity] %>
     <% end %>
-    <% if params[:participation_month].present? %>
-      <%= hidden_field_tag :participation_month, params[:participation_month] %>
-    <% end %>
-    <% if params[:participation_fcoc].present? %>
-      <%= hidden_field_tag :participation_fcoc, params[:participation_fcoc] %>
-    <% end %>
-    <% if params[:weekly_target_month].present? %>
-      <%= hidden_field_tag :weekly_target_month, params[:weekly_target_month] %>
-    <% end %>
-    <% if params[:weekly_target_fcoc].present? %>
-      <%= hidden_field_tag :weekly_target_fcoc, params[:weekly_target_fcoc] %>
-    <% end %>
     <% if params[:weekly_target_week].present? %>
       <%= hidden_field_tag :weekly_target_week, params[:weekly_target_week] %>
-    <% end %>
-    <% if params[:ics_report_month].present? %>
-      <%= hidden_field_tag :ics_report_month, params[:ics_report_month] %>
     <% end %>
     <% if params[:ics_report_ics].present? %>
       <%= hidden_field_tag :ics_report_ics, params[:ics_report_ics] %>
@@ -346,12 +331,12 @@
 
       <div class="dashboard-filter-field">
         <label for="dash_main_activity">Main Activity</label>
-        <%= f.select :main_activity, options_for_select([["All Main Activities", ""]] + Array(@filter_main_activity_options).map { |v| [v, v] }, @dashboard_main_activity_filter_value), {}, id: "dash_main_activity", class: "form-select dashboard-filter-select" %>
+        <%= f.select :main_activity, options_for_select([["All Main Activities", ""]] + Array(@filter_main_activity_options).map { |v| [v, v] }, @dashboard_main_activity_filter_value), {}, id: "dash_main_activity", class: "form-select dashboard-filter-select", data: { dashboard_filter_select: true } %>
       </div>
 
       <div class="dashboard-filter-field">
         <label for="dash_sub_activity">Sub Activity</label>
-        <%= f.select :sub_activity, options_for_select([["All Sub Activities", ""]] + Array(@filter_sub_activity_options).map { |v| [v, v] }, params[:sub_activity]), {}, id: "dash_sub_activity", class: "form-select dashboard-filter-select" %>
+        <%= f.select :sub_activity, options_for_select([["All Sub Activities", ""]] + Array(@filter_sub_activity_options).map { |v| [v, v] }, params[:sub_activity]), {}, id: "dash_sub_activity", class: "form-select dashboard-filter-select", data: { dashboard_filter_select: true } %>
       </div>
 
       <%# FCO %>
@@ -363,7 +348,7 @@
                 @dashboard_fcoc_filter_value
               ),
               {},
-              id: "dash_fcoc", class: "form-select dashboard-filter-select" %>
+              id: "dash_fcoc", class: "form-select dashboard-filter-select", data: { dashboard_filter_select: true } %>
       </div>
 
       <%# ICS Name (cascades from the selected activity, FCO and Cluster Incharge) %>
@@ -375,7 +360,7 @@
                 params[:ics]
               ),
               {},
-              id: "dash_ics", class: "form-select dashboard-filter-select" %>
+              id: "dash_ics", class: "form-select dashboard-filter-select", data: { dashboard_filter_select: true } %>
       </div>
 
       <%# Month %>
@@ -387,19 +372,7 @@
                 @dashboard_month_filter_value
               ),
               {},
-              id: "dash_month", class: "form-select dashboard-filter-select" %>
-      </div>
-
-      <%# VRP Name %>
-      <div class="dashboard-filter-field">
-        <label for="dash_vrp">VRP Name</label>
-        <%= f.select :vrp_id,
-              options_for_select(
-                [["All VRPs", ""]] + (@filter_vrp_options || []),
-                params[:vrp_id]
-              ),
-              {},
-              id: "dash_vrp", class: "form-select dashboard-filter-select" %>
+              id: "dash_month", class: "form-select dashboard-filter-select", data: { dashboard_filter_select: true } %>
       </div>
 
       <div class="dashboard-filter-actions">
@@ -435,20 +408,6 @@
           <h2>Dashboard Summary</h2>
           <p>Filtered target, achievement, farmer, village, and activity summary.</p>
         </div>
-        <div class="dashboard-actions">
-          <%= form_with url: dashboard_path, method: :get, local: true, html: { class: "dashboard-month-filter" } do %>
-            <% params.permit(:search, :activity, :main_activity, :sub_activity, :fcoc, :cluster_incharge, :ics, :post, :vrp_id).each do |key, value| %>
-              <%= hidden_field_tag key, value if value.present? %>
-            <% end %>
-            <label class="dashboard-month-select">
-              <span>Month</span>
-              <%= select_tag :month,
-                    options_for_select([["All Months", ""]] + (@filter_month_options || []).map { |month| [month, month] }, @dashboard_month_filter_value),
-                    class: "form-select dashboard-filter-select",
-                    data: { dashboard_filter_select: true } %>
-            </label>
-          <% end %>
-        </div>
       </div>
 
       <div class="training-participation-boxes dashboard-summary-boxes">
@@ -479,7 +438,6 @@
   <%# ── WEEKLY TARGET STATUS BOXES ONLY (full data on report page) ── %>
   <% weekly_cards = @dashboard_weekly_target_cards || [] %>
   <% weekly_selected_month = @weekly_dashboard_selected_month.to_s %>
-  <% weekly_month_filter_value = @weekly_target_month_filter_value.to_s %>
   <% weekly_fcoc_filter_value = @weekly_target_fcoc_filter_value.to_s %>
   <% weekly_week_filter_value = @weekly_target_week_filter_value.to_s %>
   <section class="module-card training-participation-status-card dashboard-status-panel weekly-status-panel" id="dashboard_weekly_target_boxes">
@@ -497,26 +455,6 @@
           <%= hidden_field_tag :fcoc, params[:fcoc] if params[:fcoc].present? %>
           <%= hidden_field_tag :month, params[:month] if params[:month].present? %>
           <%= hidden_field_tag :vrp_id, params[:vrp_id] if params[:vrp_id].present? %>
-          <%= hidden_field_tag :participation_month, @participation_month_filter_value if @participation_month_filter_value.present? %>
-          <%= hidden_field_tag :participation_fcoc, @participation_fcoc_filter_value if @participation_fcoc_filter_value.present? %>
-          <label class="dashboard-month-select">
-            <span>Month</span>
-            <select name="weekly_target_month" onchange="this.form.submit()">
-              <option value="all" <%= "selected" if weekly_month_filter_value == "all" %>>All</option>
-              <% Array(@training_month_options).each do |option| %>
-                <option value="<%= option %>" <%= "selected" if weekly_selected_month == option.to_s %>><%= option %></option>
-              <% end %>
-            </select>
-          </label>
-          <label class="dashboard-month-select">
-            <span>FCOC</span>
-            <select name="weekly_target_fcoc" onchange="this.form.submit()">
-              <option value="">All FCOC</option>
-              <% Array(@filter_fcoc_options).each do |option| %>
-                <option value="<%= option %>" <%= "selected" if weekly_fcoc_filter_value == option.to_s %>><%= option %></option>
-              <% end %>
-            </select>
-          </label>
           <label class="dashboard-month-select">
             <span>Week</span>
             <select name="weekly_target_week" onchange="this.form.submit()">
@@ -566,16 +504,8 @@
         </div>
         <div class="dashboard-actions">
           <%= form_with url: ics_wise_farmer_report_path, method: :get, local: true, html: { class: "dashboard-month-filter" } do %>
+            <%= hidden_field_tag :training_month, selected_ics_report_month if selected_ics_report_month.present? %>
             <%= hidden_field_tag :training_fcoc, @participation_fcoc_filter_value if @participation_fcoc_filter_value.present? %>
-            <label class="dashboard-month-select">
-              <span>Month</span>
-              <select name="training_month" onchange="this.form.submit()">
-                <option value="all" <%= "selected" if selected_ics_report_month == "all" %>>All</option>
-                <% @training_month_options.each do |month_name| %>
-                  <option value="<%= month_name %>" <%= "selected" if selected_ics_report_month == month_name.to_s %>><%= month_name %></option>
-                <% end %>
-              </select>
-            </label>
             <label class="dashboard-month-select">
               <span>ICS</span>
               <select name="ics" onchange="this.form.submit()">
@@ -586,7 +516,7 @@
               </select>
             </label>
           <% end %>
-          <%= link_to "Open Report", ics_wise_farmer_report_path(training_month: selected_ics_report_month), class: "list-btn active" %>
+          <%= link_to "Open Report", ics_wise_farmer_report_path(training_month: selected_ics_report_month, training_fcoc: @participation_fcoc_filter_value, ics: selected_ics_report), class: "list-btn active" %>
         </div>
       </div>
 
@@ -621,9 +551,9 @@
 
   <% if farmer_activity_mode %>
     <div class="dashboard-grid premium dashboard-training-secondary-summaries">
-      <% Array(@dashboard_cards).sort_by { |card| ["Jeevika Jankar Registration", "Jeevika Jankar Billing", "Jeevika Jankar Target Assignment", "FCO-wise Jeevika Jankar"].index(card[:title]) || 99 }.each do |card| %>
+      <% Array(@dashboard_cards).sort_by { |card| ["Jeevika Jankar Registration", "Jeevika Jankar Billing", "FCO-wise Jeevika Jankar"].index(card[:title]) || 99 }.each do |card| %>
         <% next if card.blank? %>
-        <% next unless ["Jeevika Jankar Registration", "Jeevika Jankar Billing", "Jeevika Jankar Target Assignment", "FCO-wise Jeevika Jankar"].include?(card[:title]) %>
+        <% next unless ["Jeevika Jankar Registration", "Jeevika Jankar Billing", "FCO-wise Jeevika Jankar"].include?(card[:title]) %>
         <% next unless card.is_a?(Hash) && card[:items].present? %>
         <article class="metric-card metric-card-group metric-card-group-<%= card[:style] %>">
           <span class="metric-card-group-title"><%= card[:title] %></span>

@@ -1153,11 +1153,17 @@ class TargetMappingsController < ApplicationController
   def filtered_visible_target_mappings
     scope = visible_target_mappings
     scope = scope.where(vrp_id: params[:vrp_id]) if params[:vrp_id].present?
-    scope = scope.where(month_name: params[:month]) if params[:month].present?
-    scope = scope.where(main_activity_name: params[:main_activity]) if params[:main_activity].present?
-    scope = scope.where(activity_name: params[:sub_activity]) if params[:sub_activity].present?
-    scope = scope.where("fco_id = :fcoc OR fco_name = :fcoc", fcoc: params[:fcoc]) if params[:fcoc].present?
-    scope = scope.where("ics_id = :ics OR ics_name = :ics", ics: params[:ics]) if params[:ics].present?
+    scope = scope.where("LOWER(BTRIM(month_name)) = ?", params[:month].to_s.strip.downcase) if params[:month].present?
+    scope = scope.where("LOWER(BTRIM(main_activity_name)) = ?", params[:main_activity].to_s.strip.downcase) if params[:main_activity].present?
+    scope = scope.where("LOWER(BTRIM(activity_name)) = ?", params[:sub_activity].to_s.strip.downcase) if params[:sub_activity].present?
+    scope = scope.where(
+      "LOWER(BTRIM(fco_id)) = :fcoc OR LOWER(BTRIM(fco_name)) = :fcoc",
+      fcoc: params[:fcoc].to_s.strip.downcase
+    ) if params[:fcoc].present?
+    scope = scope.where(
+      "LOWER(BTRIM(ics_id)) = :ics OR LOWER(BTRIM(ics_name)) = :ics",
+      ics: params[:ics].to_s.strip.downcase
+    ) if params[:ics].present?
     scope
   end
 

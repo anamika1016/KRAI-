@@ -29,7 +29,7 @@
     <div class="module-card-header">
       <div>
         <h2>Report Filters</h2>
-        <p>Month, FCOC, Activity aur Sub Activity select karke weekly data fetch karo.</p>
+        <p>Activity aur Sub Activity select karke weekly data fetch karo.</p>
       </div>
     </div>
 
@@ -44,26 +44,6 @@
             <% end %>
           </select>
         </div>
-        <div class="dashboard-filter-field">
-          <label for="weekly_month">Month</label>
-          <select name="training_month" id="weekly_month" class="form-select dashboard-filter-select">
-            <option value="">All Months</option>
-            <% Array(@weekly_month_options).each do |month| %>
-              <option value="<%= month %>" <%= "selected" if @weekly_selected_month.to_s == month.to_s %>><%= month %></option>
-            <% end %>
-          </select>
-        </div>
-
-        <div class="dashboard-filter-field">
-          <label for="weekly_fcoc">FCOC</label>
-          <select name="training_fcoc" id="weekly_fcoc" class="form-select dashboard-filter-select">
-            <option value="">All FCOC</option>
-            <% Array(@weekly_fcoc_options).each do |fcoc| %>
-              <option value="<%= fcoc %>" <%= "selected" if @weekly_selected_fcoc.to_s == fcoc.to_s %>><%= fcoc %></option>
-            <% end %>
-          </select>
-        </div>
-
         <div class="dashboard-filter-field dashboard-filter-field--activity">
           <label for="weekly_activity">Activity</label>
           <select name="activity" id="weekly_activity" class="form-select dashboard-filter-select">
@@ -129,8 +109,6 @@
             Showing: <%= @weekly_report_status == "total" ? "Total Targets" : training_target_status_label(@weekly_report_status) %> |
           <% end %>
           Total rows: <%= @weekly_report_rows.size %>
-          <% if @weekly_selected_month.present? %> | Month: <%= @weekly_selected_month %><% end %>
-          <% if @weekly_selected_fcoc.present? %> | FCOC: <%= @weekly_selected_fcoc %><% end %>
           <% if @weekly_selected_activity.present? %> | Activity: <%= @weekly_selected_activity %><% end %>
           <% if @weekly_selected_sub_activity.present? %> | Sub Activity: <%= @weekly_selected_sub_activity %><% end %>
         </p>

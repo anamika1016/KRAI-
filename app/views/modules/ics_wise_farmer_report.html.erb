@@ -25,22 +25,12 @@
     <div class="module-card-header">
       <div>
         <h2>Report Filters</h2>
-        <p>Select month, FCOC, and ICS to load the report.</p>
+        <p>Select FCOC and ICS to load the report.</p>
       </div>
     </div>
 
     <%= form_with url: ics_wise_farmer_report_path, method: :get, local: true, html: { class: "dashboard-filter-bar" } do %>
       <div class="dashboard-filter-grid">
-        <div class="dashboard-filter-field">
-          <label for="ics_report_month">Month</label>
-          <select name="training_month" id="ics_report_month" class="form-select dashboard-filter-select">
-            <option value="all" <%= "selected" if @ics_report_selected_month_value.to_s == "all" %>>All</option>
-            <% Array(@ics_report_month_options).each do |month_name| %>
-              <option value="<%= month_name %>" <%= "selected" if @ics_report_selected_month_value.to_s == month_name.to_s %>><%= month_name %></option>
-            <% end %>
-          </select>
-        </div>
-
         <div class="dashboard-filter-field">
           <label for="ics_report_fcoc">FCOC</label>
           <select name="training_fcoc" id="ics_report_fcoc" class="form-select dashboard-filter-select">
@@ -102,7 +92,6 @@
         <h2>Farmer List</h2>
         <p class="module-subtitle">
           Total rows: <%= rows.size %>
-          <% if @ics_report_selected_month.present? %> | Month: <%= @ics_report_selected_month %><% end %>
           <% if @ics_report_selected_fcoc.present? %> | FCOC: <%= @ics_report_selected_fcoc %><% end %>
           <% if @ics_report_selected_ics.present? %> | ICS: <%= @ics_report_selected_ics %><% end %>
         </p>
