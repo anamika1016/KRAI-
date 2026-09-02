@@ -27,6 +27,7 @@ class VrpsController < ApplicationController
     end
     ActiveRecord::Associations::Preloader.new(records: vrps, associations: :vrp_bank_master).call
     preload_registered_by_users!(vrps)
+    preload_approval_lookup_data!
 
     @data = vrps.map do |vrp|
       {
@@ -47,6 +48,7 @@ class VrpsController < ApplicationController
         email: vrp.email,
         fcoc: vrp.fcoc,
         to_name: vrp.to_name,
+        is_active: vrp.is_active?,
         registered_by: registered_by_name(vrp),
         mapped_cluster_name: vrp.cluster_incharge.presence || "-",
         status_label: vrp_status_label(vrp)
@@ -133,7 +135,22 @@ class VrpsController < ApplicationController
 
     active = ActiveModel::Type::Boolean.new.cast(params[:active])
     @vrp.update_columns(is_active: active, updated_at: Time.current)
-    redirect_to vrps_path, notice: "VRP marked #{active ? "active" : "inactive"}."
+    respond_to do |format|
+      format.html { redirect_to vrps_path, notice: "VRP marked #{active ? "active" : "inactive"}." }
+      format.json { render json: { success: true, id: @vrp.id, is_active: active } }
+    end
+  end
+
+  def bulk_set_active
+    ids = Array(params[:ids]).map(&:to_i).reject(&:zero?).uniq
+    active = ActiveModel::Type::Boolean.new.cast(params[:active])
+
+    if ids.blank?
+      return render json: { success: false, message: "Please select at least one VRP" }, status: :unprocessable_entity
+    end
+
+    updated_count = manageable_vrps_scope.where(id: ids).update_all(is_active: active, updated_at: Time.current)
+    render json: { success: true, updated_count: updated_count, is_active: active }
   end
 
   def approvals
@@ -462,7 +479,11 @@ class VrpsController < ApplicationController
   end
 
   def find_manageable_vrp(id)
-    own_vrps.find_by(id: id)
+    manageable_vrps_scope.find_by(id: id)
+  end
+
+  def manageable_vrps_scope
+    current_app_user.blank? || admin_user? ? Vrp.all : own_vrps
   end
 
   def cluster_mapped_vrps
@@ -1038,7 +1059,7 @@ class VrpsController < ApplicationController
 
   def approval_candidate_vrps
     @approval_candidate_vrps ||= begin
-      history_vrp_ids = approval_history_records_by_vrp_id.keys
+      history_vrp_ids = approval_history_vrp_ids
       scope = Vrp.where("status >= ?", 25)
       scope = scope.or(Vrp.where(id: history_vrp_ids)) if history_vrp_ids.any?
       scope.to_a
@@ -1062,6 +1083,14 @@ class VrpsController < ApplicationController
       .to_a
       .group_by { |record| record.data["vrp_id"].to_s }
     end
+  end
+
+  def approval_history_vrp_ids
+    @approval_history_vrp_ids ||= ModuleRecord
+      .where(module_slug: "vrp-approval-history")
+      .where("data::jsonb ->> 'vrp_id' IS NOT NULL AND data::jsonb ->> 'vrp_id' <> ''")
+      .distinct
+      .pluck(Arel.sql("data::jsonb ->> 'vrp_id'"))
   end
 
   def legacy_user_ids_for_username_or_emails(username, emails)

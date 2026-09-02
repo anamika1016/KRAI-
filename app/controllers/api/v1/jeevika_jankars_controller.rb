@@ -4,7 +4,9 @@ module Api
       include VrpAccess
 
       def index
-        records = visible_vrps.map { |vrp| list_row_payload(vrp) }
+        vrps = visible_vrps.includes(:vrp_bank_master).to_a
+        preload_vrp_access_lookup_data!(vrps)
+        records = vrps.map { |vrp| list_row_payload(vrp) }
 
         render json: {
           success: true,

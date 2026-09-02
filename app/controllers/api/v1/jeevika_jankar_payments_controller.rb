@@ -7,6 +7,7 @@ module Api
 
       def bills
         records = bill_records.select { |record| calculator.send(:jeevika_jankar_bill_record_visible?, record) }
+        set_calculator_visible_bill_ids(records)
         all_rows = records.map { |record| bill_payload_for(record) }
         rows = filter_month(all_rows)
 
@@ -65,6 +66,7 @@ module Api
           calculator.send(:jeevika_bill_final_approved?, record) &&
             (month.blank? || same_text?(record.data["bill_month"], month))
         end
+        set_calculator_visible_bill_ids(records)
         rows = records.map { |record| payment_payload_for(record) }
 
         render json: {
@@ -112,6 +114,7 @@ module Api
       def payment_details
         return payment_access_denied unless payment_list_user?("jeevika-jankar-payment-list-detail")
 
+        set_calculator_visible_bill_ids(bill_records)
         rows = calculator.send(:jeevika_payment_selectable_rows, bill_records)
         approval_dates = calculator.send(:jeevika_payment_bill_date_options, bill_records)
         rows = rows.select { |row| row[:approval_date].to_s == params[:approval_date].to_s } if params[:approval_date].present?
@@ -384,6 +387,10 @@ module Api
 
       def bill_records
         @bill_records ||= ModuleRecord.where(module_slug: BILL_SLUG).order(created_at: :desc, id: :desc).to_a
+      end
+
+      def set_calculator_visible_bill_ids(records)
+        calculator.instance_variable_set(:@jeevika_bill_visible_record_ids, Array(records).map { |record| record.id.to_s })
       end
 
       def payment_list_user?(slug)

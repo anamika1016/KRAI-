@@ -38,6 +38,7 @@
             <tr>
               <th><input type="checkbox" data-vrp-select-all></th>
               <th>Actions</th>
+              <th>Active Status</th>
               <th>Status</th>
               <th>ID</th>
               <th>User Name</th>
@@ -69,6 +70,7 @@
                       <span aria-hidden="true">◉</span>
                     </a>
                   </td>
+                  <td><span class="status-pill <%= vrp[:is_active] ? "active" : "inactive" %>"><%= vrp[:is_active] ? "Active" : "Inactive" %></span></td>
                   <% status_class = vrp[:status_label].to_s.include?("Rejected") ? "rejected" : (vrp[:status_label].to_s.include?("Approved") ? "approved" : (vrp[:status_label].to_s.include?("Pending") ? "pending" : "submitted")) %>
                   <td><span class="grid-status <%= status_class %>"><%= vrp[:status_label] %></span></td>
                   <td><%= vrp[:id] %></td>
@@ -93,7 +95,7 @@
               <% end %>
             <% else %>
               <tr>
-                <td colspan="21">No Jeevika Jankar records saved yet.</td>
+                <td colspan="22">No Jeevika Jankar records saved yet.</td>
               </tr>
             <% end %>
           </tbody>

@@ -98,7 +98,11 @@ module Api
         return unless admin_dashboard_list_catalog.key?(list_type)
 
         cache_admin_dashboard_payload("list/#{list_type}") do
-          exact_admin_dashboard_data
+          if lightweight_admin_dashboard_list_type?(list_type)
+            prepare_lightweight_admin_dashboard_context
+          else
+            exact_admin_dashboard_data
+          end
           admin_dashboard_list_payload(list_type)
         end
       end
@@ -226,7 +230,11 @@ module Api
         legacy_activity = filter_param(:activity)
         if selected_main_activity.present?
           normalized_main = web.send(:normalize_dashboard_text, selected_main_activity)
-          targets.select! { |target| web.send(:normalize_dashboard_text, target.main_activity_name) == normalized_main }
+          main_matches = targets.select { |target| web.send(:normalize_dashboard_text, target.main_activity_name) == normalized_main }
+          if main_matches.blank? && selected_sub_activity.present?
+            main_matches = targets
+          end
+          targets = main_matches
         elsif legacy_activity.present?
           targets.select! { |target| target.main_activity_name == legacy_activity || target.activity_name == legacy_activity }
         end
@@ -524,12 +532,8 @@ module Api
           "targeted_farmers" => "Targeted Farmers List",
           "total_mapped_main_activities" => "Total Mapped Main Activities List",
           "total_mapped_sub_activities" => "Total Mapped Sub-Activities List",
-          "farmer_wise_target_mapping" => "Farmer-wise Target Mapping List",
           "farmer_wise_achievement" => "Farmer-wise Achievement List",
           "farmer_wise_pending_achievement" => "Farmer-wise Pending Achievement List",
-          "activity_wise_target_mapping" => "Activity-wise Target Mapping List",
-          "activity_wise_achievement" => "Activity-wise Achievement List",
-          "activity_wise_pending_achievement" => "Activity-wise Pending Achievement List",
           "without_target" => "Jeevika Jankar Without Target List",
           "activities_assigned" => "Jeevika Jankar Activities Assigned List",
           "without_activity" => "Jeevika Jankar Without Activity List",
@@ -550,6 +554,104 @@ module Api
           "weekly_partial" => "Weekly Partial List",
           "weekly_pending" => "Weekly Pending List",
           "ics_farmers" => "ICS-wise Farmer List"
+        }
+      end
+
+      def lightweight_admin_dashboard_list_type?(list_type)
+        %w[
+          target_records
+          total_mapped_villages
+          targeted_farmers
+          total_mapped_main_activities
+          total_mapped_sub_activities
+          farmer_wise_achievement
+          farmer_wise_pending_achievement
+          activities_assigned
+        ].include?(list_type.to_s)
+      end
+
+      def prepare_lightweight_admin_dashboard_context
+        return @admin_dashboard_api_context if @admin_dashboard_api_context
+
+        web = ModulesController.new
+        web.request = request
+        web.instance_variable_set(:@current_app_user, current_api_user_payload)
+
+        all_vrps = web.send(:dashboard_vrps).to_a
+        all_targets = web.send(:dashboard_target_mappings).to_a
+        preload_dashboard_associations!(all_targets)
+        vrps = all_vrps.dup
+        targets = all_targets.dup
+
+        search_query = filter_param(:search)
+        if search_query.present?
+          query = search_query.to_s.downcase.strip
+          vrps.select! do |vrp|
+            [vrp.name, vrp.mobile_no, vrp.role, vrp.fcoc, vrp.cluster_incharge].any? { |value| value.to_s.downcase.include?(query) }
+          end
+          targets.select! do |target|
+            [target.vrp&.name, target.month_name, target.village_name, target.main_activity_name, target.activity_name].any? { |value| value.to_s.downcase.include?(query) }
+          end
+        end
+
+        selected_main_activity = filter_param(:main_activity) || default_farmer_activity_filter(web, targets.map(&:main_activity_name).compact_blank.uniq.sort)
+        selected_sub_activity = filter_param(:sub_activity)
+        legacy_activity = filter_param(:activity)
+        if selected_main_activity.present?
+          normalized_main = web.send(:normalize_dashboard_text, selected_main_activity)
+          main_matches = targets.select { |target| web.send(:normalize_dashboard_text, target.main_activity_name) == normalized_main }
+          targets = main_matches.presence || targets if selected_sub_activity.present?
+          targets = main_matches if main_matches.present? || selected_sub_activity.blank?
+        elsif legacy_activity.present?
+          targets.select! { |target| target.main_activity_name == legacy_activity || target.activity_name == legacy_activity }
+        end
+
+        if selected_sub_activity.present?
+          normalized_sub = web.send(:normalize_dashboard_text, selected_sub_activity)
+          targets.select! { |target| web.send(:normalize_dashboard_text, target.activity_name) == normalized_sub }
+        end
+
+        selected_fcoc = filter_param(:fcoc, :fco)
+        if selected_fcoc.present?
+          normalized_fcoc = web.send(:normalize_dashboard_text, selected_fcoc)
+          vrps.select! { |vrp| web.send(:normalize_dashboard_text, vrp.fcoc) == normalized_fcoc }
+          vrp_ids = id_lookup(vrps)
+          targets.select! { |target| target.vrp_id.present? && vrp_ids.key?(target.vrp_id.to_s) }
+        end
+
+        selected_ics = filter_param(:ics, :ics_name)
+        targets.select! { |target| same_text?(target.ics_name.presence || target.ics_id, selected_ics) } if selected_ics.present?
+
+        selected_month = params.key?(:month) ? filter_param(:month) : Date.current.strftime("%B")
+        targets.select! { |target| same_text?(target.month_name, selected_month) } if selected_month.present?
+
+        selected_post = filter_param(:post, :post_wise_name)
+        if selected_post.present?
+          vrps.select! { |vrp| vrp.role == selected_post }
+          vrp_ids = id_lookup(vrps)
+          targets.select! { |target| target.vrp_id.present? && vrp_ids.key?(target.vrp_id.to_s) }
+        end
+
+        selected_vrp_filter = filter_param(:vrp_id)
+        if selected_vrp_filter.present?
+          selected_vrp_id = selected_vrp_filter.to_i
+          vrps.select! { |vrp| vrp.id == selected_vrp_id }
+          targets.select! { |target| target.vrp_id == selected_vrp_id }
+        end
+
+        months = web.send(:dashboard_month_options_for_targets, targets)
+        default_month = web.send(:default_vrp_dashboard_month, months)
+        participation_value = filter_param(:participation_month, :training_month) || default_month
+        participation_month = participation_value == "all" ? nil : participation_value
+
+        @admin_dashboard_api_context = {
+          web: web,
+          vrps: vrps,
+          targets: targets,
+          all_targets: all_targets,
+          bills: [],
+          participation_month: participation_month,
+          participation_month_value: participation_value
         }
       end
 

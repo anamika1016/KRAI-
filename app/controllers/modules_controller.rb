@@ -605,7 +605,12 @@ class ModulesController < ApplicationController
     selected_sub_activity = dashboard_filter_param(:sub_activity)
     legacy_activity = dashboard_filter_param(:activity)
     if selected_main_activity.present?
-      t_scope = t_scope.select { |t| normalize_dashboard_text(t.main_activity_name) == normalize_dashboard_text(selected_main_activity) }
+      normalized_selected_main_activity = normalize_dashboard_text(selected_main_activity)
+      main_activity_matches = t_scope.select { |t| normalize_dashboard_text(t.main_activity_name) == normalized_selected_main_activity }
+      if main_activity_matches.blank? && selected_sub_activity.present?
+        main_activity_matches = t_scope
+      end
+      t_scope = main_activity_matches
     elsif legacy_activity.present?
       t_scope = t_scope.select { |t| t.main_activity_name == legacy_activity || t.activity_name == legacy_activity }
     end
@@ -2129,18 +2134,14 @@ class ModulesController < ApplicationController
   def vrp_dashboard_summary_cards(rows, village_count:, main_activity_count:, sub_activity_count:, mapped_village_farmer_count:, assigned_target_total:, achieved_target_total:, pending_target_total:, selected_month:)
     status_sets = vrp_dashboard_farmer_status_sets(rows)
     mapped_farmer_count = status_sets[:mapped].size
-    achieved_farmer_count = vrp_dashboard_completed_farmer_count(status_sets)
-    pending_farmer_count = vrp_dashboard_pending_farmer_count(status_sets)
     month_params = { training_month: selected_month }.compact_blank
 
     [
       dashboard_card("Total Mapped Villages", village_count, "Filtered mapped villages", vrp_dashboard_list_path("mapped_villages", month_params)),
-      dashboard_card("Farmers in Mapped Villages", mapped_village_farmer_count, "AFL farmers in filtered mapped villages", vrp_dashboard_list_path("mapped_village_farmers", month_params)),
+      dashboard_card("Mapped Farmer", mapped_village_farmer_count, "AFL farmers in filtered mapped villages", vrp_dashboard_list_path("mapped_village_farmers", month_params)),
       dashboard_card("Targeted Farmers", mapped_farmer_count, "Unique targeted farmers", vrp_dashboard_list_path("mapped_farmers", month_params)),
       dashboard_card("Total Mapped Main Activities", main_activity_count, "Filtered main activities", vrp_dashboard_list_path("main_activities", month_params)),
-      dashboard_card("Total Mapped Sub-Activities", sub_activity_count, "Filtered sub-activities", vrp_dashboard_list_path("sub_activities", month_params)),
-      dashboard_card("Farmer-wise Achievement", achieved_farmer_count, "Completed farmer target entries", vrp_dashboard_list_path("complete_farmers", month_params)),
-      dashboard_card("Farmer-wise Pending Achievement", pending_farmer_count, "Pending farmer target entries", vrp_dashboard_list_path("pending_farmers", month_params))
+      dashboard_card("Total Mapped Sub-Activities", sub_activity_count, "Filtered sub-activities", vrp_dashboard_list_path("sub_activities", month_params))
     ]
   end
 
@@ -2349,7 +2350,7 @@ class ModulesController < ApplicationController
       dashboard_detail_payload(key, "Mapped Farmers", "Unique farmers linked to your target rows.", rows.size, vrp_dashboard_farmer_list_headers, rows)
     when "mapped_village_farmers"
       rows = vrp_dashboard_afl_farmer_rows_for_target_villages(targets)
-      dashboard_detail_payload(key, "Farmers in Mapped Villages", "AFL farmers available in filtered mapped villages.", rows.size, vrp_dashboard_farmer_list_headers, rows)
+      dashboard_detail_payload(key, "Mapped Farmer", "AFL farmers available in filtered mapped villages.", rows.size, vrp_dashboard_farmer_list_headers, rows)
     when "ics_mapped_farmers"
       rows = vrp_dashboard_mapped_farmer_rows(mappings, [], include_mapping_fallback: true)
       dashboard_detail_payload(key, "AFL", "Distinct farmers mapped to you through ICS.", rows.size, ["Farmer", "Father Name", "Mobile", "TraceNet No", "ICS", "Village", "Status"], rows)
@@ -3060,18 +3061,13 @@ class ModulesController < ApplicationController
     activity_entries = dashboard_summary_activity_entries(targets)
     main_activity_count = activity_entries.filter_map { |entry| entry[:main_activity_key].presence }.uniq.size
     sub_activity_count = activity_entries.filter_map { |entry| entry[:sub_activity_key].presence }.uniq.size
-    farmer_status_counts = dashboard_summary_farmer_status_counts(targets)
-    targeted_farmer_count = farmer_status_counts[:mapped]
-    farmer_achievement = farmer_status_counts[:complete]
-    farmer_pending = farmer_status_counts[:pending]
+    targeted_farmer_count = targets.flat_map { |target| target_farmer_ids(target) }.map(&:to_s).reject(&:blank?).uniq.size
 
     [
       dashboard_summary_card("Total Mapped Villages", village_count, "Filtered mapped villages", target_mappings_path(dashboard_summary_target_params), dashboard_path(dashboard_summary_target_params.merge(format: :xlsx))),
       dashboard_summary_card("Targeted Farmers", targeted_farmer_count, "Unique targeted farmers", farmer_training_participation_path(dashboard_summary_participation_params(status: "unique")), farmer_training_participation_path(dashboard_summary_participation_params(status: "unique", format: :xlsx))),
       dashboard_summary_card("Total Mapped Main Activities", main_activity_count, "Filtered main activities", target_mappings_path(dashboard_summary_target_params), dashboard_path(dashboard_summary_target_params.merge(format: :xlsx))),
-      dashboard_summary_card("Total Mapped Sub-Activities", sub_activity_count, "Filtered sub-activities", target_mappings_path(dashboard_summary_target_params), dashboard_path(dashboard_summary_target_params.merge(format: :xlsx))),
-      dashboard_summary_card("Farmer-wise Achievement", farmer_achievement, "Completed farmer target entries", farmer_training_participation_path(dashboard_summary_participation_params(status: "completed_map")), farmer_training_participation_path(dashboard_summary_participation_params(status: "completed_map", format: :xlsx))),
-      dashboard_summary_card("Farmer-wise Pending Achievement", farmer_pending, "Pending farmer target entries", farmer_training_participation_path(dashboard_summary_participation_params(status: "pending_achievement")), farmer_training_participation_path(dashboard_summary_participation_params(status: "pending_achievement", format: :xlsx)))
+      dashboard_summary_card("Total Mapped Sub-Activities", sub_activity_count, "Filtered sub-activities", target_mappings_path(dashboard_summary_target_params), dashboard_path(dashboard_summary_target_params.merge(format: :xlsx)))
     ]
   end
 

@@ -102,29 +102,84 @@ module VrpAccess
     return @registered_by_user_cache[cache_key] if @registered_by_user_cache.key?(cache_key)
 
     if vrp.created_by_id.present? && vrp.respond_to?(:created_by_type) && vrp.created_by_type.present?
-      creator_class = { "User" => User, "ModuleRecord" => ModuleRecord }[vrp.created_by_type]
-      creator = creator_class.find_by(id: vrp.created_by_id) if creator_class&.respond_to?(:find_by)
+      creator = case vrp.created_by_type
+      when "User" then @preloaded_creator_users_by_id&.[](vrp.created_by_id)
+      when "ModuleRecord" then @preloaded_creator_records_by_id&.[](vrp.created_by_id)
+      end
+      if creator.blank?
+        creator_class = { "User" => User, "ModuleRecord" => ModuleRecord }[vrp.created_by_type]
+        creator = creator_class.find_by(id: vrp.created_by_id) if creator_class&.respond_to?(:find_by)
+      end
       return @registered_by_user_cache[cache_key] = creator if creator
     end
 
     if vrp.created_by_id.present?
-      user = User.find_by(id: vrp.created_by_id) if model_ready?(:User)
-      record = ModuleRecord.find_by(id: vrp.created_by_id) if model_ready?(:ModuleRecord)
+      user = @preloaded_creator_users_by_id&.[](vrp.created_by_id)
+      user ||= User.find_by(id: vrp.created_by_id) if model_ready?(:User)
+      record = @preloaded_creator_records_by_id&.[](vrp.created_by_id)
+      record ||= ModuleRecord.find_by(id: vrp.created_by_id) if model_ready?(:ModuleRecord)
       creator = legacy_registered_by_candidate(vrp, user, record)
       return @registered_by_user_cache[cache_key] = creator if creator
     end
 
     if model_ready?(:User)
-      user = User.find_by("LOWER(email) = ?", vrp.email.to_s.strip.downcase)
+      email_key = vrp.email.to_s.strip.downcase
+      user = @preloaded_creator_users_by_email&.[](email_key)
+      user ||= User.find_by("LOWER(email) = ?", email_key)
       return @registered_by_user_cache[cache_key] = user if user
     end
 
     return unless model_ready?(:ModuleRecord)
 
-    @registered_by_user_cache[cache_key] = ModuleRecord.where(module_slug: "new-user")
-      .where("LOWER(COALESCE(data->>'email', '')) = ?", vrp.email.to_s.strip.downcase)
-      .order(created_at: :desc)
-      .first
+    email_key = vrp.email.to_s.strip.downcase
+    @registered_by_user_cache[cache_key] = @preloaded_creator_records_by_email&.[](email_key) ||
+      ModuleRecord.where(module_slug: "new-user")
+        .where("LOWER(COALESCE(data->>'email', '')) = ?", email_key)
+        .order(created_at: :desc)
+        .first
+  end
+
+  def preload_vrp_access_lookup_data!(vrps)
+    vrps = Array(vrps)
+    preload_vrp_creator_lookup_data!(vrps)
+    preload_vrp_approval_history_lookup_data!(vrps)
+    cached_vrp_approval_master_records
+  end
+
+  def preload_vrp_creator_lookup_data!(vrps)
+    creator_ids = vrps.filter_map(&:created_by_id).uniq
+    emails = vrps.filter_map { |vrp| vrp.email.to_s.strip.downcase.presence }.uniq
+
+    users = model_ready?(:User) ? User.where(id: creator_ids).or(User.where("LOWER(email) IN (?)", emails.presence || [""])).to_a : []
+    records = if model_ready?(:ModuleRecord)
+      ModuleRecord
+        .where(module_slug: "new-user")
+        .where("id IN (:ids) OR LOWER(COALESCE(data::jsonb->>'email', '')) IN (:emails)", ids: creator_ids.presence || [0], emails: emails.presence || [""])
+        .order(created_at: :desc)
+        .to_a
+    else
+      []
+    end
+
+    @preloaded_creator_users_by_id = users.index_by(&:id)
+    @preloaded_creator_records_by_id = records.index_by(&:id)
+    @preloaded_creator_users_by_email = users.index_by { |user| user.email.to_s.strip.downcase }
+    @preloaded_creator_records_by_email = records.reverse_each.to_a.index_by { |record| record.data["email"].to_s.strip.downcase }
+  end
+
+  def preload_vrp_approval_history_lookup_data!(vrps)
+    ids = vrps.map { |vrp| vrp.id.to_s }.uniq
+    @approval_history_for_cache ||= {}
+    return if ids.blank? || !model_ready?(:ModuleRecord)
+
+    ModuleRecord
+      .where(module_slug: "vrp-approval-history")
+      .where("data::jsonb ->> 'vrp_id' IN (?)", ids)
+      .order(created_at: :asc)
+      .to_a
+      .group_by { |record| record.data["vrp_id"].to_s }
+      .each { |vrp_id, records| @approval_history_for_cache[vrp_id.to_i] = records }
+    ids.each { |vrp_id| @approval_history_for_cache[vrp_id.to_i] ||= [] }
   end
 
   def legacy_registered_by_candidate(vrp, user, record)

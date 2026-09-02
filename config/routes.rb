@@ -1,4 +1,12 @@
 Rails.application.routes.draw do
+  scanner_not_found = ->(_env) { [404, { "Content-Type" => "text/plain" }, ["Not Found"]] }
+  match "dns-query", to: scanner_not_found, via: :all
+  match "query", to: scanner_not_found, via: :all
+  match "resolve", to: scanner_not_found, via: :all
+  match "sitemap.xml", to: scanner_not_found, via: :all
+  post "/", to: scanner_not_found
+  get "favicon.ico", to: ->(_env) { [204, {}, []] }
+
   # Uploaded training evidence is stored under public/uploads/module_records.
   # Keep an authenticated Rails fallback so links also work when the web server
   # is not configured to serve the uploads directory directly.
@@ -235,6 +243,7 @@ Rails.application.routes.draw do
   resources :vrps, only: [:index, :new, :create, :edit, :update, :show, :destroy] do
     collection do
       get :approvals
+      patch :bulk_set_active
     end
 
     member do

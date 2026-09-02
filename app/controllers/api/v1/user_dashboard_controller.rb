@@ -2,8 +2,25 @@ module Api
   module V1
     class UserDashboardController < BaseController
       def show
-        @calculation_stage = "authentication"
         return render_vrp_error if current_api_user.is_a?(Vrp)
+
+        response = cached_user_dashboard_response
+        render json: response, status: response[:success] ? :ok : :internal_server_error
+      end
+
+      private
+
+      def cached_user_dashboard_response
+        Rails.cache.fetch(user_dashboard_cache_key, expires_in: 10.minutes, race_condition_ttl: 30.seconds) do
+          build_user_dashboard_response
+        end
+      rescue StandardError => error
+        Rails.logger.warn("User dashboard cache skipped: #{error.class}: #{error.message}")
+        build_user_dashboard_response
+      end
+
+      def build_user_dashboard_response
+        @calculation_stage = "authentication"
 
         @calculation_stage = "dashboard_context"
         calculator = dashboard_calculator
@@ -41,7 +58,7 @@ module Api
           week_number: selected_week).merge(status_counts: weekly_counts, rows_count: weekly_rows.size)
 
         @calculation_stage = "response_payload"
-        render json: {
+        {
           success: true,
           message: "User dashboard fetched successfully.",
           dashboard_type: "user",
@@ -55,10 +72,10 @@ module Api
           monthly_target_summary: monthly_summary(targets),
           hierarchy: hierarchy_payload(calculator),
           generated_at: Time.current.iso8601
-        }, status: :ok
+        }
       rescue StandardError => error
         Rails.logger.error("User dashboard API failed at #{@calculation_stage}: #{error.class}: #{error.message}\n#{error.backtrace&.first(15)&.join("\n")}")
-        render json: {
+        {
           success: false,
           message: "User dashboard could not be loaded.",
           error: "dashboard_calculation_failed",
@@ -66,13 +83,43 @@ module Api
           exception: error.class.name,
           missing_method: (error.name.to_s if error.respond_to?(:name)),
           request_id: request.request_id
-        }, status: :internal_server_error
+        }
       end
-
-      private
 
       def render_vrp_error
         render json: { success: false, message: "This API is for User login, not Jeevika Jankar login." }, status: :forbidden
+      end
+
+      def user_dashboard_cache_key
+        version_parts = [
+          cache_table_version(TargetMapping),
+          cache_table_version(Vrp),
+          cache_table_version(Afl),
+          cache_module_records_version(%w[
+            training-form
+            jeevika-jankar-bill-process
+            approval-master
+            vrp-approval-history
+            user-hierarchy
+            new-user
+          ])
+        ]
+        filters = request.query_parameters.to_h.sort.to_h
+        user_key = current_api_user_payload.slice("id", "user_id", "username", "user_name", "user_type").sort.to_h
+        ["api-v1-user-dashboard", user_key, filters, version_parts].to_json
+      end
+
+      def cache_table_version(model)
+        "#{model.table_name}:#{model.maximum(:updated_at).to_i}:#{model.maximum(:id).to_i}:#{model.count}"
+      rescue StandardError
+        "#{model.name}:unknown"
+      end
+
+      def cache_module_records_version(module_slugs)
+        scope = ModuleRecord.where(module_slug: module_slugs)
+        "module_records:#{scope.maximum(:updated_at).to_i}:#{scope.maximum(:id).to_i}:#{scope.count}"
+      rescue StandardError
+        "module_records:unknown"
       end
 
       def dashboard_calculator
@@ -96,7 +143,10 @@ module Api
         selected_sub_activity = filter_param(:sub_activity)
         legacy_activity = filter_param(:activity)
         if selected_main_activity.present?
-          targets = targets.select { |target| same?(target.main_activity_name, selected_main_activity) }
+          normalized_main = calculator.send(:normalize_dashboard_text, selected_main_activity)
+          main_matches = targets.select { |target| calculator.send(:normalize_dashboard_text, target.main_activity_name) == normalized_main }
+          main_matches = targets if main_matches.blank? && selected_sub_activity.present?
+          targets = main_matches
         elsif legacy_activity.present?
           targets = targets.select { |target| same?(target.main_activity_name, legacy_activity) || same?(target.activity_name, legacy_activity) }
         end

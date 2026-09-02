@@ -696,6 +696,9 @@ function initDeferredLayoutPage() {
   }
 
   document.querySelectorAll("[data-vrp-active-selected]").forEach((button) => {
+    if (button.dataset.vrpActiveBound === "true") return;
+
+    button.dataset.vrpActiveBound = "true";
     button.addEventListener("click", async () => {
       const selected = Array.from(document.querySelectorAll("[data-vrp-row-select]:checked"));
       const active = button.dataset.vrpActiveSelected;
@@ -705,17 +708,20 @@ function initDeferredLayoutPage() {
         return;
       }
 
-      const responses = await Promise.all(selected.map((checkbox) => {
-        return fetch(`/vrps/${checkbox.value}/set_active?active=${encodeURIComponent(active)}`, {
-          method: "PATCH",
-          headers: {
-            "X-CSRF-Token": csrfToken,
-            "Accept": "text/vnd.turbo-stream.html, text/html, application/xhtml+xml"
-          }
-        });
-      }));
+      const response = await fetch("/vrps/bulk_set_active", {
+        method: "PATCH",
+        headers: {
+          "X-CSRF-Token": csrfToken,
+          "Accept": "application/json",
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify({
+          ids: selected.map((checkbox) => checkbox.value),
+          active: active
+        })
+      });
 
-      if (responses.some((response) => !response.ok)) {
+      if (!response.ok) {
         window.alert(replaceVrpUiText("Some selected VRP record(s) could not be updated."));
         return;
       }
