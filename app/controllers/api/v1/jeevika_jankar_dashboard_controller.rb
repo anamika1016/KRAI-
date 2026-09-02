@@ -44,8 +44,7 @@ module Api
           return render json: { success: false, message: "Admin login required." }, status: :forbidden
         end
 
-        exact_admin_dashboard_data
-        payload = admin_dashboard_list_payload(params[:list_type])
+        payload = cached_admin_dashboard_list_payload(params[:list_type])
         return render json: { success: false, message: "Invalid dashboard list type.", available_list_types: admin_dashboard_list_catalog.keys }, status: :unprocessable_entity unless payload
 
         render json: {
@@ -65,44 +64,9 @@ module Api
           return render json: { success: false, message: "Admin login required." }, status: :forbidden
         end
 
-        exact_admin_dashboard_data
-        context = @admin_dashboard_api_context
-        web = context[:web]
-        status = normalize_participation_list_status(params[:status])
-        records = context[:participation_records]
-        population = context[:participation_population]
-        trained_rows = web.send(:training_participation_farmer_rows_from_records, records)
-        unique_rows = web.send(:training_afl_farmer_rows_for_participation,
-          month_name: context[:participation_month], fcoc_name: filter_param(:participation_fcoc, :training_fcoc))
-        status_counts = web.send(:training_participation_status_counts_from_rows, population)
+        response = cached_admin_dashboard_participation_payload
 
-        rows = case status
-        when "unique" then unique_rows
-        when "training_unique", "total" then trained_rows
-        when "green", "yellow", "red", "pending"
-          population.select { |row| row[:status] == status }
-        end
-
-        render json: {
-          success: true,
-          message: "Farmer Training Participation list fetched successfully.",
-          dashboard_type: "admin",
-          title: participation_list_title(status),
-          status: status,
-          selected_month: context[:participation_month_value],
-          selected_fcoc: filter_param(:participation_fcoc, :training_fcoc),
-          totals: {
-            total_training_farmer: web.send(:training_total_farmer_count_from_records, records),
-            total_unique_farmers_distinct: unique_rows.size,
-            training_unique_farmers: web.send(:training_unique_farmer_count_from_records, records),
-            green: status_counts[:green].to_i,
-            yellow: status_counts[:yellow].to_i,
-            red: status_counts[:red].to_i,
-            pending: status_counts[:pending].to_i
-          },
-          count: rows.size,
-          farmers: rows
-        }, status: :ok
+        render json: response, status: :ok
       end
 
       private
@@ -114,7 +78,7 @@ module Api
       end
 
       def render_admin_dashboard
-        dashboard = exact_admin_dashboard_data
+        dashboard = cached_admin_dashboard_summary
 
         render json: {
           success: true,
@@ -126,9 +90,109 @@ module Api
         }, status: :ok
       end
 
+      def cached_admin_dashboard_summary
+        @cached_admin_dashboard_summary ||= cache_admin_dashboard_payload("summary") { exact_admin_dashboard_data }
+      end
+
+      def cached_admin_dashboard_list_payload(list_type)
+        return unless admin_dashboard_list_catalog.key?(list_type)
+
+        cache_admin_dashboard_payload("list/#{list_type}") do
+          exact_admin_dashboard_data
+          admin_dashboard_list_payload(list_type)
+        end
+      end
+
+      def cached_admin_dashboard_participation_payload
+        cache_admin_dashboard_payload("farmer-training-participation/#{normalize_participation_list_status(params[:status])}") do
+          exact_admin_dashboard_data
+          context = @admin_dashboard_api_context
+          web = context[:web]
+          status = normalize_participation_list_status(params[:status])
+          records = context[:participation_records]
+          population = context[:participation_population]
+          trained_rows = web.send(:training_participation_farmer_rows_from_records, records)
+          unique_rows = web.send(:training_afl_farmer_rows_for_participation,
+            month_name: context[:participation_month], fcoc_name: filter_param(:participation_fcoc, :training_fcoc))
+          status_counts = web.send(:training_participation_status_counts_from_rows, population)
+
+          rows = case status
+          when "unique" then unique_rows
+          when "training_unique", "total" then trained_rows
+          when "green", "yellow", "red", "pending"
+            population.select { |row| row[:status] == status }
+          end
+
+          {
+            success: true,
+            message: "Farmer Training Participation list fetched successfully.",
+            dashboard_type: "admin",
+            title: participation_list_title(status),
+            status: status,
+            selected_month: context[:participation_month_value],
+            selected_fcoc: filter_param(:participation_fcoc, :training_fcoc),
+            totals: {
+              total_training_farmer: web.send(:training_total_farmer_count_from_records, records),
+              total_unique_farmers_distinct: unique_rows.size,
+              training_unique_farmers: web.send(:training_unique_farmer_count_from_records, records),
+              green: status_counts[:green].to_i,
+              yellow: status_counts[:yellow].to_i,
+              red: status_counts[:red].to_i,
+              pending: status_counts[:pending].to_i
+            },
+            count: rows.size,
+            farmers: rows
+          }
+        end
+      end
+
+      def cache_admin_dashboard_payload(suffix)
+        Rails.cache.fetch(admin_dashboard_cache_key(suffix), expires_in: 10.minutes, race_condition_ttl: 30.seconds) { yield }
+      rescue StandardError => error
+        Rails.logger.warn("Admin dashboard cache skipped: #{error.class}: #{error.message}")
+        yield
+      end
+
+      def admin_dashboard_cache_key(suffix)
+        version_parts = [
+          cache_table_version(TargetMapping),
+          cache_table_version(Vrp),
+          cache_table_version(Afl),
+          cache_module_records_version(%w[
+            training-form
+            jeevika-jankar-bill-process
+            add-vrp
+            add-activity
+            add-activity-group
+            farmer-activity-master
+            add-ics
+            add-fco
+            add-village
+          ])
+        ]
+        filters = request.query_parameters.to_h.sort.to_h
+        user_key = current_api_user_payload.slice("id", "user_id", "username", "user_name", "user_type").sort.to_h
+        ["api-v1-admin-dashboard", suffix, user_key, filters, version_parts].to_json
+      end
+
+      def cache_table_version(model)
+        "#{model.table_name}:#{model.maximum(:updated_at).to_i}:#{model.maximum(:id).to_i}:#{model.count}"
+      rescue StandardError
+        "#{model.name}:unknown"
+      end
+
+      def cache_module_records_version(module_slugs)
+        scope = ModuleRecord.where(module_slug: module_slugs)
+        "module_records:#{scope.maximum(:updated_at).to_i}:#{scope.maximum(:id).to_i}:#{scope.count}"
+      rescue StandardError
+        "module_records:unknown"
+      end
+
       # Uses the same private calculation methods as ModulesController#dashboard.
       # This keeps the Android JSON totals identical without changing any web action/view.
       def exact_admin_dashboard_data
+        return @exact_admin_dashboard_data if defined?(@exact_admin_dashboard_data) && @exact_admin_dashboard_data
+
         web = ModulesController.new
         web.request = request
         web.instance_variable_set(:@current_app_user, current_api_user_payload)
@@ -295,7 +359,7 @@ module Api
           weekly_summary_totals: weekly_summary_totals,
           ics_rows: ics_rows
         }
-        {
+        @exact_admin_dashboard_data = {
           filters: admin_filter_payload.merge(main_activity: selected_main_activity, sub_activity: selected_sub_activity, fcoc: selected_fcoc, month: selected_month, post: selected_post),
           filter_options: options,
           sections: card_data,
@@ -669,10 +733,12 @@ module Api
       end
 
       def dashboard_participation_target_map_rows(web, context)
+        return context[:participation_target_map_rows] if context[:participation_target_map_rows]
+
         targets = web.send(:training_participation_targets_for_dashboard,
           month_name: dashboard_list_participation_month,
           fcoc_name: filter_param(:participation_fcoc, :training_fcoc))
-        web.send(:training_participation_target_map_rows, targets, month_name: dashboard_list_participation_month)
+        context[:participation_target_map_rows] = web.send(:training_participation_target_map_rows, targets, month_name: dashboard_list_participation_month)
       end
 
       def admin_bill_list_row(bill, vrps)

@@ -100,10 +100,19 @@ class VrpIcsMappingsController < ApplicationController
     emails = current_app_user_emails
     return [] if username.blank? && emails.blank?
 
-    ModuleRecord.where(module_slug: "new-user").select do |record|
-      record.data["user_name"].to_s == username ||
-        emails.include?(record.data["email"].to_s.strip.downcase)
-    end.map(&:id)
+    scope = ModuleRecord.where(module_slug: "new-user")
+    predicates = []
+    binds = []
+    if username.present?
+      predicates << "data::jsonb ->> 'user_name' = ?"
+      binds << username
+    end
+    if emails.any?
+      predicates << "LOWER(BTRIM(data::jsonb ->> 'email')) IN (?)"
+      binds << emails
+    end
+
+    scope.where(predicates.join(" OR "), *binds).pluck(:id)
   end
 
   def current_app_user_emails

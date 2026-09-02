@@ -142,6 +142,7 @@ class UsersController < ApplicationController
   def preload_user_form_module_records!
     @user_form_module_records = ModuleRecord
       .where(module_slug: FORM_OPTION_SLUGS)
+      .merge(active_module_records_scope_for_user_options)
       .order(created_at: :desc)
       .group_by(&:module_slug)
   end
@@ -155,7 +156,7 @@ class UsersController < ApplicationController
         .reverse
     end
 
-    ModuleRecord.where(module_slug: slugs).order(created_at: :desc).to_a
+    ModuleRecord.where(module_slug: slugs).merge(active_module_records_scope_for_user_options).order(created_at: :desc).to_a
   end
 
   def module_record_options(module_slug, field_key)
@@ -163,7 +164,6 @@ class UsersController < ApplicationController
 
     field_keys = Array(field_key)
     user_form_module_records(module_slug)
-      .select { |record| active_module_record?(record) }
       .filter_map do |record|
         if ["gram-panchayat-master", "lg-directory-list"].include?(module_slug)
           gram_panchayat_name_from_record(record)
@@ -178,7 +178,6 @@ class UsersController < ApplicationController
     return [] unless defined?(ModuleRecord) && ModuleRecord.table_exists?
 
     stakeholder_role_mappings = user_form_module_records("stakeholder-role")
-      .select { |record| active_module_record?(record) }
       .flat_map do |record|
         stakeholder_role = first_present_data(record, "stakeholder_role").to_s.strip
         parent_office = first_present_data(record, "parent_office", "parent_category", "office_name", "office").to_s.strip
@@ -205,7 +204,6 @@ class UsersController < ApplicationController
       end
 
     role_mappings = user_form_module_records("role-name")
-      .select { |record| active_module_record?(record) }
       .flat_map do |record|
         role = first_present_data(record, "role_name").to_s.strip
         mapping_labels_for_option(role, :role).map do |role_label|
@@ -225,7 +223,6 @@ class UsersController < ApplicationController
       end
 
     user_management_role_mappings = user_form_module_records("user-management-role")
-      .select { |record| active_module_record?(record) }
       .flat_map do |record|
         user_management_role = first_present_data(record, "user_management_role").to_s.strip
         mapping_labels_for_option(user_management_role, :user_management_role).map do |user_management_role_label|
@@ -244,7 +241,6 @@ class UsersController < ApplicationController
       end
 
     person_type_mappings = user_form_module_records("person-type")
-      .select { |record| active_module_record?(record) }
       .flat_map do |record|
         person_type = first_present_data(record, "person_type").to_s.strip
         mapping_labels_for_option(person_type, :person_type).map do |person_type_label|
@@ -300,11 +296,22 @@ class UsersController < ApplicationController
     return [] unless defined?(ModuleRecord) && ModuleRecord.table_exists?
 
     key = attribute.to_s
+    return [] unless key.match?(/\A[a-zA-Z0-9_]+\z/)
+
     ModuleRecord
       .where(module_slug: "new-user")
+      .merge(active_module_records_scope_for_user_options)
+      .where("LOWER(BTRIM(data::jsonb ->> '#{key}')) = ?", value.to_s.strip.downcase)
       .order(updated_at: :desc)
-      .select { |record| active_module_record?(record) && record.data[key].to_s.strip.casecmp(value.to_s.strip).zero? }
       .filter_map { |record| [record.data["first_name"], record.data["last_name"]].compact_blank.join(" ").presence || record.data["user_name"].presence }
+  end
+
+  def active_module_records_scope_for_user_options
+    ModuleRecord
+      .where.not("COALESCE(LOWER(BTRIM(data::jsonb ->> 'deleted')), '') IN (?)", %w[1 true yes deleted])
+      .where.not("COALESCE(LOWER(BTRIM(data::jsonb ->> 'is_deleted')), '') IN (?)", %w[1 true yes deleted])
+      .where.not("COALESCE(LOWER(BTRIM(data::jsonb ->> 'discarded')), '') IN (?)", %w[1 true yes deleted])
+      .where("COALESCE(BTRIM(data::jsonb ->> 'status'), '') = '' OR LOWER(BTRIM(data::jsonb ->> 'status')) = 'active'")
   end
 
   def first_present_data(record, *keys)
@@ -343,7 +350,6 @@ class UsersController < ApplicationController
     return [] unless defined?(ModuleRecord) && ModuleRecord.table_exists?
 
     user_form_module_records(["office-category-add", "office-mapping-add"])
-      .select { |record| active_module_record?(record) }
       .map do |record|
         office_category = first_present_data(record, "office_category", "category_name")
         office_name = first_present_data(record, "office_name", "office")
@@ -426,7 +432,6 @@ class UsersController < ApplicationController
 
   def active_records_for_location(module_slug)
     user_form_module_records(module_slug)
-      .select { |record| active_module_record?(record) }
   end
 
   def location_row(record, values)

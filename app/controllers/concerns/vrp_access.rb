@@ -28,14 +28,27 @@ module VrpAccess
     emails = current_app_user_emails
     return [] if username.blank? && emails.blank?
 
-    ModuleRecord.where(module_slug: "new-user").select do |record|
-      record.data["user_name"].to_s == username ||
-        emails.include?(record.data["email"].to_s.strip.downcase)
-    end.map(&:id)
+    legacy_user_ids_for_username_or_emails(username, emails)
   end
 
   def admin_user?
     current_app_user&.dig("user_type").to_s.casecmp("admin").zero?
+  end
+
+  def legacy_user_ids_for_username_or_emails(username, emails)
+    scope = ModuleRecord.where(module_slug: "new-user")
+    predicates = []
+    binds = []
+    if username.present?
+      predicates << "data::jsonb ->> 'user_name' = ?"
+      binds << username
+    end
+    if emails.any?
+      predicates << "LOWER(BTRIM(data::jsonb ->> 'email')) IN (?)"
+      binds << emails
+    end
+
+    predicates.any? ? scope.where(predicates.join(" OR "), *binds).pluck(:id) : []
   end
 
   def own_vrps

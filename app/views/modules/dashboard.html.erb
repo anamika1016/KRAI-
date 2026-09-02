@@ -112,7 +112,6 @@
     <section class="module-card" id="vrp_target_progress">
       <div class="module-card-header">
         <h2>Assigned Target Progress</h2>
-        <button type="button" class="list-btn export" data-export-table="vrp_target_progress_table">Export</button>
       </div>
 
       <div class="table-shell">
@@ -205,7 +204,6 @@
             <%= form.label :target_week, "Week" %>
             <%= form.select :target_week, options_for_select(target_week_options, selected_target_week), {}, onchange: "this.form.submit()" %>
           <% end %>
-          <button type="button" class="list-btn export" data-export-table="vrp_weekly_target_table">Export</button>
         </div>
       </div>
 
@@ -298,10 +296,6 @@
         <span>⌕</span>
         <input type="search" placeholder="Search dashboard" data-dashboard-search>
       </div>
-      <%= link_to "Export Excel",
-            dashboard_path(request.query_parameters.merge(format: :xlsx)),
-            class: "list-btn export",
-            title: "Current filters ke hisaab se dashboard data export" %>
     </div>
   </div>
 
@@ -471,7 +465,6 @@
         <% weekly_report_params[:training_fcoc] = weekly_fcoc_filter_value if weekly_fcoc_filter_value.present? %>
         <% weekly_report_params[:week] = weekly_week_filter_value if weekly_week_filter_value.present? %>
         <%= link_to "Open Weekly Report", weekly_activity_target_report_path(weekly_report_params), class: "list-btn active", data: { turbo: false, turbo_prefetch: false } %>
-        <%= link_to "Export Excel", weekly_activity_target_report_path(weekly_report_params.merge(format: :xlsx)), class: "list-btn export", data: { turbo: false, turbo_prefetch: false } %>
       </div>
     </div>
 

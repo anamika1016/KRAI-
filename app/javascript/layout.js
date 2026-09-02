@@ -5651,8 +5651,9 @@ function initDeferredLayoutPage() {
     const unboundSignatureShell = document.querySelector(
       "[data-agreement-signature-shell]:not([data-agreement-signature-bound])"
     );
+    const unboundLanguageButton = document.querySelector("[data-language-option]:not([data-language-bound='true'])");
 
-    if (window.__vrpLanguageSwitcherInitialized && !unboundSignatureShell) {
+    if (window.__vrpLanguageSwitcherInitialized && !unboundSignatureShell && !unboundLanguageButton) {
       const language = localStorage.getItem("vrp_language") || "en";
       if (language !== "en" && typeof window.__vrpApplyLanguage === "function") {
         window.__vrpApplyLanguage(language, document.querySelector(".app-main") || document.body);
@@ -6433,8 +6434,15 @@ function initDeferredLayoutPage() {
   initializeLanguageSwitcher();
 }
 
-document.addEventListener("turbo:load", () => {
+const bootLayoutPage = () => {
   initFastNavigation();
   initAflFarmerMapping();
   scheduleDeferredLayoutInit();
-});
+};
+
+document.addEventListener("turbo:load", bootLayoutPage);
+document.addEventListener("DOMContentLoaded", bootLayoutPage);
+
+if (document.readyState !== "loading") {
+  bootLayoutPage();
+}

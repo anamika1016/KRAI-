@@ -15,9 +15,6 @@
     <div>
       <h2>Farmer Training Participation Status (Automatic)</h2>
     </div>
-    <%= link_to "Export Excel",
-          farmer_training_participation_path(participation_path_params.merge(status: "total", format: :xlsx)),
-          class: "list-btn export" %>
   </div>
 
   <div class="training-participation-boxes compact">

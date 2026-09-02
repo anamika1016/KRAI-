@@ -280,10 +280,7 @@ module ApplicationHelper
   end
 
   def compute_allowed_sidebar_keys
-    access_records = ModuleRecord
-      .where(module_slug: "access-control")
-      .order(created_at: :desc)
-      .select { |record| record_data(record)["status"].blank? || record_data(record)["status"].to_s.casecmp("Active").zero? }
+    access_records = active_sidebar_access_records
       .select do |record|
         data = record_data(record)
         record_stakeholder = data["stakeholder_name"].presence || data["stakeholder"]
@@ -311,6 +308,17 @@ module ApplicationHelper
       access_values(data["sub_module_names"].presence || data["sub_module_name"])
         .flat_map { |name| sidebar_access_name_keys(name) }
     end.uniq
+  end
+
+  def active_sidebar_access_records
+    @active_sidebar_access_records ||= ModuleRecord
+      .where(module_slug: "access-control")
+      .where.not("COALESCE(LOWER(BTRIM(data::jsonb ->> 'deleted')), '') IN (?)", %w[1 true yes deleted])
+      .where.not("COALESCE(LOWER(BTRIM(data::jsonb ->> 'is_deleted')), '') IN (?)", %w[1 true yes deleted])
+      .where.not("COALESCE(LOWER(BTRIM(data::jsonb ->> 'discarded')), '') IN (?)", %w[1 true yes deleted])
+      .where("COALESCE(BTRIM(data::jsonb ->> 'status'), '') = '' OR LOWER(BTRIM(data::jsonb ->> 'status')) = 'active'")
+      .order(created_at: :desc)
+      .to_a
   end
 
   def sidebar_access_name_keys(name)

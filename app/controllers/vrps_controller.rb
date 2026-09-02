@@ -321,10 +321,7 @@ class VrpsController < ApplicationController
     emails = current_app_user_emails
     return [] if username.blank? && emails.blank?
 
-    ModuleRecord.where(module_slug: "new-user").select do |record|
-      record.data["user_name"].to_s == username ||
-        emails.include?(record.data["email"].to_s.strip.downcase)
-    end.map(&:id)
+    legacy_user_ids_for_username_or_emails(username, emails)
   end
 
   def admin_user?
@@ -1056,11 +1053,31 @@ class VrpsController < ApplicationController
   end
 
   def approval_history_records_by_vrp_id
-    @approval_history_records_by_vrp_id ||= ModuleRecord
-      .where(module_slug: "vrp-approval-history")
+    @approval_history_records_by_vrp_id ||= begin
+      scope = ModuleRecord.where(module_slug: "vrp-approval-history")
+      vrp_ids = approval_candidate_vrps.map { |vrp| vrp.id.to_s }
+      scope = scope.where("data::jsonb ->> 'vrp_id' IN (?)", vrp_ids) if vrp_ids.any?
+      scope
       .order(created_at: :asc)
       .to_a
       .group_by { |record| record.data["vrp_id"].to_s }
+    end
+  end
+
+  def legacy_user_ids_for_username_or_emails(username, emails)
+    scope = ModuleRecord.where(module_slug: "new-user")
+    predicates = []
+    binds = []
+    if username.present?
+      predicates << "data::jsonb ->> 'user_name' = ?"
+      binds << username
+    end
+    if emails.any?
+      predicates << "LOWER(BTRIM(data::jsonb ->> 'email')) IN (?)"
+      binds << emails
+    end
+
+    predicates.any? ? scope.where(predicates.join(" OR "), *binds).pluck(:id) : []
   end
 
   def approval_new_user_records
