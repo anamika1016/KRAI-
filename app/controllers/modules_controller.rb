@@ -3037,7 +3037,8 @@ class ModulesController < ApplicationController
       dashboard_group_card("Jeevika Jankar Billing", billing_items, style: "billing")
     ]
 
-    fco_summary_items = %w[Sausar Turekela].map do |fco_name|
+    fco_names = %w[Sausar Turekela]
+    fco_summary_items = fco_names.map do |fco_name|
       matching_vrps = vrps.select { |vrp| normalize_dashboard_text(vrp.fcoc).include?(normalize_dashboard_text(fco_name)) }
       male_count = matching_vrps.count { |vrp| normalize_dashboard_text(vrp.gender) == "male" }
       female_count = matching_vrps.count { |vrp| normalize_dashboard_text(vrp.gender) == "female" }
@@ -3048,27 +3049,112 @@ class ModulesController < ApplicationController
       }
     end
     cards << dashboard_group_card("FCO-wise Jeevika Jankar", fco_summary_items, style: "fco")
+    cards << dashboard_group_card("FCO-wise JJ Requirement", fco_names.map { |fco_name| dashboard_jj_requirement_item(fco_name, vrps, defined?(@filtered_targets) ? @filtered_targets : nil) }, style: "fco")
 
     cards
   end
 
   def dashboard_summary_cards(targets)
     targets = Array(targets)
-    village_count = Array(targets).map { |target| [target.village_id.to_s.strip, target.village_name.to_s.strip.downcase] }
-      .reject { |id, name| id.blank? && name.blank? }
-      .uniq
-      .size
+    village_count = dashboard_distinct_target_array_count(targets, :village_id)
     activity_entries = dashboard_summary_activity_entries(targets)
     main_activity_count = activity_entries.filter_map { |entry| entry[:main_activity_key].presence }.uniq.size
     sub_activity_count = activity_entries.filter_map { |entry| entry[:sub_activity_key].presence }.uniq.size
-    targeted_farmer_count = targets.flat_map { |target| target_farmer_ids(target) }.map(&:to_s).reject(&:blank?).uniq.size
+    ics_count = dashboard_distinct_target_scalar_count(targets, :ics_id)
+    targeted_farmer_count = dashboard_distinct_target_array_count(targets, :afl_ids)
 
     [
       dashboard_summary_card("Total Mapped Villages", village_count, "Filtered mapped villages", target_mappings_path(dashboard_summary_target_params), dashboard_path(dashboard_summary_target_params.merge(format: :xlsx))),
-      dashboard_summary_card("Targeted Farmers", targeted_farmer_count, "Unique targeted farmers", farmer_training_participation_path(dashboard_summary_participation_params(status: "unique")), farmer_training_participation_path(dashboard_summary_participation_params(status: "unique", format: :xlsx))),
+      dashboard_summary_card("Total Mapped Farmers", targeted_farmer_count, "Unique mapped farmers", farmer_training_participation_path(dashboard_summary_participation_params(status: "unique")), farmer_training_participation_path(dashboard_summary_participation_params(status: "unique", format: :xlsx))),
+      dashboard_summary_card("ICS Count", ics_count, "Filtered mapped ICS", target_mappings_path(dashboard_summary_target_params), dashboard_path(dashboard_summary_target_params.merge(format: :xlsx))),
       dashboard_summary_card("Total Mapped Main Activities", main_activity_count, "Filtered main activities", target_mappings_path(dashboard_summary_target_params), dashboard_path(dashboard_summary_target_params.merge(format: :xlsx))),
       dashboard_summary_card("Total Mapped Sub-Activities", sub_activity_count, "Filtered sub-activities", target_mappings_path(dashboard_summary_target_params), dashboard_path(dashboard_summary_target_params.merge(format: :xlsx)))
     ]
+  end
+
+  def dashboard_jj_requirement_item(fco_name, vrps, targets = nil)
+    matching_vrps = Array(vrps).select { |vrp| normalize_dashboard_text(vrp.fcoc).include?(normalize_dashboard_text(fco_name)) }
+    active_count = matching_vrps.count { |vrp| dashboard_vrp_active_for_requirement?(vrp) }
+    required_count = dashboard_distinct_target_array_count_for_fco(:village_id, fco_name, targets: targets)
+    vacant_count = [required_count - active_count, 0].max
+
+    {
+      title: fco_name,
+      value: "Req #{required_count} · Active #{active_count} · Vacant #{vacant_count}",
+      path: vrps_path(fcoc: fco_name)
+    }
+  end
+
+  def dashboard_vrp_active_for_requirement?(vrp)
+    return false unless vrp
+    return false if vrp.respond_to?(:is_active) && !vrp.is_active
+    return false if vrp.respond_to?(:is_deleted) && vrp.is_deleted
+
+    dashboard_approved_vrps([vrp]).any?
+  end
+
+  def dashboard_distinct_target_array_count_for_fco(column_name, fco_name, targets: nil)
+    conditions = []
+    binds = {}
+    target_ids = Array(targets).filter_map { |target| target.id if target.respond_to?(:id) }.uniq
+    if targets
+      return 0 if target_ids.blank?
+
+      conditions << "t.id IN (:target_ids)"
+      binds[:target_ids] = target_ids
+    end
+    if fco_name.present?
+      normalized_fco = normalize_dashboard_text(fco_name)
+      conditions << "(LOWER(BTRIM(t.fco_name)) LIKE :fco_name OR LOWER(BTRIM(v.fcoc)) LIKE :fco_name)"
+      binds[:fco_name] = "%#{ActiveRecord::Base.sanitize_sql_like(normalized_fco)}%"
+    end
+    dashboard_distinct_target_array_count_sql(column_name, conditions, binds)
+  end
+
+  def dashboard_distinct_target_array_count(targets, column_name)
+    target_ids = Array(targets).filter_map { |target| target.id if target.respond_to?(:id) }.uniq
+    return 0 if target_ids.blank?
+
+    dashboard_distinct_target_array_count_sql(column_name, ["t.id IN (:target_ids)"], target_ids: target_ids)
+  end
+
+  def dashboard_distinct_target_scalar_count(targets, column_name)
+    target_ids = Array(targets).filter_map { |target| target.id if target.respond_to?(:id) }.uniq
+    return 0 if target_ids.blank?
+
+    sql = <<~SQL.squish
+      SELECT COUNT(DISTINCT NULLIF(BTRIM(t.#{column_name}), ''))
+      FROM target_mappings t
+      WHERE t.id IN (:target_ids)
+    SQL
+    ActiveRecord::Base.connection.select_value(
+      ActiveRecord::Base.send(:sanitize_sql_array, [sql, { target_ids: target_ids }])
+    ).to_i
+  end
+
+  def dashboard_distinct_target_array_count_sql(column_name, conditions, binds)
+    column_name = column_name.to_s
+    return 0 unless %w[village_id afl_ids].include?(column_name)
+
+    where_sql = Array(conditions).presence&.join(" AND ") || "1=1"
+    sql = <<~SQL.squish
+      SELECT COUNT(DISTINCT NULLIF(BTRIM(j.value), ''))
+      FROM target_mappings t
+      LEFT JOIN vrps v ON v.id = t.vrp_id
+      CROSS JOIN LATERAL jsonb_array_elements_text(
+        CASE
+          WHEN BTRIM(COALESCE(t.#{column_name}, '')) LIKE '[%' THEN t.#{column_name}::jsonb
+          ELSE jsonb_build_array(t.#{column_name})
+        END
+      ) AS j(value)
+      WHERE #{where_sql}
+    SQL
+    ActiveRecord::Base.connection.select_value(
+      ActiveRecord::Base.send(:sanitize_sql_array, [sql, binds])
+    ).to_i
+  rescue StandardError => e
+    Rails.logger.warn("Dashboard distinct #{column_name} count failed: #{e.class} - #{e.message}")
+    0
   end
 
   def dashboard_summary_farmer_status_counts(targets)
@@ -3285,16 +3371,16 @@ class ModulesController < ApplicationController
       },
       {
         status: "green",
-        title: "1 Training",
+        title: "1+ Trainings",
         value: completed_quantity.to_i,
-        caption: "Farmer attended exactly 1 training.",
+        caption: "Farmer attended more than 1 training.",
         path: weekly_activity_target_report_path(filter_params.merge(status: "green"))
       },
       {
         status: "yellow",
-        title: "2+ Trainings",
+        title: "Only 1 Training",
         value: partial_quantity.to_i,
-        caption: "Farmer attended 2 or more trainings.",
+        caption: "Farmer attended only 1 training.",
         path: weekly_activity_target_report_path(filter_params.merge(status: "yellow"))
       },
       {
@@ -3960,9 +4046,9 @@ class ModulesController < ApplicationController
       if attendance_count.zero?
         counts[:red] += 1
       elsif attendance_count == 1
-        counts[:green] += 1
-      else
         counts[:yellow] += 1
+      else
+        counts[:green] += 1
       end
     end
     counts
@@ -4798,16 +4884,16 @@ class ModulesController < ApplicationController
 
   def training_participation_status_for_activity_progress(attendance_count, completed_count, assigned_count, pending_available: false)
     attendance_count = attendance_count.to_i
-    return "yellow" if attendance_count >= 2
-    return "green" if attendance_count == 1
+    return "green" if attendance_count >= 2
+    return "yellow" if attendance_count == 1
 
     "red"
   end
 
   def training_participation_status_for_count(count, pending_available: false)
     count = count.to_i
-    return "yellow" if count >= 2
-    return "green" if count == 1
+    return "green" if count >= 2
+    return "yellow" if count == 1
 
     "red"
   end
@@ -4823,8 +4909,8 @@ class ModulesController < ApplicationController
       "unique" => "Mapped Farmer",
       "training_unique" => "Total Complete Farmers",
       "completed_map" => "Multiple Total Complete Training",
-      "green" => "1 Training",
-      "yellow" => "2+ Trainings",
+      "green" => "1+ Trainings",
+      "yellow" => "Only 1 Training",
       "red" => "No Training",
       "pending" => "Pending",
       "pending_achievement" => "Pending Achievement",
@@ -4838,8 +4924,8 @@ class ModulesController < ApplicationController
       "unique" => "Unique mapped farmers for the selected filters.",
       "training_unique" => "Mapped farmers with at least one completed training.",
       "completed_map" => "Multiple total target map me completed training count.",
-      "green" => "Farmer attended exactly 1 training.",
-      "yellow" => "Farmer attended 2 or more trainings.",
+      "green" => "Farmer attended more than 1 training.",
+      "yellow" => "Farmer attended only 1 training.",
       "red" => "Farmer not attended training. Missing training.",
       "pending" => "Month open and farmer training is still pending.",
       "pending_achievement" => "Red and yellow farmer achievement rows."
