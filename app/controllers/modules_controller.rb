@@ -3067,12 +3067,67 @@ class ModulesController < ApplicationController
     targeted_farmer_count = dashboard_distinct_target_array_count(targets, :afl_ids)
 
     [
+      dashboard_summary_card("Total Villages Count", dashboard_total_afl_village_count, "Total AFL villages for selected FCO/ICS", target_mappings_path(dashboard_summary_target_params), dashboard_path(dashboard_summary_target_params.merge(format: :xlsx))),
+      dashboard_summary_card("Total Farmer Count", dashboard_total_afl_farmer_count, "Total AFL farmers for selected FCO/ICS", farmer_training_participation_path(dashboard_summary_participation_params(status: "unique")), farmer_training_participation_path(dashboard_summary_participation_params(status: "unique", format: :xlsx))),
+      dashboard_summary_card("Total ICS Count", dashboard_total_afl_ics_count, "Total AFL ICS for selected FCO/ICS", target_mappings_path(dashboard_summary_target_params), dashboard_path(dashboard_summary_target_params.merge(format: :xlsx))),
       dashboard_summary_card("Total Mapped Villages", village_count, "Filtered mapped villages", target_mappings_path(dashboard_summary_target_params), dashboard_path(dashboard_summary_target_params.merge(format: :xlsx))),
       dashboard_summary_card("Total Mapped Farmers", targeted_farmer_count, "Unique mapped farmers", farmer_training_participation_path(dashboard_summary_participation_params(status: "unique")), farmer_training_participation_path(dashboard_summary_participation_params(status: "unique", format: :xlsx))),
       dashboard_summary_card("ICS Count", ics_count, "Filtered mapped ICS", target_mappings_path(dashboard_summary_target_params), dashboard_path(dashboard_summary_target_params.merge(format: :xlsx))),
       dashboard_summary_card("Total Mapped Main Activities", main_activity_count, "Filtered main activities", target_mappings_path(dashboard_summary_target_params), dashboard_path(dashboard_summary_target_params.merge(format: :xlsx))),
       dashboard_summary_card("Total Mapped Sub-Activities", sub_activity_count, "Filtered sub-activities", target_mappings_path(dashboard_summary_target_params), dashboard_path(dashboard_summary_target_params.merge(format: :xlsx)))
     ]
+  end
+
+  def dashboard_total_afl_village_count
+    dashboard_total_afl_distinct_count(:village)
+  end
+
+  def dashboard_total_afl_farmer_count
+    dashboard_total_afl_distinct_count(:farmer)
+  end
+
+  def dashboard_total_afl_ics_count
+    dashboard_total_afl_distinct_count(:ics)
+  end
+
+  def dashboard_total_afl_distinct_count(kind)
+    return 0 unless model_ready?(:Afl)
+
+    scope = dashboard_total_afl_scope
+    case kind
+    when :village
+      scope.distinct.count("NULLIF(BTRIM(COALESCE(village_id, village_name)), '')")
+    when :ics
+      scope.distinct.count("NULLIF(BTRIM(COALESCE(ics_id, ics_name)), '')")
+    else
+      scope.distinct.count(:id)
+    end
+  rescue StandardError => e
+    Rails.logger.warn("Dashboard total AFL #{kind} count failed: #{e.class} - #{e.message}")
+    0
+  end
+
+  def dashboard_total_afl_scope
+    scope = Afl.where.not(id: nil)
+    fcoc_value = @dashboard_fcoc_filter_value.presence || dashboard_filter_param(:fcoc, :fco)
+    if fcoc_value.present?
+      fco_values = training_fcoc_filter_values(fcoc_value)
+      scope = scope.where(
+        "LOWER(BTRIM(COALESCE(fco, ''))) IN (:fco_values) OR LOWER(BTRIM(COALESCE(fco_id, ''))) IN (:fco_values)",
+        fco_values: fco_values
+      )
+    end
+
+    ics_value = dashboard_filter_param(:ics, :ics_name)
+    if ics_value.present?
+      normalized_ics = normalize_dashboard_text(ics_value)
+      scope = scope.where(
+        "LOWER(BTRIM(COALESCE(ics_name, ''))) = :ics OR LOWER(BTRIM(COALESCE(ics_id, ''))) = :ics",
+        ics: normalized_ics
+      )
+    end
+
+    scope
   end
 
   def dashboard_jj_requirement_item(fco_name, vrps, targets = nil)
