@@ -3901,7 +3901,7 @@ class ModulesController < ApplicationController
       details = attendance_details[membership_key] || { attendance_count: 0, training_dates: "", completed_activity_keys: [] }
       assigned_activity_count = membership[:assigned_activity_count].to_i
       completed_activity_count = [Array(details[:completed_activity_keys]).size, assigned_activity_count].min
-      attendance_count = details[:attendance_count].to_i
+      attendance_count = training_participation_effective_attendance_count(details[:attendance_count], completed_activity_count)
       status = training_participation_status_for_activity_progress(
         attendance_count,
         completed_activity_count,
@@ -3979,7 +3979,7 @@ class ModulesController < ApplicationController
     vrp_version = model_ready?(:Vrp) ? Vrp.maximum(:updated_at)&.utc&.to_i : nil
 
     [
-      "dashboard/training-participation-counts/v3",
+      "dashboard/training-participation-counts/v4",
       normalize_dashboard_text(month_name),
       normalize_dashboard_text(fcoc_name),
       scope_signature,
@@ -4050,8 +4050,8 @@ class ModulesController < ApplicationController
     }
     memberships.each do |membership_key, membership|
       assigned_count = membership[:assigned_activity_count].to_i
-      attendance_count = attendance_record_ids[membership_key].size
       completed_count = [completed_activity_keys[membership_key].size, assigned_count].min
+      attendance_count = training_participation_effective_attendance_count(attendance_record_ids[membership_key].size, completed_count)
       counts[:completed_target_map_total] += completed_count
 
       if attendance_count.zero?
@@ -4560,8 +4560,8 @@ class ModulesController < ApplicationController
       farmer_id = membership[:farmer_id]
       farmer = farmers_by_id[farmer_id]
       details = attendance_details[membership_key] || { attendance_count: 0, training_dates: [] }
-      attendance_count = details[:attendance_count].to_i
       completed_activity_count = details.fetch(:completed_activity_count, 0).to_i
+      attendance_count = training_participation_effective_attendance_count(details[:attendance_count], completed_activity_count)
       status = training_participation_status_for_activity_progress(
         attendance_count,
         completed_activity_count,
@@ -4677,8 +4677,8 @@ class ModulesController < ApplicationController
           completed_keys = Array(details[:completed_activity_keys])
           farmer = farmers_by_id[farmer_id.to_s]
           assigned_count = memberships.dig(membership_key, :assigned_activity_count).to_i
-          attendance_count = details[:attendance_count].to_i
           completed_count = [completed_keys.size, assigned_count].min
+          attendance_count = training_participation_effective_attendance_count(details[:attendance_count], completed_count)
           completed = completed_keys.include?(activity_key)
           status = if completed_count >= assigned_count && assigned_count.positive?
             "green"
@@ -4898,6 +4898,10 @@ class ModulesController < ApplicationController
     return "yellow" if attendance_count == 1
 
     "red"
+  end
+
+  def training_participation_effective_attendance_count(attendance_count, completed_activity_count)
+    [attendance_count.to_i, completed_activity_count.to_i].max
   end
 
   def training_participation_status_for_count(count, pending_available: false)
