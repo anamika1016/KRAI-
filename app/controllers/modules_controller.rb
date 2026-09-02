@@ -848,7 +848,7 @@ class ModulesController < ApplicationController
       week_number: @weekly_target_week_filter_value,
       participation_counts: participation_dashboard_counts
     )
-    @dashboard_summary_cards = dashboard_summary_cards(t_scope)
+    @dashboard_summary_cards = dashboard_summary_cards(training_participation_active_vrp_targets(t_scope))
     @dashboard_cards = dashboard_cards
     @dashboard_generated_at = Time.current
 
@@ -3014,7 +3014,7 @@ class ModulesController < ApplicationController
     approved_vrps = dashboard_approved_vrps(vrps).size
     pending_approvals = dashboard_pending_approval_vrps(vrps).size
 
-    bill_records = defined?(@filtered_bills) ? @filtered_bills : ModuleRecord.where(module_slug: "jeevika-jankar-bill-process").to_a
+    bill_records = ModuleRecord.where(module_slug: "jeevika-jankar-bill-process").to_a
     bill_records = bill_records.select { |record| jeevika_jankar_bill_record_visible?(record) } unless admin_dashboard_user?
     approved_bills = bill_records.count { |r| dashboard_bill_approved?(r) }
     pending_bills = bill_records.count { |r| dashboard_bill_pending?(r) }
@@ -3039,7 +3039,10 @@ class ModulesController < ApplicationController
 
     fco_names = %w[Sausar Turekela]
     fco_summary_items = fco_names.map do |fco_name|
-      matching_vrps = vrps.select { |vrp| normalize_dashboard_text(vrp.fcoc).include?(normalize_dashboard_text(fco_name)) }
+      matching_vrps = vrps.select do |vrp|
+        normalize_dashboard_text(vrp.fcoc).include?(normalize_dashboard_text(fco_name)) &&
+          dashboard_vrp_active_for_requirement?(vrp)
+      end
       male_count = matching_vrps.count { |vrp| normalize_dashboard_text(vrp.gender) == "male" }
       female_count = matching_vrps.count { |vrp| normalize_dashboard_text(vrp.gender) == "female" }
       {
@@ -3744,6 +3747,7 @@ class ModulesController < ApplicationController
     return @training_participation_targets_cache[cache_key] if @training_participation_targets_cache.key?(cache_key)
 
     targets = dashboard_participation_targets
+    targets = training_participation_active_vrp_targets(targets)
     targets = dashboard_targets_for_month(targets, month_name) if month_name.present?
     if fcoc_name.present?
       targets = Array(targets).select { |target| training_target_matches_fcoc?(target, fcoc_name) }
@@ -3753,6 +3757,13 @@ class ModulesController < ApplicationController
       targets = Array(targets).select { |target| normalize_dashboard_text(target.activity_name) == normalized_sub_activity }
     end
     @training_participation_targets_cache[cache_key] = targets
+  end
+
+  def training_participation_active_vrp_targets(targets)
+    Array(targets).select do |target|
+      vrp = target.respond_to?(:vrp) ? target.vrp : nil
+      dashboard_vrp_active_for_requirement?(vrp)
+    end
   end
 
   def dashboard_training_participation_records(month_name: nil, sub_activity_name: nil, fcoc_name: nil)
@@ -3968,7 +3979,7 @@ class ModulesController < ApplicationController
     vrp_version = model_ready?(:Vrp) ? Vrp.maximum(:updated_at)&.utc&.to_i : nil
 
     [
-      "dashboard/training-participation-counts/v2",
+      "dashboard/training-participation-counts/v3",
       normalize_dashboard_text(month_name),
       normalize_dashboard_text(fcoc_name),
       scope_signature,
@@ -4000,7 +4011,7 @@ class ModulesController < ApplicationController
     end
 
     completed_activity_keys = Hash.new { |hash, key| hash[key] = [] }
-    attendance_counts = Hash.new(0)
+    attendance_record_ids = Hash.new { |hash, key| hash[key] = Set.new }
     target_sets = Array(targets).filter_map do |target|
       farmer_ids = training_participation_target_farmer_ids(target)
       farmer_ids.blank? ? nil : [target, farmer_ids]
@@ -4020,7 +4031,7 @@ class ModulesController < ApplicationController
         (selected_farmer_ids & farmer_ids).each do |farmer_id|
           farmer_key = training_participation_target_farmer_key(farmer_id)
           membership_key = training_participation_membership_key(farmer_key, target.month_name)
-          attendance_counts[membership_key] += 1
+          attendance_record_ids[membership_key] << record.id.to_s
           completed_activity_keys[membership_key] |= training_record_completed_activity_keys_for_target(record, target)
         end
       end
@@ -4039,7 +4050,7 @@ class ModulesController < ApplicationController
     }
     memberships.each do |membership_key, membership|
       assigned_count = membership[:assigned_activity_count].to_i
-      attendance_count = attendance_counts[membership_key].to_i
+      attendance_count = attendance_record_ids[membership_key].size
       completed_count = [completed_activity_keys[membership_key].size, assigned_count].min
       counts[:completed_target_map_total] += completed_count
 
@@ -4772,17 +4783,16 @@ class ModulesController < ApplicationController
     records.each_with_object(Hash.new { |hash, key| hash[key] = { attendance_count: 0, training_dates: [], completed_activity_keys: [] } }) do |record, details|
         selected_farmer_ids = training_record_selected_farmer_ids(record)
         candidate_target_sets = selected_farmer_ids.flat_map { |farmer_id| target_sets_by_farmer_id[farmer_id.to_s] }.uniq
-        matching_membership_keys = candidate_target_sets.each_with_object([]) do |(target, farmer_ids), keys|
+        matching_membership_keys = candidate_target_sets.each_with_object({}) do |(target, farmer_ids), keys|
           next unless training_record_matches_dashboard_target?(record, target, farmer_ids)
 
           (selected_farmer_ids & farmer_ids).each do |farmer_id|
             unique_farmer_key = training_participation_target_farmer_key(farmer_id)
-            keys << [
-              training_participation_membership_key(unique_farmer_key, target.month_name),
-              training_record_completed_activity_keys_for_target(record, target)
-            ]
+            membership_key = training_participation_membership_key(unique_farmer_key, target.month_name)
+            keys[membership_key] ||= []
+            keys[membership_key] |= training_record_completed_activity_keys_for_target(record, target)
           end
-        end.uniq
+        end
         next if matching_membership_keys.blank?
 
         training_date = bill_display_date(training_summary(record)[:training_date]).presence || bill_display_date(record.created_at)
@@ -6103,7 +6113,7 @@ class ModulesController < ApplicationController
     return [] unless model_ready?(:ModuleRecord)
 
     current_labels = current_dashboard_user_labels
-    return [] if current_labels.blank?
+    return [] if current_labels.blank? && !admin_dashboard_user?
 
     rows = []
     ModuleRecord
@@ -6116,7 +6126,7 @@ class ModulesController < ApplicationController
           level_2_user = mapping["level_2_user"].to_s.strip
           level_3_users = collapsed_hierarchy_users(mapping["level_3_users"])
 
-          if dashboard_user_label_matches?(level_1_user, current_labels)
+          if admin_dashboard_user? || dashboard_user_label_matches?(level_1_user, current_labels)
             rows << [level_2_user, level_1_user, "Level 2"] if level_2_user.present?
             level_3_users.each do |level_3_user|
               rows << [level_3_user, level_2_user.presence || level_1_user, "Level 3"]
