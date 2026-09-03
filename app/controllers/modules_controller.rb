@@ -3194,21 +3194,26 @@ class ModulesController < ApplicationController
   def dashboard_training_method_counts
     return training_method_count_defaults unless model_ready?(:TargetMapping) && model_ready?(:ModuleRecord)
 
+    month_value = @participation_selected_month.presence || @dashboard_month_filter_value.presence
+    fcoc_value = @participation_fcoc_filter_value.presence || @dashboard_fcoc_filter_value.presence || dashboard_filter_param(:fcoc, :fco)
+    selected_vrp_id = dashboard_filter_param(:vrp_id)
     target_conditions = ["j.value <> ''"]
     target_binds = {}
-    if @dashboard_month_filter_value.present?
+    if month_value.present?
       target_conditions << "LOWER(BTRIM(t.month_name)) = :target_month"
-      target_binds[:target_month] = normalize_dashboard_text(@dashboard_month_filter_value)
+      target_binds[:target_month] = normalize_dashboard_text(month_value)
     end
-    if @dashboard_fcoc_filter_value.present?
-      fco_values = training_fcoc_filter_values(@dashboard_fcoc_filter_value)
+    if fcoc_value.present?
+      fco_values = training_fcoc_filter_values(fcoc_value)
       target_conditions << "(LOWER(BTRIM(t.fco_name)) IN (:fco_values) OR LOWER(BTRIM(t.fco_id)) IN (:fco_values) OR LOWER(BTRIM(v.fcoc)) IN (:fco_values))"
       target_binds[:fco_values] = fco_values
     end
-    selected_vrp_id = dashboard_filter_param(:vrp_id)
     if selected_vrp_id.present?
       target_conditions << "t.vrp_id = :target_vrp_id"
       target_binds[:target_vrp_id] = selected_vrp_id.to_i
+    elsif vrp_login_user? && current_vrp_record.present?
+      target_conditions << "t.vrp_id = :target_vrp_id"
+      target_binds[:target_vrp_id] = current_vrp_record.id
     end
     if dashboard_filter_param(:ics, :ics_name).present?
       target_conditions << "(LOWER(BTRIM(t.ics_name)) = :target_ics OR LOWER(BTRIM(t.ics_id)) = :target_ics)"
@@ -3217,13 +3222,19 @@ class ModulesController < ApplicationController
 
     training_conditions = ["mr.module_slug = 'training-form'", "sf.farmer_id <> ''"]
     training_binds = {}
-    if @dashboard_month_filter_value.present?
+    if month_value.present?
       training_conditions << "LOWER(COALESCE(mr.data::jsonb ->> 'month', '')) = :training_month"
-      training_binds[:training_month] = normalize_dashboard_text(@dashboard_month_filter_value)
+      training_binds[:training_month] = normalize_dashboard_text(month_value)
     end
     if selected_vrp_id.present?
       training_conditions << "mr.data::jsonb ->> 'created_by_id' = :created_by_id"
       training_binds[:created_by_id] = selected_vrp_id.to_s
+    elsif vrp_login_user? && current_vrp_record.present?
+      training_conditions << "mr.data::jsonb ->> 'created_by_id' = :created_by_id"
+      training_binds[:created_by_id] = current_vrp_record.id.to_s
+    elsif dashboard_agronomics_login? && dashboard_current_app_user_ids.any?
+      training_conditions << "COALESCE(mr.data::jsonb ->> 'created_by_id', '') IN (:created_by_ids)"
+      training_binds[:created_by_ids] = dashboard_current_app_user_ids.map(&:to_s)
     end
 
     sql = <<~SQL.squish
@@ -4330,7 +4341,11 @@ class ModulesController < ApplicationController
     return nil unless model_ready?(:TargetMapping) && model_ready?(:ModuleRecord)
 
     target_conditions, target_binds = dashboard_summary_target_sql_filters
-    target_binds = target_binds.merge(summary_month: normalize_dashboard_text(month_name)) if month_name.present?
+    if month_name.present?
+      target_conditions.reject! { |condition| condition.include?("LOWER(BTRIM(t.month_name))") }
+      target_conditions << "LOWER(BTRIM(t.month_name)) = :participation_month"
+      target_binds[:participation_month] = normalize_dashboard_text(month_name)
+    end
 
     if fcoc_name.present?
       fco_values = training_fcoc_filter_values(fcoc_name)

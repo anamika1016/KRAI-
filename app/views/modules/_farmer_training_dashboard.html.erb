@@ -19,11 +19,6 @@
 
   <div class="training-participation-boxes compact">
     <% if status_cards.any? %>
-      <div class="training-participation-box total">
-        <span>Total registered farmer</span>
-        <strong><%= (@training_registered_farmer_count || @training_unique_farmer_count).to_i %></strong>
-        <small>Registered AFL farmers for the selected filters.</small>
-      </div>
       <%= link_to farmer_training_participation_path(unique_status_path_params), class: "training-participation-box total", data: { dashboard_card: true } do %>
         <span>Mapped Farmer</span>
         <strong><%= @training_mapped_farmer_count.to_i %></strong>
