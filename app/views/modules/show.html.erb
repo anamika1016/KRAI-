@@ -1685,11 +1685,12 @@
     <% default_bill_month = Date.current.prev_month.strftime("%B") %>
     <% bill_months << default_bill_month unless bill_months.include?(default_bill_month) %>
     <% bill_months.sort_by! { |month| Date::MONTHNAMES.index { |name| name.to_s.casecmp(month.to_s).zero? } || 99 } %>
-    <% selected_bill_month = params[:bill_month].presence || default_bill_month %>
     <% selected_bill_status = params[:bill_status].presence_in(["pending", "final-approved"]) || "pending" %>
     <% selected_record_state = params[:record_state].presence_in(["Active", "Inactive"]) %>
+    <% dashboard_status_link = params[:bill_status].present? || params[:record_state].present? %>
+    <% selected_bill_month = params[:bill_month].presence || (dashboard_status_link ? nil : default_bill_month) %>
     <% if @jeevika_bill_user_filters || params[:bill_month].present? || params[:bill_status].present? || params[:record_state].present? %>
-      <% bill_rows = bill_rows.select { |row| row[:bill_month].to_s.casecmp(selected_bill_month).zero? } %>
+      <% bill_rows = bill_rows.select { |row| selected_bill_month.blank? || row[:bill_month].to_s.casecmp(selected_bill_month).zero? } %>
       <% bill_rows = bill_rows.select { |row| selected_bill_status == "final-approved" ? row[:status].to_s.downcase.include?("final approved") : (row[:current_approver] && row[:status].to_s.downcase.include?("pending")) } %>
       <% bill_rows = bill_rows.select { |row| selected_record_state.blank? || row[:record_state].to_s.casecmp(selected_record_state).zero? } %>
     <% end %>
@@ -1714,7 +1715,7 @@
             <span>Bill Month</span>
             <select name="bill_month" data-bill-month-filter onchange="this.form.requestSubmit()">
               <% bill_months.each do |month| %>
-                <option value="<%= month %>" <%= "selected" if month.casecmp(selected_bill_month).zero? %>><%= month %></option>
+                <option value="<%= month %>" <%= "selected" if selected_bill_month.present? && month.casecmp(selected_bill_month).zero? %>><%= month %></option>
               <% end %>
             </select>
           </label>

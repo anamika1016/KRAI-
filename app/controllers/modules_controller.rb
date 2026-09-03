@@ -716,10 +716,6 @@ class ModulesController < ApplicationController
     if dashboard_filters_active || module_cluster_incharge_login?
       bill_scope = filtered_vrp_ids.any? ? bill_scope.where("data::jsonb ->> 'select_vrp' IN (?)", filtered_vrp_ids) : ModuleRecord.none
     end
-    selected_bill_month = @dashboard_month_filter_value
-    if selected_bill_month.present?
-      bill_scope = bill_scope.where("LOWER(BTRIM(data::jsonb ->> 'bill_month')) = ?", selected_bill_month.to_s.strip.downcase)
-    end
     bill_records = bill_scope.to_a
     unless admin_dashboard_user?
       bill_records = bill_records.select { |r| jeevika_jankar_bill_record_visible?(r) }
@@ -3018,20 +3014,14 @@ class ModulesController < ApplicationController
     pending_approvals = dashboard_pending_approval_vrps(active_vrps).size
 
     bill_records = ModuleRecord.where(module_slug: "jeevika-jankar-bill-process")
-    selected_bill_month = @dashboard_month_filter_value.presence
-    if selected_bill_month.present?
-      bill_records = bill_records.where("LOWER(BTRIM(data::jsonb ->> 'bill_month')) = ?", selected_bill_month.to_s.strip.downcase)
-    end
     bill_records = bill_records.to_a
     bill_records = bill_records.select { |record| jeevika_jankar_bill_record_visible?(record) } unless admin_dashboard_user?
     bill_records = bill_records.select { |record| jeevika_jankar_bill_blocks_duplicate?(record) }
     approved_bills = bill_records.count { |r| dashboard_bill_approved?(r) }
     pending_bills = bill_records.count { |r| dashboard_bill_pending?(r) }
-    bill_list_params = {}
-    bill_list_params[:bill_month] = selected_bill_month if selected_bill_month.present?
     billing_items = [
-      { title: "Bill Approved", value: approved_bills, path: module_path("jeevika-jankar-bill-list", bill_list_params.merge(bill_status: "final-approved", record_state: "Active")) },
-      { title: "Bill Pending", value: pending_bills, path: module_path("jeevika-jankar-bill-list", bill_list_params.merge(bill_status: "pending", record_state: "Active")) }
+      { title: "Bill Approved", value: approved_bills, path: module_path("jeevika-jankar-bill-list", bill_status: "final-approved", record_state: "Active") },
+      { title: "Bill Pending", value: pending_bills, path: module_path("jeevika-jankar-bill-list", bill_status: "pending", record_state: "Active") }
     ]
 
     cards = [
@@ -3127,11 +3117,9 @@ class ModulesController < ApplicationController
     end
 
     fcoc_value = @dashboard_fcoc_filter_value.presence || dashboard_filter_param(:fcoc, :fco)
-    if fcoc_value.present?
-      fco_values = training_fcoc_filter_values(fcoc_value)
-      conditions << "(LOWER(BTRIM(t.fco_name)) IN (:summary_fco_values) OR LOWER(BTRIM(t.fco_id)) IN (:summary_fco_values) OR LOWER(BTRIM(v.fcoc)) IN (:summary_fco_values))"
-      binds[:summary_fco_values] = fco_values
-    end
+    fco_values = dashboard_summary_fco_filter_values(fcoc_value)
+    conditions << "(LOWER(BTRIM(t.fco_name)) IN (:summary_fco_values) OR LOWER(BTRIM(t.fco_id)) IN (:summary_fco_values) OR LOWER(BTRIM(v.fcoc)) IN (:summary_fco_values))"
+    binds[:summary_fco_values] = fco_values
 
     ics_value = dashboard_filter_param(:ics, :ics_name)
     if ics_value.present?
@@ -3192,11 +3180,9 @@ class ModulesController < ApplicationController
       target_conditions << "LOWER(BTRIM(t.month_name)) = :target_month"
       target_binds[:target_month] = normalize_dashboard_text(month_value)
     end
-    if fcoc_value.present?
-      fco_values = training_fcoc_filter_values(fcoc_value)
-      target_conditions << "(LOWER(BTRIM(t.fco_name)) IN (:fco_values) OR LOWER(BTRIM(t.fco_id)) IN (:fco_values) OR LOWER(BTRIM(v.fcoc)) IN (:fco_values))"
-      target_binds[:fco_values] = fco_values
-    end
+    fco_values = dashboard_summary_fco_filter_values(fcoc_value)
+    target_conditions << "(LOWER(BTRIM(t.fco_name)) IN (:fco_values) OR LOWER(BTRIM(t.fco_id)) IN (:fco_values) OR LOWER(BTRIM(v.fcoc)) IN (:fco_values))"
+    target_binds[:fco_values] = fco_values
     if selected_vrp_id.present?
       target_conditions << "t.vrp_id = :target_vrp_id"
       target_binds[:target_vrp_id] = selected_vrp_id.to_i
@@ -3313,13 +3299,11 @@ class ModulesController < ApplicationController
   def dashboard_total_afl_scope
     scope = Afl.where.not(id: nil)
     fcoc_value = @dashboard_fcoc_filter_value.presence || dashboard_filter_param(:fcoc, :fco)
-    if fcoc_value.present?
-      fco_values = training_fcoc_filter_values(fcoc_value)
-      scope = scope.where(
-        "LOWER(BTRIM(COALESCE(fco, ''))) IN (:fco_values) OR LOWER(BTRIM(COALESCE(fco_id, ''))) IN (:fco_values)",
-        fco_values: fco_values
-      )
-    end
+    fco_values = dashboard_summary_fco_filter_values(fcoc_value)
+    scope = scope.where(
+      "LOWER(BTRIM(COALESCE(fco, ''))) IN (:fco_values) OR LOWER(BTRIM(COALESCE(fco_id, ''))) IN (:fco_values)",
+      fco_values: fco_values
+    )
 
     ics_value = dashboard_filter_param(:ics, :ics_name)
     if ics_value.present?
@@ -3333,16 +3317,21 @@ class ModulesController < ApplicationController
     scope
   end
 
+  def dashboard_summary_fco_filter_values(fcoc_value = nil)
+    selected_values = training_fcoc_filter_values(fcoc_value)
+    return selected_values if selected_values.any?
+
+    training_fcoc_filter_values("1004", "1006", "Sausar", "Turekela", "FCO-C Sausar", "FCO-C Turekela")
+  end
+
   def dashboard_jj_requirement_item(fco_name, vrps, targets = nil)
     matching_vrps = Array(vrps).select { |vrp| normalize_dashboard_text(vrp.fcoc).include?(normalize_dashboard_text(fco_name)) }
     active_count = matching_vrps.count { |vrp| dashboard_vrp_active_for_requirement?(vrp) }
-    required_count = dashboard_distinct_target_array_count_for_fco(:village_id, fco_name, targets: targets)
-    vacant_count = [required_count - active_count, 0].max
 
     {
       title: fco_name,
-      value: "Req #{required_count} · Active #{active_count} · Vacant #{vacant_count}",
-      path: vrps_path(fcoc: fco_name)
+      value: "Active #{active_count}",
+      path: vrps_path(fcoc: fco_name, active_status: "active", approval_status: "final-approved")
     }
   end
 
