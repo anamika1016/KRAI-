@@ -2,3 +2,7 @@
 import "@hotwired/turbo-rails"
 import "controllers"
 import "layout"
+
+if (window.Turbo) {
+  Turbo.config.drive.progressBarDelay = 2147483647;
+}

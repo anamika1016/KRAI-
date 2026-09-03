@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2026_08_31_171500) do
+ActiveRecord::Schema[8.1].define(version: 2026_09_03_160000) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "pg_catalog.plpgsql"
 
@@ -204,6 +204,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_08_31_171500) do
     t.decimal "total_land_offered_for_organic_certification", precision: 18, scale: 4
     t.string "tracenet_no"
     t.datetime "updated_at", null: false
+    t.index ["created_at"], name: "index_farmer_farm_information_on_created_at", order: :desc
     t.index ["farm_id"], name: "index_farmer_farm_information_on_farm_id"
     t.index ["farmer_name"], name: "index_farmer_farm_information_on_farmer_name"
     t.index ["tracenet_no"], name: "index_farmer_farm_information_on_tracenet_no"
@@ -242,6 +243,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_08_31_171500) do
     t.string "status", default: "Active", null: false
     t.string "tracenet_no"
     t.datetime "updated_at", null: false
+    t.index ["created_at"], name: "index_ics_exit_declarations_on_created_at", order: :desc
     t.index ["declaration_date"], name: "index_ics_exit_declarations_on_declaration_date"
     t.index ["farm_id"], name: "index_ics_exit_declarations_on_farm_id"
     t.index ["farmer_farm_information_id"], name: "index_ics_exit_declarations_on_farmer_farm_information_id"
@@ -253,13 +255,20 @@ ActiveRecord::Schema[8.1].define(version: 2026_08_31_171500) do
     t.text "data", null: false
     t.string "module_slug", null: false
     t.datetime "updated_at", null: false
+    t.index "(((data)::jsonb ->> 'bill_id'::text))", name: "index_module_records_bill_history_on_bill_id", where: "((module_slug)::text = 'jeevika-jankar-bill-approval-history'::text)"
     t.index "(((data)::jsonb ->> 'mobile_no'::text))", name: "index_module_records_new_users_on_mobile_no", where: "((module_slug)::text = 'new-user'::text)"
+    t.index "(((data)::jsonb ->> 'select_vrp'::text))", name: "index_module_records_bills_on_select_vrp", where: "((module_slug)::text = 'jeevika-jankar-bill-process'::text)"
     t.index "(((data)::jsonb ->> 'target_mapping_id'::text))", name: "index_module_records_other_targets_on_target_mapping_id", where: "((module_slug)::text = ANY ((ARRAY['seed-distribution-target'::character varying, 'papl360-target'::character varying])::text[]))"
+    t.index "(((data)::jsonb ->> 'vrp_id'::text))", name: "index_module_records_vrp_history_on_vrp_id", where: "((module_slug)::text = 'vrp-approval-history'::text)"
     t.index "lower(((data)::jsonb ->> 'email'::text))", name: "index_module_records_new_users_on_lower_email", where: "((module_slug)::text = 'new-user'::text)"
     t.index "lower(((data)::jsonb ->> 'user_name'::text))", name: "index_module_records_new_users_on_lower_user_name", where: "((module_slug)::text = 'new-user'::text)"
     t.index "lower(btrim(((data)::jsonb ->> 'month'::text)))", name: "index_other_targets_on_normalized_month", where: "((module_slug)::text = ANY ((ARRAY['seed-distribution-target'::character varying, 'papl360-target'::character varying])::text[]))"
     t.index "lower(btrim(((data)::jsonb ->> 'month'::text)))", name: "index_training_forms_on_normalized_month", where: "((module_slug)::text = 'training-form'::text)"
+    t.index "lower(btrim(((data)::jsonb ->> 'record_state'::text)))", name: "index_module_records_bills_on_normalized_record_state", where: "((module_slug)::text = 'jeevika-jankar-bill-process'::text)"
+    t.index "lower(btrim(((data)::jsonb ->> 'status'::text)))", name: "index_module_records_bills_on_normalized_status", where: "((module_slug)::text = 'jeevika-jankar-bill-process'::text)"
+    t.index "lower(btrim(((data)::jsonb ->> 'status'::text)))", name: "index_module_records_on_slug_normalized_status", where: "((module_slug)::text = ANY ((ARRAY['access-control'::character varying, 'new-user'::character varying, 'training-form'::character varying, 'seed-distribution-target'::character varying, 'papl360-target'::character varying])::text[]))"
     t.index ["module_slug", "created_at"], name: "index_module_records_on_slug_and_created_at", order: { created_at: :desc }
+    t.index ["module_slug", "updated_at", "id"], name: "index_module_records_on_slug_updated_at_id", order: { updated_at: :desc, id: :desc }
     t.index ["module_slug"], name: "index_module_records_on_module_slug"
   end
 
@@ -396,6 +405,13 @@ ActiveRecord::Schema[8.1].define(version: 2026_08_31_171500) do
     t.integer "week_3_target"
     t.integer "week_4_target"
     t.decimal "week_wise_opg_target", precision: 18, scale: 4
+    t.index "lower(btrim((activity_name)::text))", name: "index_target_mappings_on_normalized_activity"
+    t.index "lower(btrim((fco_id)::text))", name: "index_target_mappings_on_normalized_fco_id"
+    t.index "lower(btrim((fco_name)::text))", name: "index_target_mappings_on_normalized_fco_name"
+    t.index "lower(btrim((ics_id)::text))", name: "index_target_mappings_on_normalized_ics_id"
+    t.index "lower(btrim((ics_name)::text))", name: "index_target_mappings_on_normalized_ics_name"
+    t.index "lower(btrim((main_activity_name)::text))", name: "index_target_mappings_on_normalized_main_activity"
+    t.index "lower(btrim((month_name)::text))", name: "index_target_mappings_on_normalized_month_name"
     t.index ["created_by_type", "created_by_id", "updated_at"], name: "index_target_mappings_on_creator_and_updated_at", order: { updated_at: :desc }
     t.index ["created_by_type", "created_by_id"], name: "index_target_mappings_on_creator"
     t.index ["fco_id", "ics_id", "village_id", "main_activity_name", "activity_name"], name: "index_target_mappings_on_activity_scope"
@@ -448,8 +464,11 @@ ActiveRecord::Schema[8.1].define(version: 2026_08_31_171500) do
     t.string "village"
     t.index "lower((email)::text)", name: "index_users_on_lower_email"
     t.index "lower((user_name)::text)", name: "index_users_on_lower_user_name"
+    t.index ["created_at"], name: "index_users_on_created_at", order: :desc
     t.index ["email"], name: "index_users_on_email"
     t.index ["mobile_no"], name: "index_users_on_mobile_no"
+    t.index ["status", "created_at"], name: "index_users_on_status_and_created_at", order: { created_at: :desc }
+    t.index ["updated_at"], name: "index_users_on_updated_at", order: :desc
     t.index ["user_name"], name: "index_users_on_user_name"
   end
 
@@ -545,12 +564,16 @@ ActiveRecord::Schema[8.1].define(version: 2026_08_31_171500) do
     t.text "vrp_type_ids"
     t.index "lower((email)::text)", name: "index_vrps_on_lower_email"
     t.index "lower((user_name)::text)", name: "index_vrps_on_lower_user_name"
+    t.index "lower(btrim((fcoc)::text))", name: "index_vrps_on_normalized_fcoc"
     t.index ["aadhar_no"], name: "index_vrps_on_aadhar_no"
     t.index ["agreement_accepted_at"], name: "index_vrps_on_agreement_accepted_at"
+    t.index ["created_at"], name: "index_vrps_on_created_at", order: :desc
     t.index ["created_by_id"], name: "index_vrps_on_created_by_id"
     t.index ["created_by_type", "created_by_id"], name: "index_vrps_on_created_by_type_and_created_by_id"
     t.index ["email"], name: "index_vrps_on_email"
+    t.index ["is_deleted", "is_active", "fcoc"], name: "index_vrps_on_deleted_active_fcoc"
     t.index ["mobile_no"], name: "index_vrps_on_mobile_no"
+    t.index ["updated_at"], name: "index_vrps_on_updated_at", order: :desc
     t.index ["user_id"], name: "index_vrps_on_user_id"
     t.index ["user_name"], name: "index_vrps_on_user_name"
     t.index ["vrp_bank_master_id"], name: "index_vrps_on_vrp_bank_master_id"

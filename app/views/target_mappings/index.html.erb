@@ -16,7 +16,7 @@
         data-target-sub-activity-map="<%= html_escape(@target_sub_activity_map.to_json) %>"
         data-main-activity-type-map="<%= html_escape(@main_activity_type_map.to_json) %>"
         data-mappings-url="<%= vrp_mappings_target_mappings_path %>">
-        <%= form_with url: target_mappings_path, method: :post, local: true, html: { class: "module-entry-form" } do %>
+        <%= form_with url: target_mappings_path, method: :post, local: true, data: { turbo: false }, html: { class: "module-entry-form" } do %>
           <% if @edit_target %>
             <input type="hidden" name="target_mapping[id]" value="<%= @edit_target.id %>">
             <div hidden data-edit-saved-target-farmers>
@@ -76,6 +76,16 @@
               <input type="date" name="target_mapping[completion_date]" value="<%= @edit_target&.completion_date&.strftime("%Y-%m-%d") %>" required>
             </label>
 
+            <% selected_target_type = @edit_payload[:target_type].presence || "farmer" %>
+            <% village_target_selected = selected_target_type == "village" %>
+            <label>
+              <span>Target Type <em>*</em></span>
+              <select name="target_mapping[target_type]" data-target-type required>
+                <option value="village" <%= "selected" if selected_target_type == "village" %>>Villages</option>
+                <option value="farmer" <%= "selected" if selected_target_type == "farmer" %>>Farmer</option>
+              </select>
+            </label>
+
             <div class="target-village-field">
               <span class="location-multi-label">
                 <span>Main Activity <em>*</em></span>
@@ -102,16 +112,16 @@
               </select>
             </div>
 
-            <label data-target-standard-quantity-fields>
+            <label data-target-farmer-only-field data-village-target-hide <%= "hidden" if village_target_selected %>>
               <span>Registered Farmers</span>
-              <input type="text" value="0" data-target-registered-count readonly>
+              <input type="text" value="0" data-target-registered-count readonly <%= "disabled" if village_target_selected %>>
             </label>
 
             <input type="hidden" name="target_mapping[target_quantity]" value="<%= @edit_payload[:target_quantity] %>" data-target-quantity-input>
 
-            <label data-target-standard-quantity-fields>
+            <label data-target-farmer-only-field data-village-target-hide <%= "hidden" if village_target_selected %>>
               <span>New Farmer Target</span>
-              <input type="number" name="target_mapping[new_farmer_target_quantity]" min="1" step="1" placeholder="Enter target without farmer selection" value="<%= @edit_payload[:new_farmer_target_quantity] %>" data-new-farmer-target-input>
+              <input type="number" name="target_mapping[new_farmer_target_quantity]" min="1" step="1" placeholder="Enter target without farmer selection" value="<%= @edit_payload[:new_farmer_target_quantity] %>" data-new-farmer-target-input <%= "disabled" if village_target_selected %>>
             </label>
           </div>
 
@@ -170,7 +180,7 @@
           <div class="table-shell target-weekly-table-shell">
             <table class="module-table vrp-list-table target-weekly-table">
               <thead>
-                <tr>
+                <tr data-target-weekly-header-row>
                   <th>Activity</th>
                   <th>Monthly</th>
                   <th>Week 1</th>
@@ -178,7 +188,7 @@
                   <th>Week 3</th>
                   <th>Week 4</th>
                   <th>Total</th>
-                  <th>View</th>
+                  <th data-target-weekly-view-header>View</th>
                 </tr>
               </thead>
               <tbody data-target-weekly-rows>
@@ -224,8 +234,97 @@
             </div>
           </div>
         </dialog>
-        <% end %>
-      </section>
+        <script>
+          (() => {
+            const shell = document.currentScript.closest("[data-target-mapping]");
+            if (!shell || shell.dataset.villageTargetFallbackBound === "true") return;
+
+            shell.dataset.villageTargetFallbackBound = "true";
+            const syncVillageTargetFallback = () => {
+              const targetType = shell.querySelector("[data-target-type]");
+              const villageMode = (targetType?.value || "").trim().toLowerCase() === "village";
+              shell.classList.toggle("village-target-mode", villageMode);
+              shell.querySelectorAll("[data-village-target-hide]").forEach((element) => {
+                element.hidden = villageMode;
+                element.style.display = villageMode ? "none" : "";
+                element.querySelectorAll("input, select, textarea, button").forEach((input) => {
+                  input.disabled = villageMode;
+                  input.setCustomValidity?.("");
+                });
+              });
+              shell.querySelectorAll("[data-target-weekly-view-header], [data-target-weekly-view]").forEach((element) => {
+                element.hidden = villageMode;
+                element.style.display = villageMode ? "none" : "";
+              });
+              const totalHeader = shell.querySelector("[data-target-weekly-header-row] th:nth-last-child(2)");
+              if (totalHeader) {
+                totalHeader.hidden = villageMode;
+                totalHeader.style.display = villageMode ? "none" : "";
+              }
+
+              if (!villageMode) return;
+
+              const targetInput = shell.querySelector("[data-target-quantity-input]");
+              const registeredCountInput = shell.querySelector("[data-target-registered-count]");
+              if (targetInput && registeredCountInput?.value) {
+                targetInput.disabled = false;
+                targetInput.value = registeredCountInput.value;
+              }
+
+              const weeklySummary = shell.querySelector("[data-target-weekly-summary]");
+              const weeklyRows = shell.querySelector("[data-target-weekly-rows]");
+              const selectedTotal = shell.querySelector("[data-target-weekly-selected-total]");
+              const selectedMainActivities = Array.from(shell.querySelector("[data-target-main-activity]")?.selectedOptions || [])
+                .map((option) => option.textContent.trim())
+                .filter(Boolean);
+              const selectedSubActivities = Array.from(shell.querySelector("[data-target-sub-activity]")?.selectedOptions || [])
+                .map((option) => option.textContent.trim())
+                .filter(Boolean);
+
+              if (selectedTotal) selectedTotal.textContent = "Village target";
+              if (weeklySummary && selectedMainActivities.length) {
+                weeklySummary.hidden = false;
+                weeklySummary.style.display = "";
+              }
+              if (weeklyRows && selectedMainActivities.length && !weeklyRows.querySelector("[data-target-weekly-input]")) {
+                const escapeText = (value) => String(value || "").replace(/[&<>"']/g, (char) => ({
+                  "&": "&amp;",
+                  "<": "&lt;",
+                  ">": "&gt;",
+                  '"': "&quot;",
+                  "'": "&#039;"
+                }[char]));
+                const activityLabel = escapeText(selectedMainActivities.join(", "));
+                const subActivityLabel = selectedSubActivities.map((label) => `<div class="target-weekly-subactivity"><span>${escapeText(label)}</span></div>`).join("");
+                weeklyRows.innerHTML = `
+                  <tr>
+                    <td>
+                      <div class="target-weekly-activity">
+                        <strong>${activityLabel}</strong>
+                        <div class="target-weekly-subactivities">${subActivityLabel}</div>
+                      </div>
+                      <input type="hidden" name="target_mapping[weekly_plan][0][main_activity]" value="__common__">
+                      <input type="hidden" name="target_mapping[weekly_plan][0][sub_activity]" value="">
+                    </td>
+                    <td><div class="target-weekly-cell-center"><input type="number" min="0" step="1" class="target-weekly-input" name="target_mapping[weekly_plan][0][monthly]" value="" data-target-weekly-input data-weekly-row-key="__common__" data-weekly-field="monthly"></div></td>
+                    <td><div class="target-weekly-cell-center"><input type="number" min="0" step="1" class="target-weekly-input" name="target_mapping[weekly_plan][0][week_1]" value="" data-target-weekly-input data-weekly-row-key="__common__" data-weekly-field="week_1"></div></td>
+                    <td><div class="target-weekly-cell-center"><input type="number" min="0" step="1" class="target-weekly-input" name="target_mapping[weekly_plan][0][week_2]" value="" data-target-weekly-input data-weekly-row-key="__common__" data-weekly-field="week_2"></div></td>
+                    <td><div class="target-weekly-cell-center"><input type="number" min="0" step="1" class="target-weekly-input" name="target_mapping[weekly_plan][0][week_3]" value="" data-target-weekly-input data-weekly-row-key="__common__" data-weekly-field="week_3"></div></td>
+                    <td><div class="target-weekly-cell-center"><input type="number" min="0" step="1" class="target-weekly-input" name="target_mapping[weekly_plan][0][week_4]" value="" data-target-weekly-input data-weekly-row-key="__common__" data-weekly-field="week_4"></div></td>
+                  </tr>
+                `;
+              }
+            };
+
+            shell.addEventListener("change", (event) => {
+              if (event.target.closest("[data-target-type], [data-target-village]")) syncVillageTargetFallback();
+            });
+            document.addEventListener("turbo:load", syncVillageTargetFallback);
+            window.requestAnimationFrame(syncVillageTargetFallback);
+          })();
+        </script>
+      <% end %>
+    </section>
     <% end %>
 
 	    <div class="vrp-list-card">

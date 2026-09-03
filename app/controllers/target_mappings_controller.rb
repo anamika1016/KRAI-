@@ -18,15 +18,10 @@ class TargetMappingsController < ApplicationController
     @main_activity_options = module_options("add-activity-group", "main_activity_name", "activity_group_name")
     @main_activity_type_map = main_activity_type_map
     @target_sub_activity_map = target_sub_activity_map
-    @target_mappings = filtered_visible_target_mappings.includes(:vrp, :vrp_ics_mapping).order(updated_at: :desc)
+    @target_mappings = filtered_visible_target_mappings.includes(:vrp, :vrp_ics_mapping).order(updated_at: :desc).to_a
     @target_summary_mode = params[:summary_mode].presence_in(%w[main_activity sub_activity])
     @target_mapping_rows = @target_summary_mode.present? ? target_mapping_summary_rows(@target_mappings) : grouped_target_mapping_rows(@target_mappings)
-    farmer_ids = @target_mappings.flat_map { |target| Array(target.afl_ids) }.map(&:to_s).reject(&:blank?).uniq
-    @target_farmers_by_id = farmer_ids.each_slice(5_000).flat_map do |ids|
-      Afl.where(id: ids)
-        .select(:id, :farmer_name, :father_name, :tracenet_no, :mobile_no, :village_name)
-        .to_a
-    end.index_by { |farmer| farmer.id.to_s }
+    @target_farmers_by_id = {}
     @edit_target = visible_target_mappings.find_by(id: params[:edit_id]) if params[:edit_id].present? && @admin_mapping_actions
     @edit_payload = edit_payload(@edit_target)
     @sub_activity_options = target_sub_activity_options(@edit_target&.main_activity_name)
@@ -91,11 +86,13 @@ class TargetMappingsController < ApplicationController
   end
 
   def vrp_mappings
+    village_target_request = params[:target_type].to_s.strip.casecmp("village").zero?
+
     render json: {
       fco_options: fco_options(params[:vrp_id]),
       ics_options: ics_options_for(params[:fco_id], params[:vrp_id]),
       village_options: village_options_for(params[:fco_id], params[:ics_id], params[:vrp_id]),
-      farmers: target_farmers_for(
+      farmers: village_target_request ? [] : target_farmers_for(
         vrp_id: params[:vrp_id],
         fco_id: params[:fco_id],
         ics_id: params[:ics_id],
@@ -127,6 +124,7 @@ class TargetMappingsController < ApplicationController
       :main_activity_name,
       :activity_name,
       :target_quantity,
+      :target_type,
       :new_farmer_target_quantity,
       main_activity_names: [],
       activity_names: [],
@@ -150,6 +148,7 @@ class TargetMappingsController < ApplicationController
       :main_activity_names,
       :activity_names,
       :afl_ids,
+      :target_type,
       :new_farmer_target_quantity,
       :training_targets,
       :weekly_plan
@@ -461,9 +460,16 @@ class TargetMappingsController < ApplicationController
 
     plan = weekly_plan_for(target_mapping.main_activity_name, target_mapping.activity_name)
     selected_ids = normalized_afl_ids(plan ? plan["afl_ids"] : target_mapping_params[:afl_ids])
-    if training_box_activity?(target_mapping.activity_name) || new_farmer_target_mode?
+    if training_box_activity?(target_mapping.activity_name) || new_farmer_target_mode? || village_target_mode?
       if target_count <= 0
-        target_mapping.errors.add(training_box_activity?(target_mapping.activity_name) ? :activity_name : :new_farmer_target_quantity, "target must be greater than 0")
+        error_field = if training_box_activity?(target_mapping.activity_name)
+          :activity_name
+        elsif new_farmer_target_mode?
+          :new_farmer_target_quantity
+        else
+          :target_quantity
+        end
+        target_mapping.errors.add(error_field, "target must be greater than 0")
         return false
       end
 
@@ -513,6 +519,10 @@ class TargetMappingsController < ApplicationController
 
   def new_farmer_target_mode?
     new_farmer_target_quantity.present? && submitted_farmer_ids.blank?
+  end
+
+  def village_target_mode?
+    target_mapping_params[:target_type].to_s.strip.casecmp("village").zero?
   end
 
   def submitted_farmer_ids

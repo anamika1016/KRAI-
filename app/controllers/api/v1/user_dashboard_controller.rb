@@ -110,14 +110,21 @@ module Api
       end
 
       def cache_table_version(model)
-        "#{model.table_name}:#{model.maximum(:updated_at).to_i}:#{model.maximum(:id).to_i}:#{model.count}"
+        Rails.cache.fetch(["api-dashboard/table-version", model.table_name], expires_in: 1.minute) do
+          version = model.pick(Arel.sql("COUNT(*)"), Arel.sql("COALESCE(MAX(id), 0)"), Arel.sql("COALESCE(EXTRACT(EPOCH FROM MAX(updated_at))::bigint, 0)"))
+          "#{model.table_name}:#{version.join(":")}"
+        end
       rescue StandardError
         "#{model.name}:unknown"
       end
 
       def cache_module_records_version(module_slugs)
-        scope = ModuleRecord.where(module_slug: module_slugs)
-        "module_records:#{scope.maximum(:updated_at).to_i}:#{scope.maximum(:id).to_i}:#{scope.count}"
+        slugs = Array(module_slugs).map(&:to_s).sort
+        Rails.cache.fetch(["api-dashboard/module-record-version", slugs], expires_in: 1.minute) do
+          scope = ModuleRecord.where(module_slug: slugs)
+          version = scope.pick(Arel.sql("COUNT(*)"), Arel.sql("COALESCE(MAX(id), 0)"), Arel.sql("COALESCE(EXTRACT(EPOCH FROM MAX(updated_at))::bigint, 0)"))
+          "module_records:#{version.join(":")}"
+        end
       rescue StandardError
         "module_records:unknown"
       end

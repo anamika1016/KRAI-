@@ -137,8 +137,10 @@ module ApplicationHelper
       icon: "▥",
       links: [
         # ["Farmer Training Topic Mapping", :module, "training-topic-mapping"],
-        ["Farmer Training Form", :module, "training-form"],
-        ["Farmer Training Form List", :module, "training-form-list"],
+        ["Training Form", :module, "training-form"],
+        ["Training Form List", :module, "training-form-list"],
+        ["Other Target", :module, "other-target"],
+        ["Other Target List", :module, "other-target-list"],
         ["Farmer Participation Report", :route, :farmer_participation_report_path],
         ["Seed Distribution Target", :module, "seed-distribution-target"],
         ["Seed Distribution Target List", :module, "seed-distribution-target-list"],
@@ -154,27 +156,6 @@ module ApplicationHelper
     #     ["ICS Master", :module, "ics-master"]
     #   ]
     # },
-    {
-      title: "Farmer Farm Information",
-      icon: "▥",
-      links: [
-        ["Farmer Farm Information", :route, :farmer_farm_information_path],
-        ["All Basic Detail List", :route, :list_farmer_farm_information_path],
-        ["Farm Map (lat long gps)", :route, :farm_map_farmer_farm_information_path],
-        ["Crop Map Session Wise Farm Map (lat long gps)", :route, :crop_map_session_wise_farmer_farm_information_path],
-        ["Farm-Crop-Area Details", :route, :farm_crop_area_details_path],
-        ["Seed & Planting Material", :route, :seed_planting_materials_path],
-        ["Soil Conditioners & Fertility Input Records", :route, :soil_conditioner_fertility_input_records_path],
-        ["On Farm Input Records", :route, :on_farm_input_records_path],
-        ["Disease, Insects, Pests & Weed Management Record", :route, :disease_pest_weed_management_records_path],
-        ["Contamination Control Records", :route, :contamination_control_records_path],
-        ["Records of Production & Harvest Details", :route, :production_harvest_details_path],
-        ["Post Harvest, Handling & Storage Area", :route, :post_harvest_handling_storage_records_path],
-        ["Sale Record", :route, :sale_records_path],
-        ["Dispatch Record", :route, :dispatch_records_path],
-        ["Application Format for Exit of Farmer from ICS", :route, :ics_exit_declaration_farmer_farm_information_path]
-      ]
-    },
     {
       title: "Jeevika Jankar Bill",
       icon: "▧",
@@ -274,9 +255,33 @@ module ApplicationHelper
     return nil if admin_access_user?
     return @allowed_sidebar_keys = [] unless defined?(ModuleRecord) && ModuleRecord.table_exists?
 
-    # Access changes must take effect on the very next request.  Caching this
-    # value left users seeing menu entries from their old role permissions.
+    @allowed_sidebar_keys = Rails.cache.fetch(sidebar_access_cache_key, expires_in: 10.minutes, race_condition_ttl: 30.seconds) do
+      compute_allowed_sidebar_keys
+    end
+  rescue StandardError => error
+    Rails.logger.warn("Sidebar access cache skipped: #{error.class}: #{error.message}")
     @allowed_sidebar_keys = compute_allowed_sidebar_keys
+  end
+
+  def sidebar_access_cache_key
+    [
+      "sidebar-access-keys",
+      sidebar_access_user_cache_key,
+      sidebar_access_records_fingerprint
+    ].to_json
+  end
+
+  def sidebar_access_user_cache_key
+    current_app_user
+      .slice("id", "user_id", "username", "user_name", "user_type", "stakeholder", "stakeholder_role", "role", "role_name", "user_management_role", "person_type", "vrp_types", "record_type")
+      .sort
+      .to_h
+  end
+
+  def sidebar_access_records_fingerprint
+    @sidebar_access_records_fingerprint ||= ModuleRecord
+      .where(module_slug: "access-control")
+      .pick(Arel.sql("COUNT(*)"), Arel.sql("COALESCE(MAX(id), 0)"), Arel.sql("COALESCE(EXTRACT(EPOCH FROM MAX(updated_at))::bigint, 0)"))
   end
 
   def compute_allowed_sidebar_keys
@@ -343,11 +348,11 @@ module ApplicationHelper
     if ["Farmer Training", "Farmer Target"].include?(name.to_s.strip)
       keys.concat(["farmer-training", "farmer-target", "farmer-participation-report", "seed-distribution-target", "papl360-target", "add-farmer-form"])
     end
-    if ["Farmer Training Form", "Farmer Target Form"].include?(name.to_s.strip)
-      keys.concat(["farmer-training-form", "farmer-target-form", "seed-distribution-target", "papl360-target"])
+    if ["Farmer Training Form", "Training Form", "Farmer Target Form"].include?(name.to_s.strip)
+      keys.concat(["farmer-training-form", "training-form", "farmer-target-form", "seed-distribution-target", "papl360-target", "other-target"])
     end
-    if ["Farmer Training Form List", "Farmer Target Form List"].include?(name.to_s.strip)
-      keys.concat(["farmer-training-form-list", "farmer-target-form-list", "farmer-participation-report", "seed-distribution-target-list", "papl360-target-list"])
+    if ["Farmer Training Form List", "Training Form List", "Farmer Target Form List"].include?(name.to_s.strip)
+      keys.concat(["farmer-training-form-list", "training-form-list", "farmer-target-form-list", "farmer-participation-report", "seed-distribution-target-list", "papl360-target-list", "other-target-list"])
     end
     if ["Seed Distribution Target", "Seed Distribution Target Form"].include?(name.to_s.strip)
       keys.concat(["seed-distribution-target", "seed-distribution-target-form", "seed-distribution-target-list"])
@@ -462,14 +467,16 @@ module ApplicationHelper
         title: "Farmer Target",
         icon: "▥",
       links: [
-        ["Farmer Training Form", :module, "training-form"],
-        ["Farmer Training Form List", :module, "training-form-list"],
+        ["Training Form", :module, "training-form"],
+        ["Training Form List", :module, "training-form-list"],
+        ["Other Target", :module, "other-target"],
+        ["Other Target List", :module, "other-target-list"],
         ["Farmer Participation Report", :route, :farmer_participation_report_path],
         ["Seed Distribution Target", :module, "seed-distribution-target"],
         ["Seed Distribution Target List", :module, "seed-distribution-target-list"],
         ["PAPL360 Target", :module, "papl360-target"],
-          ["PAPL360 Target List", :module, "papl360-target-list"],
-          ["Add Farmer Form", :module, "add-farmer-form"]
+        ["PAPL360 Target List", :module, "papl360-target-list"],
+        ["Add Farmer Form", :module, "add-farmer-form"]
         ]
       },
       {

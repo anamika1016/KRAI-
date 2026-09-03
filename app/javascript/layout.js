@@ -17,6 +17,11 @@ if (!window.__vrpLayoutGlobalsReady) {
   window.__vrpLayoutGlobalsReady = true;
   document.addEventListener("keydown", closeMobileMenuOnEscape);
   document.addEventListener("click", closeOpenChipMultiControls);
+  document.addEventListener("click", (event) => {
+    document.querySelectorAll("[data-dashboard-activity-picker][open]").forEach((picker) => {
+      if (!picker.contains(event.target)) picker.removeAttribute("open");
+    });
+  });
 }
 
 const vrpUiLabel = "Jeevika Jankar";
@@ -107,6 +112,24 @@ const initFastNavigation = () => {
       document.querySelectorAll(".side-module[open]").forEach((openModule) => {
         if (openModule !== module) openModule.removeAttribute("open");
       });
+    });
+  });
+};
+
+const initPasswordToggles = () => {
+  document.querySelectorAll("[data-password-toggle]").forEach((button) => {
+    if (button.dataset.passwordToggleBound === "true") return;
+
+    button.dataset.passwordToggleBound = "true";
+    button.addEventListener("click", () => {
+      const input = button.closest(".password-field, .login-password-field")?.querySelector("[data-password-toggle-input]");
+      if (!input) return;
+
+      const showPassword = input.type === "password";
+      input.type = showPassword ? "text" : "password";
+      button.setAttribute("aria-label", showPassword ? "Hide password" : "Show password");
+      button.title = showPassword ? "Hide password" : "Show password";
+      button.classList.toggle("is-visible", showPassword);
     });
   });
 };
@@ -300,18 +323,7 @@ function initDeferredLayoutPage() {
     });
   });
 
-  document.querySelectorAll("[data-password-toggle]").forEach((button) => {
-    button.addEventListener("click", () => {
-      const input = button.closest(".password-field, .login-password-field")?.querySelector("[data-password-toggle-input]");
-      if (!input) return;
-
-      const showPassword = input.type === "password";
-      input.type = showPassword ? "text" : "password";
-      button.setAttribute("aria-label", showPassword ? "Hide password" : "Show password");
-      button.title = showPassword ? "Hide password" : "Show password";
-      button.classList.toggle("is-visible", showPassword);
-    });
-  });
+  initPasswordToggles();
 
   const capitalizeFirstLetter = (input) => {
     const value = input.value;
@@ -438,11 +450,6 @@ function initDeferredLayoutPage() {
       });
     });
 
-    document.addEventListener("click", (event) => {
-      if (!picker.hasAttribute("open")) return;
-      if (picker.contains(event.target)) return;
-      picker.removeAttribute("open");
-    });
   });
 
   const trainingDrilldown = document.querySelector("[data-training-participation-drilldown]");
@@ -1853,6 +1860,10 @@ function initDeferredLayoutPage() {
   });
 
   document.querySelectorAll("[data-training-target-form]").forEach((formShell) => {
+    if (formShell.dataset.trainingTargetBound === "true") return;
+    formShell.dataset.trainingTargetBound = "true";
+    formShell.querySelectorAll(".training-main-activity-chips, .training-sub-activity-chips").forEach((element) => element.remove());
+
     let mappings = [];
     let activityMappings = [];
     let monthOptions = [];
@@ -1871,6 +1882,8 @@ function initDeferredLayoutPage() {
     } catch (_error) {
       monthOptions = [];
     }
+    mappings = mappings.filter((mapping) => normalizeOption(mapping.main_activity_type || "Training") === normalizeOption("Training"));
+    activityMappings = activityMappings.filter((mapping) => normalizeOption(mapping.main_activity_type || "Training") === normalizeOption("Training"));
 
 	    const monthSelect = formShell.querySelector("[data-training-target-month]");
 	    const icsSelect = formShell.querySelector("[data-training-target-ics]");
@@ -3185,10 +3198,12 @@ function initDeferredLayoutPage() {
     const villageSelect = shell.querySelector("[data-target-village]");
     const villageHidden = shell.querySelector("[data-target-village-hidden]");
     const monthSelect = shell.querySelector("select[name='target_mapping[month_name]']");
+    const targetTypeSelect = shell.querySelector("[data-target-type]");
     const mainActivitySelect = shell.querySelector("[data-target-main-activity]");
     const subActivitySelect = shell.querySelector("[data-target-sub-activity]");
     const subActivityField = shell.querySelector("[data-target-sub-activity-field]");
     const standardQuantityFields = Array.from(shell.querySelectorAll("[data-target-standard-quantity-fields]"));
+    const farmerOnlyFields = Array.from(shell.querySelectorAll("[data-target-farmer-only-field]"));
     const trainingFieldsPanel = shell.querySelector("[data-target-training-fields]");
     const trainingTargetInputs = () => Array.from(shell.querySelectorAll("[data-training-target-input]"));
     const targetInput = shell.querySelector("[data-target-quantity-input]");
@@ -3202,6 +3217,8 @@ function initDeferredLayoutPage() {
     const farmerSearchEmpty = shell.querySelector("[data-target-farmer-search-empty]");
     const weeklySummary = shell.querySelector("[data-target-weekly-summary]");
     const weeklyRows = shell.querySelector("[data-target-weekly-rows]");
+    const weeklyHeaderRow = shell.querySelector("[data-target-weekly-header-row]");
+    const weeklyViewHeader = shell.querySelector("[data-target-weekly-view-header]");
     const weeklySelectedTotal = shell.querySelector("[data-target-weekly-selected-total]");
     const farmerDialog = shell.querySelector("[data-target-farmer-dialog]");
     const farmerDialogTitle = shell.querySelector("[data-target-farmer-dialog-title]");
@@ -3245,6 +3262,18 @@ function initDeferredLayoutPage() {
     } catch (_error) {
       mainActivityTypeRows = [];
     }
+    if (mainActivitySelect && !mainActivitySelect.dataset.originalOptions) {
+      mainActivitySelect.dataset.originalOptions = JSON.stringify(Array.from(mainActivitySelect.options || []).map((option) => ({
+        value: option.value,
+        label: option.textContent || ""
+      })));
+    }
+    let originalMainActivityOptions = [];
+    try {
+      originalMainActivityOptions = JSON.parse(mainActivitySelect?.dataset.originalOptions || "[]");
+    } catch (_error) {
+      originalMainActivityOptions = [];
+    }
 
     const escapeHtml = (value) => String(value || "")
       .replaceAll("&", "&amp;")
@@ -3258,6 +3287,7 @@ function initDeferredLayoutPage() {
     const availableTargetBoxes = () => targetBoxes().filter((checkbox) => !checkbox.disabled);
     const visibleAvailableTargetBoxes = () => availableTargetBoxes().filter((checkbox) => !checkbox.closest(".vrp-ics-farmer-item")?.hidden);
     const targetFarmerSearchTerm = () => (farmerSearchInput?.value || "").trim().toLowerCase();
+    const villageTargetMode = () => (targetTypeSelect?.value || "").trim().toLowerCase() === "village";
     const newFarmerTargetMode = () => (newFarmerTargetInput?.value || "").trim() !== "";
     const clearNewFarmerTargetForSelection = () => {
       if (!newFarmerTargetInput || !newFarmerTargetMode()) return;
@@ -3269,8 +3299,8 @@ function initDeferredLayoutPage() {
       if (!targetInput) return;
 
       const manualMode = newFarmerTargetMode();
-      targetInput.disabled = manualMode;
-      targetInput.required = !manualMode;
+      targetInput.disabled = manualMode && !villageTargetMode();
+      targetInput.required = !manualMode || villageTargetMode();
       targetInput.setCustomValidity("");
     };
     const locationValueParts = (value) => `${value || ""}`.split("||");
@@ -3356,6 +3386,29 @@ function initDeferredLayoutPage() {
       return selected.some((name) => mainActivityTypeFor(name) === normalizeOption("Training"));
     };
     const filledTrainingTargets = () => trainingTargetInputs().filter((input) => String(input.value || "").trim() !== "");
+    const refreshMainActivityOptionsForTargetType = (resetSelection = false) => {
+      if (!mainActivitySelect || !originalMainActivityOptions.length) return;
+
+      const selectedValues = resetSelection ? [] : targetSelectedValues(mainActivitySelect);
+      const filteredOptions = originalMainActivityOptions.filter((option) => {
+        if (!option.value) return true;
+        return !villageTargetMode() || mainActivityTypeFor(option.value) !== normalizeOption("Training");
+      });
+
+      mainActivitySelect.innerHTML = "";
+      filteredOptions.forEach((optionData) => {
+        const option = document.createElement("option");
+        option.value = optionData.value;
+        option.textContent = optionData.label;
+        option.selected = selectedValues.some((selected) => targetOptionMatches(option.value, selected));
+        mainActivitySelect.appendChild(option);
+      });
+      mainActivitySelect.disabled = filteredOptions.filter((option) => option.value).length === 0;
+      mainActivitySelect.dataset.selectionDirty = "true";
+      delete mainActivitySelect.dataset.selectedValue;
+      delete mainActivitySelect.dataset.selectedValues;
+      mainActivitySelect.dispatchEvent(new Event("chip:refresh"));
+    };
 
     const targetSubActivityOptionsForMain = () => {
       const selectedMainActivities = selectedMainActivityNames().map((value) => normalizeOption(value));
@@ -3370,6 +3423,7 @@ function initDeferredLayoutPage() {
 
     const syncTargetActivityMode = () => {
       const trainingMode = trainingActivityTypeSelected();
+      const villageMode = villageTargetMode();
 
       // Sub Activity always stays visible and enabled (loads from selected Main Activity).
       if (subActivityField) {
@@ -3399,12 +3453,21 @@ function initDeferredLayoutPage() {
           }
         });
       });
+      farmerOnlyFields.forEach((field) => {
+        field.hidden = villageMode;
+        if (villageMode) field.setAttribute("hidden", "hidden");
+        else field.removeAttribute("hidden");
+        field.querySelectorAll("input").forEach((input) => {
+          input.disabled = villageMode;
+          if (villageMode) input.setCustomValidity("");
+        });
+      });
 
-      if (trainingFieldsPanel) trainingFieldsPanel.hidden = !trainingMode;
+      if (trainingFieldsPanel) trainingFieldsPanel.hidden = !trainingMode || villageMode;
 
       trainingTargetInputs().forEach((input) => {
-        input.disabled = !trainingMode;
-        if (!trainingMode && !editTarget.id) input.value = "";
+        input.disabled = !trainingMode || villageMode;
+        if ((!trainingMode || villageMode) && !editTarget.id) input.value = "";
       });
 
       syncNewFarmerTargetMode();
@@ -3541,11 +3604,15 @@ function initDeferredLayoutPage() {
       restoreEditFarmerSelections(rows);
       const monthlyCount = selectedFarmerMonthlyCount();
       const selectedLabel = `${totalActivityFarmerSelections()} total farmer selections`;
-      if (weeklySelectedTotal) weeklySelectedTotal.textContent = selectedLabel;
+      if (weeklySelectedTotal) weeklySelectedTotal.textContent = villageTargetMode() ? "Village target" : selectedLabel;
+      if (weeklyViewHeader) weeklyViewHeader.hidden = villageTargetMode();
+      const totalHeader = weeklyHeaderRow?.querySelector("th:nth-last-child(2)");
+      if (totalHeader) totalHeader.hidden = villageTargetMode();
 
       weeklySummary.hidden = rows.length === 0;
+      weeklySummary.classList.toggle("target-weekly-village-mode", villageTargetMode());
       if (!rows.length) {
-        weeklyRows.innerHTML = '<tr><td colspan="8">Select Main Activity to view weekly plan.</td></tr>';
+        weeklyRows.innerHTML = `<tr><td colspan="${villageTargetMode() ? 6 : 8}">Select Main Activity to view weekly plan.</td></tr>`;
         return;
       }
 
@@ -3554,7 +3621,9 @@ function initDeferredLayoutPage() {
         const selectedIds = farmerIdsForRow(rowKey);
         const rowMonthlyCount = trainingMonthlyTargetFor(row) || monthlyCount;
         const rowWeeklyCounts = weeklyCountsFor(rowMonthlyCount);
-        const farmerInputs = Array.from(selectedIds).map((id) => `<input type="hidden" name="target_mapping[weekly_plan][${index}][afl_ids][]" value="${escapeHtml(id)}">`).join("");
+        const farmerInputs = villageTargetMode() ? "" : Array.from(selectedIds).map((id) => `<input type="hidden" name="target_mapping[weekly_plan][${index}][afl_ids][]" value="${escapeHtml(id)}">`).join("");
+        const viewCell = villageTargetMode() ? "" : `<td><div class="target-weekly-cell-center"><button type="button" class="table-action" data-target-weekly-view="${index}" data-weekly-row-key="${escapeHtml(weeklyRowKey(row))}" data-activity-label="${escapeHtml(row.label)}">View</button></div></td>`;
+        const totalCell = villageTargetMode() ? "" : `<td><div class="target-weekly-cell-center"><strong data-target-weekly-farmer-total>${selectedIds.size}</strong>${farmerInputs}</div></td>`;
         return `
         <tr>
           <td>
@@ -3567,8 +3636,8 @@ function initDeferredLayoutPage() {
           <td><div class="target-weekly-cell-center">${weeklyPlanInput(row, index, "week_2", rowWeeklyCounts[1])}</div></td>
           <td><div class="target-weekly-cell-center">${weeklyPlanInput(row, index, "week_3", rowWeeklyCounts[2])}</div></td>
           <td><div class="target-weekly-cell-center">${weeklyPlanInput(row, index, "week_4", rowWeeklyCounts[3])}</div></td>
-          <td><div class="target-weekly-cell-center"><strong data-target-weekly-farmer-total>${selectedIds.size}</strong>${farmerInputs}</div></td>
-          <td><div class="target-weekly-cell-center"><button type="button" class="table-action" data-target-weekly-view="${index}" data-weekly-row-key="${escapeHtml(weeklyRowKey(row))}" data-activity-label="${escapeHtml(row.label)}">View</button></div></td>
+          ${totalCell}
+          ${viewCell}
         </tr>
       `;
       }).join("");
@@ -3577,6 +3646,10 @@ function initDeferredLayoutPage() {
     const dialogFarmerSearchTerm = () => (farmerDialogSearch?.value || "").trim().toLowerCase();
 
     const syncDialogFarmerTotals = () => {
+      if (villageTargetMode()) {
+        if (weeklySelectedTotal) weeklySelectedTotal.textContent = "Village target";
+        return;
+      }
       const limit = activeFarmerLimit();
       const selectedCount = activeFarmerDialogRowKey ? selectedFarmerIdsForActiveRow().size : 0;
       const selectedLabel = activeFarmerDialogRowKey && Number.isInteger(limit) && limit > 0
@@ -3663,8 +3736,8 @@ function initDeferredLayoutPage() {
       const visibleSelectedCount = availableBoxes.filter((checkbox) => checkbox.checked).length;
       if (farmerCountLabel) farmerCountLabel.textContent = `${selectedCount} farmer selected`;
       if (registeredCountInput) registeredCountInput.value = String(totalCount);
-      if (targetInput) targetInput.value = String(selectedCount);
-      if (targetInput) targetInput.max = String(availableTargetBoxes().length || selectedCount || 1);
+      if (targetInput) targetInput.value = villageTargetMode() ? String(totalCount) : String(selectedCount);
+      if (targetInput) targetInput.max = String(availableTargetBoxes().length || selectedCount || totalCount || 1);
       syncNewFarmerTargetMode();
       if (farmerSelectAll) {
         farmerSelectAll.checked = availableCount > 0 && visibleSelectedCount === availableCount;
@@ -3755,6 +3828,7 @@ function initDeferredLayoutPage() {
       const subActivityValues = targetSelectedValues(subActivitySelect);
       if (mainActivityValues.length) url.searchParams.set("main_activity_name", JSON.stringify(mainActivityValues));
       if (subActivityValues.length) url.searchParams.set("activity_name", JSON.stringify(subActivityValues));
+      if (targetTypeSelect?.value) url.searchParams.set("target_type", targetTypeSelect.value);
       if (editTarget.id) url.searchParams.set("edit_id", editTarget.id);
 
       try {
@@ -3882,14 +3956,14 @@ function initDeferredLayoutPage() {
           return;
         }
 
-        if (!newFarmerTargetMode() && farmerIdsForRow(rowKey).size !== monthly) {
+        if (!villageTargetMode() && !newFarmerTargetMode() && farmerIdsForRow(rowKey).size !== monthly) {
           event.preventDefault();
           window.alert(`Monthly target ${monthly} hai, isliye exactly ${monthly} farmers select karein.`);
           return;
         }
       }
 
-      if (trainingActivityTypeSelected()) {
+      if (trainingActivityTypeSelected() && !villageTargetMode()) {
         const filled = filledTrainingTargets();
         const invalid = filled.find((input) => {
           const value = Number(input.value || 0);
@@ -3963,7 +4037,15 @@ function initDeferredLayoutPage() {
       renderTargetWeeklySummary();
       loadTargetData();
     });
+    targetTypeSelect?.addEventListener("change", () => {
+      refreshMainActivityOptionsForTargetType(true);
+      refreshTargetSubActivities(true);
+      syncTargetActivityMode();
+      renderTargetWeeklySummary();
+      loadTargetData();
+    });
 
+    refreshMainActivityOptionsForTargetType(false);
     refreshTargetSubActivities(false);
     syncTargetActivityMode();
     syncTargetVillageHidden();
@@ -3971,6 +4053,20 @@ function initDeferredLayoutPage() {
     renderTargetWeeklySummary();
     loadTargetData();
   });
+
+  document.addEventListener("turbo:before-cache", () => {
+    document.querySelectorAll(".chip-multi-control").forEach((control) => control.remove());
+    document.querySelectorAll(".chip-source-select").forEach((select) => {
+      select.classList.remove("chip-source-select");
+    });
+    document.querySelectorAll("*").forEach((element) => {
+      Object.keys(element.dataset || {}).forEach((key) => {
+        if (key.endsWith("Bound")) delete element.dataset[key];
+      });
+    });
+    document.body.classList.remove("mobile-menu-open");
+    document.querySelectorAll("dialog[open]").forEach((dialog) => dialog.close?.());
+  }, { once: true });
 
   document.querySelectorAll("[data-add-farmer-form]").forEach((formShell) => {
     const villageSelect = formShell.querySelector("[data-add-farmer-village]");
@@ -6441,14 +6537,29 @@ function initDeferredLayoutPage() {
 }
 
 const bootLayoutPage = () => {
+  if (document.querySelector(".login-page")) {
+    initPasswordToggles();
+    return;
+  }
+
   initFastNavigation();
   initAflFarmerMapping();
   scheduleDeferredLayoutInit();
 };
 
-document.addEventListener("turbo:load", bootLayoutPage);
-document.addEventListener("DOMContentLoaded", bootLayoutPage);
+const queueBootLayoutPage = () => {
+  if (window.__vrpBootQueued) return;
+
+  window.__vrpBootQueued = true;
+  window.requestAnimationFrame(() => {
+    window.__vrpBootQueued = false;
+    bootLayoutPage();
+  });
+};
+
+document.addEventListener("turbo:load", queueBootLayoutPage);
+document.addEventListener("DOMContentLoaded", queueBootLayoutPage);
 
 if (document.readyState !== "loading") {
-  bootLayoutPage();
+  queueBootLayoutPage();
 }

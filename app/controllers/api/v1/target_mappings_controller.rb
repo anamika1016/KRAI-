@@ -21,7 +21,7 @@ module Api
 
       def filtered_mappings
         scope = visible_mappings.includes(:vrp, :vrp_ics_mapping)
-        scope = scope.where("LOWER(month_name) = ?", params[:month].to_s.strip.downcase) if params[:month].present?
+        scope = scope.where("LOWER(BTRIM(month_name)) = ?", params[:month].to_s.strip.downcase) if params[:month].present?
         scope = apply_search(scope) if params[:search].present?
         scope.order("target_mappings.updated_at DESC").limit(requested_limit).to_a
       end

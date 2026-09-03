@@ -1,3 +1,5 @@
+require "set"
+
 class VrpsController < ApplicationController
   helper_method :blank_display, :module_record_label, :module_record_labels, :vrp_type_labels,
                 :approval_step_closed?, :closing_approval_history, :mapped_office_name?
@@ -10,7 +12,7 @@ class VrpsController < ApplicationController
   def index
     vrps = visible_vrps.to_a
     if params[:target_assignment] == "unassigned"
-      assigned_vrp_ids = TargetMapping.where(vrp_id: vrps.map(&:id)).distinct.pluck(:vrp_id)
+      assigned_vrp_ids = TargetMapping.where(vrp_id: vrps.map(&:id)).distinct.pluck(:vrp_id).to_set
       vrps = vrps.reject { |vrp| assigned_vrp_ids.include?(vrp.id) }
     end
     if params[:activity_assignment] == "unassigned"
@@ -19,6 +21,7 @@ class VrpsController < ApplicationController
         .where("COALESCE(main_activity_name, '') <> '' OR COALESCE(activity_name, '') <> ''")
         .distinct
         .pluck(:vrp_id)
+        .to_set
       vrps = vrps.reject { |vrp| activity_assigned_vrp_ids.include?(vrp.id) }
     end
     if params[:fcoc].present?

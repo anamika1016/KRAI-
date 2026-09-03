@@ -5,7 +5,7 @@
 class FarmerTargetApi
   MAX_TRAINING_PHOTO_SIZE = 5.megabytes
   TRAINING_PHOTO_CONTENT_TYPES = %w[image/jpeg image/png image/webp image/heic image/heif].freeze
-  OTHER_TARGET_SLUGS = %w[seed-distribution-target papl360-target].freeze
+  OTHER_TARGET_SLUGS = %w[seed-distribution-target papl360-target other-target].freeze
   TARGET_SLUGS = (%w[training-form add-farmer-form] + OTHER_TARGET_SLUGS).freeze
 
   def initialize(current_app_user:, module_slug:, exclude_record_id: nil)
@@ -15,9 +15,14 @@ class FarmerTargetApi
   end
 
   def list
-    ModuleRecord
+    records = ModuleRecord
       .where(module_slug: @module_slug)
       .order(created_at: :desc)
+      .to_a
+
+    preload_visibility_vrps!(records) unless admin_user?
+
+    records
       .select { |record| visible?(record) }
       .map { |record| record_payload(record) }
   end
@@ -89,7 +94,7 @@ class FarmerTargetApi
   private
 
   def master_month_options(extra_months = [])
-    master_months = ModuleRecord.where(module_slug: "month-master").order(created_at: :desc).filter_map do |record|
+    master_months = active_month_master_records.filter_map do |record|
       status = record.data["status"].to_s.strip.downcase
       next if status == "inactive"
 
@@ -229,9 +234,26 @@ class FarmerTargetApi
     return unless model_ready?(:Vrp)
 
     vrp_id = record.data["jeevika_jankar_id"].presence || record.data["vrp_id"].presence || record.data["select_vrp"].presence
-    return Vrp.find_by(id: vrp_id) if vrp_id.present?
+    return visibility_vrp_by_id(vrp_id) if vrp_id.present?
 
     nil
+  end
+
+  def preload_visibility_vrps!(records)
+    ids = records.filter_map do |record|
+      record.data["jeevika_jankar_id"].presence || record.data["vrp_id"].presence || record.data["select_vrp"].presence
+    end.map(&:to_s).select { |id| id.match?(/\A\d+\z/) }.uniq
+
+    @visibility_vrps_by_id = ids.blank? || !model_ready?(:Vrp) ? {} : Vrp.where(id: ids).index_by { |vrp| vrp.id.to_s }
+  end
+
+  def visibility_vrp_by_id(vrp_id)
+    return nil if vrp_id.blank?
+
+    @visibility_vrps_by_id ||= {}
+    return @visibility_vrps_by_id[vrp_id.to_s] if @visibility_vrps_by_id.key?(vrp_id.to_s)
+
+    @visibility_vrps_by_id[vrp_id.to_s] = Vrp.find_by(id: vrp_id)
   end
 
   def target_record_matches_vrp?(record, vrp)
@@ -763,10 +785,25 @@ class FarmerTargetApi
   end
 
   def training_target_scope
-    scope = TargetMapping.all
+    return @training_target_scope if defined?(@training_target_scope)
+
+    scope = TargetMapping.includes(:vrp)
     scope = scope.where(vrp_id: current_vrp_record.id) if vrp_login_user? && current_vrp_record.present?
     scope = scope.where(vrp_id: cluster_visible_vrp_ids) if mapped_vrp_scope_active?
-    scope
+    @training_target_scope = scope
+  end
+
+  def target_mapping_by_id(target_mapping_id)
+    return nil if target_mapping_id.blank?
+
+    @target_mapping_by_id ||= {}
+    id = target_mapping_id.to_s
+    return @target_mapping_by_id[id] if @target_mapping_by_id.key?(id)
+
+    visible_targets_by_id = training_target_scope.to_a.index_by { |target| target.id.to_s }
+    @target_mapping_by_id.merge!(visible_targets_by_id)
+    @target_mapping_by_id[id] = TargetMapping.includes(:vrp).find_by(id: id) unless @target_mapping_by_id.key?(id)
+    @target_mapping_by_id[id]
   end
 
   def training_trainer_defaults
@@ -820,7 +857,7 @@ class FarmerTargetApi
   def pending_other_target_farmer_ids_for(target_mapping_id)
     return nil unless model_ready?(:TargetMapping)
 
-    target = TargetMapping.find_by(id: target_mapping_id)
+    target = target_mapping_by_id(target_mapping_id)
     return [] unless target
 
     target_farmer_ids(target) - other_target_completed_farmer_ids_for(target.id)
@@ -890,7 +927,7 @@ class FarmerTargetApi
     @training_completion_index = Hash.new { |hash, key| hash[key] = [] }
     return @training_completion_index unless model_ready?(:ModuleRecord)
 
-    ModuleRecord.where(module_slug: "training-form").order(created_at: :desc).select { |record| active_module_record?(record) }.each do |record|
+    training_completion_records.each do |record|
       next if @exclude_record_id.present? && record.id.to_s == @exclude_record_id.to_s
 
       summary = {
@@ -963,21 +1000,70 @@ class FarmerTargetApi
   def mapped_training_farmer_ids(target)
     return [] unless model_ready?(:VrpIcsMapping)
 
-    VrpIcsMapping.where(vrp_id: target.vrp_id).select do |mapping|
+    vrp_ics_mappings_for(target.vrp_id).select do |mapping|
       training_location_matches?(mapping.fco_id, mapping.fco_name, target.fco_id, target.fco_name) &&
         training_location_matches?(mapping.ics_id, mapping.ics_name, target.ics_id, target.ics_name) &&
         training_location_matches?(mapping.village_id, mapping.village_name, target.village_id, target.village_name)
     end.flat_map { |mapping| Array(mapping.afl_ids).map(&:to_s) }.reject(&:blank?).uniq
   end
 
+  def vrp_ics_mappings_for(vrp_id)
+    @vrp_ics_mappings_by_vrp_id ||= {}
+    key = vrp_id.to_s
+    return @vrp_ics_mappings_by_vrp_id[key] if @vrp_ics_mappings_by_vrp_id.key?(key)
+
+    @vrp_ics_mappings_by_vrp_id[key] = VrpIcsMapping.where(vrp_id: vrp_id).to_a
+  end
+
   def training_location_farmer_ids(target)
     return [] unless model_ready?(:Afl)
 
-    Afl.all.select do |farmer|
-      training_location_matches?(farmer.fco_id, farmer.fco, target.fco_id, target.fco_name) &&
-        training_location_matches?(farmer.ics_id, farmer.ics_name, target.ics_id, target.ics_name) &&
-        training_location_matches?(farmer.village_id, farmer.village_name, target.village_id, target.village_name)
-    end.map { |farmer| farmer.id.to_s }.uniq
+    cache_key = [
+      target.fco_id, target.fco_name,
+      target.ics_id, target.ics_name,
+      target.village_id, target.village_name
+    ].map { |value| normalize_text(value) }
+    @training_location_farmer_ids_cache ||= {}
+    return @training_location_farmer_ids_cache[cache_key] if @training_location_farmer_ids_cache.key?(cache_key)
+
+    scope = Afl.all
+    scope = filter_location_scope(scope, :fco_id, :fco, target.fco_id, target.fco_name)
+    scope = filter_location_scope(scope, :ics_id, :ics_name, target.ics_id, target.ics_name)
+    scope = filter_location_scope(scope, :village_id, :village_name, target.village_id, target.village_name)
+    @training_location_farmer_ids_cache[cache_key] = scope.distinct.pluck(:id).map(&:to_s)
+  end
+
+  def filter_location_scope(scope, id_column, name_column, id_value, name_value)
+    id_values = location_values(id_value).map { |value| normalize_text(value) }.reject(&:blank?).uniq
+    name_values = location_values(name_value).map { |value| normalize_text(value) }.reject(&:blank?).uniq
+    return scope.none if id_values.blank? && name_values.blank?
+
+    clauses = []
+    binds = {}
+    if id_values.any?
+      clauses << "LOWER(BTRIM(COALESCE(#{Afl.connection.quote_column_name(id_column)}::text, ''))) IN (:#{id_column}_values)"
+      binds["#{id_column}_values".to_sym] = id_values
+    end
+    if name_values.any?
+      clauses << "LOWER(BTRIM(COALESCE(#{Afl.connection.quote_column_name(name_column)}, ''))) IN (:#{name_column}_values)"
+      binds["#{name_column}_values".to_sym] = name_values
+    end
+
+    scope.where(clauses.join(" OR "), binds)
+  end
+
+  def location_values(value)
+    Array(value).flat_map do |item|
+      text = item.to_s.strip
+      next [] if text.blank?
+
+      parsed = begin
+        JSON.parse(text) if text.start_with?("[")
+      rescue JSON::ParserError
+        nil
+      end
+      parsed.is_a?(Array) ? parsed : text.split(",")
+    end.map { |item| item.to_s.strip }.reject(&:blank?)
   end
 
   def training_location_matches?(left_id, left_name, right_id, right_name)
@@ -1007,9 +1093,10 @@ class FarmerTargetApi
   end
 
   def main_activity_settings
-    return {} unless model_ready?(:ModuleRecord)
+    return @main_activity_settings if defined?(@main_activity_settings)
+    return @main_activity_settings = {} unless model_ready?(:ModuleRecord)
 
-    ModuleRecord.where(module_slug: "add-activity-group").order(created_at: :desc)
+    @main_activity_settings = ModuleRecord.where(module_slug: "add-activity-group").order(created_at: :desc)
       .select { |record| active_module_record?(record) }
       .each_with_object({}) do |record, settings|
         name = normalize_text(record.data["main_activity_name"].presence || record.data["activity_group_name"])
@@ -1022,10 +1109,24 @@ class FarmerTargetApi
       end
   end
 
-  def sub_activity_settings_for(activity_settings)
-    return {} unless model_ready?(:ModuleRecord)
+  def active_month_master_records
+    @active_month_master_records ||= ModuleRecord.where(module_slug: "month-master").order(created_at: :desc).to_a
+  end
 
-    ModuleRecord.where(module_slug: "add-vrp-activity").order(created_at: :desc)
+  def training_completion_records
+    return @training_completion_records if defined?(@training_completion_records)
+
+    @training_completion_records = ModuleRecord
+      .where(module_slug: "training-form")
+      .order(created_at: :desc)
+      .select { |record| active_module_record?(record) }
+  end
+
+  def sub_activity_settings_for(activity_settings)
+    return @sub_activity_settings if defined?(@sub_activity_settings)
+    return @sub_activity_settings = {} unless model_ready?(:ModuleRecord)
+
+    @sub_activity_settings = ModuleRecord.where(module_slug: "add-vrp-activity").order(created_at: :desc)
       .select { |record| active_module_record?(record) }
       .each_with_object({}) do |record, settings|
         main_key = normalize_text(record.data["main_activity"].presence || record.data["activity_group"])

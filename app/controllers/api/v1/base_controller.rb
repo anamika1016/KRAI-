@@ -21,9 +21,10 @@ module Api
       end
 
       def current_api_user_payload
+        return @current_api_user_payload if defined?(@current_api_user_payload)
         return unless current_api_user
 
-        app_user_session_payload(current_api_user)
+        @current_api_user_payload = app_user_session_payload(current_api_user)
       end
 
       def bearer_token

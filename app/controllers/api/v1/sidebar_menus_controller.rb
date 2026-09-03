@@ -33,18 +33,11 @@ module Api
       end
 
       def sidebar_cache_key
-        access_scope = ModuleRecord.where(module_slug: "access-control")
-        user_scope = ModuleRecord.where(module_slug: "new-user")
         user_key = current_api_user_payload.slice("id", "user_id", "username", "user_name", "user_type").sort.to_h
         [
           "api-v1-sidebar-menus",
           user_key,
-          access_scope.maximum(:updated_at).to_i,
-          access_scope.maximum(:id).to_i,
-          access_scope.count,
-          user_scope.maximum(:updated_at).to_i,
-          user_scope.maximum(:id).to_i,
-          user_scope.count
+          sidebar_access_records_fingerprint
         ].to_json
       end
 

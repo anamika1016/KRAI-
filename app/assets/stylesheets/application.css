@@ -41,6 +41,22 @@
   box-sizing: border-box;
 }
 
+.turbo-progress-bar {
+  display: none !important;
+}
+
+.dashboard-section,
+.training-dashboard-section,
+.vrp-list-section,
+.approval-progress-section {
+  content-visibility: auto;
+  contain-intrinsic-size: 1px 520px;
+}
+
+.target-weekly-village-mode .target-weekly-table th:last-child {
+  display: none;
+}
+
 body {
   margin: 0;
   font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
