@@ -3066,7 +3066,6 @@ class ModulesController < ApplicationController
       dashboard_summary_card("Total ICS Count", summary_counts[:ics_count], "Total ICS for selected login and filters", target_mappings_path(dashboard_summary_target_params), dashboard_path(dashboard_summary_target_params.merge(format: :xlsx))),
       dashboard_summary_card("Total Villages Count", summary_counts[:village_count], "Total villages for selected login and filters", target_mappings_path(dashboard_summary_target_params), dashboard_path(dashboard_summary_target_params.merge(format: :xlsx))),
       dashboard_summary_card("Total Farmer Count", summary_counts[:farmer_count], "Total registered farmers for selected login and filters", farmer_training_participation_path(dashboard_summary_participation_params(status: "unique")), farmer_training_participation_path(dashboard_summary_participation_params(status: "unique", format: :xlsx))),
-      dashboard_summary_card("Total Mapped Farmer", summary_counts[:mapped_farmer_count], "Unique mapped farmers for selected login and filters", farmer_training_participation_path(dashboard_summary_participation_params(status: "unique")), farmer_training_participation_path(dashboard_summary_participation_params(status: "unique", format: :xlsx))),
       dashboard_summary_card("Total Mapped Main Activities", summary_counts[:main_activity_count], "Filtered main activities", target_mappings_path(dashboard_summary_target_params), dashboard_path(dashboard_summary_target_params.merge(format: :xlsx))),
       dashboard_summary_card("Total Mapped Sub-Activities", summary_counts[:sub_activity_count], "Filtered sub-activities", target_mappings_path(dashboard_summary_target_params), dashboard_path(dashboard_summary_target_params.merge(format: :xlsx)))
     ]
@@ -3094,31 +3093,16 @@ class ModulesController < ApplicationController
     target_conditions, binds = dashboard_summary_target_sql_filters
     target_where = target_conditions.join(" AND ")
     sql = <<~SQL.squish
-      WITH mapped_rows AS (
-        SELECT
-          t.id,
-          t.main_activity_name,
-          t.activity_name,
-          j.value AS afl_id
-        FROM target_mappings t
-        LEFT JOIN vrps v ON v.id = t.vrp_id
-        CROSS JOIN LATERAL jsonb_array_elements_text(
-          CASE
-            WHEN jsonb_typeof(t.afl_ids::jsonb) = 'array' THEN t.afl_ids::jsonb
-            ELSE jsonb_build_array(t.afl_ids::jsonb)
-          END
-        ) AS j(value)
-        WHERE #{target_where}
-      )
       SELECT
         0 AS ics_count,
-        COUNT(DISTINCT NULLIF(BTRIM(a.village_id::text), '')) AS village_count,
-        COUNT(DISTINCT NULLIF(BTRIM(a.tracenet_no::text), '')) AS farmer_count,
-        COUNT(DISTINCT mapped_rows.afl_id) AS mapped_farmer_count,
-        COUNT(DISTINCT NULLIF(BTRIM(mapped_rows.main_activity_name), '')) AS main_activity_count,
-        COUNT(DISTINCT NULLIF(BTRIM(mapped_rows.activity_name), '')) AS sub_activity_count
-      FROM mapped_rows
-      LEFT JOIN afls a ON a.id::text = mapped_rows.afl_id
+        0 AS village_count,
+        0 AS farmer_count,
+        0 AS mapped_farmer_count,
+        COUNT(DISTINCT NULLIF(BTRIM(t.main_activity_name), '')) AS main_activity_count,
+        COUNT(DISTINCT NULLIF(BTRIM(t.activity_name), '')) AS sub_activity_count
+      FROM target_mappings t
+      LEFT JOIN vrps v ON v.id = t.vrp_id
+        WHERE #{target_where}
     SQL
 
     row = ActiveRecord::Base.connection.exec_query(
@@ -3145,7 +3129,7 @@ class ModulesController < ApplicationController
   end
 
   def dashboard_summary_target_sql_filters
-    conditions = ["j.value <> ''"]
+    conditions = ["1=1"]
     binds = {}
 
     if @dashboard_month_filter_value.present?
