@@ -29,6 +29,10 @@ class VrpsController < ApplicationController
       active_filter = params[:active_status].to_s.downcase
       vrps = vrps.select { |vrp| active_filter == "inactive" ? !vrp.is_active? : vrp.is_active? }
     end
+    if params[:gender].present?
+      selected_gender = params[:gender].to_s.strip.downcase
+      vrps = vrps.select { |vrp| vrp.gender.to_s.strip.downcase == selected_gender }
+    end
     if params[:approval_status].present?
       approval_filter = params[:approval_status].to_s.downcase
       vrps = vrps.select do |vrp|

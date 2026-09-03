@@ -3056,6 +3056,10 @@ class ModulesController < ApplicationController
       ], style: "registration"),
       dashboard_group_card("Jeevika Jankar Billing", billing_items, style: "billing")
     ]
+    cards << dashboard_group_card("Gender Count", [
+      { title: "Male Count", value: active_vrps.count { |vrp| normalize_dashboard_text(vrp.gender) == "male" }, path: vrps_path(gender: "male", active_status: "active") },
+      { title: "Female Count", value: active_vrps.count { |vrp| normalize_dashboard_text(vrp.gender) == "female" }, path: vrps_path(gender: "female", active_status: "active") }
+    ], style: "registration")
     fco_names = %w[Sausar Turekela]
     cards << dashboard_group_card("FCO-wise JJ Requirement", fco_names.map { |fco_name| dashboard_jj_requirement_item(fco_name, vrps, defined?(@filtered_targets) ? @filtered_targets : nil) }, style: "fco")
 
@@ -3129,8 +3133,8 @@ class ModulesController < ApplicationController
     ).first || {}
 
     counts = {
-      ics_count: row["ics_count"].to_i,
-      village_count: row["village_count"].to_i,
+      ics_count: dashboard_total_afl_ics_count,
+      village_count: dashboard_total_afl_village_count,
       farmer_count: dashboard_total_afl_farmer_count,
       mapped_farmer_count: row["mapped_farmer_count"].to_i,
       main_activity_count: row["main_activity_count"].to_i,
