@@ -3063,8 +3063,10 @@ class ModulesController < ApplicationController
     summary_counts = dashboard_summary_login_counts(targets)
 
     [
+      dashboard_summary_card("Total ICS Count", summary_counts[:ics_count], "Total ICS for selected login and filters", target_mappings_path(dashboard_summary_target_params), dashboard_path(dashboard_summary_target_params.merge(format: :xlsx))),
       dashboard_summary_card("Total Villages Count", summary_counts[:village_count], "Total villages for selected login and filters", target_mappings_path(dashboard_summary_target_params), dashboard_path(dashboard_summary_target_params.merge(format: :xlsx))),
       dashboard_summary_card("Total Farmer Count", summary_counts[:farmer_count], "Total registered farmers for selected login and filters", farmer_training_participation_path(dashboard_summary_participation_params(status: "unique")), farmer_training_participation_path(dashboard_summary_participation_params(status: "unique", format: :xlsx))),
+      dashboard_summary_card("Total Mapped Farmer", summary_counts[:mapped_farmer_count], "Unique mapped farmers for selected login and filters", farmer_training_participation_path(dashboard_summary_participation_params(status: "unique")), farmer_training_participation_path(dashboard_summary_participation_params(status: "unique", format: :xlsx))),
       dashboard_summary_card("Total Mapped Main Activities", summary_counts[:main_activity_count], "Filtered main activities", target_mappings_path(dashboard_summary_target_params), dashboard_path(dashboard_summary_target_params.merge(format: :xlsx))),
       dashboard_summary_card("Total Mapped Sub-Activities", summary_counts[:sub_activity_count], "Filtered sub-activities", target_mappings_path(dashboard_summary_target_params), dashboard_path(dashboard_summary_target_params.merge(format: :xlsx)))
     ]
@@ -3077,7 +3079,8 @@ class ModulesController < ApplicationController
     targets = Array(targets)
     activity_entries = dashboard_summary_activity_entries(targets)
     {
-      village_count: dashboard_distinct_target_array_count(targets, :village_id),
+      ics_count: dashboard_total_afl_ics_count,
+      village_count: dashboard_total_afl_village_count,
       farmer_count: dashboard_total_afl_farmer_count,
       mapped_farmer_count: dashboard_distinct_target_array_count(targets, :afl_ids),
       main_activity_count: activity_entries.filter_map { |entry| entry[:main_activity_key].presence }.uniq.size,
@@ -3108,6 +3111,7 @@ class ModulesController < ApplicationController
         WHERE #{target_where}
       )
       SELECT
+        0 AS ics_count,
         COUNT(DISTINCT NULLIF(BTRIM(a.village_id::text), '')) AS village_count,
         COUNT(DISTINCT NULLIF(BTRIM(a.tracenet_no::text), '')) AS farmer_count,
         COUNT(DISTINCT mapped_rows.afl_id) AS mapped_farmer_count,
@@ -3122,6 +3126,7 @@ class ModulesController < ApplicationController
     ).first || {}
 
     counts = {
+      ics_count: row["ics_count"].to_i,
       village_count: row["village_count"].to_i,
       farmer_count: row["farmer_count"].to_i,
       mapped_farmer_count: row["mapped_farmer_count"].to_i,
@@ -3129,6 +3134,7 @@ class ModulesController < ApplicationController
       sub_activity_count: row["sub_activity_count"].to_i
     }
 
+    counts[:ics_count] = dashboard_total_afl_ics_count
     counts[:village_count] = dashboard_total_afl_village_count
     counts[:farmer_count] = dashboard_total_afl_farmer_count
 
