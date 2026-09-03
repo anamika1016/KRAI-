@@ -3,8 +3,11 @@
   training_month: @training_selected_month.presence,
   training_sub_activity: @training_selected_sub_activity.presence,
   training_fcoc: @training_selected_fcoc.presence,
-  training_method: @training_selected_method.presence
+  training_method: @training_selected_method.presence,
+  week: @training_selected_week.presence
 }.compact_blank %>
+<% dashboard_back_params = filter_params.except(:week) %>
+<% dashboard_back_params[:weekly_target_week] = @training_selected_week if @training_selected_week.present? %>
 <% status_counts = @training_participation_totals || { unique: 0, training_unique: 0, completed_map: 0, green: 0, yellow: 0, red: 0, pending: 0, total: 0 } %>
 <% rendered_rows = @training_participation_page_rows || @training_participation_rows %>
 <% total_count = @training_participation_total_count || @training_participation_rows.size %>
@@ -18,7 +21,7 @@
     </div>
 
     <div class="dashboard-actions">
-      <%= link_to "Back to Dashboard", dashboard_path(filter_params), class: "list-btn active" %>
+      <%= link_to "Back to Dashboard", dashboard_path(dashboard_back_params), class: "list-btn active" %>
       <%= link_to "Export Excel", farmer_training_participation_path(filter_params.merge(status: @training_participation_status, format: :xlsx)), class: "list-btn export" %>
       <%= link_to "Download Attachments", farmer_training_participation_path(filter_params.merge(status: @training_participation_status, format: :zip)), class: "list-btn export" %>
     </div>
@@ -55,6 +58,9 @@
           <% end %>
           <% if @training_selected_method.present? %>
             | Training Method: <%= @training_selected_method %>
+          <% end %>
+          <% if @training_selected_week.present? %>
+            | Week: W<%= @training_selected_week %>
           <% end %>
         </p>
       </div>

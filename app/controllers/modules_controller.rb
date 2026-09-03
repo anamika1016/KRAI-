@@ -789,14 +789,18 @@ class ModulesController < ApplicationController
     @participation_month_filter_value = @dashboard_month_filter_value.presence || default_status_month
     @participation_selected_month = @participation_month_filter_value == "all" ? nil : @participation_month_filter_value
     @participation_fcoc_filter_value = @dashboard_fcoc_filter_value.presence || dashboard_default_visible_fcoc(@filter_fcoc_options)
+    @participation_week_filter_value = dashboard_filter_param(:weekly_target_week).to_i if dashboard_filter_param(:weekly_target_week).present?
+    @participation_week_filter_value = nil unless (1..4).include?(@participation_week_filter_value)
     participation_dashboard_counts = cached_training_participation_dashboard_counts(
       month_name: @participation_selected_month,
-      fcoc_name: @participation_fcoc_filter_value
+      fcoc_name: @participation_fcoc_filter_value,
+      week_number: @participation_week_filter_value
     )
     @training_participation_status_cards = training_participation_dashboard_status_cards(
       participation_dashboard_counts,
       month_name: @participation_selected_month,
-      fcoc_name: @participation_fcoc_filter_value
+      fcoc_name: @participation_fcoc_filter_value,
+      week_number: @participation_week_filter_value
     )
     @training_registered_farmer_count = participation_dashboard_counts[:registered_farmer_total].to_i
     @training_unique_farmer_count = participation_dashboard_counts[:total]
@@ -827,8 +831,7 @@ class ModulesController < ApplicationController
     @weekly_target_month_filter_value = @dashboard_month_filter_value.presence || default_status_month
     @weekly_dashboard_selected_month = @weekly_target_month_filter_value == "all" ? nil : @weekly_target_month_filter_value
     @weekly_target_fcoc_filter_value = @dashboard_fcoc_filter_value.presence || dashboard_default_visible_fcoc(@filter_fcoc_options)
-    @weekly_target_week_filter_value = dashboard_filter_param(:weekly_target_week).to_i if dashboard_filter_param(:weekly_target_week).present?
-    @weekly_target_week_filter_value = nil unless (1..4).include?(@weekly_target_week_filter_value)
+    @weekly_target_week_filter_value = @participation_week_filter_value
     weekly_dashboard_targets = dashboard_targets_for_month(weekly_target_scope, @weekly_dashboard_selected_month)
     if selected_post_filter.present?
       selected_post = selected_post_filter.to_s
@@ -880,8 +883,12 @@ class ModulesController < ApplicationController
     selected_fcoc = Array(params[:fco_id]).reject(&:blank?) if selected_fcoc.blank? && params[:fco_id].present?
     selected_main_activity = dashboard_filter_param(:main_activity, :activity)
     selected_training_method = params[:training_method].to_s.strip
+    selected_week_param = params[:week].presence || params[:weekly_target_week].presence
+    selected_week = selected_week_param.to_i if selected_week_param.present?
+    selected_week = nil unless (1..4).include?(selected_week)
     selected_status = normalize_training_participation_status(params[:status]) || "green"
     training_records = dashboard_training_participation_records(month_name: selected_month, main_activity_name: selected_main_activity, sub_activity_name: selected_sub_activity, fcoc_name: selected_fcoc)
+    training_records = training_records.select { |record| training_record_week_number(record) == selected_week } if selected_week.present?
     if selected_training_method.present?
       training_records = training_records.select do |record|
         normalize_dashboard_text(record.data["training_method"]) == normalize_dashboard_text(selected_training_method)
@@ -893,11 +900,13 @@ class ModulesController < ApplicationController
       main_activity_name: selected_main_activity,
       sub_activity_name: selected_sub_activity
     )
+    participation_targets = training_participation_targets_for_week(participation_targets, selected_week) if selected_week.present?
     participation_dashboard_counts = training_participation_dashboard_counts(
       month_name: selected_month,
       fcoc_name: selected_fcoc,
       records: training_records,
-      targets: participation_targets
+      targets: participation_targets,
+      week_number: selected_week
     )
     population_rows = nil
     target_map_rows = nil
@@ -911,7 +920,8 @@ class ModulesController < ApplicationController
         month_name: selected_month,
         fcoc_name: selected_fcoc,
         records: training_records,
-        targets: participation_targets
+        targets: participation_targets,
+        week_number: selected_week
       )
       population_rows
     elsif selected_status == "training_unique"
@@ -924,7 +934,8 @@ class ModulesController < ApplicationController
         month_name: selected_month,
         fcoc_name: selected_fcoc,
         records: training_records,
-        targets: participation_targets
+        targets: participation_targets,
+        week_number: selected_week
       )
       population_rows.select { |row| row[:status] == "red" }
     elsif selected_status == "pending_achievement"
@@ -935,7 +946,8 @@ class ModulesController < ApplicationController
         month_name: selected_month,
         fcoc_name: selected_fcoc,
         records: training_records,
-        targets: participation_targets
+        targets: participation_targets,
+        week_number: selected_week
       )
       population_rows.select { |row| row[:status] == selected_status }
     elsif selected_status == "total"
@@ -946,6 +958,7 @@ class ModulesController < ApplicationController
       record_rows.select { |row| row[:status] == selected_status }
     end
     @training_participation_totals = participation_dashboard_counts.slice(:green, :yellow, :red, :pending, :total)
+    @training_selected_week = selected_week
     @training_unique_farmer_count = participation_dashboard_counts[:total].to_i
     @training_total_training_farmer_count = participation_dashboard_counts[:target_map_total].to_i
     @training_completed_target_map_count = participation_dashboard_counts[:completed_target_map_total].to_i
@@ -1705,16 +1718,24 @@ class ModulesController < ApplicationController
     @participation_month_filter_value = params[:participation_month].presence || default_vrp_dashboard_month(@training_month_options, targets)
     @participation_selected_month = @participation_month_filter_value == "all" ? nil : @participation_month_filter_value
     @participation_fcoc_filter_value = params[:participation_fcoc].presence
+    @participation_week_filter_value = params[:weekly_target_week].to_i if params[:weekly_target_week].present?
+    @participation_week_filter_value = nil unless (1..4).include?(@participation_week_filter_value)
     participation_records = dashboard_training_participation_records(month_name: @participation_selected_month, fcoc_name: @participation_fcoc_filter_value)
+    participation_records = participation_records.select { |record| training_record_week_number(record) == @participation_week_filter_value } if @participation_week_filter_value.present?
+    participation_targets = training_participation_targets_for_dashboard(month_name: @participation_selected_month, fcoc_name: @participation_fcoc_filter_value)
+    participation_targets = training_participation_targets_for_week(participation_targets, @participation_week_filter_value) if @participation_week_filter_value.present?
     participation_dashboard_counts = training_participation_dashboard_counts(
       month_name: @participation_selected_month,
       fcoc_name: @participation_fcoc_filter_value,
-      records: participation_records
+      records: participation_records,
+      targets: participation_targets,
+      week_number: @participation_week_filter_value
     )
     @training_participation_status_cards = training_participation_dashboard_status_cards(
       participation_dashboard_counts,
       month_name: @participation_selected_month,
-      fcoc_name: @participation_fcoc_filter_value
+      fcoc_name: @participation_fcoc_filter_value,
+      week_number: @participation_week_filter_value
     )
     @training_registered_farmer_count = participation_dashboard_counts[:registered_farmer_total].to_i
     @training_unique_farmer_count = participation_dashboard_counts[:total]
@@ -3056,11 +3077,15 @@ class ModulesController < ApplicationController
       ], style: "registration"),
       dashboard_group_card("Jeevika Jankar Billing", billing_items, style: "billing")
     ]
-    cards << dashboard_group_card("Gender Count", [
-      { title: "Male Count", value: active_vrps.count { |vrp| normalize_dashboard_text(vrp.gender) == "male" }, path: vrps_path(gender: "male", active_status: "active") },
-      { title: "Female Count", value: active_vrps.count { |vrp| normalize_dashboard_text(vrp.gender) == "female" }, path: vrps_path(gender: "female", active_status: "active") }
-    ], style: "registration")
     fco_names = %w[Sausar Turekela]
+    gender_items = fco_names.flat_map do |fco_name|
+      fco_vrps = active_vrps.select { |vrp| training_fcoc_text_matches?(vrp.fcoc, fco_name) }
+      [
+        { title: "#{fco_name} Male", value: fco_vrps.count { |vrp| normalize_dashboard_text(vrp.gender) == "male" }, path: vrps_path(gender: "male", fcoc: fco_name, active_status: "active") },
+        { title: "#{fco_name} Female", value: fco_vrps.count { |vrp| normalize_dashboard_text(vrp.gender) == "female" }, path: vrps_path(gender: "female", fcoc: fco_name, active_status: "active") }
+      ]
+    end
+    cards << dashboard_group_card("Gender Count", gender_items, style: "registration")
     cards << dashboard_group_card("FCO-wise JJ Requirement", fco_names.map { |fco_name| dashboard_jj_requirement_item(fco_name, vrps, defined?(@filtered_targets) ? @filtered_targets : nil) }, style: "fco")
 
     cards
@@ -4270,6 +4295,7 @@ class ModulesController < ApplicationController
 
   def training_participation_population_rows(month_name:, fcoc_name:, records:, targets: nil, week_number: nil)
     targets ||= training_participation_targets_for_dashboard(month_name: month_name, fcoc_name: fcoc_name)
+    targets = training_participation_targets_for_week(targets, week_number) if week_number.present?
     memberships = training_participation_target_memberships(targets)
     return [] if memberships.blank?
 
@@ -4322,28 +4348,42 @@ class ModulesController < ApplicationController
     end.sort_by { |row| [row[:status], -row[:completed_activity_count].to_i, row[:farmer_name].to_s.downcase] }
   end
 
-  # Dashboard boxes only need counts. Avoid materializing thousands of AFL
-  # objects and their display hashes; the dedicated list page still builds the
-  # full farmer rows when the user opens a box.
-  def cached_training_participation_dashboard_counts(month_name:, fcoc_name:)
-    cache_key = training_participation_dashboard_counts_cache_key(month_name: month_name, fcoc_name: fcoc_name)
-    return training_participation_dashboard_counts_uncached(month_name: month_name, fcoc_name: fcoc_name) if cache_key.blank?
+  def training_participation_targets_for_week(targets, week_number)
+    week_index = week_number.to_i - 1
+    return Array(targets) unless (0..3).include?(week_index)
 
-    Rails.cache.fetch(cache_key, expires_in: 30.minutes) do
-      training_participation_dashboard_counts_uncached(month_name: month_name, fcoc_name: fcoc_name)
+    Array(targets).select do |target|
+      Array(target.weekly_target_values)[week_index].to_i.positive?
     end
   end
 
-  def training_participation_dashboard_counts_uncached(month_name:, fcoc_name:)
+  # Dashboard boxes only need counts. Avoid materializing thousands of AFL
+  # objects and their display hashes; the dedicated list page still builds the
+  # full farmer rows when the user opens a box.
+  def cached_training_participation_dashboard_counts(month_name:, fcoc_name:, week_number: nil)
+    cache_key = training_participation_dashboard_counts_cache_key(month_name: month_name, fcoc_name: fcoc_name, week_number: week_number)
+    return training_participation_dashboard_counts_uncached(month_name: month_name, fcoc_name: fcoc_name, week_number: week_number) if cache_key.blank?
+
+    Rails.cache.fetch(cache_key, expires_in: 30.minutes) do
+      training_participation_dashboard_counts_uncached(month_name: month_name, fcoc_name: fcoc_name, week_number: week_number)
+    end
+  end
+
+  def training_participation_dashboard_counts_uncached(month_name:, fcoc_name:, week_number: nil)
     participation_records = dashboard_training_participation_records(month_name: month_name, fcoc_name: fcoc_name)
+    participation_records = participation_records.select { |record| training_record_week_number(record) == week_number.to_i } if week_number.present?
+    participation_targets = training_participation_targets_for_dashboard(month_name: month_name, fcoc_name: fcoc_name)
+    participation_targets = training_participation_targets_for_week(participation_targets, week_number) if week_number.present?
     training_participation_dashboard_counts(
       month_name: month_name,
       fcoc_name: fcoc_name,
-      records: participation_records
+      records: participation_records,
+      targets: participation_targets,
+      week_number: week_number
     )
   end
 
-  def training_participation_dashboard_counts_cache_key(month_name:, fcoc_name:)
+  def training_participation_dashboard_counts_cache_key(month_name:, fcoc_name:, week_number: nil)
     return unless model_ready?(:TargetMapping) && model_ready?(:ModuleRecord)
 
     scope_signature = [
@@ -4360,9 +4400,10 @@ class ModulesController < ApplicationController
     vrp_version = model_ready?(:Vrp) ? Vrp.maximum(:updated_at)&.utc&.to_i : nil
 
     [
-      "dashboard/training-participation-counts/v4",
+      "dashboard/training-participation-counts/v5",
       normalize_dashboard_text(month_name),
       normalize_dashboard_text(fcoc_name),
+      week_number.presence,
       scope_signature,
       target_version,
       training_version,
@@ -4374,9 +4415,10 @@ class ModulesController < ApplicationController
     nil
   end
 
-  def training_participation_dashboard_counts(month_name:, fcoc_name:, records:, targets: nil)
+  def training_participation_dashboard_counts(month_name:, fcoc_name:, records:, targets: nil, week_number: nil)
     targets ||= training_participation_targets_for_dashboard(month_name: month_name, fcoc_name: fcoc_name)
-    sql_counts = training_participation_dashboard_counts_from_sql(month_name: month_name, fcoc_name: fcoc_name, targets: targets)
+    targets = training_participation_targets_for_week(targets, week_number) if week_number.present?
+    sql_counts = training_participation_dashboard_counts_from_sql(month_name: month_name, fcoc_name: fcoc_name, targets: targets) if week_number.blank?
     return sql_counts if sql_counts.present?
 
     memberships = training_participation_target_memberships(targets)
@@ -4668,11 +4710,12 @@ class ModulesController < ApplicationController
     @training_registered_afl_count_cache[cache_key] = scope.count(:id)
   end
 
-  def training_participation_dashboard_status_cards(counts, month_name:, fcoc_name:)
+  def training_participation_dashboard_status_cards(counts, month_name:, fcoc_name:, week_number: nil)
     %w[red yellow green].map do |status|
       path_params = { status: status }
       path_params[:training_month] = month_name if month_name.present?
       path_params[:training_fcoc] = fcoc_name if fcoc_name.present?
+      path_params[:week] = week_number if week_number.present?
       {
         status: status,
         title: training_participation_status_label(status),
@@ -6566,14 +6609,6 @@ class ModulesController < ApplicationController
         ]
       end
       rows << []
-    end
-
-    if Array(@dashboard_weekly_target_cards).any?
-      rows << ["Weekly Activity Target Status"]
-      rows << ["Status", "Title", "Value", "Caption"]
-      Array(@dashboard_weekly_target_cards).each do |card|
-        rows << [card[:status], card[:title], card[:value], card[:caption]]
-      end
     end
 
     rows

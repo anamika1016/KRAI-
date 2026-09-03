@@ -3,17 +3,39 @@
 <% selected_sub_activity = @training_selected_sub_activity.to_s %>
 <% participation_selected_month = @participation_selected_month.to_s %>
 <% participation_fcoc_filter_value = @participation_fcoc_filter_value.to_s %>
+<% participation_week_filter_value = @participation_week_filter_value.to_s %>
 <% filters_ready = selected_month.present? && selected_sub_activity.present? %>
 <% status_cards = Array(@training_participation_status_cards || []).reject { |card| card[:status].to_s == "pending" } %>
 <% participation_path_params = { status: "total" } %>
 <% participation_path_params[:training_month] = participation_selected_month if participation_selected_month.present? %>
 <% participation_path_params[:training_fcoc] = participation_fcoc_filter_value if participation_fcoc_filter_value.present? %>
+<% participation_path_params[:week] = participation_week_filter_value if participation_week_filter_value.present? %>
 <% unique_status_path_params = participation_path_params.merge(status: "unique") %>
 
 <section class="module-card training-participation-status-card dashboard-status-panel training-status-panel">
   <div class="module-card-header training-participation-status-header">
     <div>
-      <h2>Farmer Training Participation Status (Automatic)</h2>
+      <h2>Farmer Training Participation Status</h2>
+    </div>
+    <div class="dashboard-actions">
+      <%= form_with url: dashboard_path, method: :get, local: true, html: { class: "dashboard-month-filter" } do %>
+        <%= hidden_field_tag :activity, params[:activity] if params[:activity].present? %>
+        <%= hidden_field_tag :main_activity, params[:main_activity] if params[:main_activity].present? %>
+        <%= hidden_field_tag :training_sub_activity, params[:training_sub_activity] if params[:training_sub_activity].present? %>
+        <%= hidden_field_tag :sub_activity, params[:sub_activity] if params[:sub_activity].present? %>
+        <%= hidden_field_tag :fcoc, params[:fcoc] if params[:fcoc].present? %>
+        <%= hidden_field_tag :month, params[:month] if params[:month].present? %>
+        <%= hidden_field_tag :vrp_id, params[:vrp_id] if params[:vrp_id].present? %>
+        <label class="dashboard-month-select">
+          <span>Week</span>
+          <select name="weekly_target_week" onchange="this.form.submit()">
+            <option value="">All Weeks</option>
+            <% 1.upto(4) do |week_number| %>
+              <option value="<%= week_number %>" <%= "selected" if participation_week_filter_value == week_number.to_s %>>W<%= week_number %></option>
+            <% end %>
+          </select>
+        </label>
+      <% end %>
     </div>
   </div>
 
