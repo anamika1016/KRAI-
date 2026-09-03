@@ -600,9 +600,9 @@
 
   <% if farmer_activity_mode %>
     <div class="dashboard-grid premium dashboard-training-secondary-summaries">
-      <% Array(@dashboard_cards).sort_by { |card| ["Jeevika Jankar Registration", "Jeevika Jankar Billing", "FCO-wise Jeevika Jankar", "FCO-wise JJ Requirement"].index(card[:title]) || 99 }.each do |card| %>
+      <% Array(@dashboard_cards).sort_by { |card| ["Jeevika Jankar Registration", "Jeevika Jankar Billing", "FCO-wise JJ Requirement"].index(card[:title]) || 99 }.each do |card| %>
         <% next if card.blank? %>
-        <% next unless ["Jeevika Jankar Registration", "Jeevika Jankar Billing", "FCO-wise Jeevika Jankar", "FCO-wise JJ Requirement"].include?(card[:title]) %>
+        <% next unless ["Jeevika Jankar Registration", "Jeevika Jankar Billing", "FCO-wise JJ Requirement"].include?(card[:title]) %>
         <% next unless card.is_a?(Hash) && card[:items].present? %>
         <article class="metric-card metric-card-group metric-card-group-<%= card[:style] %>">
           <span class="metric-card-group-title"><%= card[:title] %></span>

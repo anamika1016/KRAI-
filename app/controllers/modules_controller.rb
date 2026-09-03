@@ -724,6 +724,7 @@ class ModulesController < ApplicationController
     unless admin_dashboard_user?
       bill_records = bill_records.select { |r| jeevika_jankar_bill_record_visible?(r) }
     end
+    bill_records = bill_records.select { |r| jeevika_jankar_bill_blocks_duplicate?(r) }
 
     # A cluster incharge dashboard is a roll-up of the VRPs mapped below that
     # incharge. Approval visibility can legitimately include unrelated bills,
@@ -3012,48 +3013,36 @@ class ModulesController < ApplicationController
 
   def dashboard_cards
     vrps = dashboard_vrps
-    hierarchy_summary = user_hierarchy_dashboard_summary
-    approved_vrps = dashboard_approved_vrps(vrps).size
-    pending_approvals = dashboard_pending_approval_vrps(vrps).size
+    active_vrps = vrps.select { |vrp| vrp.respond_to?(:is_active) ? vrp.is_active : true }
+    approved_vrps = dashboard_approved_vrps(active_vrps).size
+    pending_approvals = dashboard_pending_approval_vrps(active_vrps).size
 
-    bill_records = ModuleRecord.where(module_slug: "jeevika-jankar-bill-process").to_a
+    bill_records = ModuleRecord.where(module_slug: "jeevika-jankar-bill-process")
+    selected_bill_month = @dashboard_month_filter_value.presence
+    if selected_bill_month.present?
+      bill_records = bill_records.where("LOWER(BTRIM(data::jsonb ->> 'bill_month')) = ?", selected_bill_month.to_s.strip.downcase)
+    end
+    bill_records = bill_records.to_a
     bill_records = bill_records.select { |record| jeevika_jankar_bill_record_visible?(record) } unless admin_dashboard_user?
+    bill_records = bill_records.select { |record| jeevika_jankar_bill_blocks_duplicate?(record) }
     approved_bills = bill_records.count { |r| dashboard_bill_approved?(r) }
     pending_bills = bill_records.count { |r| dashboard_bill_pending?(r) }
-    billing_items = [{
-      title: "Level 2 Users",
-      value: hierarchy_summary[:level_2_total],
-      path: dashboard_path(anchor: "user_hierarchy_report")
-    }]
-    billing_items.concat([
-      { title: "Bill Approved", value: approved_bills, path: module_path("jeevika-jankar-bill-list") },
-      { title: "Bill Pending", value: pending_bills, path: module_path("jeevika-jankar-bill-list") }
-    ])
+    bill_list_params = {}
+    bill_list_params[:bill_month] = selected_bill_month if selected_bill_month.present?
+    billing_items = [
+      { title: "Bill Approved", value: approved_bills, path: module_path("jeevika-jankar-bill-list", bill_list_params.merge(bill_status: "final-approved", record_state: "Active")) },
+      { title: "Bill Pending", value: pending_bills, path: module_path("jeevika-jankar-bill-list", bill_list_params.merge(bill_status: "pending", record_state: "Active")) }
+    ]
 
     cards = [
       dashboard_group_card("Jeevika Jankar Registration", [
-        { title: "Total Registered", value: vrps.size, path: vrps_path },
-        { title: "Final Approved", value: approved_vrps, path: vrps_path },
+        { title: "Total Registered", value: active_vrps.size, path: vrps_path(active_status: "active") },
+        { title: "Final Approved", value: approved_vrps, path: vrps_path(approval_status: "final-approved", active_status: "active") },
         { title: "Pending Approval", value: pending_approvals, path: approvals_vrps_path }
       ], style: "registration"),
       dashboard_group_card("Jeevika Jankar Billing", billing_items, style: "billing")
     ]
-
     fco_names = %w[Sausar Turekela]
-    fco_summary_items = fco_names.map do |fco_name|
-      matching_vrps = vrps.select do |vrp|
-        normalize_dashboard_text(vrp.fcoc).include?(normalize_dashboard_text(fco_name)) &&
-          dashboard_vrp_active_for_requirement?(vrp)
-      end
-      male_count = matching_vrps.count { |vrp| normalize_dashboard_text(vrp.gender) == "male" }
-      female_count = matching_vrps.count { |vrp| normalize_dashboard_text(vrp.gender) == "female" }
-      {
-        title: fco_name,
-        value: "#{male_count} Male · #{female_count} Female",
-        path: vrps_path(fcoc: fco_name)
-      }
-    end
-    cards << dashboard_group_card("FCO-wise Jeevika Jankar", fco_summary_items, style: "fco")
     cards << dashboard_group_card("FCO-wise JJ Requirement", fco_names.map { |fco_name| dashboard_jj_requirement_item(fco_name, vrps, defined?(@filtered_targets) ? @filtered_targets : nil) }, style: "fco")
 
     cards

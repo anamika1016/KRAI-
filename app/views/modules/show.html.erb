@@ -1687,9 +1687,11 @@
     <% bill_months.sort_by! { |month| Date::MONTHNAMES.index { |name| name.to_s.casecmp(month.to_s).zero? } || 99 } %>
     <% selected_bill_month = params[:bill_month].presence || default_bill_month %>
     <% selected_bill_status = params[:bill_status].presence_in(["pending", "final-approved"]) || "pending" %>
-    <% if @jeevika_bill_user_filters %>
+    <% selected_record_state = params[:record_state].presence_in(["Active", "Inactive"]) %>
+    <% if @jeevika_bill_user_filters || params[:bill_month].present? || params[:bill_status].present? || params[:record_state].present? %>
       <% bill_rows = bill_rows.select { |row| row[:bill_month].to_s.casecmp(selected_bill_month).zero? } %>
       <% bill_rows = bill_rows.select { |row| selected_bill_status == "final-approved" ? row[:status].to_s.downcase.include?("final approved") : (row[:current_approver] && row[:status].to_s.downcase.include?("pending")) } %>
+      <% bill_rows = bill_rows.select { |row| selected_record_state.blank? || row[:record_state].to_s.casecmp(selected_record_state).zero? } %>
     <% end %>
     <section class="module-card list-only-card">
       <div class="module-card-header list-title-header">
@@ -1707,6 +1709,7 @@
 
       <% if @jeevika_bill_user_filters %>
         <%= form_with url: module_path("jeevika-jankar-bill-list"), method: :get, html: { class: "module-entry-form compact-filter-form compact-filter-form-multi" }, data: { bill_list_filters: true, default_month: default_bill_month } do %>
+          <%= hidden_field_tag :record_state, selected_record_state if selected_record_state.present? %>
           <label>
             <span>Bill Month</span>
             <select name="bill_month" data-bill-month-filter onchange="this.form.requestSubmit()">

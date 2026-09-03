@@ -25,6 +25,17 @@ class VrpsController < ApplicationController
       selected_fcoc = params[:fcoc].to_s.downcase
       vrps = vrps.select { |vrp| vrp.fcoc.to_s.downcase.include?(selected_fcoc) }
     end
+    if params[:active_status].present?
+      active_filter = params[:active_status].to_s.downcase
+      vrps = vrps.select { |vrp| active_filter == "inactive" ? !vrp.is_active? : vrp.is_active? }
+    end
+    if params[:approval_status].present?
+      approval_filter = params[:approval_status].to_s.downcase
+      vrps = vrps.select do |vrp|
+        label = vrp_status_label(vrp).to_s.downcase
+        approval_filter == "final-approved" ? label.include?("final approved") : label.include?("pending")
+      end
+    end
     ActiveRecord::Associations::Preloader.new(records: vrps, associations: :vrp_bank_master).call
     preload_registered_by_users!(vrps)
     preload_approval_lookup_data!
