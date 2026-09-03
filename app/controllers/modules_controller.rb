@@ -848,7 +848,9 @@ class ModulesController < ApplicationController
       week_number: @weekly_target_week_filter_value,
       participation_counts: participation_dashboard_counts
     )
-    @dashboard_summary_cards = dashboard_summary_cards(training_participation_active_vrp_targets(t_scope))
+    summary_targets = training_participation_active_vrp_targets(t_scope)
+    @dashboard_summary_cards = dashboard_summary_cards(summary_targets)
+    @demonstration_method_cards = demonstration_method_cards
     @dashboard_cards = dashboard_cards
     @dashboard_generated_at = Time.current
 
@@ -3058,24 +3060,238 @@ class ModulesController < ApplicationController
   end
 
   def dashboard_summary_cards(targets)
-    targets = Array(targets)
-    village_count = dashboard_distinct_target_array_count(targets, :village_id)
-    activity_entries = dashboard_summary_activity_entries(targets)
-    main_activity_count = activity_entries.filter_map { |entry| entry[:main_activity_key].presence }.uniq.size
-    sub_activity_count = activity_entries.filter_map { |entry| entry[:sub_activity_key].presence }.uniq.size
-    ics_count = dashboard_distinct_target_scalar_count(targets, :ics_id)
-    targeted_farmer_count = dashboard_distinct_target_array_count(targets, :afl_ids)
+    summary_counts = dashboard_summary_login_counts(targets)
 
     [
-      dashboard_summary_card("Total Villages Count", dashboard_total_afl_village_count, "Total AFL villages for selected FCO/ICS", target_mappings_path(dashboard_summary_target_params), dashboard_path(dashboard_summary_target_params.merge(format: :xlsx))),
-      dashboard_summary_card("Total Farmer Count", dashboard_total_afl_farmer_count, "Total AFL farmers for selected FCO/ICS", farmer_training_participation_path(dashboard_summary_participation_params(status: "unique")), farmer_training_participation_path(dashboard_summary_participation_params(status: "unique", format: :xlsx))),
-      dashboard_summary_card("Total ICS Count", dashboard_total_afl_ics_count, "Total AFL ICS for selected FCO/ICS", target_mappings_path(dashboard_summary_target_params), dashboard_path(dashboard_summary_target_params.merge(format: :xlsx))),
-      dashboard_summary_card("Total Mapped Villages", village_count, "Filtered mapped villages", target_mappings_path(dashboard_summary_target_params), dashboard_path(dashboard_summary_target_params.merge(format: :xlsx))),
-      dashboard_summary_card("Total Mapped Farmers", targeted_farmer_count, "Unique mapped farmers", farmer_training_participation_path(dashboard_summary_participation_params(status: "unique")), farmer_training_participation_path(dashboard_summary_participation_params(status: "unique", format: :xlsx))),
-      dashboard_summary_card("ICS Count", ics_count, "Filtered mapped ICS", target_mappings_path(dashboard_summary_target_params), dashboard_path(dashboard_summary_target_params.merge(format: :xlsx))),
-      dashboard_summary_card("Total Mapped Main Activities", main_activity_count, "Filtered main activities", target_mappings_path(dashboard_summary_target_params), dashboard_path(dashboard_summary_target_params.merge(format: :xlsx))),
-      dashboard_summary_card("Total Mapped Sub-Activities", sub_activity_count, "Filtered sub-activities", target_mappings_path(dashboard_summary_target_params), dashboard_path(dashboard_summary_target_params.merge(format: :xlsx)))
+      dashboard_summary_card("Total Villages Count", summary_counts[:village_count], "Total villages for selected login and filters", target_mappings_path(dashboard_summary_target_params), dashboard_path(dashboard_summary_target_params.merge(format: :xlsx))),
+      dashboard_summary_card("Total Farmer Count", summary_counts[:farmer_count], "Total registered farmers for selected login and filters", farmer_training_participation_path(dashboard_summary_participation_params(status: "unique")), farmer_training_participation_path(dashboard_summary_participation_params(status: "unique", format: :xlsx))),
+      dashboard_summary_card("Total Mapped Farmer", summary_counts[:mapped_farmer_count], "Unique mapped farmers for selected login and filters", farmer_training_participation_path(dashboard_summary_participation_params(status: "unique")), farmer_training_participation_path(dashboard_summary_participation_params(status: "unique", format: :xlsx))),
+      dashboard_summary_card("Total Mapped Main Activities", summary_counts[:main_activity_count], "Filtered main activities", target_mappings_path(dashboard_summary_target_params), dashboard_path(dashboard_summary_target_params.merge(format: :xlsx))),
+      dashboard_summary_card("Total Mapped Sub-Activities", summary_counts[:sub_activity_count], "Filtered sub-activities", target_mappings_path(dashboard_summary_target_params), dashboard_path(dashboard_summary_target_params.merge(format: :xlsx)))
     ]
+  end
+
+  def dashboard_summary_login_counts(targets)
+    query_counts = dashboard_summary_query_counts
+    return query_counts if query_counts.present?
+
+    targets = Array(targets)
+    activity_entries = dashboard_summary_activity_entries(targets)
+    {
+      village_count: dashboard_distinct_target_array_count(targets, :village_id),
+      farmer_count: dashboard_total_afl_farmer_count,
+      mapped_farmer_count: dashboard_distinct_target_array_count(targets, :afl_ids),
+      main_activity_count: activity_entries.filter_map { |entry| entry[:main_activity_key].presence }.uniq.size,
+      sub_activity_count: activity_entries.filter_map { |entry| entry[:sub_activity_key].presence }.uniq.size
+    }
+  end
+
+  def dashboard_summary_query_counts
+    return nil unless model_ready?(:TargetMapping)
+
+    target_conditions, binds = dashboard_summary_target_sql_filters
+    target_where = target_conditions.join(" AND ")
+    sql = <<~SQL.squish
+      WITH mapped_rows AS (
+        SELECT
+          t.id,
+          t.main_activity_name,
+          t.activity_name,
+          j.value AS afl_id
+        FROM target_mappings t
+        LEFT JOIN vrps v ON v.id = t.vrp_id
+        CROSS JOIN LATERAL jsonb_array_elements_text(
+          CASE
+            WHEN jsonb_typeof(t.afl_ids::jsonb) = 'array' THEN t.afl_ids::jsonb
+            ELSE jsonb_build_array(t.afl_ids::jsonb)
+          END
+        ) AS j(value)
+        WHERE #{target_where}
+      )
+      SELECT
+        COUNT(DISTINCT NULLIF(BTRIM(a.village_id::text), '')) AS village_count,
+        COUNT(DISTINCT NULLIF(BTRIM(a.tracenet_no::text), '')) AS farmer_count,
+        COUNT(DISTINCT mapped_rows.afl_id) AS mapped_farmer_count,
+        COUNT(DISTINCT NULLIF(BTRIM(mapped_rows.main_activity_name), '')) AS main_activity_count,
+        COUNT(DISTINCT NULLIF(BTRIM(mapped_rows.activity_name), '')) AS sub_activity_count
+      FROM mapped_rows
+      LEFT JOIN afls a ON a.id::text = mapped_rows.afl_id
+    SQL
+
+    row = ActiveRecord::Base.connection.exec_query(
+      ActiveRecord::Base.send(:sanitize_sql_array, [sql, binds])
+    ).first || {}
+
+    counts = {
+      village_count: row["village_count"].to_i,
+      farmer_count: row["farmer_count"].to_i,
+      mapped_farmer_count: row["mapped_farmer_count"].to_i,
+      main_activity_count: row["main_activity_count"].to_i,
+      sub_activity_count: row["sub_activity_count"].to_i
+    }
+
+    if dashboard_summary_direct_afl_total?
+      counts[:village_count] = dashboard_total_afl_village_count
+      counts[:farmer_count] = dashboard_total_afl_farmer_count
+    end
+
+    counts
+  rescue StandardError => e
+    Rails.logger.warn("Dashboard summary query counts failed: #{e.class} - #{e.message}")
+    nil
+  end
+
+  def dashboard_summary_target_sql_filters
+    conditions = ["j.value <> ''"]
+    binds = {}
+
+    if @dashboard_month_filter_value.present?
+      conditions << "LOWER(BTRIM(t.month_name)) = :summary_month"
+      binds[:summary_month] = normalize_dashboard_text(@dashboard_month_filter_value)
+    end
+
+    fcoc_value = @dashboard_fcoc_filter_value.presence || dashboard_filter_param(:fcoc, :fco)
+    if fcoc_value.present?
+      fco_values = training_fcoc_filter_values(fcoc_value)
+      conditions << "(LOWER(BTRIM(t.fco_name)) IN (:summary_fco_values) OR LOWER(BTRIM(t.fco_id)) IN (:summary_fco_values) OR LOWER(BTRIM(v.fcoc)) IN (:summary_fco_values))"
+      binds[:summary_fco_values] = fco_values
+    end
+
+    ics_value = dashboard_filter_param(:ics, :ics_name)
+    if ics_value.present?
+      conditions << "(LOWER(BTRIM(t.ics_name)) = :summary_ics OR LOWER(BTRIM(t.ics_id)) = :summary_ics)"
+      binds[:summary_ics] = normalize_dashboard_text(ics_value)
+    end
+
+    selected_vrp_id = dashboard_filter_param(:vrp_id)
+    if selected_vrp_id.present?
+      conditions << "t.vrp_id = :summary_vrp_id"
+      binds[:summary_vrp_id] = selected_vrp_id.to_i
+    elsif vrp_login_user? && current_vrp_record.present?
+      conditions << "t.vrp_id = :summary_vrp_id"
+      binds[:summary_vrp_id] = current_vrp_record.id
+    elsif dashboard_agronomics_login? && dashboard_current_app_user_ids.any? && TargetMapping.column_names.include?("created_by_id")
+      conditions << "t.created_by_id IN (:summary_created_by_ids)"
+      binds[:summary_created_by_ids] = dashboard_current_app_user_ids.map(&:to_i)
+    end
+
+    [conditions, binds]
+  end
+
+  def dashboard_summary_direct_afl_total?
+    !vrp_login_user? && !dashboard_agronomics_login?
+  end
+
+  def dashboard_agronomics_login?
+    [
+      current_app_user&.dig("role"),
+      current_app_user&.dig("role_name"),
+      current_app_user&.dig("stakeholder_role"),
+      current_app_user&.dig("user_management_role"),
+      current_app_user&.dig("person_type"),
+      current_app_user&.dig("designation")
+    ].compact_blank.any? { |value| normalize_dashboard_text(value).include?("agronom") }
+  end
+
+  def demonstration_method_cards
+    training_method_counts = dashboard_training_method_counts
+
+    [
+      dashboard_summary_card("General Training/Meeting", training_method_counts["General Training/Meeting"].to_i, "Distinct mapped farmers with General Training/Meeting", farmer_training_participation_path(dashboard_summary_participation_params(status: "training_unique")), farmer_training_participation_path(dashboard_summary_participation_params(status: "training_unique", format: :xlsx))),
+      dashboard_summary_card("Field Demonstration", training_method_counts["Field Demonstration"].to_i, "Distinct mapped farmers with Field Demonstration", farmer_training_participation_path(dashboard_summary_participation_params(status: "training_unique")), farmer_training_participation_path(dashboard_summary_participation_params(status: "training_unique", format: :xlsx))),
+      dashboard_summary_card("Farmer Field School", training_method_counts["Farmer Field School"].to_i, "Distinct mapped farmers with Farmer Field School", farmer_training_participation_path(dashboard_summary_participation_params(status: "training_unique")), farmer_training_participation_path(dashboard_summary_participation_params(status: "training_unique", format: :xlsx))),
+      dashboard_summary_card("OPG", training_method_counts["OPG"].to_i, "Distinct mapped farmers with OPG", farmer_training_participation_path(dashboard_summary_participation_params(status: "training_unique")), farmer_training_participation_path(dashboard_summary_participation_params(status: "training_unique", format: :xlsx)))
+    ]
+  end
+
+  def dashboard_training_method_counts
+    return training_method_count_defaults unless model_ready?(:TargetMapping) && model_ready?(:ModuleRecord)
+
+    target_conditions = ["j.value <> ''"]
+    target_binds = {}
+    if @dashboard_month_filter_value.present?
+      target_conditions << "LOWER(BTRIM(t.month_name)) = :target_month"
+      target_binds[:target_month] = normalize_dashboard_text(@dashboard_month_filter_value)
+    end
+    if @dashboard_fcoc_filter_value.present?
+      fco_values = training_fcoc_filter_values(@dashboard_fcoc_filter_value)
+      target_conditions << "(LOWER(BTRIM(t.fco_name)) IN (:fco_values) OR LOWER(BTRIM(t.fco_id)) IN (:fco_values) OR LOWER(BTRIM(v.fcoc)) IN (:fco_values))"
+      target_binds[:fco_values] = fco_values
+    end
+    selected_vrp_id = dashboard_filter_param(:vrp_id)
+    if selected_vrp_id.present?
+      target_conditions << "t.vrp_id = :target_vrp_id"
+      target_binds[:target_vrp_id] = selected_vrp_id.to_i
+    end
+    if dashboard_filter_param(:ics, :ics_name).present?
+      target_conditions << "(LOWER(BTRIM(t.ics_name)) = :target_ics OR LOWER(BTRIM(t.ics_id)) = :target_ics)"
+      target_binds[:target_ics] = normalize_dashboard_text(dashboard_filter_param(:ics, :ics_name))
+    end
+
+    training_conditions = ["mr.module_slug = 'training-form'", "sf.farmer_id <> ''"]
+    training_binds = {}
+    if @dashboard_month_filter_value.present?
+      training_conditions << "LOWER(COALESCE(mr.data::jsonb ->> 'month', '')) = :training_month"
+      training_binds[:training_month] = normalize_dashboard_text(@dashboard_month_filter_value)
+    end
+    if selected_vrp_id.present?
+      training_conditions << "mr.data::jsonb ->> 'created_by_id' = :created_by_id"
+      training_binds[:created_by_id] = selected_vrp_id.to_s
+    end
+
+    sql = <<~SQL.squish
+      WITH mapped_farmers AS (
+        SELECT DISTINCT j.value AS afl_id
+        FROM target_mappings t
+        LEFT JOIN vrps v ON v.id = t.vrp_id
+        CROSS JOIN LATERAL jsonb_array_elements_text(
+          CASE
+            WHEN jsonb_typeof(t.afl_ids::jsonb) = 'array' THEN t.afl_ids::jsonb
+            ELSE jsonb_build_array(t.afl_ids::jsonb)
+          END
+        ) AS j(value)
+        WHERE #{target_conditions.join(' AND ')}
+      ),
+      training_entries AS (
+        SELECT DISTINCT
+          sf.farmer_id,
+          mr.data::jsonb ->> 'training_method' AS training_method
+        FROM module_records mr
+        CROSS JOIN LATERAL jsonb_array_elements_text(
+          COALESCE(mr.data::jsonb -> 'selected_farmer_ids', '[]'::jsonb)
+        ) AS sf(farmer_id)
+        WHERE #{training_conditions.join(' AND ')}
+      )
+      SELECT
+        COUNT(DISTINCT mf.afl_id) FILTER (WHERE te.training_method = 'General Training/Meeting') AS general_training_meeting,
+        COUNT(DISTINCT mf.afl_id) FILTER (WHERE te.training_method = 'Field Demonstration') AS field_demonstration,
+        COUNT(DISTINCT mf.afl_id) FILTER (WHERE te.training_method = 'Farmer Field School') AS farmer_field_school,
+        COUNT(DISTINCT mf.afl_id) FILTER (WHERE te.training_method = 'OPG') AS opg
+      FROM mapped_farmers mf
+      LEFT JOIN training_entries te ON te.farmer_id = mf.afl_id
+    SQL
+
+    row = ActiveRecord::Base.connection.exec_query(
+      ActiveRecord::Base.send(:sanitize_sql_array, [sql, target_binds.merge(training_binds)])
+    ).first || {}
+    {
+      "General Training/Meeting" => row["general_training_meeting"].to_i,
+      "Field Demonstration" => row["field_demonstration"].to_i,
+      "Farmer Field School" => row["farmer_field_school"].to_i,
+      "OPG" => row["opg"].to_i
+    }
+  rescue StandardError => e
+    Rails.logger.warn("Dashboard training method counts failed: #{e.class} - #{e.message}")
+    training_method_count_defaults
+  end
+
+  def training_method_count_defaults
+    {
+      "General Training/Meeting" => 0,
+      "Field Demonstration" => 0,
+      "Farmer Field School" => 0,
+      "OPG" => 0
+    }
   end
 
   def dashboard_total_afl_village_count
@@ -4050,6 +4266,9 @@ class ModulesController < ApplicationController
 
   def training_participation_dashboard_counts(month_name:, fcoc_name:, records:)
     targets = training_participation_targets_for_dashboard(month_name: month_name, fcoc_name: fcoc_name)
+    sql_counts = training_participation_dashboard_counts_from_sql(month_name: month_name, fcoc_name: fcoc_name, targets: targets)
+    return sql_counts if sql_counts.present?
+
     memberships = training_participation_target_memberships(targets)
     mapped_farmer_total = training_mapped_farmer_distinct_count_for_participation(
       month_name: month_name,
@@ -4118,6 +4337,122 @@ class ModulesController < ApplicationController
       end
     end
     counts
+  end
+
+  def training_participation_dashboard_counts_from_sql(month_name:, fcoc_name:, targets:)
+    return nil unless model_ready?(:TargetMapping) && model_ready?(:ModuleRecord)
+
+    target_conditions, target_binds = dashboard_summary_target_sql_filters
+    target_binds = target_binds.merge(summary_month: normalize_dashboard_text(month_name)) if month_name.present?
+
+    if fcoc_name.present?
+      fco_values = training_fcoc_filter_values(fcoc_name)
+      target_conditions << "(LOWER(BTRIM(t.fco_name)) IN (:participation_fco_values) OR LOWER(BTRIM(t.fco_id)) IN (:participation_fco_values) OR LOWER(BTRIM(v.fcoc)) IN (:participation_fco_values))"
+      target_binds[:participation_fco_values] = fco_values
+    end
+
+    completed_conditions = ["mr.module_slug = 'training-form'", "sf.farmer_id <> ''", "tm.mapping_id <> ''"]
+    completed_binds = {}
+    if month_name.present?
+      completed_conditions << "LOWER(COALESCE(mr.data::jsonb ->> 'month', '')) = :completed_month"
+      completed_binds[:completed_month] = normalize_dashboard_text(month_name)
+    end
+
+    creator_ids = dashboard_participation_completion_creator_ids
+    if creator_ids.any?
+      completed_conditions << "COALESCE(mr.data::jsonb ->> 'created_by_id', '') IN (:completed_creator_ids)"
+      completed_binds[:completed_creator_ids] = creator_ids
+    end
+
+    sql = <<~SQL.squish
+      WITH assigned AS (
+        SELECT DISTINCT
+          t.id::text AS target_mapping_id,
+          j.value AS afl_id
+        FROM target_mappings t
+        LEFT JOIN vrps v ON v.id = t.vrp_id
+        CROSS JOIN LATERAL jsonb_array_elements_text(
+          CASE
+            WHEN jsonb_typeof(t.afl_ids::jsonb) = 'array' THEN t.afl_ids::jsonb
+            ELSE jsonb_build_array(t.afl_ids::jsonb)
+          END
+        ) AS j(value)
+        WHERE #{target_conditions.join(' AND ')}
+      ),
+      completed AS (
+        SELECT DISTINCT
+          sf.farmer_id,
+          tm.mapping_id AS target_mapping_id
+        FROM module_records mr
+        CROSS JOIN LATERAL jsonb_array_elements_text(
+          COALESCE(mr.data::jsonb -> 'selected_farmer_ids', '[]'::jsonb)
+        ) AS sf(farmer_id)
+        CROSS JOIN LATERAL jsonb_array_elements_text(
+          CASE
+            WHEN jsonb_typeof(mr.data::jsonb -> 'target_mapping_ids') = 'array'
+              THEN mr.data::jsonb -> 'target_mapping_ids'
+            WHEN NULLIF(mr.data::jsonb ->> 'target_mapping_id', '') IS NOT NULL
+              THEN jsonb_build_array(mr.data::jsonb ->> 'target_mapping_id')
+            ELSE '[]'::jsonb
+          END
+        ) AS tm(mapping_id)
+        WHERE #{completed_conditions.join(' AND ')}
+      ),
+      farmer_status AS (
+        SELECT
+          a.afl_id,
+          COUNT(DISTINCT a.target_mapping_id) AS assigned_activity,
+          COUNT(DISTINCT c.target_mapping_id) AS completed_activity
+        FROM assigned a
+        LEFT JOIN completed c
+          ON c.farmer_id = a.afl_id
+         AND c.target_mapping_id = a.target_mapping_id
+        GROUP BY a.afl_id
+      )
+      SELECT
+        COUNT(*) AS total_mapped_farmer,
+        COUNT(*) FILTER (
+          WHERE assigned_activity > 0
+            AND completed_activity = assigned_activity
+        ) AS green_count,
+        COUNT(*) FILTER (
+          WHERE completed_activity > 0
+            AND completed_activity < assigned_activity
+        ) AS yellow_count,
+        COUNT(*) FILTER (
+          WHERE completed_activity = 0
+        ) AS red_count,
+        COALESCE(SUM(assigned_activity), 0) AS target_map_total,
+        COALESCE(SUM(completed_activity), 0) AS completed_target_map_total
+      FROM farmer_status
+    SQL
+
+    row = ActiveRecord::Base.connection.exec_query(
+      ActiveRecord::Base.send(:sanitize_sql_array, [sql, target_binds.merge(completed_binds)])
+    ).first || {}
+
+    {
+      green: row["green_count"].to_i,
+      yellow: row["yellow_count"].to_i,
+      red: row["red_count"].to_i,
+      pending: row["red_count"].to_i,
+      completed: row["green_count"].to_i,
+      completed_target_map_total: row["completed_target_map_total"].to_i,
+      registered_farmer_total: training_registered_afl_farmer_count_for_participation(targets, fcoc_name: fcoc_name),
+      total: row["total_mapped_farmer"].to_i,
+      target_map_total: row["target_map_total"].to_i
+    }
+  rescue StandardError => e
+    Rails.logger.warn("Dashboard participation SQL counts failed: #{e.class} - #{e.message}")
+    nil
+  end
+
+  def dashboard_participation_completion_creator_ids
+    if vrp_login_user? || dashboard_agronomics_login?
+      dashboard_current_app_user_ids.map(&:to_s)
+    else
+      []
+    end
   end
 
   def training_mapped_farmer_distinct_count_for_participation(month_name:, fcoc_name:, targets:)

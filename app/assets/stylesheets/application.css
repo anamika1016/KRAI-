@@ -624,8 +624,10 @@ body {
 }
 
 /* Keep the training dashboard sections in their reporting workflow order. */
+.dashboard-page > #dashboard_summary_boxes { order: 1; }
 .dashboard-page > .dashboard-training-primary-summaries { order: 1; }
 .dashboard-page > .training-status-panel { order: 2; }
+.dashboard-page > #demonstration_method_boxes { order: 3; }
 .dashboard-page > #dashboard_activity_overview {
   display: none;
 }
@@ -1981,6 +1983,10 @@ body {
   overflow: visible;
 }
 
+.training-participation-boxes.demonstration-method-boxes {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+
 .dashboard-summary-boxes .dashboard-summary-box {
   min-width: 0;
   min-height: 150px;
@@ -2104,6 +2110,7 @@ body {
 @media (max-width: 900px) {
   .vrp-compact-summary-grid { grid-template-columns: 1fr; }
   .training-participation-boxes.dashboard-summary-boxes { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  .training-participation-boxes.demonstration-method-boxes { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 }
 
 @media (max-width: 620px) {
@@ -2117,6 +2124,7 @@ body {
 
 @media (max-width: 420px) {
   .training-participation-boxes.dashboard-summary-boxes { grid-template-columns: 1fr; }
+  .training-participation-boxes.demonstration-method-boxes { grid-template-columns: 1fr; }
 }
 
 .training-participation-box {

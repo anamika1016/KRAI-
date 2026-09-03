@@ -57,7 +57,10 @@
       </div>
     <% end %>
 
-    <% dashboard_summary_cards = Array(@dashboard_summary_cards) %>
+    <% demonstration_method_titles = ["General Training/Meeting", "Field Demonstration", "Farmer Field School", "OPG"] %>
+    <% all_dashboard_summary_cards = Array(@dashboard_summary_cards) %>
+    <% demonstration_method_cards = Array(@demonstration_method_cards).presence || all_dashboard_summary_cards.select { |card| demonstration_method_titles.include?(card[:title].to_s) } %>
+    <% dashboard_summary_cards = all_dashboard_summary_cards.reject { |card| demonstration_method_titles.include?(card[:title].to_s) } %>
     <% if dashboard_summary_cards.any? %>
       <section class="module-card training-participation-status-card dashboard-status-panel dashboard-summary-panel" id="dashboard_summary_boxes">
         <div class="module-card-header training-participation-status-header">
@@ -69,6 +72,33 @@
 
         <div class="training-participation-boxes dashboard-summary-boxes">
           <% dashboard_summary_cards.each do |card| %>
+            <div class="training-participation-box total dashboard-summary-box">
+              <span><%= card[:title] %></span>
+              <strong><%= card[:value] %></strong>
+              <div class="dashboard-summary-actions">
+                <%= link_to "View List", card[:path], class: "table-action", data: { dashboard_card: true } %>
+              </div>
+            </div>
+          <% end %>
+        </div>
+      </section>
+    <% end %>
+
+    <% if @dashboard_farmer_activity_mode %>
+      <%= render "farmer_training_dashboard" %>
+    <% end %>
+
+    <% if demonstration_method_cards.any? %>
+      <section class="module-card training-participation-status-card dashboard-status-panel dashboard-summary-panel demonstration-method-panel" id="demonstration_method_boxes">
+        <div class="module-card-header training-participation-status-header">
+          <div>
+            <h2>Demonstration Method</h2>
+            <p>Filtered demonstration and training method farmer summary.</p>
+          </div>
+        </div>
+
+        <div class="training-participation-boxes dashboard-summary-boxes demonstration-method-boxes">
+          <% demonstration_method_cards.each do |card| %>
             <div class="training-participation-box total dashboard-summary-box">
               <span><%= card[:title] %></span>
               <strong><%= card[:value] %></strong>
@@ -394,7 +424,10 @@
     </div>
   <% end %>
 
-  <% dashboard_summary_cards = Array(@dashboard_summary_cards) %>
+  <% demonstration_method_titles = ["General Training/Meeting", "Field Demonstration", "Farmer Field School", "OPG"] %>
+  <% all_dashboard_summary_cards = Array(@dashboard_summary_cards) %>
+  <% demonstration_method_cards = Array(@demonstration_method_cards).presence || all_dashboard_summary_cards.select { |card| demonstration_method_titles.include?(card[:title].to_s) } %>
+  <% dashboard_summary_cards = all_dashboard_summary_cards.reject { |card| demonstration_method_titles.include?(card[:title].to_s) } %>
   <% if dashboard_summary_cards.any? %>
     <section class="module-card training-participation-status-card dashboard-status-panel dashboard-summary-panel" id="dashboard_summary_boxes">
       <div class="module-card-header training-participation-status-header">
@@ -427,6 +460,29 @@
   <% if farmer_activity_mode %>
     <%# ── TRAINING DASHBOARD ───────────────────────────────────────────── %>
     <%= render "farmer_training_dashboard" %>
+  <% end %>
+
+  <% if demonstration_method_cards.any? %>
+    <section class="module-card training-participation-status-card dashboard-status-panel dashboard-summary-panel demonstration-method-panel" id="demonstration_method_boxes">
+      <div class="module-card-header training-participation-status-header">
+        <div>
+          <h2>Demonstration Method</h2>
+          <p>Filtered demonstration and training method farmer summary.</p>
+        </div>
+      </div>
+
+      <div class="training-participation-boxes dashboard-summary-boxes demonstration-method-boxes">
+        <% demonstration_method_cards.each do |card| %>
+          <div class="training-participation-box total dashboard-summary-box">
+            <span><%= card[:title] %></span>
+            <strong><%= card[:value] %></strong>
+            <div class="dashboard-summary-actions">
+              <%= link_to "View List", card[:path], class: "table-action", data: { dashboard_card: true } %>
+            </div>
+          </div>
+        <% end %>
+      </div>
+    </section>
   <% end %>
 
   <%# ── WEEKLY TARGET STATUS BOXES ONLY (full data on report page) ── %>
