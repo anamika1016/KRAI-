@@ -3065,7 +3065,6 @@ class ModulesController < ApplicationController
     [
       dashboard_summary_card("Total Villages Count", summary_counts[:village_count], "Total villages for selected login and filters", target_mappings_path(dashboard_summary_target_params), dashboard_path(dashboard_summary_target_params.merge(format: :xlsx))),
       dashboard_summary_card("Total Farmer Count", summary_counts[:farmer_count], "Total registered farmers for selected login and filters", farmer_training_participation_path(dashboard_summary_participation_params(status: "unique")), farmer_training_participation_path(dashboard_summary_participation_params(status: "unique", format: :xlsx))),
-      dashboard_summary_card("Total Mapped Farmer", summary_counts[:mapped_farmer_count], "Unique mapped farmers for selected login and filters", farmer_training_participation_path(dashboard_summary_participation_params(status: "unique")), farmer_training_participation_path(dashboard_summary_participation_params(status: "unique", format: :xlsx))),
       dashboard_summary_card("Total Mapped Main Activities", summary_counts[:main_activity_count], "Filtered main activities", target_mappings_path(dashboard_summary_target_params), dashboard_path(dashboard_summary_target_params.merge(format: :xlsx))),
       dashboard_summary_card("Total Mapped Sub-Activities", summary_counts[:sub_activity_count], "Filtered sub-activities", target_mappings_path(dashboard_summary_target_params), dashboard_path(dashboard_summary_target_params.merge(format: :xlsx)))
     ]
@@ -3130,10 +3129,8 @@ class ModulesController < ApplicationController
       sub_activity_count: row["sub_activity_count"].to_i
     }
 
-    if dashboard_summary_direct_afl_total?
-      counts[:village_count] = dashboard_total_afl_village_count
-      counts[:farmer_count] = dashboard_total_afl_farmer_count
-    end
+    counts[:village_count] = dashboard_total_afl_village_count
+    counts[:farmer_count] = dashboard_total_afl_farmer_count
 
     counts
   rescue StandardError => e
@@ -3312,11 +3309,11 @@ class ModulesController < ApplicationController
     scope = dashboard_total_afl_scope
     case kind
     when :village
-      scope.distinct.count("NULLIF(BTRIM(COALESCE(village_id, village_name)), '')")
+      scope.distinct.count("NULLIF(BTRIM(village_id), '')")
     when :ics
       scope.distinct.count("NULLIF(BTRIM(COALESCE(ics_id, ics_name)), '')")
     else
-      scope.distinct.count(:id)
+      scope.distinct.count("NULLIF(BTRIM(tracenet_no), '')")
     end
   rescue StandardError => e
     Rails.logger.warn("Dashboard total AFL #{kind} count failed: #{e.class} - #{e.message}")
