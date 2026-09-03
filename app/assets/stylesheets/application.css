@@ -1984,7 +1984,7 @@ body {
 }
 
 .training-participation-boxes.demonstration-method-boxes {
-  grid-template-columns: repeat(4, minmax(0, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(170px, 1fr));
 }
 
 .dashboard-summary-boxes .dashboard-summary-box {

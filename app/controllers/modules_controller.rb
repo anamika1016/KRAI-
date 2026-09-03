@@ -3131,7 +3131,7 @@ class ModulesController < ApplicationController
     counts = {
       ics_count: row["ics_count"].to_i,
       village_count: row["village_count"].to_i,
-      farmer_count: row["farmer_count"].to_i,
+      farmer_count: dashboard_total_afl_farmer_count,
       mapped_farmer_count: row["mapped_farmer_count"].to_i,
       main_activity_count: row["main_activity_count"].to_i,
       sub_activity_count: row["sub_activity_count"].to_i
@@ -3207,12 +3207,15 @@ class ModulesController < ApplicationController
 
   def demonstration_method_cards
     training_method_counts = dashboard_training_method_counts
+    participation_params = dashboard_summary_participation_params(status: "training_unique").merge(main_activity: "Farmers' Training")
+    participation_export_params = dashboard_summary_participation_params(status: "training_unique", format: :xlsx).merge(main_activity: "Farmers' Training")
 
     [
-      dashboard_summary_card("General Training/Meeting", training_method_counts["General Training/Meeting"].to_i, "Distinct mapped farmers with General Training/Meeting", farmer_training_participation_path(dashboard_summary_participation_params(status: "training_unique").merge(training_method: "General Training/Meeting")), farmer_training_participation_path(dashboard_summary_participation_params(status: "training_unique", format: :xlsx).merge(training_method: "General Training/Meeting"))),
-      dashboard_summary_card("Field Demonstration", training_method_counts["Field Demonstration"].to_i, "Distinct mapped farmers with Field Demonstration", farmer_training_participation_path(dashboard_summary_participation_params(status: "training_unique").merge(training_method: "Field Demonstration")), farmer_training_participation_path(dashboard_summary_participation_params(status: "training_unique", format: :xlsx).merge(training_method: "Field Demonstration"))),
-      dashboard_summary_card("Farmer Field School", training_method_counts["Farmer Field School"].to_i, "Distinct mapped farmers with Farmer Field School", farmer_training_participation_path(dashboard_summary_participation_params(status: "training_unique").merge(training_method: "Farmer Field School")), farmer_training_participation_path(dashboard_summary_participation_params(status: "training_unique", format: :xlsx).merge(training_method: "Farmer Field School"))),
-      dashboard_summary_card("OPG", training_method_counts["OPG"].to_i, "Distinct mapped farmers with OPG", farmer_training_participation_path(dashboard_summary_participation_params(status: "training_unique").merge(training_method: "OPG")), farmer_training_participation_path(dashboard_summary_participation_params(status: "training_unique", format: :xlsx).merge(training_method: "OPG")))
+      dashboard_summary_card("General Training/Meeting", training_method_counts["General Training/Meeting"].to_i, "Distinct mapped farmers with General Training/Meeting", farmer_training_participation_path(participation_params.merge(training_method: "General Training/Meeting")), farmer_training_participation_path(participation_export_params.merge(training_method: "General Training/Meeting"))),
+      dashboard_summary_card("Input Demo INM", training_method_counts["Input Demo INM"].to_i, "Distinct mapped farmers with Input Demo INM", farmer_training_participation_path(participation_params.merge(training_method: "Input Demo INM")), farmer_training_participation_path(participation_export_params.merge(training_method: "Input Demo INM"))),
+      dashboard_summary_card("FFS", training_method_counts["FFS"].to_i, "Distinct mapped farmers with FFS", farmer_training_participation_path(participation_params.merge(training_method: "FFS")), farmer_training_participation_path(participation_export_params.merge(training_method: "FFS"))),
+      dashboard_summary_card("Input Demo PM", training_method_counts["Input Demo PM"].to_i, "Distinct mapped farmers with Input Demo PM", farmer_training_participation_path(participation_params.merge(training_method: "Input Demo PM")), farmer_training_participation_path(participation_export_params.merge(training_method: "Input Demo PM"))),
+      dashboard_summary_card("OPG", training_method_counts["OPG"].to_i, "Distinct mapped farmers with OPG", farmer_training_participation_path(participation_params.merge(training_method: "OPG")), farmer_training_participation_path(participation_export_params.merge(training_method: "OPG")))
     ]
   end
 
@@ -3228,11 +3231,8 @@ class ModulesController < ApplicationController
       target_conditions << "LOWER(BTRIM(t.month_name)) = :target_month"
       target_binds[:target_month] = normalize_dashboard_text(month_value)
     end
-    main_activity_value = @dashboard_main_activity_filter_value.presence || dashboard_filter_param(:main_activity)
-    if main_activity_value.present?
-      target_conditions << "LOWER(BTRIM(t.main_activity_name)) = :target_main_activity"
-      target_binds[:target_main_activity] = normalize_dashboard_text(main_activity_value)
-    end
+    target_conditions << "LOWER(BTRIM(t.main_activity_name)) = :target_main_activity"
+    target_binds[:target_main_activity] = normalize_dashboard_text("Farmers' Training")
     if dashboard_filter_param(:sub_activity).present?
       target_conditions << "LOWER(BTRIM(t.activity_name)) = :target_sub_activity"
       target_binds[:target_sub_activity] = normalize_dashboard_text(dashboard_filter_param(:sub_activity))
@@ -3285,7 +3285,7 @@ class ModulesController < ApplicationController
       training_entries AS (
         SELECT DISTINCT
           sf.farmer_id,
-          mr.data::jsonb ->> 'training_method' AS training_method
+          BTRIM(mr.data::jsonb ->> 'training_method') AS training_method
         FROM module_records mr
         CROSS JOIN LATERAL jsonb_array_elements_text(
           COALESCE(mr.data::jsonb -> 'selected_farmer_ids', '[]'::jsonb)
@@ -3294,9 +3294,10 @@ class ModulesController < ApplicationController
       )
       SELECT
         COUNT(DISTINCT mf.afl_id) FILTER (WHERE te.training_method = 'General Training/Meeting') AS general_training_meeting,
-        COUNT(DISTINCT mf.afl_id) FILTER (WHERE te.training_method = 'Field Demonstration') AS field_demonstration,
-        COUNT(DISTINCT mf.afl_id) FILTER (WHERE te.training_method = 'Farmer Field School') AS farmer_field_school,
-        COUNT(DISTINCT mf.afl_id) FILTER (WHERE te.training_method = 'OPG') AS opg
+        COUNT(DISTINCT mf.afl_id) FILTER (WHERE te.training_method = 'Input Demo INM') AS input_demo_inm,
+        COUNT(DISTINCT mf.afl_id) FILTER (WHERE te.training_method = 'FFS') AS ffs,
+        COUNT(DISTINCT mf.afl_id) FILTER (WHERE UPPER(te.training_method) = 'INPUT DEMO PM') AS input_demo_pm,
+        COUNT(DISTINCT mf.afl_id) FILTER (WHERE UPPER(te.training_method) = 'OPG') AS opg
       FROM mapped_farmers mf
       LEFT JOIN training_entries te ON te.farmer_id = mf.afl_id
     SQL
@@ -3306,8 +3307,9 @@ class ModulesController < ApplicationController
     ).first || {}
     {
       "General Training/Meeting" => row["general_training_meeting"].to_i,
-      "Field Demonstration" => row["field_demonstration"].to_i,
-      "Farmer Field School" => row["farmer_field_school"].to_i,
+      "Input Demo INM" => row["input_demo_inm"].to_i,
+      "FFS" => row["ffs"].to_i,
+      "Input Demo PM" => row["input_demo_pm"].to_i,
       "OPG" => row["opg"].to_i
     }
   rescue StandardError => e
@@ -3318,8 +3320,9 @@ class ModulesController < ApplicationController
   def training_method_count_defaults
     {
       "General Training/Meeting" => 0,
-      "Field Demonstration" => 0,
-      "Farmer Field School" => 0,
+      "Input Demo INM" => 0,
+      "FFS" => 0,
+      "Input Demo PM" => 0,
       "OPG" => 0
     }
   end
