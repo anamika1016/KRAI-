@@ -1995,7 +1995,7 @@ body {
   border-top-width: 0;
   border-radius: 8px;
   position: relative;
-  overflow: hidden;
+  overflow: visible;
 }
 
 .dashboard-summary-boxes .dashboard-summary-box::before {
@@ -2080,6 +2080,48 @@ body {
   border-radius: 6px;
   background: rgba(226, 244, 239, 0.72);
   color: #3f7f32;
+}
+
+.dashboard-summary-action-popover {
+  position: relative;
+  display: flex;
+  flex: 1;
+  min-width: 0;
+}
+
+.dashboard-card-hover-popup {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: calc(100% + 8px);
+  z-index: 30;
+  display: none;
+  max-height: 180px;
+  overflow-y: auto;
+  padding: 10px 12px;
+  border: 1px solid rgba(68, 121, 135, 0.22);
+  border-radius: 8px;
+  background: #ffffff;
+  box-shadow: 0 14px 30px rgba(31, 57, 67, 0.18);
+  color: #254654;
+  font-size: 0.76rem;
+  line-height: 1.35;
+}
+
+.dashboard-card-hover-popup span {
+  display: block;
+  min-height: 0;
+}
+
+.dashboard-card-hover-popup span + span {
+  margin-top: 5px;
+  padding-top: 5px;
+  border-top: 1px solid rgba(68, 121, 135, 0.12);
+}
+
+.dashboard-summary-action-popover:hover .dashboard-card-hover-popup,
+.dashboard-summary-action-popover:focus-within .dashboard-card-hover-popup {
+  display: block;
 }
 
 .dashboard-summary-actions .table-action.export {

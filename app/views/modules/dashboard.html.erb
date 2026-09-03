@@ -66,7 +66,6 @@
         <div class="module-card-header training-participation-status-header">
           <div>
             <h2>Dashboard Summary</h2>
-            <p>Filtered target, achievement, farmer, village, and activity summary.</p>
           </div>
         </div>
 
@@ -76,7 +75,16 @@
               <span><%= card[:title] %></span>
               <strong><%= card[:value] %></strong>
               <div class="dashboard-summary-actions">
-                <%= link_to "View List", card[:path], class: "table-action", data: { dashboard_card: true } %>
+                <span class="dashboard-summary-action-popover">
+                  <%= link_to "View List", card[:path], class: "table-action", data: { dashboard_card: true } %>
+                  <% if Array(card[:popup_items]).any? %>
+                    <span class="dashboard-card-hover-popup" role="tooltip">
+                      <% Array(card[:popup_items]).each do |item| %>
+                        <span><%= item %></span>
+                      <% end %>
+                    </span>
+                  <% end %>
+                </span>
               </div>
             </div>
           <% end %>
@@ -93,7 +101,6 @@
         <div class="module-card-header training-participation-status-header">
           <div>
             <h2>Demonstration Method</h2>
-            <p>Filtered demonstration and training method farmer summary.</p>
           </div>
         </div>
 
@@ -433,7 +440,6 @@
       <div class="module-card-header training-participation-status-header">
         <div>
           <h2>Dashboard Summary</h2>
-          <p>Filtered target, achievement, farmer, village, and activity summary.</p>
         </div>
       </div>
 
@@ -443,7 +449,16 @@
             <span><%= card[:title] %></span>
             <strong><%= card[:value] %></strong>
             <div class="dashboard-summary-actions">
-              <%= link_to "View List", card[:path], class: "table-action", data: { dashboard_card: true } %>
+              <span class="dashboard-summary-action-popover">
+                <%= link_to "View List", card[:path], class: "table-action", data: { dashboard_card: true } %>
+                <% if Array(card[:popup_items]).any? %>
+                  <span class="dashboard-card-hover-popup" role="tooltip">
+                    <% Array(card[:popup_items]).each do |item| %>
+                      <span><%= item %></span>
+                    <% end %>
+                  </span>
+                <% end %>
+              </span>
             </div>
           </div>
         <% end %>
@@ -467,7 +482,6 @@
       <div class="module-card-header training-participation-status-header">
         <div>
           <h2>Demonstration Method</h2>
-          <p>Filtered demonstration and training method farmer summary.</p>
         </div>
       </div>
 
@@ -494,7 +508,6 @@
     <div class="module-card-header training-participation-status-header">
       <div>
         <h2>Weekly Activity Target Status</h2>
-        <p>Select a week to view target, completed, and pending work. Open the report cards for details.</p>
       </div>
       <div class="dashboard-actions">
         <%= form_with url: dashboard_path, method: :get, local: true, html: { class: "dashboard-month-filter" } do %>
@@ -549,7 +562,6 @@
       <div class="module-card-header training-participation-status-header">
         <div>
           <h2>ICS Wise Farmer Report</h2>
-          <p>View ICS-wise farmer summary, fetch data, and export the report.</p>
         </div>
         <div class="dashboard-actions">
           <%= form_with url: ics_wise_farmer_report_path, method: :get, local: true, html: { class: "dashboard-month-filter" } do %>

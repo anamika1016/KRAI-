@@ -19,7 +19,8 @@ class TargetMappingsController < ApplicationController
     @main_activity_type_map = main_activity_type_map
     @target_sub_activity_map = target_sub_activity_map
     @target_mappings = filtered_visible_target_mappings.includes(:vrp, :vrp_ics_mapping).order(updated_at: :desc)
-    @target_mapping_rows = grouped_target_mapping_rows(@target_mappings)
+    @target_summary_mode = params[:summary_mode].presence_in(%w[main_activity sub_activity])
+    @target_mapping_rows = @target_summary_mode.present? ? target_mapping_summary_rows(@target_mappings) : grouped_target_mapping_rows(@target_mappings)
     farmer_ids = @target_mappings.flat_map { |target| Array(target.afl_ids) }.map(&:to_s).reject(&:blank?).uniq
     @target_farmers_by_id = farmer_ids.each_slice(5_000).flat_map do |ids|
       Afl.where(id: ids)
@@ -1156,15 +1157,30 @@ class TargetMappingsController < ApplicationController
     scope = scope.where("LOWER(BTRIM(month_name)) = ?", params[:month].to_s.strip.downcase) if params[:month].present?
     scope = scope.where("LOWER(BTRIM(main_activity_name)) = ?", params[:main_activity].to_s.strip.downcase) if params[:main_activity].present?
     scope = scope.where("LOWER(BTRIM(activity_name)) = ?", params[:sub_activity].to_s.strip.downcase) if params[:sub_activity].present?
-    scope = scope.where(
-      "LOWER(BTRIM(fco_id)) = :fcoc OR LOWER(BTRIM(fco_name)) = :fcoc",
-      fcoc: params[:fcoc].to_s.strip.downcase
-    ) if params[:fcoc].present?
+    fco_filter_values = target_mapping_fco_filter_values(params[:fcoc].presence || params[:fco_id].presence)
+    if fco_filter_values.any?
+      scope = scope.where(
+        "LOWER(BTRIM(fco_id)) IN (:fcoc) OR LOWER(BTRIM(fco_name)) IN (:fcoc)",
+        fcoc: fco_filter_values
+      )
+    end
     scope = scope.where(
       "LOWER(BTRIM(ics_id)) = :ics OR LOWER(BTRIM(ics_name)) = :ics",
       ics: params[:ics].to_s.strip.downcase
     ) if params[:ics].present?
     scope
+  end
+
+  def target_mapping_fco_filter_values(value)
+    raw_values = Array(value).flatten.map(&:to_s).map(&:strip).reject(&:blank?)
+    return [] if raw_values.blank?
+
+    raw_values = %w[1004 1006] if raw_values.any? { |entry| entry.casecmp("All FCO").zero? }
+
+    raw_values.flat_map do |entry|
+      short_name = entry.sub(/\Afco\s*-\s*c\s+/i, "").strip
+      [entry, short_name]
+    end.map(&:downcase).reject(&:blank?).uniq
   end
 
   def visible_vrp_ics_mappings
@@ -1286,6 +1302,9 @@ class TargetMappingsController < ApplicationController
   end
 
   def target_mapping_export_headers
+    return ["Main Activity", "Sub Activity Count", "Mapped Farmer Count", "Target Mapping Count"] if @target_summary_mode == "main_activity"
+    return ["Sub Activity", "Main Activity", "Mapped Farmer Count", "Target Mapping Count"] if @target_summary_mode == "sub_activity"
+
     [
       "Jeevika Jankar",
       "FCO",
@@ -1310,6 +1329,13 @@ class TargetMappingsController < ApplicationController
   end
 
   def target_mapping_export_rows(rows)
+    if @target_summary_mode == "main_activity"
+      return Array(rows).map { |row| [row[:main_activity], row[:sub_activity_count], row[:farmer_count], row[:target_count]] }
+    end
+    if @target_summary_mode == "sub_activity"
+      return Array(rows).map { |row| [row[:sub_activity], row[:main_activity], row[:farmer_count], row[:target_count]] }
+    end
+
     Array(rows).map do |row|
       target = row[:target]
       week_targets = Array(row[:weekly_values]).presence || target.weekly_target_values
@@ -1335,6 +1361,29 @@ class TargetMappingsController < ApplicationController
         Array(row[:farmer_ids]).size
       ]
     end
+  end
+
+  def target_mapping_summary_rows(targets)
+    rows = Array(targets)
+    grouped = if @target_summary_mode == "main_activity"
+      rows.select { |target| normalized_activity_value(target.main_activity_name).present? }
+        .group_by { |target| normalized_activity_value(target.main_activity_name) }
+    else
+      rows.select { |target| normalized_activity_value(target.activity_name).present? }
+        .group_by { |target| normalized_activity_value(target.activity_name) }
+    end
+
+    grouped.map do |_key, group|
+      first = group.first
+      farmer_ids = group.flat_map { |target| Array(target.afl_ids) }.map(&:to_s).reject(&:blank?).uniq
+      {
+        main_activity: first.main_activity_name.to_s,
+        sub_activity: first.activity_name.to_s,
+        sub_activity_count: group.map { |target| normalized_activity_value(target.activity_name) }.reject(&:blank?).uniq.size,
+        farmer_count: farmer_ids.size,
+        target_count: group.size
+      }
+    end.sort_by { |row| [row[:main_activity].to_s.downcase, row[:sub_activity].to_s.downcase] }
   end
 
   def target_mapping_group_key_counts(targets)

@@ -20,9 +20,19 @@
         <div class="list-control-actions">
           <%= form_with url: afls_path, method: :get, local: true, class: "list-search compact" do |form| %>
             <span>⌕</span>
+            <% Array(params[:fco_id]).each do |fco_id| %>
+              <%= hidden_field_tag "fco_id[]", fco_id if fco_id.present? %>
+            <% end %>
+            <%= hidden_field_tag :fcoc, params[:fcoc] if params[:fcoc].present? %>
+            <%= hidden_field_tag :ics, params[:ics] if params[:ics].present? %>
+            <%= hidden_field_tag :ics_id, params[:ics_id] if params[:ics_id].present? %>
+            <%= hidden_field_tag :summary_mode, params[:summary_mode] if params[:summary_mode].present? %>
+            <%= hidden_field_tag :month, params[:month] if params[:month].present? %>
+            <%= hidden_field_tag :main_activity, params[:main_activity] if params[:main_activity].present? %>
+            <%= hidden_field_tag :sub_activity, params[:sub_activity] if params[:sub_activity].present? %>
             <%= form.search_field :q, value: @query, placeholder: "Search any field", data: { table_search: "afl_list" } %>
           <% end %>
-          <button type="button" class="list-btn export" data-export-table="afl_list">Export</button>
+          <%= link_to "Export Excel", afls_path(request.query_parameters.merge(format: :xlsx)), class: "list-btn export" %>
         </div>
       </div>
 
@@ -40,62 +50,114 @@
       <div class="table-shell">
         <table class="module-table vrp-list-table" id="afl_list" data-paginated-table data-page-size="15">
           <thead>
-            <tr>
-              <th><input type="checkbox" data-afl-select-all></th>
-              <th>ID</th>
-              <th>Farm ID</th>
-              <th>FCO ID</th>
-              <th>FCO</th>
-              <th>FPO ID</th>
-              <th>FPO Name</th>
-              <th>ICS ID</th>
-              <th>ICS Name</th>
-              <th>Village ID</th>
-              <th>Village Name</th>
-              <th>Farmer Name</th>
-              <th>Father Name</th>
-              <th>Tracenet No</th>
-              <th>Total Farm Area</th>
-              <th>Purchase Quantity Amount</th>
-              <th>Estimate Quantity</th>
-              <th>Purchase Quantity</th>
-              <th>Purchase Date</th>
-              <th>Mobile No</th>
-              <th>Purchase Product</th>
-              <th>Status</th>
-            </tr>
+            <% if @summary_mode == "ics" %>
+              <tr>
+                <th>ICS ID</th>
+                <th>ICS Name</th>
+                <th>Farmer Count</th>
+              </tr>
+            <% elsif @summary_mode == "village" %>
+              <tr>
+                <th>Village ID</th>
+                <th>Village Name</th>
+                <th>ICS ID</th>
+                <th>ICS Name</th>
+                <th>Farmer Count</th>
+              </tr>
+            <% elsif @summary_mode == "farmer" %>
+              <tr>
+                <th>Tracenet No</th>
+                <th>Farmer Name</th>
+                <th>Father Name</th>
+                <th>Village ID</th>
+                <th>Village Name</th>
+                <th>ICS ID</th>
+                <th>ICS Name</th>
+              </tr>
+            <% else %>
+              <tr>
+                <th><input type="checkbox" data-afl-select-all></th>
+                <th>ID</th>
+                <th>Farm ID</th>
+                <th>FCO ID</th>
+                <th>FCO</th>
+                <th>FPO ID</th>
+                <th>FPO Name</th>
+                <th>ICS ID</th>
+                <th>ICS Name</th>
+                <th>Village ID</th>
+                <th>Village Name</th>
+                <th>Farmer Name</th>
+                <th>Father Name</th>
+                <th>Tracenet No</th>
+                <th>Total Farm Area</th>
+                <th>Purchase Quantity Amount</th>
+                <th>Estimate Quantity</th>
+                <th>Purchase Quantity</th>
+                <th>Purchase Date</th>
+                <th>Mobile No</th>
+                <th>Purchase Product</th>
+                <th>Status</th>
+              </tr>
+            <% end %>
           </thead>
           <tbody>
             <% if @afls.any? %>
               <% @afls.each do |afl| %>
-                <tr>
-                  <td><input type="checkbox" value="<%= afl_path(afl, q: @query.presence, page: @page) %>" data-afl-row-select></td>
-                  <td><%= afl.id %></td>
-                  <td><%= afl.farm_id %></td>
-                  <td><%= afl.fco_id %></td>
-                  <td><%= afl.fco %></td>
-                  <td><%= afl.fpo_id %></td>
-                  <td><%= afl.fpo_name %></td>
-                  <td><%= afl.ics_id %></td>
-                  <td><%= afl.ics_name %></td>
-                  <td><%= afl.village_id %></td>
-                  <td><%= afl.village_name %></td>
-                  <td><%= afl.farmer_name %></td>
-                  <td><%= afl.father_name %></td>
-                  <td><%= afl.tracenet_no %></td>
-                  <td><%= afl.total_farm_area %></td>
-                  <td><%= afl.purchase_quantity_amount %></td>
-                  <td><%= afl.estimate_quantity %></td>
-                  <td><%= afl.purchase_quantity %></td>
-                  <td><%= afl.purchase_date&.strftime("%d-%m-%Y") %></td>
-                  <td><%= afl.mobile_no %></td>
-                  <td><%= afl.purchase_product %></td>
-                  <td><%= afl.status %></td>
-                </tr>
+                <% if @summary_mode == "ics" %>
+                  <tr>
+                    <td><%= afl[:ics_id] %></td>
+                    <td><%= afl[:ics_name].presence || "-" %></td>
+                    <td><%= afl[:farmer_count].to_i %></td>
+                  </tr>
+                <% elsif @summary_mode == "village" %>
+                  <tr>
+                    <td><%= afl[:village_id] %></td>
+                    <td><%= afl[:village_name].presence || "-" %></td>
+                    <td><%= afl[:ics_id].presence || "-" %></td>
+                    <td><%= afl[:ics_name].presence || "-" %></td>
+                    <td><%= afl[:farmer_count].to_i %></td>
+                  </tr>
+                <% elsif @summary_mode == "farmer" %>
+                  <tr>
+                    <td><%= afl[:tracenet_no] %></td>
+                    <td><%= afl[:farmer_name].presence || "-" %></td>
+                    <td><%= afl[:father_name].presence || "-" %></td>
+                    <td><%= afl[:village_id].presence || "-" %></td>
+                    <td><%= afl[:village_name].presence || "-" %></td>
+                    <td><%= afl[:ics_id].presence || "-" %></td>
+                    <td><%= afl[:ics_name].presence || "-" %></td>
+                  </tr>
+                <% else %>
+                  <tr>
+                    <td><input type="checkbox" value="<%= afl_path(afl, request.query_parameters.slice("q", "page", "fco_id", "fcoc", "ics", "ics_id")) %>" data-afl-row-select></td>
+                    <td><%= afl.id %></td>
+                    <td><%= afl.farm_id %></td>
+                    <td><%= afl.fco_id %></td>
+                    <td><%= afl.fco %></td>
+                    <td><%= afl.fpo_id %></td>
+                    <td><%= afl.fpo_name %></td>
+                    <td><%= afl.ics_id %></td>
+                    <td><%= afl.ics_name %></td>
+                    <td><%= afl.village_id %></td>
+                    <td><%= afl.village_name %></td>
+                    <td><%= afl.farmer_name %></td>
+                    <td><%= afl.father_name %></td>
+                    <td><%= afl.tracenet_no %></td>
+                    <td><%= afl.total_farm_area %></td>
+                    <td><%= afl.purchase_quantity_amount %></td>
+                    <td><%= afl.estimate_quantity %></td>
+                    <td><%= afl.purchase_quantity %></td>
+                    <td><%= afl.purchase_date&.strftime("%d-%m-%Y") %></td>
+                    <td><%= afl.mobile_no %></td>
+                    <td><%= afl.purchase_product %></td>
+                    <td><%= afl.status %></td>
+                  </tr>
+                <% end %>
               <% end %>
             <% else %>
               <tr>
-                <td colspan="22">No target mapping records uploaded yet.</td>
+                <td colspan="<%= @summary_mode == "ics" ? 3 : (@summary_mode == "village" ? 5 : (@summary_mode == "farmer" ? 7 : 22)) %>">No target mapping records uploaded yet.</td>
               </tr>
             <% end %>
           </tbody>
@@ -106,13 +168,13 @@
         <% end_count = [@page * @page_size, @total_afls].min %>
         <span><%= start_count %> to <%= end_count %> of <%= @total_afls %></span>
         <% if @page > 1 %>
-          <%= link_to "‹", afls_path(q: @query.presence, page: @page - 1), class: "page-link" %>
+          <%= link_to "‹", afls_path(request.query_parameters.merge(page: @page - 1)), class: "page-link" %>
         <% else %>
           <span class="page-link disabled">‹</span>
         <% end %>
         <strong>Page <%= @page %> of <%= @total_pages %></strong>
         <% if @page < @total_pages %>
-          <%= link_to "›", afls_path(q: @query.presence, page: @page + 1), class: "page-link" %>
+          <%= link_to "›", afls_path(request.query_parameters.merge(page: @page + 1)), class: "page-link" %>
         <% else %>
           <span class="page-link disabled">›</span>
         <% end %>

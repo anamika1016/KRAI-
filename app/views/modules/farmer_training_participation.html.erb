@@ -2,7 +2,8 @@
 <% filter_params = {
   training_month: @training_selected_month.presence,
   training_sub_activity: @training_selected_sub_activity.presence,
-  training_fcoc: @training_selected_fcoc.presence
+  training_fcoc: @training_selected_fcoc.presence,
+  training_method: @training_selected_method.presence
 }.compact_blank %>
 <% status_counts = @training_participation_totals || { unique: 0, training_unique: 0, completed_map: 0, green: 0, yellow: 0, red: 0, pending: 0, total: 0 } %>
 <% rendered_rows = @training_participation_page_rows || @training_participation_rows %>
@@ -52,13 +53,16 @@
           <% if @training_selected_sub_activity.present? %>
             | Sub Activity: <%= @training_selected_sub_activity %>
           <% end %>
+          <% if @training_selected_method.present? %>
+            | Training Method: <%= @training_selected_method %>
+          <% end %>
         </p>
       </div>
       <%= link_to "Export Excel", farmer_training_participation_path(filter_params.merge(status: @training_participation_status, format: :xlsx)), class: "list-btn export" %>
     </div>
 
     <div class="table-shell">
-      <table class="module-table compact-table training-participation-table upload-report-table" id="training_participation_list" data-paginated-table data-page-size="20">
+      <table class="module-table compact-table training-participation-table upload-report-table" id="training_participation_list">
         <thead>
           <tr>
             <th>Farmer</th>
@@ -150,8 +154,6 @@
           <span class="page-link disabled">Next</span>
         <% end %>
       </div>
-    <% else %>
-      <div class="table-pagination" data-pagination-for="training_participation_list"></div>
     <% end %>
   </section>
 </section>
