@@ -41,35 +41,6 @@
   box-sizing: border-box;
 }
 
-.turbo-progress-bar {
-  display: none !important;
-}
-
-body.navigation-pending {
-  cursor: progress;
-}
-
-.side-nav a.nav-pending,
-.side-nav a.nav-pending:hover {
-  opacity: 0.72;
-  pointer-events: none;
-}
-
-.side-nav a.nav-pending::after {
-  content: "";
-  width: 6px;
-  height: 6px;
-  margin-left: auto;
-  border-radius: 50%;
-  background: var(--vrp-green);
-  animation: navPendingPulse 0.8s ease-in-out infinite alternate;
-}
-
-@keyframes navPendingPulse {
-  from { transform: scale(0.8); opacity: 0.45; }
-  to { transform: scale(1); opacity: 1; }
-}
-
 .dashboard-section,
 .training-dashboard-section,
 .vrp-list-section,

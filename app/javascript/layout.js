@@ -69,20 +69,6 @@ const initFastNavigation = () => {
 
     const active = path === href || (href.length > 1 && path.startsWith(href));
     link.classList.toggle("active", active);
-    if (link.dataset.fastNavBound === "true") return;
-
-    link.dataset.fastNavBound = "true";
-    link.addEventListener("click", () => {
-      if (link.classList.contains("nav-pending")) return;
-
-      document.querySelectorAll(".side-nav a.nav-pending").forEach((pendingLink) => {
-        pendingLink.classList.remove("nav-pending");
-        pendingLink.removeAttribute("aria-busy");
-      });
-      link.classList.add("nav-pending");
-      link.setAttribute("aria-busy", "true");
-      document.body.classList.add("navigation-pending");
-    });
   });
 
   document.querySelectorAll(".side-module").forEach((module) => {
@@ -180,16 +166,6 @@ const scheduleDeferredLayoutInit = () => {
 
 document.addEventListener("turbo:click", () => {
   window.__layoutVisitId = (window.__layoutVisitId || 0) + 1;
-});
-
-["turbo:load", "turbo:render", "turbo:before-cache"].forEach((eventName) => {
-  document.addEventListener(eventName, () => {
-    document.body.classList.remove("navigation-pending");
-    document.querySelectorAll(".side-nav a.nav-pending").forEach((link) => {
-      link.classList.remove("nav-pending");
-      link.removeAttribute("aria-busy");
-    });
-  });
 });
 
 function initDeferredLayoutPage() {
@@ -2612,6 +2588,9 @@ function initDeferredLayoutPage() {
     const farmerSearchEmpty = formShell.querySelector("[data-seed-farmer-search-empty]");
     if (!vrpSelect || !monthSelect || !icsSelect || !villageSelect || !topicSelect || !subjectSelect) return;
     const selectedSeedFarmerIds = new Set(JSON.parse(farmerPanel?.dataset.selectedFarmerIds || "[]").map(String));
+    const seedFarmersUrl = formShell.dataset.seedFarmersUrl;
+    const seedFarmerCache = new Map();
+    let activeSeedFarmerKey = "";
 
     const escapeSeedHtml = (value) => String(value || "")
       .replaceAll("&", "&amp;")
@@ -2780,7 +2759,28 @@ function initDeferredLayoutPage() {
       }
     };
 
-    const renderSeedFarmers = () => {
+    const seedFarmersForMapping = async (mapping) => {
+      const targetId = String(mapping?.target_mapping_id || "");
+      if (!targetId) return { farmers: mapping?.farmers || [], completedFarmerIds: mapping?.completed_farmer_ids || [] };
+      if (seedFarmerCache.has(targetId)) return seedFarmerCache.get(targetId);
+      if ((mapping.farmers || []).length || !seedFarmersUrl) {
+        const cached = { farmers: mapping.farmers || [], completedFarmerIds: mapping.completed_farmer_ids || [] };
+        seedFarmerCache.set(targetId, cached);
+        return cached;
+      }
+
+      const url = new URL(seedFarmersUrl, window.location.origin);
+      url.searchParams.set("target_mapping_id", targetId);
+      const data = await fetchJson(url.toString());
+      const cached = {
+        farmers: Array.isArray(data.farmers) ? data.farmers : [],
+        completedFarmerIds: Array.isArray(data.completed_farmer_ids) ? data.completed_farmer_ids : []
+      };
+      seedFarmerCache.set(targetId, cached);
+      return cached;
+    };
+
+    const renderSeedFarmers = async () => {
       if (!farmerList) return;
 
       const mapping = selectedSeedMapping();
@@ -2791,8 +2791,6 @@ function initDeferredLayoutPage() {
         return;
       }
 
-      const farmers = mapping.farmers || [];
-      const completedFarmerIds = new Set((mapping.completed_farmer_ids || []).map(String));
       if (mapping.new_farmer_target) {
         farmerList.textContent = "New Farmer Target saved without mapped farmers.";
         if (farmerSearchEmpty) farmerSearchEmpty.hidden = true;
@@ -2801,6 +2799,24 @@ function initDeferredLayoutPage() {
         return;
       }
 
+      const loadKey = String(mapping.target_mapping_id || "");
+      activeSeedFarmerKey = loadKey;
+      farmerList.textContent = "Loading mapped farmers...";
+      let loadedData = { farmers: [], completedFarmerIds: [] };
+      try {
+        loadedData = await seedFarmersForMapping(mapping);
+      } catch (_error) {
+        if (activeSeedFarmerKey === loadKey) {
+          farmerList.textContent = "Mapped farmers load failed. Please try again.";
+          if (farmerSearchEmpty) farmerSearchEmpty.hidden = true;
+          updateSeedFarmerCount();
+        }
+        return;
+      }
+      if (activeSeedFarmerKey !== loadKey) return;
+
+      const farmers = loadedData.farmers || [];
+      const completedFarmerIds = new Set((loadedData.completedFarmerIds || []).map(String));
       if (!farmers.length) {
         farmerList.textContent = "No mapped farmers found for selected activity.";
         if (farmerSearchEmpty) farmerSearchEmpty.hidden = true;
@@ -5295,11 +5311,14 @@ function initDeferredLayoutPage() {
     const grandTotalInput = billForm.querySelector("[data-jeevika-grand-total]");
     const paymentRemarksField = billForm.querySelector("[data-jeevika-payment-remarks]");
     const paymentRemarksInput = billForm.querySelector("[data-jeevika-payment-remarks-input]");
+    const billRowsUrl = billForm.dataset.billRowsUrl;
     let billRows = [];
     let savedItems = [];
     let existingBills = [];
     let achievementSummary = {};
     let targetSummary = {};
+    const billRowsCache = new Map();
+    let activeBillRowsKey = "";
 
     try {
       billRows = JSON.parse(billForm.dataset.billRows || "[]");
@@ -5338,6 +5357,7 @@ function initDeferredLayoutPage() {
     const rowInputs = () => Array.from(rowsBody?.querySelectorAll("tr[data-bill-row]") || []);
     const normalizedChoice = (value) => String(value || "").trim().toLowerCase().replaceAll(" ", "_");
     const normalizedMonth = (value) => String(value || "").trim().toLowerCase();
+    const billRowsKey = (vrpId, month) => `${String(vrpId || "")}|${normalizedMonth(month)}`;
     const originalVrpOptions = Array.from(vrpSelect?.options || [])
       .filter((option) => option.value)
       .map((option) => ({ value: option.value, label: option.textContent }));
@@ -5488,16 +5508,40 @@ function initDeferredLayoutPage() {
       syncPaymentRemarks();
     };
 
-    const renderJeevikaBillRows = () => {
+    const loadBillRowsForSelection = async (selectedVrp, selectedMonth) => {
+      const key = billRowsKey(selectedVrp, selectedMonth);
+      if (billRowsCache.has(key)) return billRowsCache.get(key);
+
+      const inlineRows = billRows.filter((row) => {
+        const vrpMatches = String(row.vrp_id || "") === String(selectedVrp || "");
+        const monthMatches = normalizedMonth(row.month_name) === normalizedMonth(selectedMonth);
+        return vrpMatches && monthMatches;
+      });
+      if (inlineRows.length || !billRowsUrl) {
+        const result = { rows: inlineRows, achievementSummary, targetSummary };
+        billRowsCache.set(key, result);
+        return result;
+      }
+
+      const url = new URL(billRowsUrl, window.location.origin);
+      url.searchParams.set("vrp_id", selectedVrp);
+      url.searchParams.set("month", selectedMonth);
+      const data = await fetchJson(url.toString());
+      const result = {
+        rows: Array.isArray(data.rows) ? data.rows : [],
+        achievementSummary: data.achievement_summary || {},
+        targetSummary: data.target_summary || {}
+      };
+      billRowsCache.set(key, result);
+      return result;
+    };
+
+    const renderJeevikaBillRows = async () => {
       if (!rowsBody) return;
 
       const selectedVrp = String(vrpSelect?.value || "");
-      const selectedMonth = normalizedMonth(monthSelect?.value);
-      const rows = billRows.filter((row) => {
-        const vrpMatches = String(row.vrp_id || "") === selectedVrp;
-        const monthMatches = normalizedMonth(row.month_name) === selectedMonth;
-        return vrpMatches && monthMatches;
-      });
+      const selectedMonthValue = monthSelect?.value || "";
+      const selectedMonth = normalizedMonth(selectedMonthValue);
 
       if (!selectedMonth) {
         rowsBody.innerHTML = `<tr data-empty-bill-row><td colspan="9">Select Bill Month to load Jeevika Jankar Name.</td></tr>`;
@@ -5510,6 +5554,26 @@ function initDeferredLayoutPage() {
         recalculateJeevikaBill();
         return;
       }
+
+      const loadKey = billRowsKey(selectedVrp, selectedMonthValue);
+      activeBillRowsKey = loadKey;
+      rowsBody.innerHTML = `<tr data-empty-bill-row><td colspan="9">Loading target achievement list...</td></tr>`;
+
+      let loadedData = { rows: [] };
+      try {
+        loadedData = await loadBillRowsForSelection(selectedVrp, selectedMonthValue);
+      } catch (_error) {
+        if (activeBillRowsKey === loadKey) {
+          rowsBody.innerHTML = `<tr data-empty-bill-row><td colspan="9">Target achievement list load failed. Please try again.</td></tr>`;
+          recalculateJeevikaBill();
+        }
+        return;
+      }
+      if (activeBillRowsKey !== loadKey) return;
+
+      const rows = loadedData.rows || [];
+      achievementSummary = loadedData.achievementSummary || achievementSummary || {};
+      targetSummary = loadedData.targetSummary || targetSummary || {};
 
       if (!rows.length) {
         rowsBody.innerHTML = `<tr data-empty-bill-row><td colspan="9">No target mapping found for selected Jeevika Jankar.</td></tr>`;

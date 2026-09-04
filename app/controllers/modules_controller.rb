@@ -1638,6 +1638,37 @@ class ModulesController < ApplicationController
     render json: { farmers: farmers }
   end
 
+  def jeevika_jankar_bill_target_rows
+    return render json: { rows: [], achievement_summary: {}, target_summary: {} } unless current_slug == "jeevika-jankar-bill-process"
+
+    rows = jeevika_jankar_bill_rows(
+      vrp_id: params[:vrp_id].presence,
+      month_name: params[:month].presence
+    )
+
+    render json: {
+      rows: rows,
+      achievement_summary: jeevika_jankar_achievement_summary(rows),
+      target_summary: jeevika_jankar_target_summary_from_rows(rows)
+    }
+  end
+
+  def seed_target_farmers
+    return render json: { farmers: [], completed_farmer_ids: [] } unless model_ready?(:TargetMapping)
+
+    target = training_target_scope.find_by(id: params[:target_mapping_id])
+    return render json: { farmers: [], completed_farmer_ids: [] } unless target
+
+    farmer_ids = target_farmer_ids(target)
+    completed_ids = other_target_completed_farmer_ids_for(target.id)
+    farmers = training_farmers_for_ids(farmer_ids)
+
+    render json: {
+      farmers: farmers,
+      completed_farmer_ids: completed_ids
+    }
+  end
+
   def bulk_update
     load_module!
     redirect_to module_path(@slug), alert: "Bulk action is available only for LG Directory All List." and return unless @slug == "lg-directory-list"
@@ -8290,7 +8321,14 @@ class ModulesController < ApplicationController
     @jeevika_jankar_financial_year_options = month_master_financial_year_options(month_master_rows)
     @jeevika_jankar_invoice_no = @record&.data&.[]("invoice_no").presence || generated_jeevika_jankar_invoice_no
     @jeevika_jankar_invoice_date = @record&.data&.[]("invoice_date").presence || Date.current.to_s
-    @jeevika_jankar_bill_rows = jeevika_jankar_bill_rows
+    @jeevika_jankar_bill_rows = if @record.present?
+      jeevika_jankar_bill_rows(
+        vrp_id: @record.data["select_vrp"].presence,
+        month_name: @record.data["bill_month"].presence
+      )
+    else
+      []
+    end
     @jeevika_jankar_achievement_summary = jeevika_jankar_achievement_summary(@jeevika_jankar_bill_rows)
     @jeevika_jankar_target_summary ||= jeevika_jankar_target_summary_from_rows(@jeevika_jankar_bill_rows)
     @jeevika_jankar_saved_items = jeevika_jankar_saved_items
@@ -9337,12 +9375,14 @@ class ModulesController < ApplicationController
     normalized_status == "active" || normalized_status.include?("approved")
   end
 
-  def jeevika_jankar_bill_rows
+  def jeevika_jankar_bill_rows(vrp_id: nil, month_name: nil)
     return [] unless model_ready?(:TargetMapping)
 
     targets = TargetMapping.includes(:vrp)
     targets = targets.where(vrp_id: current_vrp_record.id) if vrp_login_user? && current_vrp_record.present?
     targets = targets.where(vrp_id: module_cluster_visible_vrp_ids) if module_mapped_vrp_scope_active?
+    targets = targets.where(vrp_id: vrp_id) if vrp_id.present?
+    targets = targets.where("LOWER(BTRIM(month_name)) = ?", month_name.to_s.strip.downcase) if month_name.present?
     targets = targets.order(:month_name, :vrp_id, :village_name, :main_activity_name, :activity_name, :id).to_a
     @other_target_candidate_targets = targets
     @other_target_candidate_targets_by_id = targets.index_by { |target| target.id.to_s }
@@ -11483,8 +11523,9 @@ class ModulesController < ApplicationController
       .includes(:vrp)
       .order(:ics_name, :ics_id, :village_name, :village_id, :id)
       .to_a
-    preload_other_target_completed_farmer_ids!(targets) unless record_source_slug == "other-target"
-    preload_training_farmers_for_targets!(targets) unless record_source_slug == "other-target"
+    include_farmer_payload = @record.present? && record_source_slug != "other-target"
+    preload_other_target_completed_farmer_ids!(targets) if include_farmer_payload
+    preload_training_farmers_for_targets!(targets) if include_farmer_payload
 
     targets
       .filter_map do |target|
@@ -11506,8 +11547,8 @@ class ModulesController < ApplicationController
           training_subject: target.activity_name.to_s.strip,
           target: target.target_quantity.to_s,
           new_farmer_target: new_farmer_target_mapping?(target),
-          completed_farmer_ids: record_source_slug == "other-target" ? [] : other_target_completed_farmer_ids_for(target.id),
-          farmers: training_farmers_for_ids(farmer_ids)
+          completed_farmer_ids: include_farmer_payload ? other_target_completed_farmer_ids_for(target.id) : [],
+          farmers: include_farmer_payload ? training_farmers_for_ids(farmer_ids) : []
         }
       end
       .reject { |mapping| mapping[:ics].blank? && mapping[:village].blank? }
