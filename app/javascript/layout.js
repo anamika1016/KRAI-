@@ -69,6 +69,20 @@ const initFastNavigation = () => {
 
     const active = path === href || (href.length > 1 && path.startsWith(href));
     link.classList.toggle("active", active);
+    if (link.dataset.fastNavBound === "true") return;
+
+    link.dataset.fastNavBound = "true";
+    link.addEventListener("click", () => {
+      if (link.classList.contains("nav-pending")) return;
+
+      document.querySelectorAll(".side-nav a.nav-pending").forEach((pendingLink) => {
+        pendingLink.classList.remove("nav-pending");
+        pendingLink.removeAttribute("aria-busy");
+      });
+      link.classList.add("nav-pending");
+      link.setAttribute("aria-busy", "true");
+      document.body.classList.add("navigation-pending");
+    });
   });
 
   document.querySelectorAll(".side-module").forEach((module) => {
@@ -166,6 +180,16 @@ const scheduleDeferredLayoutInit = () => {
 
 document.addEventListener("turbo:click", () => {
   window.__layoutVisitId = (window.__layoutVisitId || 0) + 1;
+});
+
+["turbo:load", "turbo:render", "turbo:before-cache"].forEach((eventName) => {
+  document.addEventListener(eventName, () => {
+    document.body.classList.remove("navigation-pending");
+    document.querySelectorAll(".side-nav a.nav-pending").forEach((link) => {
+      link.classList.remove("nav-pending");
+      link.removeAttribute("aria-busy");
+    });
+  });
 });
 
 function initDeferredLayoutPage() {

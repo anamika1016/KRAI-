@@ -847,7 +847,6 @@ class ModulesController < ApplicationController
     @training_mapped_farmer_count = participation_dashboard_counts[:total]
     @training_total_training_farmer_count = participation_dashboard_counts[:target_map_total].to_i
     @training_completed_target_map_count = participation_dashboard_counts[:completed_target_map_total].to_i
-    preload_training_farmers_for_targets!(month_targets)
     visible_vrp_ids = @filtered_vrps.map(&:id)
     ics_mappings = model_ready?(:VrpIcsMapping) ? VrpIcsMapping.where(vrp_id: visible_vrp_ids).to_a : []
     if selected_ics_filter.present?
@@ -887,7 +886,6 @@ class ModulesController < ApplicationController
       sub_activity: dashboard_filter_param(:training_sub_activity, :sub_activity),
       fcoc: @weekly_target_fcoc_filter_value
     )
-    preload_training_farmers_for_targets!(weekly_dashboard_targets)
     @dashboard_weekly_target_cards = weekly_activity_target_status_cards(
       weekly_dashboard_targets,
       month_name: @weekly_dashboard_selected_month,
