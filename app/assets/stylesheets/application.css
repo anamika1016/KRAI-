@@ -1110,8 +1110,8 @@ body {
 .dashboard-grid.premium .metric-card-group {
   display: flex !important;
   flex-direction: column;
-  min-height: 210px;
-  padding: 16px;
+  min-height: 140px;
+  padding: 12px;
   overflow: hidden;
   border-top: 0;
   background: #fff;
@@ -1160,13 +1160,15 @@ body {
   flex: 1;
 }
 
-.dashboard-grid.premium .metric-card-group-registration > .metric-card-group-items {
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+.dashboard-grid.premium .metric-card-group-registration > .metric-card-group-items,
+.dashboard-grid.premium .metric-card-group-fco > .metric-card-group-items {
+  grid-template-columns: repeat(3, minmax(0, 1fr)) !important;
+  gap: 6px !important;
 }
 
 .dashboard-grid.premium .metric-card-group-billing .metric-card-group-item-level-2-users {
   grid-column: 1 / -1;
-  min-height: 62px;
+  min-height: 48px;
   background: linear-gradient(120deg, #fff8eb, #fffdf8);
   border-color: rgba(205, 145, 52, 0.3);
 }
@@ -1175,10 +1177,10 @@ body {
   position: relative;
   display: grid;
   align-content: center;
-  gap: 7px;
+  gap: 4px;
   min-width: 0;
-  min-height: 66px;
-  padding: 10px;
+  min-height: 46px;
+  padding: 6px 8px;
   border: 1px solid rgba(210, 222, 226, 0.9);
   border-radius: 8px;
   color: inherit;
@@ -1231,7 +1233,8 @@ body {
 
 .dashboard-grid.premium.dashboard-training-primary-summaries .metric-card-group,
 .dashboard-grid.premium.dashboard-training-secondary-summaries .metric-card-group {
-  min-height: 174px;
+  min-height: 140px;
+  height: 100%;
   border: 1px solid rgba(204, 218, 222, 0.9);
   border-radius: 12px;
   box-shadow: 0 10px 24px rgba(23, 33, 38, 0.08);
@@ -1239,15 +1242,17 @@ body {
 
 .dashboard-training-primary-summaries .metric-card-group-title,
 .dashboard-training-secondary-summaries .metric-card-group-title {
-  margin-bottom: 16px;
-  padding: 13px 18px;
-  font-size: 0.9rem;
+  margin-bottom: 12px;
+  padding: 10px 14px;
+  font-size: 0.86rem;
   letter-spacing: 0.01em;
 }
 
 .dashboard-training-primary-summaries .metric-card-group-billing > .metric-card-group-items,
-.dashboard-training-secondary-summaries .metric-card-group-billing > .metric-card-group-items {
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+.dashboard-training-secondary-summaries .metric-card-group-billing > .metric-card-group-items,
+.dashboard-training-primary-summaries .metric-card-group-fco > .metric-card-group-items,
+.dashboard-training-secondary-summaries .metric-card-group-fco > .metric-card-group-items {
+  grid-template-columns: repeat(3, minmax(0, 1fr)) !important;
 }
 
 .dashboard-training-primary-summaries .metric-card-group-billing .metric-card-group-item-level-2-users,
@@ -1258,14 +1263,23 @@ body {
 
 .dashboard-training-primary-summaries .metric-card-group-item,
 .dashboard-training-secondary-summaries .metric-card-group-item {
-  min-height: 82px;
-  padding: 13px;
-  border-radius: 9px;
+  min-height: 48px;
+  padding: 6px 8px;
+  border-radius: 8px;
 }
 
 .dashboard-training-primary-summaries .metric-card-group-item strong,
 .dashboard-training-secondary-summaries .metric-card-group-item strong {
-  font-size: 1.75rem;
+  font-size: 1.2rem;
+  line-height: 1;
+}
+
+.dashboard-training-secondary-summaries .metric-card-group-fco .metric-card-group-item span {
+  font-size: 0.68rem;
+  line-height: 1.1;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 @media (max-width: 760px) {
@@ -2131,6 +2145,7 @@ body {
   border-top: 1px solid rgba(68, 121, 135, 0.12);
 }
 
+.dashboard-summary-box:hover .dashboard-card-hover-popup,
 .dashboard-summary-action-popover:hover .dashboard-card-hover-popup,
 .dashboard-summary-action-popover:focus-within .dashboard-card-hover-popup {
   display: block;

@@ -3430,8 +3430,7 @@ class ModulesController < ApplicationController
       dashboard_summary_card("General Training/Meeting", training_method_counts["General Training/Meeting"].to_i, "Distinct mapped farmers with General Training/Meeting", farmer_training_participation_path(participation_params.merge(training_method: "General Training/Meeting")), farmer_training_participation_path(participation_export_params.merge(training_method: "General Training/Meeting"))),
       dashboard_summary_card("Input Demo INM", training_method_counts["Input Demo INM"].to_i, "Distinct mapped farmers with Input Demo INM", farmer_training_participation_path(participation_params.merge(training_method: "Input Demo INM")), farmer_training_participation_path(participation_export_params.merge(training_method: "Input Demo INM"))),
       dashboard_summary_card("FFS", training_method_counts["FFS"].to_i, "Distinct mapped farmers with FFS", farmer_training_participation_path(participation_params.merge(training_method: "FFS")), farmer_training_participation_path(participation_export_params.merge(training_method: "FFS"))),
-      dashboard_summary_card("Input Demo PM", training_method_counts["Input Demo PM"].to_i, "Distinct mapped farmers with Input Demo PM", farmer_training_participation_path(participation_params.merge(training_method: "Input Demo PM")), farmer_training_participation_path(participation_export_params.merge(training_method: "Input Demo PM"))),
-      dashboard_summary_card("OPG", training_method_counts["OPG"].to_i, "Distinct mapped farmers with OPG", farmer_training_participation_path(participation_params.merge(training_method: "OPG")), farmer_training_participation_path(participation_export_params.merge(training_method: "OPG")))
+      dashboard_summary_card("Input Demo PM", training_method_counts["Input Demo PM"].to_i, "Distinct mapped farmers with Input Demo PM", farmer_training_participation_path(participation_params.merge(training_method: "Input Demo PM")), farmer_training_participation_path(participation_export_params.merge(training_method: "Input Demo PM")))
     ]
   end
 
@@ -3738,7 +3737,7 @@ class ModulesController < ApplicationController
   def dashboard_summary_activity_popup_items(summary_mode)
     return [] unless model_ready?(:TargetMapping)
 
-    target_conditions, binds = dashboard_summary_target_sql_filters
+    target_conditions, binds = dashboard_summary_target_sql_filters_base
     select_clause = if summary_mode.to_sym == :main_activity
       "DISTINCT NULLIF(BTRIM(t.main_activity_name), '') AS activity_name, NULL AS parent_activity"
     else
@@ -3749,12 +3748,6 @@ class ModulesController < ApplicationController
       SELECT #{select_clause}
       FROM target_mappings t
       LEFT JOIN vrps v ON v.id = t.vrp_id
-      CROSS JOIN LATERAL jsonb_array_elements_text(
-        CASE
-          WHEN jsonb_typeof(t.afl_ids::jsonb) = 'array' THEN t.afl_ids::jsonb
-          ELSE jsonb_build_array(t.afl_ids::jsonb)
-        END
-      ) AS j(value)
       WHERE #{target_conditions.join(' AND ')}
       ORDER BY activity_name
     SQL
@@ -3766,10 +3759,10 @@ class ModulesController < ApplicationController
       next if activity_name.blank?
 
       parent_activity = row["parent_activity"].to_s.strip
-      parent_activity.present? ? "#{activity_name} - #{parent_activity}" : activity_name
+      parent_activity.present? ? "#{activity_name} (#{parent_activity})" : activity_name
     end.compact.uniq
   rescue StandardError => e
-    Rails.logger.warn("Dashboard activity popup query failed: #{e.class} - #{e.message}")
+    Rails.logger.warn("Dashboard summary activity popup items failed: #{e.class} - #{e.message}")
     []
   end
 
