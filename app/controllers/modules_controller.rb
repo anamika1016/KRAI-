@@ -9475,14 +9475,25 @@ class ModulesController < ApplicationController
   def jeevika_jankar_bill_rows(vrp_id: nil, month_name: nil)
     return [] unless model_ready?(:TargetMapping)
 
+    selected_vrp_ids = jeevika_jankar_bill_selected_vrp_ids(vrp_id)
     targets = TargetMapping.includes(:vrp)
     targets = targets.where(vrp_id: current_vrp_record.id) if vrp_login_user? && current_vrp_record.present?
     targets = targets.where(vrp_id: module_cluster_visible_vrp_ids) if module_mapped_vrp_scope_active?
-    targets = targets.where(vrp_id: vrp_id) if vrp_id.present?
+    targets = targets.where(vrp_id: selected_vrp_ids) if selected_vrp_ids.present?
+    targets = targets.none if vrp_id.present? && selected_vrp_ids.blank?
     targets = targets.where("LOWER(BTRIM(month_name)) = ?", month_name.to_s.strip.downcase) if month_name.present?
     if vrp_id.present? && targets.none?
-      targets = TargetMapping.includes(:vrp).where(vrp_id: vrp_id)
+      targets = TargetMapping.includes(:vrp)
+      targets = selected_vrp_ids.present? ? targets.where(vrp_id: selected_vrp_ids) : targets.none
       targets = targets.where("LOWER(BTRIM(month_name)) = ?", month_name.to_s.strip.downcase) if month_name.present?
+    end
+    if month_name.present? && targets.none? && selected_vrp_ids.present?
+      month_numbers = month_number_candidates(month_name)
+      targets = TargetMapping.includes(:vrp).where(vrp_id: selected_vrp_ids)
+      if month_numbers.any?
+        target_ids = targets.select { |target| month_numbers.include?(month_number_value(target.month_name)) }.map(&:id)
+        targets = TargetMapping.includes(:vrp).where(id: target_ids)
+      end
     end
     targets = targets.order(:month_name, :vrp_id, :village_name, :main_activity_name, :activity_name, :id).to_a
     @other_target_candidate_targets = targets
@@ -9574,6 +9585,46 @@ class ModulesController < ApplicationController
 
     @jeevika_jankar_target_summary = jeevika_jankar_target_summary_from_rows(rows)
     group_jeevika_jankar_training_bill_rows(rows)
+  end
+
+  def jeevika_jankar_bill_selected_vrp_ids(value)
+    raw_value = value.to_s.strip
+    return [] if raw_value.blank?
+
+    direct_ids = raw_value.split(",").map(&:strip).select { |item| item.match?(/\A\d+\z/) }
+    return direct_ids.uniq if direct_ids.any?
+    return [] unless model_ready?(:Vrp)
+
+    normalized_value = normalize_dashboard_text(raw_value)
+    Vrp.unscoped
+      .where(
+        "LOWER(BTRIM(name)) = :value OR LOWER(BTRIM(user_name)) = :value",
+        value: normalized_value
+      )
+      .pluck(:id)
+      .map(&:to_s)
+      .uniq
+  end
+
+  def month_number_candidates(value)
+    month_number = month_number_value(value)
+    month_number ? [month_number] : []
+  end
+
+  def month_number_value(value)
+    text = value.to_s.strip
+    return nil if text.blank?
+
+    Date::MONTHNAMES.each_with_index do |name, index|
+      next if index.zero?
+
+      normalized_name = normalize_dashboard_text(name)
+      normalized_abbr = normalize_dashboard_text(name[0, 3])
+      normalized_text = normalize_dashboard_text(text)
+      return index if [normalized_name, normalized_abbr, index.to_s, format("%02d", index)].include?(normalized_text)
+    end
+
+    nil
   end
 
   def group_jeevika_jankar_training_bill_rows(rows)

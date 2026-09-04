@@ -5383,7 +5383,9 @@ function initDeferredLayoutPage() {
       if (value) return value;
 
       const selectedOption = vrpSelect?.selectedOptions?.[0];
-      return String(selectedOption?.dataset?.vrpId || selectedOption?.value || "").trim();
+      const optionText = String(selectedOption?.textContent || "").trim();
+      const matchingOption = originalVrpOptions.find((option) => option.label === optionText);
+      return String(selectedOption?.dataset?.vrpId || matchingOption?.value || selectedOption?.value || optionText).trim();
     };
     if (!billForm.dataset.originalVrpOptions) {
       const options = Array.from(vrpSelect?.options || [])
