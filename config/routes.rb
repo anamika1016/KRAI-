@@ -219,6 +219,7 @@ Rails.application.routes.draw do
   delete "farmer-farm-information/:id", to: "farmer_farm_information#destroy"
 
   resources :modules, param: :slug, only: [:show], controller: :modules do
+    get :training_target_farmers, action: :training_target_farmers, on: :member
     post :records, action: :create, on: :member
     post :payment_details, action: :create_payment_detail, on: :member
     post :import, action: :import, on: :member

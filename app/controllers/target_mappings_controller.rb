@@ -18,9 +18,15 @@ class TargetMappingsController < ApplicationController
     @main_activity_options = module_options("add-activity-group", "main_activity_name", "activity_group_name")
     @main_activity_type_map = main_activity_type_map
     @target_sub_activity_map = target_sub_activity_map
-    @target_mappings = filtered_visible_target_mappings.includes(:vrp, :vrp_ics_mapping).order(updated_at: :desc).to_a
     @target_summary_mode = params[:summary_mode].presence_in(%w[main_activity sub_activity])
+    mapping_scope = filtered_visible_target_mappings.includes(:vrp, :vrp_ics_mapping).order(updated_at: :desc)
+    @target_mappings = if @target_summary_mode.present? || request.format.xlsx?
+      mapping_scope.to_a
+    else
+      mapping_scope.limit(150).to_a
+    end
     @target_mapping_rows = @target_summary_mode.present? ? target_mapping_summary_rows(@target_mappings) : grouped_target_mapping_rows(@target_mappings)
+    @target_mapping_display_rows = @target_summary_mode.present? ? @target_mapping_rows : @target_mapping_rows.first(100)
     @target_farmers_by_id = {}
     @edit_target = visible_target_mappings.find_by(id: params[:edit_id]) if params[:edit_id].present? && @admin_mapping_actions
     @edit_payload = edit_payload(@edit_target)

@@ -340,7 +340,7 @@
         </div>
       </div>
       <div class="table-shell">
-        <table class="module-table vrp-list-table" id="target_mapping_list" data-paginated-table data-page-size="15">
+        <table class="module-table vrp-list-table" id="target_mapping_list" data-paginated-table data-fast-open-table="true" data-page-size="15">
           <thead>
             <% if @target_summary_mode == "main_activity" %>
               <tr>
@@ -384,8 +384,9 @@
             <% end %>
           </thead>
           <tbody>
-            <% if Array(@target_mapping_rows).any? %>
-              <% @target_mapping_rows.each do |row| %>
+            <% target_mapping_display_rows = Array(@target_mapping_display_rows || @target_mapping_rows) %>
+            <% if target_mapping_display_rows.any? %>
+              <% target_mapping_display_rows.each do |row| %>
                 <% if @target_summary_mode == "main_activity" %>
                   <tr>
                     <td><%= row[:main_activity].presence || "-" %></td>

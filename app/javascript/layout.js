@@ -1906,6 +1906,9 @@ function initDeferredLayoutPage() {
 	    const geoLongitudeInput = formShell.querySelector("[data-training-geo-longitude]");
 	    if (!icsSelect || !villageSelect) return;
 	    const selectedFarmerIds = new Set(JSON.parse(farmerPanel?.dataset.selectedFarmerIds || "[]").map(String));
+    const farmersUrl = formShell.dataset.trainingFarmersUrl;
+    const trainingFarmerCache = new Map();
+    let activeFarmerLoadKey = "";
 	    let mainActivityChips = null;
 	    if (mainActivitySelect) {
 	      mainActivityChips = document.createElement("div");
@@ -2141,7 +2144,7 @@ function initDeferredLayoutPage() {
       monthSelect.dataset.selectedValue = months[0];
     };
 
-    const mappedFarmers = () => {
+    const selectedTrainingTargetRows = () => {
       syncTrainingMonthFromSelection();
 
       const selectedVillage = normalizeOption(villageSelect.value);
@@ -2151,23 +2154,51 @@ function initDeferredLayoutPage() {
         : [];
       if (!monthSelect?.value || !selectedVillage || !selectedMainActivities.length) return [];
 
-      const farmersById = new Map();
-      targetRowsForSelection({ requireMonth: true, requireVillage: true, requireMainActivity: true })
+      return targetRowsForSelection({ requireMonth: true, requireVillage: true, requireMainActivity: true })
 	        .filter((mapping) => mappingMatchesSelectedSubActivities(mapping, selectedSubActivities))
-	        .forEach((mapping) => {
-	          const includedFarmerIds = new Set((mapping.completed_farmer_ids || []).map(String));
-	          (mapping.farmers || []).forEach((farmer) => {
-	            if (!farmer.id) return;
-	            const farmerId = String(farmer.id);
-	            const existingFarmer = farmersById.get(farmerId);
-	            farmersById.set(farmerId, {
-	              ...farmer,
-	              already_included: Boolean(existingFarmer?.already_included || includedFarmerIds.has(farmerId))
-	            });
-	          });
-	        });
-	      return Array.from(farmersById.values());
-	    };
+    };
+
+    const targetRowsKey = (rows) => rows
+      .map((mapping) => String(mapping.target_mapping_id || ""))
+      .filter(Boolean)
+      .sort()
+      .join(",");
+
+    const mappedFarmers = async () => {
+      const rows = selectedTrainingTargetRows();
+      if (!rows.length) return [];
+
+      const key = targetRowsKey(rows);
+      if (!key) return [];
+      if (trainingFarmerCache.has(key)) return trainingFarmerCache.get(key);
+
+      const inlineFarmers = rows.flatMap((mapping) => mapping.farmers || []);
+      if (inlineFarmers.length || !farmersUrl) {
+        const farmersById = new Map();
+        rows.forEach((mapping) => {
+          const includedFarmerIds = new Set((mapping.completed_farmer_ids || []).map(String));
+          (mapping.farmers || []).forEach((farmer) => {
+            if (!farmer.id) return;
+            const farmerId = String(farmer.id);
+            const existingFarmer = farmersById.get(farmerId);
+            farmersById.set(farmerId, {
+              ...farmer,
+              already_included: Boolean(existingFarmer?.already_included || includedFarmerIds.has(farmerId))
+            });
+          });
+        });
+        const farmers = Array.from(farmersById.values());
+        trainingFarmerCache.set(key, farmers);
+        return farmers;
+      }
+
+      const url = new URL(farmersUrl, window.location.origin);
+      url.searchParams.set("target_mapping_ids", key);
+      const data = await fetchJson(url.toString());
+      const farmers = Array.isArray(data.farmers) ? data.farmers : [];
+      trainingFarmerCache.set(key, farmers);
+      return farmers;
+    };
 
 	    const selectedFarmerBoxes = () => Array.from(formShell.querySelectorAll("[data-training-farmer-checkbox]:checked"));
 	    const allFarmerBoxes = () => Array.from(formShell.querySelectorAll("[data-training-farmer-checkbox]"));
@@ -2248,10 +2279,11 @@ function initDeferredLayoutPage() {
 	      return false;
 	    };
 
-	    const renderTrainingFarmers = () => {
+	    const renderTrainingFarmers = async () => {
 	      if (!farmerList) return;
 	      if (farmerSearchEmpty) farmerSearchEmpty.hidden = true;
-	      const farmers = mappedFarmers();
+      const targetRows = selectedTrainingTargetRows();
+      const loadKey = targetRowsKey(targetRows);
 
 	      if (monthSelect && !monthSelect.value) {
 	        farmerList.textContent = "Select Month to load target farmers.";
@@ -2287,6 +2319,27 @@ function initDeferredLayoutPage() {
       if (selectedMainActivityValues().length && !selectedSubActivityCount) {
         farmerList.textContent = "Select Sub Activity to narrow the target farmers.";
       }
+
+      if (!targetRows.length) {
+        farmerList.textContent = "No target farmers found for selected activity.";
+        if (farmerSelectAll) farmerSelectAll.checked = false;
+        updateFarmerCount();
+        return;
+      }
+
+      activeFarmerLoadKey = loadKey;
+      farmerList.textContent = "Loading target farmers...";
+      let farmers = [];
+      try {
+        farmers = await mappedFarmers();
+      } catch (_error) {
+        if (activeFarmerLoadKey === loadKey) {
+          farmerList.textContent = "Target farmers load failed. Please try again.";
+          updateFarmerCount();
+        }
+        return;
+      }
+      if (activeFarmerLoadKey !== loadKey) return;
 
       if (!farmers.length) {
         farmerList.textContent = "No target farmers found for selected activity.";
@@ -4552,15 +4605,19 @@ function initDeferredLayoutPage() {
   };
 
   document.querySelectorAll("[data-paginated-table]").forEach((table, index) => {
-    table.querySelectorAll("tbody tr").forEach((row) => {
+    const rows = Array.from(table.querySelectorAll("tbody tr"));
+    rows.forEach((row) => {
       if (row.children.length === 1 || row.innerText.toLowerCase().includes("no records")) {
         row.dataset.emptyRow = "true";
       }
     });
+    const largeTable = table.dataset.fastOpenTable === "true" || rows.length > 250;
     ensureTableSearch(table, index);
     ensureTablePagination(table);
-    sortTableRowsAlphabetically(table);
-    setupColumnFilters(table);
+    if (!largeTable) {
+      sortTableRowsAlphabetically(table);
+      setupColumnFilters(table);
+    }
     paginateTable(table, 1);
   });
 
