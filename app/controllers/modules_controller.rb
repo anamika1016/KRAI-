@@ -8365,6 +8365,8 @@ class ModulesController < ApplicationController
         status: jeevika_bill_status_label(record),
         status_class: jeevika_bill_status_class(record),
         current_approver: jeevika_bill_current_approver?(record),
+        created_by_current_user: jeevika_bill_created_by_current_user?(record),
+        approver_visible: jeevika_bill_approver_visible?(record),
         approval_remarks: bill_approval_remarks_text(approval_history),
         remarks: data["remarks"].presence || "-",
         record_state: data["record_state"].presence || "Active",
@@ -10353,6 +10355,13 @@ class ModulesController < ApplicationController
     return false unless record&.data.present?
     return true if jeevika_bill_created_by_current_user?(record)
     return true if jeevika_bill_approver_visible?(record)
+
+    vrp = jeevika_bill_vrp_for_visibility(record)
+    return false unless vrp
+    return true if vrp_login_user? && vrp.id.to_s == current_vrp_record&.id.to_s
+    return true if jeevika_bill_vrp_registered_by_current_user?(vrp)
+    return true if jeevika_bill_vrp_office_visible?(vrp)
+    return true if module_cluster_visible_vrp_id_strings.include?(vrp.id.to_s)
 
     false
   end

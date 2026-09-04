@@ -1692,7 +1692,10 @@
     <% selected_bill_month = params[:bill_month].presence || (dashboard_status_link ? nil : default_bill_month) %>
     <% if @jeevika_bill_user_filters || params[:bill_month].present? || params[:bill_status].present? || params[:record_state].present? %>
       <% bill_rows = bill_rows.select { |row| selected_bill_month.blank? || row[:bill_month].to_s.casecmp(selected_bill_month).zero? } %>
-      <% bill_rows = bill_rows.select { |row| selected_bill_status == "final-approved" ? row[:status].to_s.downcase.include?("final approved") : (row[:current_approver] && row[:status].to_s.downcase.include?("pending")) } %>
+      <% bill_rows = bill_rows.select do |row|
+        row_status = row[:status].to_s.downcase
+        selected_bill_status == "final-approved" ? row_status.include?("final approved") : (row_status.include?("pending") || row[:created_by_current_user] || row[:approver_visible])
+      end %>
       <% bill_rows = bill_rows.select { |row| selected_record_state.blank? || row[:record_state].to_s.casecmp(selected_record_state).zero? } %>
     <% end %>
     <section class="module-card list-only-card">

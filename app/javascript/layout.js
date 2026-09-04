@@ -5177,7 +5177,11 @@ function initDeferredLayoutPage() {
       const response = await fetch(approvalModalForm.action, {
         method: approvalModalForm.method || "POST",
         body: new FormData(approvalModalForm),
-        headers: { Accept: "application/json" }
+        credentials: "same-origin",
+        headers: {
+          "X-CSRF-Token": csrfToken,
+          Accept: "application/json"
+        }
       });
       const contentType = response.headers.get("content-type") || "";
       if (!response.ok || !contentType.includes("application/json")) {
