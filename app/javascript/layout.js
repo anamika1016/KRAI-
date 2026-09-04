@@ -31,6 +31,21 @@ const replaceVrpUiText = (value) => `${value || ""}`
   .replace(/व्हीआरपी/g, vrpUiLabel)
   .replace(/ଭିଆରପି/g, vrpUiLabel);
 
+const fetchJson = async (url, params = {}) => {
+  const requestUrl = new URL(url, window.location.origin);
+  if (params && typeof params === "object") {
+    Object.entries(params).forEach(([key, value]) => {
+      if (value !== undefined && value !== null && value !== "") {
+        requestUrl.searchParams.set(key, value);
+      }
+    });
+  }
+
+  const response = await fetch(requestUrl, { headers: { Accept: "application/json" } });
+  if (!response.ok) throw new Error("Request failed");
+  return response.json();
+};
+
 const initAflFarmerMapping = () => {
   document.querySelectorAll("[data-afl-farmer-mapping]").forEach((form) => {
     if (form.dataset.aflFarmerMappingReady === "true") return;
@@ -3138,16 +3153,7 @@ function initDeferredLayoutPage() {
       select.disabled = options.length === 0;
     };
 
-    const fetchJson = async (url, params) => {
-      const requestUrl = new URL(url, window.location.origin);
-      Object.entries(params).forEach(([key, value]) => {
-        if (value) requestUrl.searchParams.set(key, value);
-      });
 
-      const response = await fetch(requestUrl, { headers: { Accept: "application/json" } });
-      if (!response.ok) throw new Error("Request failed");
-      return response.json();
-    };
 
     const selectedFarmerBoxes = () => Array.from(shell.querySelectorAll("[data-vrp-ics-farmer-checkbox]:checked"));
 
