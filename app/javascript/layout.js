@@ -5376,10 +5376,15 @@ function initDeferredLayoutPage() {
     const rowInputs = () => Array.from(rowsBody?.querySelectorAll("tr[data-bill-row]") || []);
     const normalizedChoice = (value) => String(value || "").trim().toLowerCase().replaceAll(" ", "_");
     const normalizedMonth = (value) => String(value || "").trim().toLowerCase();
-    const billRowsKey = (vrpId, month) => `${String(vrpId || "")}|${normalizedMonth(month)}`;
-    const originalVrpOptions = Array.from(vrpSelect?.options || [])
-      .filter((option) => option.value)
-      .map((option) => ({ value: option.value, label: option.textContent }));
+    if (!billForm.dataset.originalVrpOptions) {
+      const options = Array.from(vrpSelect?.options || [])
+        .filter((option) => option.value)
+        .map((option) => ({ value: option.value, label: option.textContent }));
+      if (options.length) {
+        billForm.dataset.originalVrpOptions = JSON.stringify(options);
+      }
+    }
+    const originalVrpOptions = JSON.parse(billForm.dataset.originalVrpOptions || "[]");
     const billExistsFor = (vrpId, month) => {
       const monthKey = normalizedMonth(month);
       return existingBills.some((bill) => String(bill.vrp_id || "") === String(vrpId || "") && normalizedMonth(bill.month) === monthKey);

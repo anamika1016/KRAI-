@@ -3213,7 +3213,7 @@ class ModulesController < ApplicationController
       ]
     end
     cards << dashboard_group_card("Gender Count", gender_items, style: "registration")
-    cards << dashboard_group_card("FCO-wise JJ Requirement", fco_names.map { |fco_name| dashboard_jj_requirement_item(fco_name, vrps, defined?(@filtered_targets) ? @filtered_targets : nil) }, style: "fco")
+    cards << dashboard_group_card("FCO-wise JJ Requirement", fco_names.flat_map { |fco_name| dashboard_jj_requirement_items(fco_name, vrps, defined?(@filtered_targets) ? @filtered_targets : nil) }, style: "fco")
 
     cards
   end
@@ -3237,14 +3237,13 @@ class ModulesController < ApplicationController
     return query_counts if query_counts.present?
 
     targets = Array(targets)
-    activity_entries = dashboard_summary_activity_entries(targets)
     {
       ics_count: dashboard_total_afl_ics_count,
       village_count: dashboard_total_afl_village_count,
       farmer_count: dashboard_total_afl_farmer_count,
       mapped_farmer_count: dashboard_distinct_target_array_count(targets, :afl_ids),
-      main_activity_count: activity_entries.filter_map { |entry| entry[:main_activity_key].presence }.uniq.size,
-      sub_activity_count: activity_entries.filter_map { |entry| entry[:sub_activity_key].presence }.uniq.size
+      main_activity_count: targets.map { |t| normalize_dashboard_text(t.main_activity_name) }.reject(&:blank?).uniq.size,
+      sub_activity_count: targets.map { |t| normalize_dashboard_text(t.activity_name) }.reject(&:blank?).uniq.size
     }
   end
 
@@ -3273,9 +3272,7 @@ class ModulesController < ApplicationController
         COUNT(DISTINCT NULLIF(BTRIM(a.ics_id::text), '')) AS ics_count,
         COUNT(DISTINCT NULLIF(BTRIM(a.village_id::text), '')) AS village_count,
         COUNT(DISTINCT NULLIF(BTRIM(a.tracenet_no::text), '')) AS farmer_count,
-        COUNT(DISTINCT mapped_rows.afl_id) AS mapped_farmer_count,
-        COUNT(DISTINCT NULLIF(BTRIM(mapped_rows.main_activity_name), '')) AS main_activity_count,
-        COUNT(DISTINCT NULLIF(BTRIM(mapped_rows.activity_name), '')) AS sub_activity_count
+        COUNT(DISTINCT mapped_rows.afl_id) AS mapped_farmer_count
       FROM mapped_rows
       LEFT JOIN afls a ON a.id::text = mapped_rows.afl_id
     SQL
@@ -3284,23 +3281,49 @@ class ModulesController < ApplicationController
       ActiveRecord::Base.send(:sanitize_sql_array, [sql, binds])
     ).first || {}
 
-    counts = {
+    activity_counts = dashboard_summary_activity_counts_direct
+
+    {
       ics_count: dashboard_total_afl_ics_count,
       village_count: dashboard_total_afl_village_count,
       farmer_count: dashboard_total_afl_farmer_count,
       mapped_farmer_count: row["mapped_farmer_count"].to_i,
-      main_activity_count: row["main_activity_count"].to_i,
-      sub_activity_count: row["sub_activity_count"].to_i
+      main_activity_count: activity_counts[:main_activity_count],
+      sub_activity_count: activity_counts[:sub_activity_count]
     }
-
-    counts
   rescue StandardError => e
     Rails.logger.warn("Dashboard summary query counts failed: #{e.class} - #{e.message}")
     nil
   end
 
-  def dashboard_summary_target_sql_filters
-    conditions = ["j.value <> ''"]
+  def dashboard_summary_activity_counts_direct
+    return { main_activity_count: 0, sub_activity_count: 0 } unless model_ready?(:TargetMapping)
+
+    target_conditions, binds = dashboard_summary_target_sql_filters_base
+    target_where = target_conditions.join(" AND ")
+    sql = <<~SQL.squish
+      SELECT
+        COUNT(DISTINCT NULLIF(BTRIM(t.main_activity_name), '')) AS main_activity_count,
+        COUNT(DISTINCT NULLIF(BTRIM(t.activity_name), '')) AS sub_activity_count
+      FROM target_mappings t
+      LEFT JOIN vrps v ON v.id = t.vrp_id
+      WHERE #{target_where}
+    SQL
+
+    row = ActiveRecord::Base.connection.exec_query(
+      ActiveRecord::Base.send(:sanitize_sql_array, [sql, binds])
+    ).first || {}
+
+    {
+      main_activity_count: row["main_activity_count"].to_i,
+      sub_activity_count: row["sub_activity_count"].to_i
+    }
+  rescue StandardError => e
+    { main_activity_count: 0, sub_activity_count: 0 }
+  end
+
+  def dashboard_summary_target_sql_filters_base
+    conditions = ["1=1"]
     binds = {}
 
     if @dashboard_month_filter_value.present?
@@ -3349,6 +3372,11 @@ class ModulesController < ApplicationController
     [conditions, binds]
   end
 
+  def dashboard_summary_target_sql_filters
+    conditions, binds = dashboard_summary_target_sql_filters_base
+    [["j.value <> ''"] + conditions[1..-1], binds]
+  end
+
   def dashboard_summary_direct_afl_total?
     !vrp_login_user? && !dashboard_agronomics_login?
   end
@@ -3393,7 +3421,12 @@ class ModulesController < ApplicationController
     participation_params = dashboard_summary_participation_params(status: "training_unique").merge(main_activity: "Farmers' Training")
     participation_export_params = dashboard_summary_participation_params(status: "training_unique", format: :xlsx).merge(main_activity: "Farmers' Training")
 
+    targets = @filtered_targets || dashboard_target_mappings
+    opg_target_total = Array(targets).sum { |target| target.opg_training_target.to_f }
+
     [
+      dashboard_summary_card("OPG Target", dashboard_quantity(opg_target_total), "Total OPG target assigned in target mapping", target_mappings_path(dashboard_summary_target_params), dashboard_path(dashboard_summary_target_params.merge(format: :xlsx))),
+      dashboard_summary_card("OPG Achievement", training_method_counts["OPG"].to_i, "Total OPG training reports submitted", farmer_training_participation_path(participation_params.merge(training_method: "OPG")), farmer_training_participation_path(participation_export_params.merge(training_method: "OPG"))),
       dashboard_summary_card("General Training/Meeting", training_method_counts["General Training/Meeting"].to_i, "Distinct mapped farmers with General Training/Meeting", farmer_training_participation_path(participation_params.merge(training_method: "General Training/Meeting")), farmer_training_participation_path(participation_export_params.merge(training_method: "General Training/Meeting"))),
       dashboard_summary_card("Input Demo INM", training_method_counts["Input Demo INM"].to_i, "Distinct mapped farmers with Input Demo INM", farmer_training_participation_path(participation_params.merge(training_method: "Input Demo INM")), farmer_training_participation_path(participation_export_params.merge(training_method: "Input Demo INM"))),
       dashboard_summary_card("FFS", training_method_counts["FFS"].to_i, "Distinct mapped farmers with FFS", farmer_training_participation_path(participation_params.merge(training_method: "FFS")), farmer_training_participation_path(participation_export_params.merge(training_method: "FFS"))),
@@ -3574,15 +3607,19 @@ class ModulesController < ApplicationController
     training_fcoc_filter_values("1004", "1006", "Sausar", "Turekela", "FCO-C Sausar", "FCO-C Turekela")
   end
 
-  def dashboard_jj_requirement_item(fco_name, vrps, targets = nil)
+  def dashboard_jj_requirement_items(fco_name, vrps, targets = nil)
     matching_vrps = Array(vrps).select { |vrp| normalize_dashboard_text(vrp.fcoc).include?(normalize_dashboard_text(fco_name)) }
     active_count = matching_vrps.count { |vrp| dashboard_vrp_active_for_requirement?(vrp) }
+    fco_targets = Array(targets).select { |t| normalize_dashboard_text(t.fco_name).include?(normalize_dashboard_text(fco_name)) }
+    required_count = fco_targets.map { |t| normalize_dashboard_text(t.village_name) }.reject(&:blank?).uniq.size
+    required_count = active_count if required_count < active_count
+    vacant_count = [required_count - active_count, 0].max
 
-    {
-      title: fco_name,
-      value: "Active #{active_count}",
-      path: vrps_path(fcoc: fco_name, active_status: "active", approval_status: "final-approved")
-    }
+    [
+      { title: "#{fco_name} Required", value: required_count, path: target_mappings_path(fcoc: fco_name) },
+      { title: "#{fco_name} Active", value: active_count, path: vrps_path(fcoc: fco_name, active_status: "active", approval_status: "final-approved") },
+      { title: "#{fco_name} Vacant", value: vacant_count, path: vrps_path(fcoc: fco_name, active_status: "vacant") }
+    ]
   end
 
   def dashboard_vrp_active_for_requirement?(vrp)

@@ -1,12 +1,15 @@
 require "test_helper"
+require "ostruct"
 
 class ModulesControllerDashboardTest < ActiveSupport::TestCase
+  remove_const(:Target) if defined?(Target)
   Target = Struct.new(
     :id,
     :vrp_id, :fco_name, :fco_id, :ics_name, :ics_id, :village_name,
     :village_id, :month_name, :completion_date, :opg_training_target,
     :week_wise_opg_target, :input_demo_inm_target, :input_demo_pm_target,
     :ffs_target, :afl_ids, :main_activity_name, :activity_name,
+    :mapping_group_key, :target_mapping_id,
     keyword_init: true
   )
 
@@ -18,12 +21,13 @@ class ModulesControllerDashboardTest < ActiveSupport::TestCase
       village_name: "Village 1",
       month_name: "August",
       completion_date: Date.new(2026, 8, 31),
-      afl_ids: %w[11 12]
+      afl_ids: %w[11 12],
+      mapping_group_key: "group_1"
     }
     targets = [
       Target.new(**assignment, main_activity_name: "Training", activity_name: "Activity A"),
       Target.new(**assignment, main_activity_name: "Training", activity_name: "Activity B"),
-      Target.new(**assignment.merge(month_name: "September"), main_activity_name: "Training", activity_name: "Activity A")
+      Target.new(**assignment.merge(month_name: "September", mapping_group_key: "group_2"), main_activity_name: "Training", activity_name: "Activity A")
     ]
 
     assert_equal 2, ModulesController.new.send(:dashboard_target_record_count, targets)
@@ -103,7 +107,7 @@ class ModulesControllerDashboardTest < ActiveSupport::TestCase
     }
     saved_mapping = Target.new(**assignment, id: 101, main_activity_name: "Farmers WhatsApp Groups", activity_name: "Village level farmers groups")
     dashboard_target = Target.new(**assignment, id: 102, main_activity_name: "Farmers WhatsApp Groups", activity_name: "Organic Nutrient Management")
-    record = Struct.new(:data).new("target_mapping_id" => saved_mapping.id.to_s)
+    record = OpenStruct.new(data: { "target_mapping_id" => saved_mapping.id.to_s })
     controller.define_singleton_method(:training_target_mapping_for_dashboard) { |_mapping_id| saved_mapping }
 
     assert controller.send(:training_record_target_assignment_matches?, record, dashboard_target)
