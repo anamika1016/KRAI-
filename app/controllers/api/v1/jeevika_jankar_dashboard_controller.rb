@@ -281,7 +281,7 @@ module Api
 
         options[:months] = (targets.map(&:month_name) + web.send(:month_master_month_options)).compact_blank.uniq
           .sort_by { |month| web.send(:dashboard_month_index, month) || 0 }
-        selected_month = params.key?(:month) ? filter_param(:month) : Date.current.strftime("%B")
+        selected_month = params.key?(:month) ? filter_param(:month) : Date.current.prev_month.strftime("%B")
         if selected_month.present?
           targets.select! { |target| same_text?(target.month_name, selected_month) }
           vrp_ids = id_lookup(targets, :vrp_id)
@@ -629,7 +629,7 @@ module Api
         selected_ics = filter_param(:ics, :ics_name)
         targets.select! { |target| same_text?(target.ics_name.presence || target.ics_id, selected_ics) } if selected_ics.present?
 
-        selected_month = params.key?(:month) ? filter_param(:month) : Date.current.strftime("%B")
+        selected_month = params.key?(:month) ? filter_param(:month) : Date.current.prev_month.strftime("%B")
         targets.select! { |target| same_text?(target.month_name, selected_month) } if selected_month.present?
 
         selected_post = filter_param(:post, :post_wise_name)
@@ -1039,8 +1039,8 @@ module Api
       end
 
       def default_month(months)
-        current = Date.current.strftime("%B")
-        months.find { |month| same_text?(month, current) } || months.last
+        previous = Date.current.prev_month.strftime("%B")
+        months.find { |month| same_text?(month, previous) } || months.last
       end
 
       def unique_count(targets, field)

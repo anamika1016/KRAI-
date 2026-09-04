@@ -178,7 +178,7 @@ module Api
         end
         options[:months] = values(targets, :month_name)
         @calculation_stage = "dashboard_month_filter"
-        selected_dashboard_month = params.key?(:month) ? filter_param(:month) : Date.current.strftime("%B")
+        selected_dashboard_month = params.key?(:month) ? filter_param(:month) : Date.current.prev_month.strftime("%B")
         if selected_dashboard_month.present?
           targets = targets.select { |t| same?(t.month_name, selected_dashboard_month) }
           vrps = restrict_vrps_to_targets(vrps, targets)

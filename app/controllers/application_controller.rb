@@ -42,6 +42,7 @@ class ApplicationController < ActionController::Base
   SESSION_REFRESH_INTERVAL = 15.minutes
 
   def refreshed_app_user_session
+    return unless (request rescue nil) && (session rescue nil)
     stored_user = session[:app_user]
     return unless stored_user.present?
 

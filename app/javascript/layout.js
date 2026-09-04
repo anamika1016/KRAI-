@@ -2218,12 +2218,20 @@ function initDeferredLayoutPage() {
 	    };
 	    const numberValue = (input) => Number(input?.value || 0);
 
-	    const syncTotalFarmerCount = () => {
+    const syncTotalFarmerCount = () => {
 	      if (!totalFarmerCountInput) return;
 
 	      const total = numberValue(maleCountInput) + numberValue(femaleCountInput);
 	      totalFarmerCountInput.value = total ? String(total) : "";
 	    };
+
+    const syncIcsFarmerCountSplit = () => {
+      if (!icsSelect?.value || !maleCountInput || !femaleCountInput) return;
+
+      const count = selectedFarmerBoxes().length;
+      maleCountInput.value = "0";
+      femaleCountInput.value = String(count);
+    };
 
 	    const updateFarmerCount = () => {
 	      const count = selectedFarmerBoxes().length;
@@ -2240,6 +2248,7 @@ function initDeferredLayoutPage() {
 	        farmerSelectAllButton.disabled = boxes.length === 0;
 	        farmerSelectAllButton.textContent = boxes.length > 0 && count === boxes.length ? "Clear all" : "Select all";
 	      }
+      syncIcsFarmerCountSplit();
 	      syncTotalFarmerCount();
 	      validateTrainingCountSplit(false);
 	    };
@@ -5498,12 +5507,14 @@ function initDeferredLayoutPage() {
         totalAchievement += Math.min(groupedTotal.achievement, groupedTotal.target);
       });
 
-      const selectedVrp = String(vrpSelect?.value || "");
-      const selectedMonth = normalizedMonth(monthSelect?.value);
-      const dashboardTotals = selectedVrp && selectedMonth ? targetSummary?.[selectedVrp]?.[selectedMonth] : null;
-      if (dashboardTotals) {
-        totalTarget = numberValue(dashboardTotals.target);
-        totalAchievement = numberValue(dashboardTotals.achievement);
+      if (totalsByTarget.size === 0) {
+        const selectedVrp = String(vrpSelect?.value || "");
+        const selectedMonth = normalizedMonth(monthSelect?.value);
+        const dashboardTotals = selectedVrp && selectedMonth ? targetSummary?.[selectedVrp]?.[selectedMonth] : null;
+        if (dashboardTotals) {
+          totalTarget = numberValue(dashboardTotals.target);
+          totalAchievement = numberValue(dashboardTotals.achievement);
+        }
       }
 
       if (totalTargetInput) totalTargetInput.value = String(totalTarget);

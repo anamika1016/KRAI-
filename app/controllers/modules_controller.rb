@@ -183,7 +183,8 @@ class ModulesController < ApplicationController
         "Farmer Count",
         "Target",
         "Achievement",
-        "Attachment Upload"
+        "Attachment Upload",
+        "Field Photo"
       ]
     },
     "seed-distribution-target-list" => {
@@ -204,6 +205,7 @@ class ModulesController < ApplicationController
         "Target",
         "Achievement",
         "Attachment Upload",
+        "Field Photo",
         "Status"
       ]
     },
@@ -264,7 +266,8 @@ class ModulesController < ApplicationController
         "Completion Date",
         "Target",
         "Achievement",
-        "Attachment Upload"
+        "Attachment Upload",
+        "Field Photo"
       ]
     },
     "other-target-list" => {
@@ -284,6 +287,7 @@ class ModulesController < ApplicationController
         "Target",
         "Achievement",
         "Attachment Upload",
+        "Field Photo",
         "Status"
       ]
     },
@@ -1627,6 +1631,7 @@ class ModulesController < ApplicationController
     return render json: { farmers: [] } if ids.blank? || !model_ready?(:TargetMapping)
 
     targets = training_target_scope.where(id: ids).includes(:vrp).to_a
+    targets = TargetMapping.where(id: ids).includes(:vrp).to_a if targets.blank?
     farmer_ids = targets.flat_map { |target| target_farmer_ids(target) }.map(&:to_s).reject(&:blank?).uniq
     completed_ids = targets.flat_map { |target| completed_training_farmer_ids_for(target, target_farmer_ids(target)) }.map(&:to_s).uniq
     completed_lookup = completed_ids.index_with(true)
@@ -9385,6 +9390,10 @@ class ModulesController < ApplicationController
     targets = targets.where(vrp_id: module_cluster_visible_vrp_ids) if module_mapped_vrp_scope_active?
     targets = targets.where(vrp_id: vrp_id) if vrp_id.present?
     targets = targets.where("LOWER(BTRIM(month_name)) = ?", month_name.to_s.strip.downcase) if month_name.present?
+    if vrp_id.present? && targets.none?
+      targets = TargetMapping.includes(:vrp).where(vrp_id: vrp_id)
+      targets = targets.where("LOWER(BTRIM(month_name)) = ?", month_name.to_s.strip.downcase) if month_name.present?
+    end
     targets = targets.order(:month_name, :vrp_id, :village_name, :main_activity_name, :activity_name, :id).to_a
     @other_target_candidate_targets = targets
     @other_target_candidate_targets_by_id = targets.index_by { |target| target.id.to_s }
@@ -11152,13 +11161,13 @@ class ModulesController < ApplicationController
     total_farmer_count = whole_number_value(data["total_farmer_count"].presence || training_total_farmer_count(data).to_s)
 
     errors << "Target Farmers select karein." if selected_farmer_ids.blank?
-    errors << "AFL Farmer Count valid whole number hona chahiye." if farmer_count.nil?
+    errors << "Farmer Count valid whole number hona chahiye." if farmer_count.nil?
     errors << "Male Count valid whole number hona chahiye." if male_count.nil?
     errors << "Female Count valid whole number hona chahiye." if female_count.nil?
     errors << "Total Farmer Count valid whole number hona chahiye." if total_farmer_count.nil?
 
     if farmer_count && selected_farmer_ids.any? && farmer_count != selected_farmer_ids.size
-      errors << "AFL Farmer Count selected farmers ke count ke equal hona chahiye."
+      errors << "Farmer Count selected farmers ke count ke equal hona chahiye."
     end
 
     errors
@@ -11278,7 +11287,7 @@ class ModulesController < ApplicationController
 
   def module_select_field?(field)
     return false if current_slug == "training-topic-mapping" && ["Department", "Training Topic", "Training Subject"].include?(field)
-    return false if record_source_slug == "training-form" && ["Trainee Department", "FCO Name", "External Input"].include?(field)
+    return false if record_source_slug == "training-form" && ["Trainee Department", "FCO Name", "External Input", "PAPL Staff Name"].include?(field)
     return false if other_target_record_source? && field == "Department"
     return true if current_slug == "parent-office-add" && field == "Parent Office"
     return true if training_target_field?(field)
@@ -11498,6 +11507,9 @@ class ModulesController < ApplicationController
       end
     include_completed_state = @record.present?
 
+    all_farmer_ids = targets.flat_map { |target| Array(target.afl_ids).map(&:to_s) }.reject(&:blank?).uniq
+    farmers_lookup = training_farmers_for_ids(all_farmer_ids).index_by { |farmer| farmer[:id].to_s }
+
     targets
       .map do |target|
         farmer_ids = Array(target.afl_ids).map(&:to_s).reject(&:blank?).uniq
@@ -11515,7 +11527,7 @@ class ModulesController < ApplicationController
           new_farmer_target: new_farmer_target_mapping?(target),
           farmer_ids: farmer_ids,
           completed_farmer_ids: include_completed_state ? completed_training_farmer_ids_for(target, farmer_ids) : [],
-          farmers: []
+          farmers: farmer_ids.filter_map { |fid| farmers_lookup[fid] }
         }
       end
       .reject { |mapping| mapping[:ics].blank? && mapping[:village].blank? }

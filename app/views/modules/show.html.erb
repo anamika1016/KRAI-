@@ -2138,11 +2138,12 @@
                   <option <%= "selected" if field_value == "Active" %>>Active</option>
                   <option <%= "selected" if field_value == "Inactive" %>>Inactive</option>
                 </select>
-              <% elsif field.downcase.include?("upload") || field.downcase.include?("file") %>
+              <% elsif field.downcase.include?("upload") || field.downcase.include?("file") || field == "Field Photo" %>
                 <% upload_accept = field == "Excel Upload" ? "accept=\".csv,.xlsx,.xls\"" : nil %>
                 <% multiple_photo_upload = @slug == "training-form" && field == "Training Photo Upload with Geo Tag" %>
-                <% multiple_attachment_upload = @slug == "other-target" && field == "Attachment Upload" %>
+                <% multiple_attachment_upload = @slug == "other-target" && ["Attachment Upload", "Field Photo"].include?(field) %>
                 <% upload_accept = "accept=\"image/*\" data-max-size-mb=\"5\"" if multiple_photo_upload %>
+                <% upload_accept = "accept=\"image/*\" data-max-size-mb=\"5\"" if field == "Field Photo" %>
                 <input name="module_record[<%= field_key %>]<%= "[]" if multiple_photo_upload || multiple_attachment_upload %>" type="file" <%= "multiple" if multiple_photo_upload || multiple_attachment_upload %> <%= upload_accept&.html_safe %> <%= "required" if form_required && field_value.blank? && !other_target_form %>>
                 <% if @slug == "training-form" && field == "Training Photo Upload with Geo Tag" %>
                   <input type="hidden" name="module_record[geo_latitude]" data-training-geo-latitude value="<%= @record&.data&.[]("geo_latitude") %>">

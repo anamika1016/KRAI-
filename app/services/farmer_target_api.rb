@@ -517,12 +517,12 @@ class FarmerTargetApi
     total_farmer_count = whole_number_value(data["total_farmer_count"].presence || training_total_farmer_count(data).to_s)
 
     errors << "Target Farmers select karein." if selected_farmer_ids.blank?
-    errors << "AFL Farmer Count valid whole number hona chahiye." if farmer_count.nil?
+    errors << "Farmer Count valid whole number hona chahiye." if farmer_count.nil?
     errors << "Male Count valid whole number hona chahiye." if male_count.nil?
     errors << "Female Count valid whole number hona chahiye." if female_count.nil?
     errors << "Total Farmer Count valid whole number hona chahiye." if total_farmer_count.nil?
     if farmer_count && selected_farmer_ids.any? && farmer_count != selected_farmer_ids.size
-      errors << "AFL Farmer Count selected farmers ke count ke equal hona chahiye."
+      errors << "Farmer Count selected farmers ke count ke equal hona chahiye."
     end
     errors
   end
