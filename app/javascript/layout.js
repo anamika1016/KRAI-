@@ -5338,6 +5338,7 @@ function initDeferredLayoutPage() {
     let targetSummary = {};
     const billRowsCache = new Map();
     let activeBillRowsKey = "";
+    const initialVrpValue = String(vrpSelect?.value || "");
 
     try {
       billRows = JSON.parse(billForm.dataset.billRows || "[]");
@@ -5376,6 +5377,14 @@ function initDeferredLayoutPage() {
     const rowInputs = () => Array.from(rowsBody?.querySelectorAll("tr[data-bill-row]") || []);
     const normalizedChoice = (value) => String(value || "").trim().toLowerCase().replaceAll(" ", "_");
     const normalizedMonth = (value) => String(value || "").trim().toLowerCase();
+    const billRowsKey = (vrpId, month) => `${String(vrpId || "").trim()}|${normalizedMonth(month)}`;
+    const selectedVrpValue = () => {
+      const value = String(vrpSelect?.value || "").trim();
+      if (value) return value;
+
+      const selectedOption = vrpSelect?.selectedOptions?.[0];
+      return String(selectedOption?.dataset?.vrpId || selectedOption?.value || "").trim();
+    };
     if (!billForm.dataset.originalVrpOptions) {
       const options = Array.from(vrpSelect?.options || [])
         .filter((option) => option.value)
@@ -5395,7 +5404,7 @@ function initDeferredLayoutPage() {
       return mainActivityType === "other" ? (row.other_activity_count ?? 0) : (row.achievement_count ?? 0);
     };
     const selectedAchievementTotal = () => {
-      const selectedVrp = String(vrpSelect?.value || "");
+      const selectedVrp = selectedVrpValue();
       const selectedMonth = normalizedMonth(monthSelect?.value);
       if (!selectedVrp) return null;
 
@@ -5421,10 +5430,14 @@ function initDeferredLayoutPage() {
         return;
       }
 
-      const availableOptions = originalVrpOptions.filter((option) => !billExistsFor(option.value, selectedMonth));
+      const availableOptions = originalVrpOptions.filter((option) => {
+        if (initialVrpValue && String(option.value) === initialVrpValue) return true;
+        return !billExistsFor(option.value, selectedMonth);
+      });
       availableOptions.forEach((optionData) => {
         const option = document.createElement("option");
         option.value = optionData.value;
+        option.dataset.vrpId = optionData.value;
         option.textContent = optionData.label;
         vrpSelect.appendChild(option);
       });
@@ -5432,6 +5445,8 @@ function initDeferredLayoutPage() {
       vrpSelect.disabled = false;
       if (availableOptions.some((option) => option.value === previousValue)) {
         vrpSelect.value = previousValue;
+      } else if (initialVrpValue && availableOptions.some((option) => String(option.value) === initialVrpValue)) {
+        vrpSelect.value = initialVrpValue;
       } else {
         vrpSelect.value = "";
       }
@@ -5519,7 +5534,7 @@ function initDeferredLayoutPage() {
       });
 
       if (totalsByTarget.size === 0) {
-        const selectedVrp = String(vrpSelect?.value || "");
+        const selectedVrp = selectedVrpValue();
         const selectedMonth = normalizedMonth(monthSelect?.value);
         const dashboardTotals = selectedVrp && selectedMonth ? targetSummary?.[selectedVrp]?.[selectedMonth] : null;
         if (dashboardTotals) {
@@ -5565,7 +5580,7 @@ function initDeferredLayoutPage() {
     const renderJeevikaBillRows = async () => {
       if (!rowsBody) return;
 
-      const selectedVrp = String(vrpSelect?.value || "");
+      const selectedVrp = selectedVrpValue();
       const selectedMonthValue = monthSelect?.value || "";
       const selectedMonth = normalizedMonth(selectedMonthValue);
 
@@ -5576,6 +5591,7 @@ function initDeferredLayoutPage() {
       }
 
       if (!selectedVrp) {
+        if (vrpSelect) vrpSelect.selectedIndex = 0;
         rowsBody.innerHTML = `<tr data-empty-bill-row><td colspan="9">Select Jeevika Jankar Name to load target achievement list.</td></tr>`;
         recalculateJeevikaBill();
         return;

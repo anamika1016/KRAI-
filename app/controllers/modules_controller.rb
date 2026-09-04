@@ -3299,12 +3299,12 @@ class ModulesController < ApplicationController
   def dashboard_summary_activity_counts_direct
     return { main_activity_count: 0, sub_activity_count: 0 } unless model_ready?(:TargetMapping)
 
-    target_conditions, binds = dashboard_summary_target_sql_filters_base
+    target_conditions, binds = dashboard_summary_target_sql_filters_base(include_activity_filters: false)
     target_where = target_conditions.join(" AND ")
     sql = <<~SQL.squish
       SELECT
-        COUNT(DISTINCT NULLIF(BTRIM(t.main_activity_name), '')) AS main_activity_count,
-        COUNT(DISTINCT NULLIF(BTRIM(t.activity_name), '')) AS sub_activity_count
+        COUNT(DISTINCT NULLIF(LOWER(BTRIM(t.main_activity_name)), '')) AS main_activity_count,
+        COUNT(DISTINCT NULLIF(LOWER(BTRIM(t.activity_name)), '')) AS sub_activity_count
       FROM target_mappings t
       LEFT JOIN vrps v ON v.id = t.vrp_id
       WHERE #{target_where}
@@ -3322,7 +3322,7 @@ class ModulesController < ApplicationController
     { main_activity_count: 0, sub_activity_count: 0 }
   end
 
-  def dashboard_summary_target_sql_filters_base
+  def dashboard_summary_target_sql_filters_base(include_activity_filters: true)
     conditions = ["1=1"]
     binds = {}
 
@@ -3331,16 +3331,18 @@ class ModulesController < ApplicationController
       binds[:summary_month] = normalize_dashboard_text(@dashboard_month_filter_value)
     end
 
-    main_activity_value = @dashboard_main_activity_filter_value.presence || dashboard_filter_param(:main_activity)
-    if main_activity_value.present?
-      conditions << "LOWER(BTRIM(t.main_activity_name)) = :summary_main_activity"
-      binds[:summary_main_activity] = normalize_dashboard_text(main_activity_value)
-    end
+    if include_activity_filters
+      main_activity_value = @dashboard_main_activity_filter_value.presence || dashboard_filter_param(:main_activity)
+      if main_activity_value.present?
+        conditions << "LOWER(BTRIM(t.main_activity_name)) = :summary_main_activity"
+        binds[:summary_main_activity] = normalize_dashboard_text(main_activity_value)
+      end
 
-    sub_activity_value = dashboard_filter_param(:sub_activity)
-    if sub_activity_value.present?
-      conditions << "LOWER(BTRIM(t.activity_name)) = :summary_sub_activity"
-      binds[:summary_sub_activity] = normalize_dashboard_text(sub_activity_value)
+      sub_activity_value = dashboard_filter_param(:sub_activity)
+      if sub_activity_value.present?
+        conditions << "LOWER(BTRIM(t.activity_name)) = :summary_sub_activity"
+        binds[:summary_sub_activity] = normalize_dashboard_text(sub_activity_value)
+      end
     end
 
     fcoc_value = @dashboard_fcoc_filter_value.presence || dashboard_filter_param(:fcoc, :fco)
@@ -3423,15 +3425,65 @@ class ModulesController < ApplicationController
 
     targets = @filtered_targets || dashboard_target_mappings
     opg_target_total = Array(targets).sum { |target| target.opg_training_target.to_f }
+    opg_achievement_total = dashboard_opg_achievement_count
 
     [
       dashboard_summary_card("OPG Target", dashboard_quantity(opg_target_total), "Total OPG target assigned in target mapping", target_mappings_path(dashboard_summary_target_params), dashboard_path(dashboard_summary_target_params.merge(format: :xlsx))),
-      dashboard_summary_card("OPG Achievement", training_method_counts["OPG"].to_i, "Total OPG training reports submitted", farmer_training_participation_path(participation_params.merge(training_method: "OPG")), farmer_training_participation_path(participation_export_params.merge(training_method: "OPG"))),
+      dashboard_summary_card("OPG Achievement", opg_achievement_total, "Total OPG training reports submitted", farmer_training_participation_path(participation_params.merge(training_method: "OPG")), farmer_training_participation_path(participation_export_params.merge(training_method: "OPG"))),
       dashboard_summary_card("General Training/Meeting", training_method_counts["General Training/Meeting"].to_i, "Distinct mapped farmers with General Training/Meeting", farmer_training_participation_path(participation_params.merge(training_method: "General Training/Meeting")), farmer_training_participation_path(participation_export_params.merge(training_method: "General Training/Meeting"))),
       dashboard_summary_card("Input Demo INM", training_method_counts["Input Demo INM"].to_i, "Distinct mapped farmers with Input Demo INM", farmer_training_participation_path(participation_params.merge(training_method: "Input Demo INM")), farmer_training_participation_path(participation_export_params.merge(training_method: "Input Demo INM"))),
       dashboard_summary_card("FFS", training_method_counts["FFS"].to_i, "Distinct mapped farmers with FFS", farmer_training_participation_path(participation_params.merge(training_method: "FFS")), farmer_training_participation_path(participation_export_params.merge(training_method: "FFS"))),
       dashboard_summary_card("Input Demo PM", training_method_counts["Input Demo PM"].to_i, "Distinct mapped farmers with Input Demo PM", farmer_training_participation_path(participation_params.merge(training_method: "Input Demo PM")), farmer_training_participation_path(participation_export_params.merge(training_method: "Input Demo PM")))
     ]
+  end
+
+  def dashboard_opg_achievement_count
+    return 0 unless model_ready?(:ModuleRecord)
+
+    month_value = @participation_selected_month.presence || @dashboard_month_filter_value.presence
+    fcoc_value = @participation_fcoc_filter_value.presence || @dashboard_fcoc_filter_value.presence || dashboard_filter_param(:fcoc, :fco)
+    selected_vrp_id = dashboard_filter_param(:vrp_id)
+
+    training_conditions = ["mr.module_slug = 'training-form'"]
+    training_binds = {}
+
+    if month_value.present?
+      training_conditions << "LOWER(COALESCE(mr.data::jsonb ->> 'month', '')) = :training_month"
+      training_binds[:training_month] = normalize_dashboard_text(month_value)
+    end
+
+    if selected_vrp_id.present?
+      training_conditions << "mr.data::jsonb ->> 'created_by_id' = :created_by_id"
+      training_binds[:created_by_id] = selected_vrp_id.to_s
+    elsif vrp_login_user? && current_vrp_record.present?
+      training_conditions << "mr.data::jsonb ->> 'created_by_id' = :created_by_id"
+      training_binds[:created_by_id] = current_vrp_record.id.to_s
+    elsif dashboard_agronomics_login? && dashboard_registered_vrp_ids_for_current_user.any?
+      training_conditions << "COALESCE(mr.data::jsonb ->> 'created_by_id', '') IN (:created_by_ids)"
+      training_binds[:created_by_ids] = dashboard_registered_vrp_ids_for_current_user.map(&:to_s)
+    elsif dashboard_cc_vrp_scope_active? && module_cluster_visible_vrp_ids.any?
+      training_conditions << "COALESCE(mr.data::jsonb ->> 'created_by_id', '') IN (:created_by_ids)"
+      training_binds[:created_by_ids] = module_cluster_visible_vrp_ids.map(&:to_s)
+    end
+
+    fco_values = dashboard_summary_fco_filter_values(fcoc_value)
+    if fco_values.present?
+      training_conditions << "LOWER(COALESCE(mr.data::jsonb ->> 'trainee_department', '')) IN (:fco_values)"
+      training_binds[:fco_values] = fco_values
+    end
+
+    sql = <<~SQL.squish
+      SELECT COUNT(mr.id)
+      FROM module_records mr
+      WHERE #{training_conditions.join(' AND ')}
+    SQL
+
+    ActiveRecord::Base.connection.select_value(
+      ActiveRecord::Base.send(:sanitize_sql_array, [sql, training_binds])
+    ).to_i
+  rescue StandardError => e
+    Rails.logger.warn("OPG achievement count failed: #{e.class} - #{e.message}")
+    0
   end
 
   def dashboard_training_method_counts
@@ -3737,11 +3789,11 @@ class ModulesController < ApplicationController
   def dashboard_summary_activity_popup_items(summary_mode)
     return [] unless model_ready?(:TargetMapping)
 
-    target_conditions, binds = dashboard_summary_target_sql_filters_base
+    target_conditions, binds = dashboard_summary_target_sql_filters_base(include_activity_filters: false)
     select_clause = if summary_mode.to_sym == :main_activity
-      "DISTINCT NULLIF(BTRIM(t.main_activity_name), '') AS activity_name, NULL AS parent_activity"
+      "NULLIF(BTRIM(t.main_activity_name), '') AS activity_name, NULL AS parent_activity"
     else
-      "DISTINCT NULLIF(BTRIM(t.activity_name), '') AS activity_name, NULLIF(BTRIM(t.main_activity_name), '') AS parent_activity"
+      "NULLIF(BTRIM(t.activity_name), '') AS activity_name, NULLIF(BTRIM(t.main_activity_name), '') AS parent_activity"
     end
 
     sql = <<~SQL.squish
@@ -3752,6 +3804,7 @@ class ModulesController < ApplicationController
       ORDER BY activity_name
     SQL
 
+    items_by_key = {}
     ActiveRecord::Base.connection.exec_query(
       ActiveRecord::Base.send(:sanitize_sql_array, [sql, binds])
     ).map do |row|
@@ -3759,8 +3812,15 @@ class ModulesController < ApplicationController
       next if activity_name.blank?
 
       parent_activity = row["parent_activity"].to_s.strip
-      parent_activity.present? ? "#{activity_name} (#{parent_activity})" : activity_name
-    end.compact.uniq
+      label = parent_activity.present? ? "#{activity_name} (#{parent_activity})" : activity_name
+      key = [
+        normalize_dashboard_text(activity_name),
+        summary_mode.to_sym == :sub_activity ? normalize_dashboard_text(parent_activity) : nil
+      ].compact.join("|")
+      items_by_key[key] ||= label
+    end
+
+    items_by_key.values.compact.sort_by { |item| normalize_dashboard_text(item) }
   rescue StandardError => e
     Rails.logger.warn("Dashboard summary activity popup items failed: #{e.class} - #{e.message}")
     []

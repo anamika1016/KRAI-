@@ -1934,7 +1934,8 @@
                       <% value ||= Array(record.data["module_names"]).join(", ").presence if field == "Module Name" %>
                       <% value ||= Array(record.data["sub_module_names"].presence || record.data["sub_module_name"]).join(", ").presence if field == "Sub Module Name" %>
                     <% end %>
-                    <% value = value.join(", ") if value.is_a?(Array) && !(field == "Training Register Upload" || field == "Training Photo Upload with Geo Tag" || field.downcase.include?("upload") || field.downcase.include?("file")) %>
+                    <% upload_field = field == "Training Register Upload" || field == "Training Photo Upload with Geo Tag" || field == "Field Photo" || field.downcase.include?("upload") || field.downcase.include?("file") %>
+                    <% value = value.join(", ") if value.is_a?(Array) && !upload_field %>
                     <% value ||= "-" %>
                     <% if field == "Status" %>
                       <td><span class="status-pill <%= value == "Inactive" ? "inactive" : "active" %>"><%= value == "-" ? "Active" : value %></span></td>
@@ -1963,7 +1964,7 @@
                           <% end %>
                         </div>
                       </td>
-                    <% elsif field == "Training Register Upload" || field == "Training Photo Upload with Geo Tag" || field.downcase.include?("upload") || field.downcase.include?("file") %>
+                    <% elsif upload_field %>
                       <% file_urls = if @slug == "training-form-list"
                         group_records.flat_map do |item|
                           grouped_value = module_record_field_value(item, field).presence || item.data[field_key].presence
@@ -1974,13 +1975,13 @@
                       end %>
                       <td data-export-value="<%= file_urls.join(", ") %>">
                         <% if file_urls.any? %>
-                          <% if field == "Training Photo Upload with Geo Tag" %>
+                          <% if ["Training Photo Upload with Geo Tag", "Field Photo"].include?(field) %>
                             <button type="button"
                               class="grid-view-link eye-link module-gallery-trigger"
                               data-upload-gallery
                               data-upload-urls="<%= ERB::Util.html_escape(file_urls.to_json) %>"
                               title="View all <%= file_urls.size %> photos"
-                              aria-label="View all <%= file_urls.size %> training photos">
+                              aria-label="View all <%= file_urls.size %> photos">
                               <span aria-hidden="true">◉</span>
                               <small><%= file_urls.size %></small>
                             </button>
@@ -2031,11 +2032,11 @@
       </div>
       <div class="table-pagination" data-pagination-for="<%= table_id %>"></div>
     </section>
-    <% if @slug == "training-form-list" %>
+    <% if ["training-form-list", "other-target-list"].include?(@slug) %>
       <dialog class="module-gallery-modal" data-upload-gallery-modal aria-labelledby="training-photo-gallery-title">
         <div class="module-gallery-header">
           <div>
-            <h2 id="training-photo-gallery-title">Training Photos</h2>
+            <h2 id="training-photo-gallery-title"><%= @slug == "other-target-list" ? "Field Photos" : "Training Photos" %></h2>
             <p data-upload-gallery-count></p>
           </div>
           <button type="button" class="module-gallery-close" data-upload-gallery-close aria-label="Close photo gallery">×</button>
