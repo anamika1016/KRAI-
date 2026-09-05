@@ -4607,13 +4607,20 @@ class ModulesController < ApplicationController
       details = attendance_details[membership_key] || { attendance_count: 0, training_dates: "", completed_activity_keys: [] }
       assigned_activity_count = membership[:assigned_activity_count].to_i
       completed_activity_count = [Array(details[:completed_activity_keys]).size, assigned_activity_count].min
-      attendance_count = training_participation_effective_attendance_count(details[:attendance_count], completed_activity_count)
-      status = training_participation_status_for_activity_progress(
-        attendance_count,
-        completed_activity_count,
-        assigned_activity_count,
-        pending_available: membership[:pending_available]
-      )
+      attendance_count = details[:attendance_count].to_i
+
+      # Green: completed > 0 AND has repeat training (attendance > 1)
+      # Yellow: completed > 0 AND no repeat training
+      # Red: no completed activity
+      status = if membership[:pending_available] && assigned_activity_count.zero?
+                 "pending"
+               elsif completed_activity_count.zero?
+                 "red"
+               elsif attendance_count > 1
+                 "green"
+               else
+                 "yellow"
+               end
       {
         farmer_key: membership_key,
         farmer_id: farmer_id,
@@ -4819,15 +4826,21 @@ class ModulesController < ApplicationController
     memberships.each do |membership_key, membership|
       assigned_count = membership[:assigned_activity_count].to_i
       completed_count = [completed_activity_keys[membership_key].size, assigned_count].min
-      attendance_count = training_participation_effective_attendance_count(attendance_record_ids[membership_key].size, completed_count)
+      attendance_count = attendance_record_ids[membership_key].size
       counts[:completed_target_map_total] += completed_count
 
-      status = training_participation_status_for_activity_progress(
-        attendance_count,
-        completed_count,
-        assigned_count,
-        pending_available: membership[:pending_available]
-      )
+      # Green: completed at least 1 activity AND has repeat training (attended >1 times)
+      # Yellow: completed at least 1 activity but NO repeat training
+      # Red: no completed activity at all
+      status = if membership[:pending_available] && assigned_count.zero?
+                 "pending"
+               elsif completed_count.zero?
+                 "red"
+               elsif attendance_count > 1
+                 "green"
+               else
+                 "yellow"
+               end
       counts[status.to_sym] += 1 if counts.key?(status.to_sym)
     end
     counts
@@ -4849,16 +4862,21 @@ class ModulesController < ApplicationController
       target_binds[:participation_fco_values] = fco_values
     end
 
-    completed_conditions = ["mr.module_slug = 'training-form'", "sf.farmer_id <> ''", "TRIM(tm.mapping_id) <> ''"]
+    # training_records conditions: only training-form with main_activity_type='training' and main_activity='farmers'' training'
+    training_conditions = [
+      "mr.module_slug = 'training-form'",
+      "LOWER(TRIM(COALESCE(mr.data::jsonb ->> 'main_activity_type', ''))) = 'training'",
+      "(LOWER(TRIM(COALESCE(mr.data::jsonb ->> 'main_activity', ''))) = 'farmers'' training' OR (jsonb_typeof(mr.data::jsonb -> 'main_activity') = 'array' AND EXISTS (SELECT 1 FROM jsonb_array_elements_text(mr.data::jsonb -> 'main_activity') AS ma(activity) WHERE LOWER(TRIM(ma.activity)) = 'farmers'' training')))"
+    ]
     completed_binds = {}
     if month_name.present?
-      completed_conditions << "LOWER(COALESCE(mr.data::jsonb ->> 'month', '')) = :completed_month"
+      training_conditions << "LOWER(TRIM(COALESCE(mr.data::jsonb ->> 'month', ''))) = :completed_month"
       completed_binds[:completed_month] = normalize_dashboard_text(month_name)
     end
 
     creator_ids = dashboard_participation_completion_creator_ids
     if creator_ids.any?
-      completed_conditions << "COALESCE(mr.data::jsonb ->> 'created_by_id', '') IN (:completed_creator_ids)"
+      training_conditions << "COALESCE(mr.data::jsonb ->> 'created_by_id', '') IN (:completed_creator_ids)"
       completed_binds[:completed_creator_ids] = creator_ids
     end
 
@@ -4866,7 +4884,7 @@ class ModulesController < ApplicationController
       WITH assigned AS (
         SELECT DISTINCT
           t.id::text AS target_mapping_id,
-          j.value AS afl_id
+          TRIM(j.value) AS afl_id
         FROM target_mappings t
         LEFT JOIN vrps v ON v.id = t.vrp_id
         CROSS JOIN LATERAL jsonb_array_elements_text(
@@ -4877,52 +4895,59 @@ class ModulesController < ApplicationController
         ) AS j(value)
         WHERE #{target_conditions.join(' AND ')}
       ),
+      training_records AS (
+        SELECT mr.id, mr.data::jsonb AS data
+        FROM module_records mr
+        WHERE #{training_conditions.join(' AND ')}
+      ),
       completed_raw AS (
         SELECT
           TRIM(sf.farmer_id) AS farmer_id,
           TRIM(tm.mapping_id) AS target_mapping_id,
-          mr.id AS module_record_id
-        FROM module_records mr
+          tr.id AS module_record_id
+        FROM training_records tr
         CROSS JOIN LATERAL jsonb_array_elements_text(
-          COALESCE(mr.data::jsonb -> 'selected_farmer_ids', '[]'::jsonb)
+          COALESCE(tr.data -> 'selected_farmer_ids', '[]'::jsonb)
         ) AS sf(farmer_id)
         CROSS JOIN LATERAL jsonb_array_elements_text(
           CASE
-            WHEN jsonb_typeof(mr.data::jsonb -> 'target_mapping_ids') = 'array'
-              THEN mr.data::jsonb -> 'target_mapping_ids'
-            WHEN NULLIF(TRIM(mr.data::jsonb ->> 'target_mapping_id'), '') IS NOT NULL
-              THEN jsonb_build_array(TRIM(mr.data::jsonb ->> 'target_mapping_id'))
+            WHEN jsonb_typeof(tr.data -> 'target_mapping_ids') = 'array'
+              THEN tr.data -> 'target_mapping_ids'
+            WHEN NULLIF(TRIM(tr.data ->> 'target_mapping_id'), '') IS NOT NULL
+              THEN jsonb_build_array(TRIM(tr.data ->> 'target_mapping_id'))
             ELSE '[]'::jsonb
           END
         ) AS tm(mapping_id)
-        WHERE #{completed_conditions.join(' AND ')}
       ),
-      completed AS (
-        SELECT DISTINCT
+      completion_count AS (
+        SELECT
           farmer_id,
-          target_mapping_id
+          target_mapping_id,
+          COUNT(DISTINCT module_record_id) AS entry_count
         FROM completed_raw
+        GROUP BY farmer_id, target_mapping_id
       ),
       farmer_status AS (
         SELECT
           a.afl_id,
           COUNT(DISTINCT a.target_mapping_id) AS assigned_activity,
-          COUNT(DISTINCT c.target_mapping_id) AS completed_activity
+          COUNT(DISTINCT CASE WHEN cc.entry_count >= 1 THEN a.target_mapping_id END) AS completed_activity,
+          MAX(CASE WHEN cc.entry_count > 1 THEN 1 ELSE 0 END) AS has_repeat_training
         FROM assigned a
-        LEFT JOIN completed c
-          ON c.farmer_id = a.afl_id
-         AND c.target_mapping_id = a.target_mapping_id
+        LEFT JOIN completion_count cc
+          ON cc.farmer_id = a.afl_id
+         AND cc.target_mapping_id = a.target_mapping_id
         GROUP BY a.afl_id
       )
       SELECT
         COUNT(*) AS total_mapped_farmer,
         COUNT(*) FILTER (
-          WHERE assigned_activity > 0
-            AND completed_activity = assigned_activity
+          WHERE completed_activity > 0
+            AND has_repeat_training = 1
         ) AS green_count,
         COUNT(*) FILTER (
           WHERE completed_activity > 0
-            AND completed_activity < assigned_activity
+            AND has_repeat_training = 0
         ) AS yellow_count,
         COUNT(*) FILTER (
           WHERE completed_activity = 0
