@@ -4709,7 +4709,7 @@ class ModulesController < ApplicationController
     vrp_version = dashboard_table_version(Vrp)
 
     [
-      "dashboard/training-participation-counts/v5",
+      "dashboard/training-participation-counts/v6",
       normalize_dashboard_text(month_name),
       normalize_dashboard_text(fcoc_name),
       week_number.presence,
@@ -4849,10 +4849,11 @@ class ModulesController < ApplicationController
   def training_participation_dashboard_counts_from_sql(month_name:, fcoc_name:, targets:)
     return nil unless model_ready?(:TargetMapping) && model_ready?(:ModuleRecord)
 
-    target_conditions, target_binds = dashboard_summary_target_sql_filters
+    target_conditions = ["j.value <> ''"]
+    target_binds = {}
+
     if month_name.present?
-      target_conditions.reject! { |condition| condition.include?("LOWER(BTRIM(t.month_name))") }
-      target_conditions << "LOWER(BTRIM(t.month_name)) = :participation_month"
+      target_conditions << "LOWER(TRIM(t.month_name)) = :participation_month"
       target_binds[:participation_month] = normalize_dashboard_text(month_name)
     end
 
@@ -4860,6 +4861,14 @@ class ModulesController < ApplicationController
       fco_values = training_fcoc_filter_values(fcoc_name)
       target_conditions << "(LOWER(BTRIM(t.fco_name)) IN (:participation_fco_values) OR LOWER(BTRIM(t.fco_id)) IN (:participation_fco_values) OR LOWER(BTRIM(v.fcoc)) IN (:participation_fco_values))"
       target_binds[:participation_fco_values] = fco_values
+    end
+
+    if vrp_login_user? && current_vrp_record.present?
+      target_conditions << "t.vrp_id = :participation_vrp_id"
+      target_binds[:participation_vrp_id] = current_vrp_record.id
+    elsif dashboard_agronomics_login? && dashboard_registered_vrp_ids_for_current_user.any?
+      target_conditions << "t.vrp_id IN (:participation_vrp_ids)"
+      target_binds[:participation_vrp_ids] = dashboard_registered_vrp_ids_for_current_user
     end
 
     # training_records conditions: only training-form with main_activity_type='training' and main_activity='farmers'' training'
