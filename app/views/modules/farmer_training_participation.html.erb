@@ -35,7 +35,7 @@
         <small>Unique mapped farmers for the selected filters.</small>
       <% end %>
       <% %w[red yellow green pending].each do |status| %>
-        <%= link_to farmer_training_participation_path(filter_params.merge(status: status)), class: "training-participation-box #{status} #{'is-active' if @training_participation_status == status}" do %>
+        <%= link_to farmer_training_participation_path(filter_params.merge(status: status)), class: "training-participation-box #{status} #{'is-active' if (%w[red no_activity no_training_mapping no_training training_mapped_no_entry no_entry].include?(@training_participation_status) && status == 'red') || @training_participation_status == status}" do %>
           <span><%= status == "pending" ? "Pending Farmer" : training_participation_status_label(status) %></span>
           <strong><%= status_counts[status.to_sym].to_i %></strong>
           <small><%= training_participation_status_caption(status) %></small>
@@ -43,6 +43,15 @@
       <% end %>
     </div>
   </section>
+
+  <% if %w[red no_activity no_training_mapping no_training training_mapped_no_entry no_entry].include?(@training_participation_status) %>
+    <div class="red-breakdown-tabs" style="display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 16px;">
+      <%= link_to "All Red (No Training)", farmer_training_participation_path(filter_params.merge(status: "red")), class: "table-action #{'export' if @training_participation_status == 'red'}" %>
+      <%= link_to "No Activity Mapping", farmer_training_participation_path(filter_params.merge(status: "no_activity")), class: "table-action #{'export' if @training_participation_status == 'no_activity'}" %>
+      <%= link_to "No Training Mapping", farmer_training_participation_path(filter_params.merge(status: "no_training_mapping")), class: "table-action #{'export' if %w[no_training_mapping no_training].include?(@training_participation_status)}" %>
+      <%= link_to "Training Mapped But No Entry", farmer_training_participation_path(filter_params.merge(status: "training_mapped_no_entry")), class: "table-action #{'export' if %w[training_mapped_no_entry no_entry].include?(@training_participation_status)}" %>
+    </div>
+  <% end %>
 
   <section class="module-card">
     <div class="module-card-header">

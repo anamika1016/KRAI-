@@ -5960,6 +5960,9 @@ function initDeferredLayoutPage() {
     const translations = {
       "Language": "भाषा",
       "Dashboard": "डैशबोर्ड",
+      "No Activity Mapping": "कुल मेप नहीं किये गये किसान",
+      "No Training Mapping": "कुल फार्मर ट्रेनिंग से मेप नहीं किये गये किसान",
+      "Training Mapped But No Entry": "कुल फार्मर ट्रेनिंग में किसान की एंट्री नहीं हुई",
       "Sign Out": "साइन आउट",
       "Training": "प्रशिक्षण",
       "Farmer Training": "किसान प्रशिक्षण",
@@ -6273,7 +6276,10 @@ function initDeferredLayoutPage() {
       "Saved main activities dekhne ke liye.": "View saved main activities.",
       "Saved sub activities dekhne ke liye.": "View saved sub activities.",
       "VRP type add karne ke liye.": "Add VRP type.",
-      "Saved access control records dekhne ke liye.": "View saved access control records."
+      "Saved access control records dekhne ke liye.": "View saved access control records.",
+      "कुल मेप नहीं किये गये किसान": "No Activity Mapping",
+      "कुल फार्मर ट्रेनिंग से मेप नहीं किये गये किसान": "No Training Mapping",
+      "कुल फार्मर ट्रेनिंग में किसान की एंट्री नहीं हुई": "Training Mapped But No Entry"
     };
 	    const englishTranslations = {
 	      ...Object.fromEntries(Object.entries(translations).map(([english, hindi]) => [hindi, english])),
@@ -6492,6 +6498,15 @@ function initDeferredLayoutPage() {
 	      const selectedTranslations = languageTranslations[language] || {};
 	      const exact = language === "en" ? englishTranslations[trimmed] : selectedTranslations[trimmed];
 	      if (exact) return preserveSpacing(text, exact);
+
+      const labelNumberMatch = trimmed.match(/^(.+?):\s*(\d+)$/);
+      if (labelNumberMatch) {
+        const translatedLabel = translatePhrase(labelNumberMatch[1], language).trim();
+        if (translatedLabel && translatedLabel !== labelNumberMatch[1]) {
+          return preserveSpacing(text, `${translatedLabel}: ${labelNumberMatch[2]}`);
+        }
+      }
+
 	      if (language === "en") return text;
 	      if (language !== "hi") return text;
 

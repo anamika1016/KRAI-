@@ -66,18 +66,44 @@
           <div class="dashboard-summary-actions">
             <span class="dashboard-summary-action-popover">
               <%= link_to "View List", card[:path], class: "table-action", data: { dashboard_card: true } %>
-              <% card_popups = if card[:status] == "red"
-                   @training_no_training_popups
-                 elsif card[:status] == "yellow"
-                   @training_yellow_farmer_popups
-                 elsif card[:status] == "green"
-                   @training_green_farmer_popups
-                 elsif card[:status] == "unique"
-                   @training_mapped_farmer_popups
-                 end %>
-              <% if Array(card_popups).any? %>
+              <% if card[:status] == "red" && Array(@training_red_fco_details).any? %>
+                <span class="dashboard-card-hover-popup red-popup-breakdown" role="tooltip">
+                  <% @training_red_fco_details.each do |fco| %>
+                    <span class="popup-fco-header">
+                      <strong><%= fco[:name].upcase %>: <%= fco[:total_red] %></strong>
+                    </span>
+                    <span class="popup-subitem">
+                      <%= link_to farmer_training_participation_path(unique_status_path_params.merge(status: "no_activity", training_fcoc: fco[:fco_id])), class: "popup-sublink", data: { dashboard_card: true } do %>
+                        • No Activity Mapping: <strong><%= fco[:no_activity] %></strong>
+                      <% end %>
+                    </span>
+                    <span class="popup-subitem">
+                      <%= link_to farmer_training_participation_path(unique_status_path_params.merge(status: "no_training_mapping", training_fcoc: fco[:fco_id])), class: "popup-sublink", data: { dashboard_card: true } do %>
+                        • No Training Mapping: <strong><%= fco[:no_training] %></strong>
+                      <% end %>
+                    </span>
+                    <span class="popup-subitem">
+                      <%= link_to farmer_training_participation_path(unique_status_path_params.merge(status: "training_mapped_no_entry", training_fcoc: fco[:fco_id])), class: "popup-sublink", data: { dashboard_card: true } do %>
+                        • Training Mapped But No Entry: <strong><%= fco[:no_entry] %></strong>
+                      <% end %>
+                    </span>
+                  <% end %>
+                </span>
+              <% elsif card[:status] == "red" && Array(@training_no_training_popups).any? %>
                 <span class="dashboard-card-hover-popup" role="tooltip">
-                  <% Array(card_popups).each do |item| %>
+                  <% Array(@training_no_training_popups).each do |item| %>
+                    <span><%= item %></span>
+                  <% end %>
+                </span>
+              <% elsif card[:status] == "yellow" && Array(@training_yellow_farmer_popups).any? %>
+                <span class="dashboard-card-hover-popup" role="tooltip">
+                  <% Array(@training_yellow_farmer_popups).each do |item| %>
+                    <span><%= item %></span>
+                  <% end %>
+                </span>
+              <% elsif card[:status] == "green" && Array(@training_green_farmer_popups).any? %>
+                <span class="dashboard-card-hover-popup" role="tooltip">
+                  <% Array(@training_green_farmer_popups).each do |item| %>
                     <span><%= item %></span>
                   <% end %>
                 </span>
