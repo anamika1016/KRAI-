@@ -66,9 +66,18 @@
           <div class="dashboard-summary-actions">
             <span class="dashboard-summary-action-popover">
               <%= link_to "View List", card[:path], class: "table-action", data: { dashboard_card: true } %>
-              <% if card[:status] == "red" && Array(@training_no_training_popups).any? %>
+              <% card_popups = if card[:status] == "red"
+                   @training_no_training_popups
+                 elsif card[:status] == "yellow"
+                   @training_yellow_farmer_popups
+                 elsif card[:status] == "green"
+                   @training_green_farmer_popups
+                 elsif card[:status] == "unique"
+                   @training_mapped_farmer_popups
+                 end %>
+              <% if Array(card_popups).any? %>
                 <span class="dashboard-card-hover-popup" role="tooltip">
-                  <% Array(@training_no_training_popups).each do |item| %>
+                  <% Array(card_popups).each do |item| %>
                     <span><%= item %></span>
                   <% end %>
                 </span>

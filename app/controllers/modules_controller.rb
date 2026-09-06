@@ -848,7 +848,17 @@ class ModulesController < ApplicationController
       month_name: @participation_selected_month,
       fcoc_name: @participation_fcoc_filter_value
     )
+    yellow_count, yellow_popups = farmer_training_yellow_farmer_count_and_popups(
+      month_name: @participation_selected_month,
+      fcoc_name: @participation_fcoc_filter_value
+    )
+    green_count, green_popups = farmer_training_green_farmer_count_and_popups(
+      month_name: @participation_selected_month,
+      fcoc_name: @participation_fcoc_filter_value
+    )
     participation_dashboard_counts[:red] = no_training_count if participation_dashboard_counts.is_a?(Hash)
+    participation_dashboard_counts[:yellow] = yellow_count if participation_dashboard_counts.is_a?(Hash)
+    participation_dashboard_counts[:green] = green_count if participation_dashboard_counts.is_a?(Hash)
     participation_dashboard_counts[:total] = mapped_count if participation_dashboard_counts.is_a?(Hash)
 
     @training_participation_status_cards = training_participation_dashboard_status_cards(
@@ -862,6 +872,8 @@ class ModulesController < ApplicationController
     @training_mapped_farmer_count = mapped_count
     @training_mapped_farmer_popups = mapped_popups
     @training_no_training_popups = no_training_popups
+    @training_yellow_farmer_popups = yellow_popups
+    @training_green_farmer_popups = green_popups
     @training_total_training_farmer_count = participation_dashboard_counts[:target_map_total].to_i
     @training_completed_target_map_count = participation_dashboard_counts[:completed_target_map_total].to_i
     visible_vrp_ids = @filtered_vrps.map(&:id)
@@ -976,9 +988,21 @@ class ModulesController < ApplicationController
         month_name: selected_month,
         fcoc_name: selected_fcoc
       )
-    elsif selected_status == "red" || selected_status == "no_training"
+    elsif selected_status == "red" || selected_status == "no_training" || selected_status == "pending"
       farmer_training_participation_rows_from_sql(
         "red",
+        month_name: selected_month,
+        fcoc_name: selected_fcoc
+      )
+    elsif selected_status == "yellow" || selected_status == "only_1_training" || selected_status == "1_training"
+      farmer_training_participation_rows_from_sql(
+        "yellow",
+        month_name: selected_month,
+        fcoc_name: selected_fcoc
+      )
+    elsif selected_status == "green" || selected_status == "1_plus_trainings" || selected_status == "more_than_1"
+      farmer_training_participation_rows_from_sql(
+        "green",
         month_name: selected_month,
         fcoc_name: selected_fcoc
       )
@@ -990,15 +1014,6 @@ class ModulesController < ApplicationController
     elsif selected_status == "pending_achievement"
       target_map_rows = training_participation_target_map_rows(participation_targets, month_name: selected_month)
       target_map_rows.select { |row| row[:completed_activity_count].to_i < row[:assigned_activity_count].to_i }
-    elsif %w[green yellow pending].include?(selected_status)
-      population_rows = training_participation_population_rows(
-        month_name: selected_month,
-        fcoc_name: selected_fcoc,
-        records: training_records,
-        targets: participation_targets,
-        week_number: selected_week
-      )
-      population_rows.select { |row| row[:status] == selected_status }
     elsif selected_status == "total"
       target_map_rows = training_participation_target_map_rows(participation_targets, month_name: selected_month)
       target_map_rows
@@ -1014,6 +1029,14 @@ class ModulesController < ApplicationController
       month_name: selected_month,
       fcoc_name: selected_fcoc
     )
+    yellow_sql_count, yellow_sql_popups = farmer_training_yellow_farmer_count_and_popups(
+      month_name: selected_month,
+      fcoc_name: selected_fcoc
+    )
+    green_sql_count, green_sql_popups = farmer_training_green_farmer_count_and_popups(
+      month_name: selected_month,
+      fcoc_name: selected_fcoc
+    )
 
     @training_participation_totals = participation_dashboard_counts.slice(:green, :yellow, :red, :pending, :total)
     @training_selected_week = selected_week
@@ -1021,11 +1044,15 @@ class ModulesController < ApplicationController
     @training_mapped_farmer_count = mapped_sql_count
     @training_mapped_farmer_popups = mapped_sql_popups
     @training_no_training_popups = no_training_sql_popups
+    @training_yellow_farmer_popups = yellow_sql_popups
+    @training_green_farmer_popups = green_sql_popups
     @training_total_training_farmer_count = participation_dashboard_counts[:target_map_total].to_i
     @training_completed_target_map_count = participation_dashboard_counts[:completed_target_map_total].to_i
     @training_participation_totals[:unique] = mapped_sql_count
     @training_participation_totals[:red] = no_training_sql_count
     @training_participation_totals[:pending] = no_training_sql_count
+    @training_participation_totals[:yellow] = yellow_sql_count
+    @training_participation_totals[:green] = green_sql_count
     @training_participation_totals[:total] = @training_total_training_farmer_count
     @training_participation_totals[:completed_map] = @training_completed_target_map_count
     @training_selected_month = selected_month
@@ -5116,13 +5143,34 @@ class ModulesController < ApplicationController
     @training_registered_afl_count_cache[cache_key] = scope.count(:id)
   end
 
+  def training_fcoc_ids_from_param(fcoc_name)
+    raw_values = Array(fcoc_name).flatten.map(&:to_s).reject(&:blank?)
+    return %w[1004 1006] if raw_values.blank?
+
+    ids = []
+    raw_values.each do |val|
+      normalized = val.to_s.downcase.strip
+      if normalized.include?("1004") || normalized.include?("sausar")
+        ids << "1004"
+      end
+      if normalized.include?("1006") || normalized.include?("turekela")
+        ids << "1006"
+      end
+      if normalized.match?(/\A\d+\z/)
+        ids << normalized
+      end
+    end
+    ids = ids.uniq
+    ids.presence || %w[1004 1006]
+  end
+
   def farmer_training_mapped_farmer_count_and_popups(month_name:, fcoc_name:)
     selected_month = month_name.presence || "August"
-    fco_ids = training_fcoc_filter_values(fcoc_name)
-    fco_ids = %w[1004 1006] if fco_ids.blank?
+    fco_ids = training_fcoc_ids_from_param(fcoc_name)
+    fco_filter_sql = fco_ids ? "AND LOWER(BTRIM(t.fco_id)) IN (:fco_ids)" : ""
 
     sql = <<~SQL.squish
-      SELECT 
+      SELECT
           t.fco_id,
           COALESCE(MAX(NULLIF(BTRIM(t.fco_name), '')), t.fco_id) AS fco_name,
           COUNT(DISTINCT v.afl_id) AS farmer_count
@@ -5133,31 +5181,32 @@ class ModulesController < ApplicationController
             ELSE jsonb_build_array(t.afl_ids::jsonb)
           END
       ) AS v(afl_id)
-      WHERE (LOWER(BTRIM(t.fco_id)) IN (:fco_ids) OR LOWER(BTRIM(t.fco_name)) IN (:fco_ids))
-        AND LOWER(BTRIM(t.month_name)) = :month_name
+      WHERE LOWER(BTRIM(t.month_name)) = :month_name
         AND LOWER(BTRIM(t.main_activity_name)) = 'farmers'' training'
+        #{fco_filter_sql}
       GROUP BY t.fco_id
       ORDER BY t.fco_id;
     SQL
 
-    binds = { fco_ids: fco_ids.map(&:downcase), month_name: selected_month.strip.downcase }
+    binds = { month_name: selected_month.strip.downcase }
+    binds[:fco_ids] = fco_ids.map(&:downcase) if fco_ids
     rows = ActiveRecord::Base.connection.exec_query(
       ActiveRecord::Base.send(:sanitize_sql_array, [sql, binds])
     ).to_a
 
     total_count = rows.sum { |r| r["farmer_count"].to_i }
-    popups = rows.map { |r| "#{r['fco_name']} (#{r['fco_id']}): #{r['farmer_count']}" }
+    popups = format_fco_popups(rows, fco_ids, "farmer_count")
 
     [total_count, popups]
   rescue StandardError => e
     Rails.logger.warn("Mapped farmer count SQL failed: #{e.message}")
-    [0, []]
+    [0, format_fco_popups([], fco_ids, "farmer_count")]
   end
 
   def farmer_training_no_training_count_and_popups(month_name:, fcoc_name:)
     selected_month = month_name.presence || "August"
-    fco_ids = training_fcoc_filter_values(fcoc_name)
-    fco_ids = %w[1004 1006] if fco_ids.blank?
+    fco_ids = training_fcoc_ids_from_param(fcoc_name)
+    fco_filter_sql = fco_ids ? "AND LOWER(BTRIM(a.fco_id)) IN (:fco_ids)" : ""
 
     sql = <<~SQL.squish
       SELECT
@@ -5165,8 +5214,7 @@ class ModulesController < ApplicationController
           COALESCE(MAX(NULLIF(BTRIM(a.fco), '')), a.fco_id) AS fco_name,
           COUNT(DISTINCT a.id) AS pending_farmer_count
       FROM public.afls a
-      WHERE (LOWER(BTRIM(a.fco_id)) IN (:fco_ids) OR LOWER(BTRIM(a.fco)) IN (:fco_ids))
-        AND NOT EXISTS (
+      WHERE NOT EXISTS (
             SELECT 1
             FROM public.target_mappings t
             CROSS JOIN LATERAL jsonb_array_elements_text(
@@ -5180,28 +5228,357 @@ class ModulesController < ApplicationController
               AND LOWER(BTRIM(t.main_activity_name)) = 'farmers'' training'
               AND v.afl_id = a.id::text
         )
+        #{fco_filter_sql}
       GROUP BY a.fco_id
       ORDER BY a.fco_id;
     SQL
 
-    binds = { fco_ids: fco_ids.map(&:downcase), month_name: selected_month.strip.downcase }
+    binds = { month_name: selected_month.strip.downcase }
+    binds[:fco_ids] = fco_ids.map(&:downcase) if fco_ids
     rows = ActiveRecord::Base.connection.exec_query(
       ActiveRecord::Base.send(:sanitize_sql_array, [sql, binds])
     ).to_a
 
     total_count = rows.sum { |r| r["pending_farmer_count"].to_i }
-    popups = rows.map { |r| "#{r['fco_name']} (#{r['fco_id']}): #{r['pending_farmer_count']}" }
+    popups = format_fco_popups(rows, fco_ids, "pending_farmer_count")
 
     [total_count, popups]
   rescue StandardError => e
     Rails.logger.warn("No training count SQL failed: #{e.message}")
-    [0, []]
+    [0, format_fco_popups([], fco_ids, "pending_farmer_count")]
+  end
+
+  def farmer_training_yellow_farmer_count_and_popups(month_name:, fcoc_name:)
+    selected_month = month_name.presence || "August"
+    fco_ids = training_fcoc_ids_from_param(fcoc_name)
+    fco_filter_sql = fco_ids ? "WHERE LOWER(BTRIM(a.fco_id)) IN (:fco_ids)" : ""
+
+    sql = <<~SQL.squish
+      WITH august_training AS (
+          SELECT
+              sf.farmer_id,
+              mr.id AS training_id
+          FROM public.module_records mr
+          CROSS JOIN LATERAL jsonb_array_elements_text(
+              COALESCE(
+                  mr.data::jsonb -> 'selected_farmer_ids',
+                  '[]'::jsonb
+              )
+          ) AS sf(farmer_id)
+          WHERE mr.module_slug = 'training-form'
+            AND LOWER(TRIM(mr.data::jsonb ->> 'month')) = :month_name
+            AND TRIM(mr.data::jsonb ->> 'main_activity') = 'Farmers'' Training'
+      ),
+      only_one_training AS (
+          SELECT farmer_id FROM august_training
+          GROUP BY farmer_id
+          HAVING COUNT(DISTINCT training_id) = 1
+      )
+      SELECT
+          a.fco_id,
+          COALESCE(MAX(NULLIF(BTRIM(a.fco), '')), a.fco_id) AS fco_name,
+          COUNT(DISTINCT a.id) AS farmer_count
+      FROM only_one_training o
+      INNER JOIN public.afls a ON a.id::text = o.farmer_id
+      #{fco_filter_sql}
+      GROUP BY a.fco_id
+      ORDER BY a.fco_id;
+    SQL
+
+    binds = { month_name: selected_month.strip.downcase }
+    binds[:fco_ids] = fco_ids.map(&:downcase) if fco_ids
+    rows = ActiveRecord::Base.connection.exec_query(
+      ActiveRecord::Base.send(:sanitize_sql_array, [sql, binds])
+    ).to_a
+
+    total_count = rows.sum { |r| r["farmer_count"].to_i }
+    popups = format_fco_popups(rows, fco_ids, "farmer_count")
+
+    [total_count, popups]
+  rescue StandardError => e
+    Rails.logger.warn("Yellow farmer count SQL failed: #{e.message}")
+    [0, format_fco_popups([], fco_ids, "farmer_count")]
+  end
+
+  def farmer_training_green_farmer_count_and_popups(month_name:, fcoc_name:)
+    selected_month = month_name.presence || "August"
+    fco_ids = training_fcoc_ids_from_param(fcoc_name)
+    fco_filter_sql = fco_ids ? "AND LOWER(BTRIM(a.fco_id)) IN (:fco_ids)" : ""
+
+    sql = <<~SQL.squish
+      WITH august_training AS (
+          SELECT
+              sf.farmer_id,
+              mr.id AS training_id
+          FROM public.module_records mr
+          CROSS JOIN LATERAL jsonb_array_elements_text(
+              COALESCE(
+                  mr.data::jsonb -> 'selected_farmer_ids',
+                  '[]'::jsonb
+              )
+          ) AS sf(farmer_id)
+          WHERE mr.module_slug = 'training-form'
+            AND LOWER(TRIM(mr.data::jsonb ->> 'month')) = :month_name
+            AND TRIM(mr.data::jsonb ->> 'main_activity') = 'Farmers'' Training'
+      ),
+      farmer_training_count AS (
+          SELECT
+              a.fco_id,
+              COALESCE(MAX(NULLIF(BTRIM(a.fco), '')), a.fco_id) AS fco_name,
+              at.farmer_id,
+              COUNT(DISTINCT at.training_id) AS training_count
+          FROM august_training at
+          INNER JOIN public.afls a
+              ON a.id::text = at.farmer_id
+          #{fco_filter_sql}
+          GROUP BY
+              a.fco_id,
+              at.farmer_id
+      )
+      SELECT
+          fco_id,
+          COALESCE(MAX(fco_name), fco_id) AS fco_name,
+          COUNT(*) AS green_farmer_count
+      FROM farmer_training_count
+      WHERE training_count > 1
+      GROUP BY fco_id
+      ORDER BY fco_id;
+    SQL
+
+    binds = { month_name: selected_month.strip.downcase }
+    binds[:fco_ids] = fco_ids.map(&:downcase) if fco_ids
+    rows = ActiveRecord::Base.connection.exec_query(
+      ActiveRecord::Base.send(:sanitize_sql_array, [sql, binds])
+    ).to_a
+
+    total_count = rows.sum { |r| r["green_farmer_count"].to_i }
+    popups = format_fco_popups(rows, fco_ids, "green_farmer_count")
+
+    [total_count, popups]
+  rescue StandardError => e
+    Rails.logger.warn("Green farmer count SQL failed: #{e.message}")
+    [0, format_fco_popups([], fco_ids, "green_farmer_count")]
+  end
+
+  def format_fco_popups(rows, fco_ids, count_key)
+    fco_name_map = { "1004" => "SAUSAR", "1006" => "TUREKELA" }
+    target_ids = Array(fco_ids).presence || %w[1004 1006]
+    rows_by_id = Array(rows).index_by { |r| r["fco_id"].to_s.strip.downcase }
+
+    target_ids.map do |id|
+      row = rows_by_id[id.to_s.strip.downcase]
+      count = row ? row[count_key].to_i : 0
+      name = row&.dig("fco_name").presence || fco_name_map[id.to_s] || "FCO #{id}"
+      "#{name} (#{id}): #{count}"
+    end
   end
 
   def farmer_training_participation_rows_from_sql(status, month_name:, fcoc_name:)
     selected_month = month_name.presence || "August"
-    fco_ids = training_fcoc_filter_values(fcoc_name)
-    fco_ids = %w[1004 1006] if fco_ids.blank?
+    fco_ids = training_fcoc_ids_from_param(fcoc_name)
+
+    if status.to_s == "green" || status.to_s == "1_plus_trainings" || status.to_s == "more_than_1"
+      fco_filter_sql = fco_ids ? "#{fco_ids ? 'AND' : 'AND'} LOWER(BTRIM(a.fco_id)) IN (:fco_ids)" : ""
+      sql = <<~SQL.squish
+        WITH august_training AS (
+            SELECT
+                sf.farmer_id,
+                mr.id AS training_id,
+                mr.created_at,
+                mr.data::jsonb ->> 'training_date' AS training_date,
+                mr.data::jsonb -> 'sub_activity' AS sub_activity,
+                mr.data::jsonb ->> 'training_method' AS training_method,
+                mr.data::jsonb ->> 'trainer_name' AS trainer_name
+            FROM public.module_records mr
+            CROSS JOIN LATERAL jsonb_array_elements_text(
+                COALESCE(
+                    mr.data::jsonb -> 'selected_farmer_ids',
+                    '[]'::jsonb
+                )
+            ) AS sf(farmer_id)
+            WHERE mr.module_slug = 'training-form'
+              AND LOWER(TRIM(mr.data::jsonb ->> 'month')) = :month_name
+              AND TRIM(mr.data::jsonb ->> 'main_activity') = 'Farmers'' Training'
+        )
+        SELECT
+            a.id AS farmer_id,
+            a.fco_id,
+            a.fco,
+            a.fpo_id,
+            a.fpo_name,
+            a.ics_id,
+            a.ics_name,
+            a.village_id,
+            a.village_name,
+            a.tracenet_no,
+            a.farmer_name,
+            a.father_name,
+            a.mobile_no,
+            COUNT(DISTINCT at.training_id) AS training_count,
+            MIN(at.training_date) AS training_date,
+            MIN(at.sub_activity::text) AS sub_activity,
+            MIN(at.training_method) AS training_method,
+            MIN(at.trainer_name) AS trainer_name
+        FROM august_training at
+        INNER JOIN public.afls a
+            ON a.id::text = at.farmer_id
+        #{fco_ids ? "WHERE LOWER(BTRIM(a.fco_id)) IN (:fco_ids)" : ""}
+        GROUP BY
+            a.id,
+            a.fco_id,
+            a.fco,
+            a.fpo_id,
+            a.fpo_name,
+            a.ics_id,
+            a.ics_name,
+            a.village_id,
+            a.village_name,
+            a.tracenet_no,
+            a.farmer_name,
+            a.father_name,
+            a.mobile_no
+        HAVING COUNT(DISTINCT at.training_id) > 1
+        ORDER BY
+            a.fco_id,
+            a.village_name,
+            a.farmer_name;
+      SQL
+
+      binds = { month_name: selected_month.strip.downcase }
+      binds[:fco_ids] = fco_ids.map(&:downcase) if fco_ids
+      raw_rows = ActiveRecord::Base.connection.exec_query(
+        ActiveRecord::Base.send(:sanitize_sql_array, [sql, binds])
+      )
+
+      return raw_rows.map do |row|
+        {
+          farmer_id: row["farmer_id"].to_s,
+          farmer_name: row["farmer_name"].to_s.presence || "Farmer ##{row['farmer_id']}",
+          father_name: row["father_name"].to_s,
+          mobile_no: row["mobile_no"].to_s,
+          tracenet_no: row["tracenet_no"].to_s,
+          ics: row["ics_name"].to_s.presence || row["ics_id"].to_s.presence || "-",
+          village: row["village_name"].to_s.presence || row["village_id"].to_s.presence || "-",
+          fcoc: row["fco"].to_s.presence || row["fco_id"].to_s.presence || "-",
+          cluster_incharge: "-",
+          jeevika_jankar_name: row["trainer_name"].to_s.presence || "-",
+          vrp: row["trainer_name"].to_s.presence || "-",
+          registered_by: row["trainer_name"].to_s.presence || "-",
+          months: selected_month,
+          main_activities: "Farmers' Training",
+          sub_activities: row["sub_activity"].to_s.presence || "-",
+          attendance_count: row["training_count"].to_i,
+          status: "green",
+          status_label: "1+ Trainings",
+          training_dates: row["training_date"].to_s.presence || "-",
+          last_training_date: row["training_date"].to_s.presence || "-",
+          training_register_urls: [],
+          training_photo_urls: []
+        }
+      end
+    end
+
+    if status.to_s == "yellow" || status.to_s == "only_1_training"
+      sql = <<~SQL.squish
+        WITH august_training AS (
+            SELECT
+                sf.farmer_id,
+                mr.id AS training_id,
+                mr.created_at,
+                mr.data::jsonb ->> 'training_date' AS training_date,
+                mr.data::jsonb ->> 'training_method' AS training_method,
+                mr.data::jsonb ->> 'trainer_name' AS trainer_name
+            FROM public.module_records mr
+            CROSS JOIN LATERAL jsonb_array_elements_text(
+                COALESCE(
+                    mr.data::jsonb -> 'selected_farmer_ids',
+                    '[]'::jsonb
+                )
+            ) AS sf(farmer_id)
+            WHERE mr.module_slug = 'training-form'
+              AND LOWER(TRIM(mr.data::jsonb ->> 'month')) = :month_name
+              AND TRIM(mr.data::jsonb ->> 'main_activity') = 'Farmers'' Training'
+        )
+        SELECT
+            a.id AS farmer_id,
+            a.fco_id,
+            a.fco,
+            a.fpo_id,
+            a.fpo_name,
+            a.ics_id,
+            a.ics_name,
+            a.village_id,
+            a.village_name,
+            a.tracenet_no,
+            a.farmer_name,
+            a.father_name,
+            a.mobile_no,
+            COUNT(at.training_id) AS training_count,
+            MIN(at.training_date) AS training_date,
+            MIN(at.training_method) AS training_method,
+            MIN(at.trainer_name) AS trainer_name
+        FROM august_training at
+        INNER JOIN public.afls a
+            ON a.id::text = at.farmer_id
+        #{fco_ids ? "WHERE LOWER(BTRIM(a.fco_id)) IN (:fco_ids)" : ""}
+        GROUP BY
+            a.id,
+            a.fco_id,
+            a.fco,
+            a.fpo_id,
+            a.fpo_name,
+            a.ics_id,
+            a.ics_name,
+            a.village_id,
+            a.village_name,
+            a.tracenet_no,
+            a.farmer_name,
+            a.father_name,
+            a.mobile_no
+        HAVING COUNT(at.training_id) = 1
+        ORDER BY
+            a.fco_id,
+            a.village_name,
+            a.farmer_name;
+      SQL
+
+      binds = { month_name: selected_month.strip.downcase }
+      binds[:fco_ids] = fco_ids.map(&:downcase) if fco_ids
+      raw_rows = ActiveRecord::Base.connection.exec_query(
+        ActiveRecord::Base.send(:sanitize_sql_array, [sql, binds])
+      )
+
+      return raw_rows.map do |row|
+        {
+          farmer_id: row["farmer_id"].to_s,
+          farmer_name: row["farmer_name"].to_s.presence || "Farmer ##{row['farmer_id']}",
+          father_name: row["father_name"].to_s,
+          mobile_no: row["mobile_no"].to_s,
+          tracenet_no: row["tracenet_no"].to_s,
+          ics: row["ics_name"].to_s.presence || row["ics_id"].to_s.presence || "-",
+          village: row["village_name"].to_s.presence || row["village_id"].to_s.presence || "-",
+          fcoc: row["fco"].to_s.presence || row["fco_id"].to_s.presence || "-",
+          cluster_incharge: "-",
+          jeevika_jankar_name: row["trainer_name"].to_s.presence || "-",
+          vrp: row["trainer_name"].to_s.presence || "-",
+          registered_by: row["trainer_name"].to_s.presence || "-",
+          months: selected_month,
+          main_activities: "Farmers' Training",
+          sub_activities: "-",
+          attendance_count: row["training_count"].to_i,
+          status: "yellow",
+          status_label: "Only 1 Training",
+          training_dates: row["training_date"].to_s.presence || "-",
+          last_training_date: row["training_date"].to_s.presence || "-",
+          training_register_urls: [],
+          training_photo_urls: []
+        }
+      end
+    end
+
+    fco_filter_t  = fco_ids ? "AND LOWER(BTRIM(t.fco_id)) IN (:fco_ids)" : ""
+    fco_filter_a  = fco_ids ? "AND LOWER(BTRIM(a.fco_id)) IN (:fco_ids)" : ""
+    fco_filter_aw = fco_ids ? "WHERE LOWER(BTRIM(a.fco_id)) IN (:fco_ids)" : ""
 
     sql = if status.to_s == "unique" || status.to_s == "mapped"
       <<~SQL.squish
@@ -5215,15 +5592,16 @@ class ModulesController < ApplicationController
                   ELSE jsonb_build_array(t.afl_ids::jsonb)
                 END
             ) AS v(afl_id)
-            WHERE (LOWER(BTRIM(t.fco_id)) IN (:fco_ids) OR LOWER(BTRIM(t.fco_name)) IN (:fco_ids))
-              AND LOWER(BTRIM(t.month_name)) = :month_name
+            WHERE LOWER(BTRIM(t.month_name)) = :month_name
               AND LOWER(BTRIM(t.main_activity_name)) = 'farmers'' training'
+              #{fco_filter_t}
         )
         SELECT
            a.id, a.fco_id, a.fco, a.fpo_id, a.fpo_name, a.ics_id, a.ics_name, a.village_id, a.village_name, a.tracenet_no, a.farmer_name, a.father_name, a.mobile_no
         FROM public.afls a
         INNER JOIN mapped_farmers m
             ON a.id::text = m.afl_id
+        #{fco_filter_aw}
         ORDER BY
             a.fco_id,
             a.id;
@@ -5232,8 +5610,7 @@ class ModulesController < ApplicationController
       <<~SQL.squish
         SELECT a.id, a.fco_id, a.fco, a.fpo_id, a.fpo_name, a.ics_id, a.ics_name, a.village_id, a.village_name, a.tracenet_no, a.farmer_name, a.father_name, a.mobile_no
         FROM public.afls a
-        WHERE (LOWER(BTRIM(a.fco_id)) IN (:fco_ids) OR LOWER(BTRIM(a.fco)) IN (:fco_ids))
-          AND NOT EXISTS (
+        WHERE NOT EXISTS (
               SELECT 1
               FROM public.target_mappings t
               CROSS JOIN LATERAL jsonb_array_elements_text(
@@ -5242,16 +5619,18 @@ class ModulesController < ApplicationController
                     ELSE jsonb_build_array(t.afl_ids::jsonb)
                   END
               ) AS v(afl_id)
-              WHERE (LOWER(BTRIM(t.fco_id)) IN (:fco_ids) OR LOWER(BTRIM(t.fco_name)) IN (:fco_ids))
+              WHERE t.fco_id = a.fco_id
                 AND LOWER(BTRIM(t.month_name)) = :month_name
                 AND LOWER(BTRIM(t.main_activity_name)) = 'farmers'' training'
                 AND v.afl_id = a.id::text
           )
+          #{fco_filter_a}
         ORDER BY a.fco_id, a.id;
       SQL
     end
 
-    binds = { fco_ids: fco_ids.map(&:downcase), month_name: selected_month.strip.downcase }
+    binds = { month_name: selected_month.strip.downcase }
+    binds[:fco_ids] = fco_ids.map(&:downcase) if fco_ids
     raw_rows = ActiveRecord::Base.connection.exec_query(
       ActiveRecord::Base.send(:sanitize_sql_array, [sql, binds])
     )
