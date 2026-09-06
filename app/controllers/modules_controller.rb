@@ -3620,8 +3620,9 @@ class ModulesController < ApplicationController
 
     case kind
     when :village
-      scope = dashboard_total_afl_scope
-      scope.distinct.count("NULLIF(BTRIM(village_id), '')")
+      # Matches: SELECT fco_id, fco, fpo_id, fpo_name, ics_id, ics_name, village_id, village_name, COUNT(tracenet_no) FROM afls WHERE fco_id = '1004' OR fco_id = '1006' GROUP BY fco_id, fco, fpo_id, fpo_name, ics_id, ics_name, village_id, village_name
+      scope = dashboard_total_afl_farmer_scope.where.not(village_id: [nil, ""])
+      scope.group(:fco_id, :fco, :fpo_id, :fpo_name, :ics_id, :ics_name, :village_id, :village_name).count.size
     when :ics
       # Matches: SELECT fco_id, fco, fpo_id, fpo_name, ics_id, ics_name, COUNT(tracenet_no) FROM afls WHERE fco_id = '1004' OR fco_id = '1006' GROUP BY fco_id, fco, fpo_id, fpo_name, ics_id, ics_name
       scope = dashboard_total_afl_farmer_scope.where.not(ics_id: [nil, ""])
@@ -3911,9 +3912,6 @@ class ModulesController < ApplicationController
       params_hash[:fco_id] = %w[1004 1006]
     end
     params_hash[:ics] = dashboard_filter_param(:ics, :ics_name) if dashboard_filter_param(:ics, :ics_name).present?
-    params_hash[:month] = @dashboard_month_filter_value if @dashboard_month_filter_value.present?
-    params_hash[:main_activity] = @dashboard_main_activity_filter_value.presence || dashboard_filter_param(:main_activity) if (@dashboard_main_activity_filter_value.presence || dashboard_filter_param(:main_activity)).present?
-    params_hash[:sub_activity] = dashboard_filter_param(:sub_activity) if dashboard_filter_param(:sub_activity).present?
     params_hash
   end
 

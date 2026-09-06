@@ -48,7 +48,7 @@
       <% end %>
 
       <div class="table-shell">
-        <table class="module-table vrp-list-table" id="afl_list" data-paginated-table data-page-size="15">
+        <table class="module-table vrp-list-table" id="afl_list">
           <thead>
             <% if @summary_mode == "ics" %>
               <tr>
@@ -62,21 +62,29 @@
               </tr>
             <% elsif @summary_mode == "village" %>
               <tr>
-                <th>Village ID</th>
-                <th>Village Name</th>
+                <th>FCO ID</th>
+                <th>FCO Name</th>
+                <th>FPO ID</th>
+                <th>FPO Name</th>
                 <th>ICS ID</th>
                 <th>ICS Name</th>
+                <th>Village ID</th>
+                <th>Village Name</th>
                 <th>Farmer Count</th>
               </tr>
             <% elsif @summary_mode == "farmer" %>
               <tr>
+                <th>FCO ID</th>
+                <th>FCO Name</th>
+                <th>FPO ID</th>
+                <th>FPO Name</th>
+                <th>ICS ID</th>
+                <th>ICS Name</th>
+                <th>Village ID</th>
+                <th>Village Name</th>
                 <th>Tracenet No</th>
                 <th>Farmer Name</th>
                 <th>Father Name</th>
-                <th>Village ID</th>
-                <th>Village Name</th>
-                <th>ICS ID</th>
-                <th>ICS Name</th>
               </tr>
             <% else %>
               <tr>
@@ -120,21 +128,29 @@
                   </tr>
                 <% elsif @summary_mode == "village" %>
                   <tr>
+                    <td><%= afl[:fco_id] %></td>
+                    <td><%= afl[:fco].presence || "-" %></td>
+                    <td><%= afl[:fpo_id] %></td>
+                    <td><%= afl[:fpo_name].presence || "-" %></td>
+                    <td><%= afl[:ics_id] %></td>
+                    <td><%= afl[:ics_name].presence || "-" %></td>
                     <td><%= afl[:village_id] %></td>
                     <td><%= afl[:village_name].presence || "-" %></td>
-                    <td><%= afl[:ics_id].presence || "-" %></td>
-                    <td><%= afl[:ics_name].presence || "-" %></td>
                     <td><%= afl[:farmer_count].to_i %></td>
                   </tr>
                 <% elsif @summary_mode == "farmer" %>
                   <tr>
+                    <td><%= afl[:fco_id] %></td>
+                    <td><%= afl[:fco].presence || "-" %></td>
+                    <td><%= afl[:fpo_id] %></td>
+                    <td><%= afl[:fpo_name].presence || "-" %></td>
+                    <td><%= afl[:ics_id] %></td>
+                    <td><%= afl[:ics_name].presence || "-" %></td>
+                    <td><%= afl[:village_id] %></td>
+                    <td><%= afl[:village_name].presence || "-" %></td>
                     <td><%= afl[:tracenet_no] %></td>
                     <td><%= afl[:farmer_name].presence || "-" %></td>
                     <td><%= afl[:father_name].presence || "-" %></td>
-                    <td><%= afl[:village_id].presence || "-" %></td>
-                    <td><%= afl[:village_name].presence || "-" %></td>
-                    <td><%= afl[:ics_id].presence || "-" %></td>
-                    <td><%= afl[:ics_name].presence || "-" %></td>
                   </tr>
                 <% else %>
                   <tr>
@@ -165,7 +181,7 @@
               <% end %>
             <% else %>
               <tr>
-                <td colspan="<%= @summary_mode == "ics" ? 7 : (@summary_mode == "village" ? 5 : (@summary_mode == "farmer" ? 7 : 22)) %>">No target mapping records uploaded yet.</td>
+                <td colspan="<%= @summary_mode == "ics" ? 7 : (@summary_mode == "village" ? 9 : (@summary_mode == "farmer" ? 11 : 22)) %>">No target mapping records uploaded yet.</td>
               </tr>
             <% end %>
           </tbody>

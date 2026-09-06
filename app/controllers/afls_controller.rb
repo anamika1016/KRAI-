@@ -119,8 +119,10 @@ class AflsController < ApplicationController
       )
     end
 
-    target_farmer_ids = target_mapping_farmer_ids_for_filters
-    scope = scope.where(id: target_farmer_ids) if target_farmer_ids
+    if @summary_mode.blank?
+      target_farmer_ids = target_mapping_farmer_ids_for_filters
+      scope = scope.where(id: target_farmer_ids) if target_farmer_ids
+    end
 
     scope
   end
@@ -160,16 +162,16 @@ class AflsController < ApplicationController
         .map { |fco_id, fco, fpo_id, fpo_name, ics_id, ics_name, farmer_count| { fco_id: fco_id, fco: fco, fpo_id: fpo_id, fpo_name: fpo_name, ics_id: ics_id, ics_name: ics_name, farmer_count: farmer_count } }
     when "village"
       scope.where.not(village_id: [nil, ""])
-        .group(:village_id)
-        .order(:village_id)
-        .pluck(:village_id, Arel.sql("MIN(village_name)"), Arel.sql("MIN(ics_id)"), Arel.sql("MIN(ics_name)"), Arel.sql("COUNT(DISTINCT NULLIF(BTRIM(tracenet_no), ''))"))
-        .map { |village_id, village_name, ics_id, ics_name, farmer_count| { village_id: village_id, village_name: village_name, ics_id: ics_id, ics_name: ics_name, farmer_count: farmer_count } }
+        .group(:fco_id, :fco, :fpo_id, :fpo_name, :ics_id, :ics_name, :village_id, :village_name)
+        .order(:fco_id, :ics_id, :village_id)
+        .pluck(:fco_id, :fco, :fpo_id, :fpo_name, :ics_id, :ics_name, :village_id, :village_name, Arel.sql("COUNT(tracenet_no)"))
+        .map { |fco_id, fco, fpo_id, fpo_name, ics_id, ics_name, village_id, village_name, farmer_count| { fco_id: fco_id, fco: fco, fpo_id: fpo_id, fpo_name: fpo_name, ics_id: ics_id, ics_name: ics_name, village_id: village_id, village_name: village_name, farmer_count: farmer_count } }
     when "farmer"
       scope.where.not(tracenet_no: [nil, ""])
-        .group(:tracenet_no)
-        .order(:tracenet_no)
-        .pluck(:tracenet_no, Arel.sql("MIN(farmer_name)"), Arel.sql("MIN(father_name)"), Arel.sql("MIN(village_id)"), Arel.sql("MIN(village_name)"), Arel.sql("MIN(ics_id)"), Arel.sql("MIN(ics_name)"))
-        .map { |tracenet_no, farmer_name, father_name, village_id, village_name, ics_id, ics_name| { tracenet_no: tracenet_no, farmer_name: farmer_name, father_name: father_name, village_id: village_id, village_name: village_name, ics_id: ics_id, ics_name: ics_name } }
+        .group(:fco_id, :fco, :fpo_id, :fpo_name, :ics_id, :ics_name, :village_id, :village_name, :tracenet_no, :farmer_name, :father_name)
+        .order(:fco_id, :ics_id, :tracenet_no)
+        .pluck(:fco_id, :fco, :fpo_id, :fpo_name, :ics_id, :ics_name, :village_id, :village_name, :tracenet_no, :farmer_name, :father_name)
+        .map { |fco_id, fco, fpo_id, fpo_name, ics_id, ics_name, village_id, village_name, tracenet_no, farmer_name, father_name| { fco_id: fco_id, fco: fco, fpo_id: fpo_id, fpo_name: fpo_name, ics_id: ics_id, ics_name: ics_name, village_id: village_id, village_name: village_name, tracenet_no: tracenet_no, farmer_name: farmer_name, father_name: father_name } }
     else
       scope
     end
@@ -190,9 +192,9 @@ class AflsController < ApplicationController
     when "ics"
       ["FCO ID", "FCO Name", "FPO ID", "FPO Name", "ICS ID", "ICS Name", "Farmer Count"]
     when "village"
-      ["Village ID", "Village Name", "ICS ID", "ICS Name", "Farmer Count"]
+      ["FCO ID", "FCO Name", "FPO ID", "FPO Name", "ICS ID", "ICS Name", "Village ID", "Village Name", "Farmer Count"]
     when "farmer"
-      ["Tracenet No", "Farmer Name", "Father Name", "Village ID", "Village Name", "ICS ID", "ICS Name"]
+      ["FCO ID", "FCO Name", "FPO ID", "FPO Name", "ICS ID", "ICS Name", "Village ID", "Village Name", "Tracenet No", "Farmer Name", "Father Name"]
     else
       ["ID", "Farm ID", "FCO ID", "FCO", "FPO ID", "FPO Name", "ICS ID", "ICS Name", "Village ID", "Village Name", "Farmer Name", "Father Name", "Tracenet No", "Total Farm Area", "Purchase Quantity Amount", "Estimate Quantity", "Purchase Quantity", "Purchase Date", "Mobile No", "Purchase Product", "Status"]
     end
@@ -203,9 +205,9 @@ class AflsController < ApplicationController
     when "ics"
       rows.map { |row| [row[:fco_id], row[:fco], row[:fpo_id], row[:fpo_name], row[:ics_id], row[:ics_name], row[:farmer_count].to_i] }
     when "village"
-      rows.map { |row| [row[:village_id], row[:village_name], row[:ics_id], row[:ics_name], row[:farmer_count].to_i] }
+      rows.map { |row| [row[:fco_id], row[:fco], row[:fpo_id], row[:fpo_name], row[:ics_id], row[:ics_name], row[:village_id], row[:village_name], row[:farmer_count].to_i] }
     when "farmer"
-      rows.map { |row| [row[:tracenet_no], row[:farmer_name], row[:father_name], row[:village_id], row[:village_name], row[:ics_id], row[:ics_name]] }
+      rows.map { |row| [row[:fco_id], row[:fco], row[:fpo_id], row[:fpo_name], row[:ics_id], row[:ics_name], row[:village_id], row[:village_name], row[:tracenet_no], row[:farmer_name], row[:father_name]] }
     else
       rows.select(Afl::LIST_COLUMNS).order(:id).map do |afl|
         [
