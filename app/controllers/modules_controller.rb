@@ -5246,7 +5246,6 @@ class ModulesController < ApplicationController
           END
       ) AS v(afl_id)
       WHERE LOWER(BTRIM(t.month_name)) = :month_name
-        AND LOWER(BTRIM(t.main_activity_name)) = 'farmers'' training'
         #{fco_filter_sql}
       GROUP BY t.fco_id
       ORDER BY t.fco_id;
