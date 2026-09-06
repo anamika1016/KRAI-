@@ -41,19 +41,41 @@
 
   <div class="training-participation-boxes compact">
     <% if status_cards.any? %>
-      <%= link_to farmer_training_participation_path(unique_status_path_params), class: "training-participation-box total", data: { dashboard_card: true } do %>
+      <div class="training-participation-box total dashboard-summary-box">
         <span>Mapped Farmer</span>
         <strong><%= @training_mapped_farmer_count.to_i %></strong>
         <small>Unique mapped farmers for the selected filters.</small>
-        <b>View List</b>
-      <% end %>
+        <div class="dashboard-summary-actions">
+          <span class="dashboard-summary-action-popover">
+            <%= link_to "View List", farmer_training_participation_path(unique_status_path_params), class: "table-action", data: { dashboard_card: true } %>
+            <% if Array(@training_mapped_farmer_popups).any? %>
+              <span class="dashboard-card-hover-popup" role="tooltip">
+                <% Array(@training_mapped_farmer_popups).each do |item| %>
+                  <span><%= item %></span>
+                <% end %>
+              </span>
+            <% end %>
+          </span>
+        </div>
+      </div>
       <% status_cards.each do |card| %>
-        <%= link_to card[:path], class: "training-participation-box #{card[:status]}", data: { dashboard_card: true } do %>
+        <div class="training-participation-box <%= card[:status] %> dashboard-summary-box">
           <span><%= card[:status] == "pending" ? "Pending Farmer" : card[:title] %></span>
           <strong><%= card[:value].to_i %></strong>
           <small><%= card[:caption] %></small>
-          <b>View List</b>
-        <% end %>
+          <div class="dashboard-summary-actions">
+            <span class="dashboard-summary-action-popover">
+              <%= link_to "View List", card[:path], class: "table-action", data: { dashboard_card: true } %>
+              <% if card[:status] == "red" && Array(@training_no_training_popups).any? %>
+                <span class="dashboard-card-hover-popup" role="tooltip">
+                  <% Array(@training_no_training_popups).each do |item| %>
+                    <span><%= item %></span>
+                  <% end %>
+                </span>
+              <% end %>
+            </span>
+          </div>
+        </div>
       <% end %>
     <% else %>
       <div class="training-empty-state">No farmer training target data found.</div>
