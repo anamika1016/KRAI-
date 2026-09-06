@@ -154,10 +154,10 @@ class AflsController < ApplicationController
     case @summary_mode
     when "ics"
       scope.where.not(ics_id: [nil, ""])
-        .group(:ics_id)
-        .order(:ics_id)
-        .pluck(:ics_id, Arel.sql("MIN(ics_name)"), Arel.sql("COUNT(DISTINCT NULLIF(BTRIM(tracenet_no), ''))"))
-        .map { |ics_id, ics_name, farmer_count| { ics_id: ics_id, ics_name: ics_name, farmer_count: farmer_count } }
+        .group(:fco_id, :fco, :fpo_id, :fpo_name, :ics_id, :ics_name)
+        .order(:fco_id, :ics_id)
+        .pluck(:fco_id, :fco, :fpo_id, :fpo_name, :ics_id, :ics_name, Arel.sql("COUNT(tracenet_no)"))
+        .map { |fco_id, fco, fpo_id, fpo_name, ics_id, ics_name, farmer_count| { fco_id: fco_id, fco: fco, fpo_id: fpo_id, fpo_name: fpo_name, ics_id: ics_id, ics_name: ics_name, farmer_count: farmer_count } }
     when "village"
       scope.where.not(village_id: [nil, ""])
         .group(:village_id)
@@ -188,7 +188,7 @@ class AflsController < ApplicationController
   def afl_export_headers
     case @summary_mode
     when "ics"
-      ["ICS ID", "ICS Name", "Farmer Count"]
+      ["FCO ID", "FCO Name", "FPO ID", "FPO Name", "ICS ID", "ICS Name", "Farmer Count"]
     when "village"
       ["Village ID", "Village Name", "ICS ID", "ICS Name", "Farmer Count"]
     when "farmer"
@@ -201,7 +201,7 @@ class AflsController < ApplicationController
   def afl_export_rows(rows)
     case @summary_mode
     when "ics"
-      rows.map { |row| [row[:ics_id], row[:ics_name], row[:farmer_count].to_i] }
+      rows.map { |row| [row[:fco_id], row[:fco], row[:fpo_id], row[:fpo_name], row[:ics_id], row[:ics_name], row[:farmer_count].to_i] }
     when "village"
       rows.map { |row| [row[:village_id], row[:village_name], row[:ics_id], row[:ics_name], row[:farmer_count].to_i] }
     when "farmer"

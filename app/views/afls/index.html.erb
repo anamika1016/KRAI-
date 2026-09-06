@@ -52,6 +52,10 @@
           <thead>
             <% if @summary_mode == "ics" %>
               <tr>
+                <th>FCO ID</th>
+                <th>FCO Name</th>
+                <th>FPO ID</th>
+                <th>FPO Name</th>
                 <th>ICS ID</th>
                 <th>ICS Name</th>
                 <th>Farmer Count</th>
@@ -106,6 +110,10 @@
               <% @afls.each do |afl| %>
                 <% if @summary_mode == "ics" %>
                   <tr>
+                    <td><%= afl[:fco_id] %></td>
+                    <td><%= afl[:fco].presence || "-" %></td>
+                    <td><%= afl[:fpo_id] %></td>
+                    <td><%= afl[:fpo_name].presence || "-" %></td>
                     <td><%= afl[:ics_id] %></td>
                     <td><%= afl[:ics_name].presence || "-" %></td>
                     <td><%= afl[:farmer_count].to_i %></td>
@@ -157,7 +165,7 @@
               <% end %>
             <% else %>
               <tr>
-                <td colspan="<%= @summary_mode == "ics" ? 3 : (@summary_mode == "village" ? 5 : (@summary_mode == "farmer" ? 7 : 22)) %>">No target mapping records uploaded yet.</td>
+                <td colspan="<%= @summary_mode == "ics" ? 7 : (@summary_mode == "village" ? 5 : (@summary_mode == "farmer" ? 7 : 22)) %>">No target mapping records uploaded yet.</td>
               </tr>
             <% end %>
           </tbody>

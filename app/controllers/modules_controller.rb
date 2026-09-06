@@ -3623,8 +3623,9 @@ class ModulesController < ApplicationController
       scope = dashboard_total_afl_scope
       scope.distinct.count("NULLIF(BTRIM(village_id), '')")
     when :ics
-      scope = dashboard_total_afl_scope
-      scope.distinct.count("NULLIF(BTRIM(COALESCE(ics_id, ics_name)), '')")
+      # Matches: SELECT fco_id, fco, fpo_id, fpo_name, ics_id, ics_name, COUNT(tracenet_no) FROM afls WHERE fco_id = '1004' OR fco_id = '1006' GROUP BY fco_id, fco, fpo_id, fpo_name, ics_id, ics_name
+      scope = dashboard_total_afl_farmer_scope.where.not(ics_id: [nil, ""])
+      scope.group(:fco_id, :fco, :fpo_id, :fpo_name, :ics_id, :ics_name).count.size
     else
       # Farmer count: COUNT(tracenet_no) using fco_id ONLY — no name matching
       # Matches: SELECT COUNT(tracenet_no) FROM afls WHERE (fco_id = '1004' OR fco_id = '1006')
