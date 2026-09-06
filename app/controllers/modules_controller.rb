@@ -5231,7 +5231,7 @@ class ModulesController < ApplicationController
   def farmer_training_mapped_farmer_count_and_popups(month_name:, fcoc_name:)
     selected_month = month_name.presence || "August"
     fco_ids = training_fcoc_ids_from_param(fcoc_name)
-    fco_filter_sql = fco_ids ? "AND LOWER(BTRIM(t.fco_id)) IN (:fco_ids)" : ""
+    fco_filter_sql = "AND LOWER(BTRIM(t.fco_id)) IN (:fco_ids)"
 
     sql = <<~SQL.squish
       SELECT
@@ -5252,8 +5252,7 @@ class ModulesController < ApplicationController
       ORDER BY t.fco_id;
     SQL
 
-    binds = { month_name: selected_month.strip.downcase }
-    binds[:fco_ids] = fco_ids.map(&:downcase) if fco_ids
+    binds = { month_name: selected_month.strip.downcase, fco_ids: fco_ids.map(&:downcase) }
     rows = ActiveRecord::Base.connection.exec_query(
       ActiveRecord::Base.send(:sanitize_sql_array, [sql, binds])
     ).to_a
@@ -5269,8 +5268,8 @@ class ModulesController < ApplicationController
 
   def farmer_training_no_training_count_and_popups(month_name:, fcoc_name:)
     selected_month = month_name.presence || "August"
-    fco_ids = params[:fcoc].present? ? training_fcoc_ids_from_param(fcoc_name) : nil
-    fco_filter_sql = fco_ids.present? ? "AND LOWER(BTRIM(a.fco_id)) IN (:fco_ids)" : ""
+    fco_ids = training_fcoc_ids_from_param(fcoc_name)
+    fco_filter_sql = "AND LOWER(BTRIM(a.fco_id)) IN (:fco_ids)"
 
     sql = <<~SQL.squish
       WITH august_training_done AS (
@@ -5299,25 +5298,24 @@ class ModulesController < ApplicationController
       ORDER BY a.fco_id;
     SQL
 
-    binds = { month_name: selected_month.strip.downcase }
-    binds[:fco_ids] = fco_ids.map(&:downcase) if fco_ids.present?
+    binds = { month_name: selected_month.strip.downcase, fco_ids: fco_ids.map(&:downcase) }
     rows = ActiveRecord::Base.connection.exec_query(
       ActiveRecord::Base.send(:sanitize_sql_array, [sql, binds])
     ).to_a
 
     total_count = rows.sum { |r| r["pending_farmer_count"].to_i }
-    popups = format_fco_popups(rows, fco_ids || %w[1004 1006], "pending_farmer_count")
+    popups = format_fco_popups(rows, fco_ids, "pending_farmer_count")
 
     [total_count, popups]
   rescue StandardError => e
     Rails.logger.warn("No training count SQL failed: #{e.message}")
-    [0, format_fco_popups([], fco_ids || %w[1004 1006], "pending_farmer_count")]
+    [0, format_fco_popups([], fco_ids, "pending_farmer_count")]
   end
 
   def farmer_training_yellow_farmer_count_and_popups(month_name:, fcoc_name:)
     selected_month = month_name.presence || "August"
-    fco_ids = params[:fcoc].present? ? training_fcoc_ids_from_param(fcoc_name) : nil
-    fco_filter_sql = fco_ids.present? ? "WHERE LOWER(BTRIM(a.fco_id)) IN (:fco_ids)" : ""
+    fco_ids = training_fcoc_ids_from_param(fcoc_name)
+    fco_filter_sql = "WHERE LOWER(BTRIM(a.fco_id)) IN (:fco_ids)"
 
     sql = <<~SQL.squish
       WITH august_training AS (
@@ -5351,25 +5349,24 @@ class ModulesController < ApplicationController
       ORDER BY a.fco_id;
     SQL
 
-    binds = { month_name: selected_month.strip.downcase }
-    binds[:fco_ids] = fco_ids.map(&:downcase) if fco_ids.present?
+    binds = { month_name: selected_month.strip.downcase, fco_ids: fco_ids.map(&:downcase) }
     rows = ActiveRecord::Base.connection.exec_query(
       ActiveRecord::Base.send(:sanitize_sql_array, [sql, binds])
     ).to_a
 
     total_count = rows.sum { |r| r["farmer_count"].to_i }
-    popups = format_fco_popups(rows, fco_ids || %w[1004 1006], "farmer_count")
+    popups = format_fco_popups(rows, fco_ids, "farmer_count")
 
     [total_count, popups]
   rescue StandardError => e
     Rails.logger.warn("Yellow farmer count SQL failed: #{e.message}")
-    [0, format_fco_popups([], fco_ids || %w[1004 1006], "farmer_count")]
+    [0, format_fco_popups([], fco_ids, "farmer_count")]
   end
 
   def farmer_training_green_farmer_count_and_popups(month_name:, fcoc_name:)
     selected_month = month_name.presence || "August"
-    fco_ids = params[:fcoc].present? ? training_fcoc_ids_from_param(fcoc_name) : nil
-    fco_filter_sql = fco_ids.present? ? "WHERE LOWER(BTRIM(a.fco_id)) IN (:fco_ids)" : ""
+    fco_ids = training_fcoc_ids_from_param(fcoc_name)
+    fco_filter_sql = "WHERE LOWER(BTRIM(a.fco_id)) IN (:fco_ids)"
 
     sql = <<~SQL.squish
       WITH august_training AS (
@@ -5406,40 +5403,40 @@ class ModulesController < ApplicationController
       ORDER BY a.fco_id;
     SQL
 
-    binds = { month_name: selected_month.strip.downcase }
-    binds[:fco_ids] = fco_ids.map(&:downcase) if fco_ids.present?
+    binds = { month_name: selected_month.strip.downcase, fco_ids: fco_ids.map(&:downcase) }
     rows = ActiveRecord::Base.connection.exec_query(
       ActiveRecord::Base.send(:sanitize_sql_array, [sql, binds])
     ).to_a
 
     total_count = rows.sum { |r| r["green_farmer_count"].to_i }
-    popups = format_fco_popups(rows, fco_ids || %w[1004 1006], "green_farmer_count")
+    popups = format_fco_popups(rows, fco_ids, "green_farmer_count")
 
     [total_count, popups]
   rescue StandardError => e
     Rails.logger.warn("Green farmer count SQL failed: #{e.message}")
-    [0, format_fco_popups([], fco_ids || %w[1004 1006], "green_farmer_count")]
+    [0, format_fco_popups([], fco_ids, "green_farmer_count")]
   end
 
   def format_fco_popups(rows, fco_ids, count_key)
-    fco_name_map = { "1004" => "SAUSAR", "1006" => "TUREKELA" }
+    fco_name_map = { "1004" => "Sausar", "1006" => "Turekela" }
     target_ids = Array(fco_ids).presence || %w[1004 1006]
     rows_by_id = Array(rows).index_by { |r| r["fco_id"].to_s.strip.downcase }
 
     target_ids.map do |id|
       row = rows_by_id[id.to_s.strip.downcase]
       count = row ? row[count_key].to_i : 0
-      name = row&.dig("fco_name").presence || fco_name_map[id.to_s] || "FCO #{id}"
+      raw_name = row&.dig("fco_name").presence || fco_name_map[id.to_s] || "FCO #{id}"
+      name = raw_name.to_s.titleize
       "#{name} (#{id}): #{count}"
     end
   end
 
   def farmer_training_participation_rows_from_sql(status, month_name:, fcoc_name:)
     selected_month = month_name.presence || "August"
-    fco_ids = params[:fcoc].present? ? training_fcoc_ids_from_param(fcoc_name) : nil
+    fco_ids = training_fcoc_ids_from_param(fcoc_name)
 
     if status.to_s == "green" || status.to_s == "1_plus_trainings" || status.to_s == "more_than_1"
-      fco_filter_sql = fco_ids ? "#{fco_ids ? 'AND' : 'AND'} LOWER(BTRIM(a.fco_id)) IN (:fco_ids)" : ""
+      fco_filter_sql = "AND LOWER(BTRIM(a.fco_id)) IN (:fco_ids)"
       sql = <<~SQL.squish
         WITH august_training AS (
             SELECT
@@ -5459,7 +5456,7 @@ class ModulesController < ApplicationController
             ) AS sf(farmer_id)
             WHERE mr.module_slug = 'training-form'
               AND LOWER(TRIM(mr.data::jsonb ->> 'month')) = :month_name
-              AND TRIM(mr.data::jsonb ->> 'main_activity') = 'Farmers'' Training'
+              AND LOWER(COALESCE(mr.data::jsonb ->> 'main_activity', '')) LIKE '%farmers'' training%'
         )
         SELECT
             a.id AS farmer_id,
@@ -5483,7 +5480,7 @@ class ModulesController < ApplicationController
         FROM august_training at
         INNER JOIN public.afls a
             ON a.id::text = at.farmer_id
-        #{fco_ids ? "WHERE LOWER(BTRIM(a.fco_id)) IN (:fco_ids)" : ""}
+        WHERE LOWER(BTRIM(a.fco_id)) IN (:fco_ids)
         GROUP BY
             a.id,
             a.fco_id,
@@ -5505,8 +5502,7 @@ class ModulesController < ApplicationController
             a.farmer_name;
       SQL
 
-      binds = { month_name: selected_month.strip.downcase }
-      binds[:fco_ids] = fco_ids.map(&:downcase) if fco_ids
+      binds = { month_name: selected_month.strip.downcase, fco_ids: fco_ids.map(&:downcase) }
       raw_rows = ActiveRecord::Base.connection.exec_query(
         ActiveRecord::Base.send(:sanitize_sql_array, [sql, binds])
       )
@@ -5558,7 +5554,7 @@ class ModulesController < ApplicationController
             ) AS sf(farmer_id)
             WHERE mr.module_slug = 'training-form'
               AND LOWER(TRIM(mr.data::jsonb ->> 'month')) = :month_name
-              AND TRIM(mr.data::jsonb ->> 'main_activity') = 'Farmers'' Training'
+              AND LOWER(COALESCE(mr.data::jsonb ->> 'main_activity', '')) LIKE '%farmers'' training%'
         )
         SELECT
             a.id AS farmer_id,
@@ -5581,7 +5577,7 @@ class ModulesController < ApplicationController
         FROM august_training at
         INNER JOIN public.afls a
             ON a.id::text = at.farmer_id
-        #{fco_ids ? "WHERE LOWER(BTRIM(a.fco_id)) IN (:fco_ids)" : ""}
+        WHERE LOWER(BTRIM(a.fco_id)) IN (:fco_ids)
         GROUP BY
             a.id,
             a.fco_id,
@@ -5603,8 +5599,7 @@ class ModulesController < ApplicationController
             a.farmer_name;
       SQL
 
-      binds = { month_name: selected_month.strip.downcase }
-      binds[:fco_ids] = fco_ids.map(&:downcase) if fco_ids
+      binds = { month_name: selected_month.strip.downcase, fco_ids: fco_ids.map(&:downcase) }
       raw_rows = ActiveRecord::Base.connection.exec_query(
         ActiveRecord::Base.send(:sanitize_sql_array, [sql, binds])
       )
@@ -5637,9 +5632,9 @@ class ModulesController < ApplicationController
       end
     end
 
-    fco_filter_t  = fco_ids ? "AND LOWER(BTRIM(t.fco_id)) IN (:fco_ids)" : ""
-    fco_filter_a  = fco_ids ? "AND LOWER(BTRIM(a.fco_id)) IN (:fco_ids)" : ""
-    fco_filter_aw = fco_ids ? "WHERE LOWER(BTRIM(a.fco_id)) IN (:fco_ids)" : ""
+    fco_filter_t  = "AND LOWER(BTRIM(t.fco_id)) IN (:fco_ids)"
+    fco_filter_a  = "AND LOWER(BTRIM(a.fco_id)) IN (:fco_ids)"
+    fco_filter_aw = "WHERE LOWER(BTRIM(a.fco_id)) IN (:fco_ids)"
 
     sql = if status.to_s == "unique" || status.to_s == "mapped"
       <<~SQL.squish
@@ -5654,7 +5649,6 @@ class ModulesController < ApplicationController
                 END
             ) AS v(afl_id)
             WHERE LOWER(BTRIM(t.month_name)) = :month_name
-              AND LOWER(BTRIM(t.main_activity_name)) = 'farmers'' training'
               #{fco_filter_t}
         )
         SELECT
@@ -5695,8 +5689,7 @@ class ModulesController < ApplicationController
       SQL
     end
 
-    binds = { month_name: selected_month.strip.downcase }
-    binds[:fco_ids] = fco_ids.map(&:downcase) if fco_ids
+    binds = { month_name: selected_month.strip.downcase, fco_ids: fco_ids.map(&:downcase) }
     raw_rows = ActiveRecord::Base.connection.exec_query(
       ActiveRecord::Base.send(:sanitize_sql_array, [sql, binds])
     )
