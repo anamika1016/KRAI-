@@ -1006,12 +1006,26 @@ class ModulesController < ApplicationController
       record_rows = training_participation_farmer_rows_from_records(training_records)
       record_rows.select { |row| row[:status] == selected_status }
     end
+    mapped_sql_count, mapped_sql_popups = farmer_training_mapped_farmer_count_and_popups(
+      month_name: selected_month,
+      fcoc_name: selected_fcoc
+    )
+    no_training_sql_count, no_training_sql_popups = farmer_training_no_training_count_and_popups(
+      month_name: selected_month,
+      fcoc_name: selected_fcoc
+    )
+
     @training_participation_totals = participation_dashboard_counts.slice(:green, :yellow, :red, :pending, :total)
     @training_selected_week = selected_week
-    @training_unique_farmer_count = participation_dashboard_counts[:total].to_i
+    @training_unique_farmer_count = mapped_sql_count
+    @training_mapped_farmer_count = mapped_sql_count
+    @training_mapped_farmer_popups = mapped_sql_popups
+    @training_no_training_popups = no_training_sql_popups
     @training_total_training_farmer_count = participation_dashboard_counts[:target_map_total].to_i
     @training_completed_target_map_count = participation_dashboard_counts[:completed_target_map_total].to_i
-    @training_participation_totals[:unique] = @training_unique_farmer_count
+    @training_participation_totals[:unique] = mapped_sql_count
+    @training_participation_totals[:red] = no_training_sql_count
+    @training_participation_totals[:pending] = no_training_sql_count
     @training_participation_totals[:total] = @training_total_training_farmer_count
     @training_participation_totals[:completed_map] = @training_completed_target_map_count
     @training_selected_month = selected_month
@@ -1020,7 +1034,8 @@ class ModulesController < ApplicationController
     @training_selected_method = selected_training_method
     @training_participation_total_count = @training_participation_rows.size
     @training_participation_page = [params[:page].to_i, 1].max
-    @training_participation_per_page = [[params[:per_page].to_i, 20].max, 200].min
+    per_page_value = params[:per_page].present? ? params[:per_page].to_i : 20
+    @training_participation_per_page = [[per_page_value, 20].max, 500].min
     @training_participation_total_pages = [(@training_participation_total_count.to_f / @training_participation_per_page).ceil, 1].max
     @training_participation_page = @training_participation_total_pages if @training_participation_page > @training_participation_total_pages
     @training_participation_page_rows = @training_participation_rows.slice((@training_participation_page - 1) * @training_participation_per_page, @training_participation_per_page) || []
@@ -5192,7 +5207,6 @@ class ModulesController < ApplicationController
       <<~SQL.squish
         WITH mapped_farmers AS (
             SELECT DISTINCT
-                t.fco_id,
                 v.afl_id
             FROM public.target_mappings t
             CROSS JOIN LATERAL jsonb_array_elements_text(
@@ -5210,7 +5224,6 @@ class ModulesController < ApplicationController
         FROM public.afls a
         INNER JOIN mapped_farmers m
             ON a.id::text = m.afl_id
-           AND a.fco_id = m.fco_id
         ORDER BY
             a.fco_id,
             a.id;
@@ -5229,7 +5242,7 @@ class ModulesController < ApplicationController
                     ELSE jsonb_build_array(t.afl_ids::jsonb)
                   END
               ) AS v(afl_id)
-              WHERE t.fco_id = a.fco_id
+              WHERE (LOWER(BTRIM(t.fco_id)) IN (:fco_ids) OR LOWER(BTRIM(t.fco_name)) IN (:fco_ids))
                 AND LOWER(BTRIM(t.month_name)) = :month_name
                 AND LOWER(BTRIM(t.main_activity_name)) = 'farmers'' training'
                 AND v.afl_id = a.id::text
