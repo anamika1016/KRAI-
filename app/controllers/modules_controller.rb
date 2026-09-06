@@ -3230,7 +3230,11 @@ class ModulesController < ApplicationController
 
   def dashboard_cards
     vrps = dashboard_vrps
-    active_vrps = vrps.select { |vrp| vrp.respond_to?(:is_active) ? vrp.is_active : true }
+    active_vrps = vrps.select do |vrp|
+      is_act = vrp.respond_to?(:is_active) ? (vrp.is_active == true || vrp.is_active == 1) : true
+      is_del = vrp.respond_to?(:is_deleted) ? (vrp.is_deleted == true || vrp.is_deleted == 1) : false
+      is_act && !is_del
+    end
     approved_vrps = dashboard_approved_vrps(active_vrps).size
     pending_approvals = dashboard_pending_approval_vrps(active_vrps).size
 
@@ -3749,14 +3753,74 @@ class ModulesController < ApplicationController
     training_fcoc_filter_values("1004", "1006", "Sausar", "Turekela", "FCO-C Sausar", "FCO-C Turekela")
   end
 
-  def dashboard_jj_requirement_items(fco_name, vrps, targets = nil)
-    matching_vrps = Array(vrps).select { |vrp| normalize_dashboard_text(vrp.fcoc).include?(normalize_dashboard_text(fco_name)) }
-    active_count = matching_vrps.count { |vrp| dashboard_vrp_active_for_requirement?(vrp) }
+  def dashboard_fco_active_vrp_count(fco_name_or_id, month_name = "August", vrps = nil)
+    return 0 if fco_name_or_id.blank?
 
+    normalized = normalize_dashboard_text(fco_name_or_id)
+    fco_conditions = if normalized.include?("1004") || normalized.include?("sausar")
+                       "(LOWER(TRIM(t.fco_id)) IN ('1004', 'sausar') OR LOWER(TRIM(t.fco_name)) LIKE '%sausar%')"
+                     elsif normalized.include?("1006") || normalized.include?("turekela")
+                       "(LOWER(TRIM(t.fco_id)) IN ('1006', 'turekela') OR LOWER(TRIM(t.fco_name)) LIKE '%turekela%')"
+                     else
+                       "(LOWER(TRIM(t.fco_id)) = :norm OR LOWER(TRIM(t.fco_name)) = :norm)"
+                     end
+
+    sql = <<~SQL.squish
+      SELECT COUNT(DISTINCT t.vrp_id) AS active_vrp_count
+      FROM public.target_mappings t
+      WHERE #{fco_conditions}
+        AND LOWER(TRIM(t.main_activity_name)) LIKE '%training%'
+        AND t.vrp_id IS NOT NULL AND TRIM(t.vrp_id) != '';
+    SQL
+
+    binds = { norm: normalized }
+    res = ActiveRecord::Base.connection.exec_query(
+      ActiveRecord::Base.send(:sanitize_sql_array, [sql, binds])
+    ).first
+    count = res ? res["active_vrp_count"].to_i : 0
+
+    return count if count > 0
+
+    if vrps.present?
+      matching_vrps = Array(vrps).select do |vrp|
+        training_fcoc_text_matches?(vrp.fcoc, fco_name_or_id) &&
+          (vrp.respond_to?(:is_active) ? (vrp.is_active == true || vrp.is_active == 1) : true) &&
+          !(vrp.respond_to?(:is_deleted) && (vrp.is_deleted == true || vrp.is_deleted == 1))
+      end
+      return matching_vrps.count { |vrp| dashboard_vrp_active_for_requirement?(vrp) }
+    end
+
+    0
+  rescue StandardError => e
+    Rails.logger.warn("dashboard_fco_active_vrp_count SQL failed: #{e.message}")
+    if vrps.present?
+      matching_vrps = Array(vrps).select do |vrp|
+        training_fcoc_text_matches?(vrp.fcoc, fco_name_or_id) &&
+          (vrp.respond_to?(:is_active) ? (vrp.is_active == true || vrp.is_active == 1) : true) &&
+          !(vrp.respond_to?(:is_deleted) && (vrp.is_deleted == true || vrp.is_deleted == 1))
+      end
+      matching_vrps.count { |vrp| dashboard_vrp_active_for_requirement?(vrp) }
+    else
+      0
+    end
+  end
+
+  def dashboard_jj_requirement_items(fco_name, vrps, targets = nil)
     normalized_fco = normalize_dashboard_text(fco_name)
-    required_count = if normalized_fco.include?("sausar")
+    fco_id = if normalized_fco.include?("1004") || normalized_fco.include?("sausar")
+               "1004"
+             elsif normalized_fco.include?("1006") || normalized_fco.include?("turekela")
+               "1006"
+             else
+               nil
+             end
+
+    selected_month = params[:month].presence || "August"
+    active_count = dashboard_fco_active_vrp_count(fco_name, selected_month, vrps)
+
+    required_count = if normalized_fco.include?("sausar") || fco_id == "1004"
                        34
-                     elsif normalized_fco.include?("turekela")
+                     elsif normalized_fco.include?("turekela") || fco_id == "1006"
                        24
                      else
                        fco_targets = Array(targets).select { |t| normalize_dashboard_text(t.fco_name).include?(normalized_fco) }
@@ -3764,7 +3828,7 @@ class ModulesController < ApplicationController
                        [req, active_count].max
                      end
 
-    vacant_count = 0
+    vacant_count = [required_count - active_count, 0].max
 
     [
       { title: "#{fco_name} Required", value: required_count, path: target_mappings_path(fcoc: fco_name) },
@@ -5250,8 +5314,8 @@ class ModulesController < ApplicationController
 
   def farmer_training_yellow_farmer_count_and_popups(month_name:, fcoc_name:)
     selected_month = month_name.presence || "August"
-    fco_ids = training_fcoc_ids_from_param(fcoc_name)
-    fco_filter_sql = fco_ids ? "WHERE LOWER(BTRIM(a.fco_id)) IN (:fco_ids)" : ""
+    fco_ids = params[:fcoc].present? ? training_fcoc_ids_from_param(fcoc_name) : nil
+    fco_filter_sql = fco_ids.present? ? "WHERE LOWER(BTRIM(a.fco_id)) IN (:fco_ids)" : ""
 
     sql = <<~SQL.squish
       WITH august_training AS (
@@ -5286,7 +5350,7 @@ class ModulesController < ApplicationController
     SQL
 
     binds = { month_name: selected_month.strip.downcase }
-    binds[:fco_ids] = fco_ids.map(&:downcase) if fco_ids
+    binds[:fco_ids] = fco_ids.map(&:downcase) if fco_ids.present?
     rows = ActiveRecord::Base.connection.exec_query(
       ActiveRecord::Base.send(:sanitize_sql_array, [sql, binds])
     ).to_a
@@ -5302,8 +5366,8 @@ class ModulesController < ApplicationController
 
   def farmer_training_green_farmer_count_and_popups(month_name:, fcoc_name:)
     selected_month = month_name.presence || "August"
-    fco_ids = training_fcoc_ids_from_param(fcoc_name)
-    fco_filter_sql = fco_ids ? "AND LOWER(BTRIM(a.fco_id)) IN (:fco_ids)" : ""
+    fco_ids = params[:fcoc].present? ? training_fcoc_ids_from_param(fcoc_name) : nil
+    fco_filter_sql = fco_ids.present? ? "AND LOWER(BTRIM(a.fco_id)) IN (:fco_ids)" : ""
 
     sql = <<~SQL.squish
       WITH august_training AS (
@@ -5346,7 +5410,7 @@ class ModulesController < ApplicationController
     SQL
 
     binds = { month_name: selected_month.strip.downcase }
-    binds[:fco_ids] = fco_ids.map(&:downcase) if fco_ids
+    binds[:fco_ids] = fco_ids.map(&:downcase) if fco_ids.present?
     rows = ActiveRecord::Base.connection.exec_query(
       ActiveRecord::Base.send(:sanitize_sql_array, [sql, binds])
     ).to_a
@@ -5375,7 +5439,7 @@ class ModulesController < ApplicationController
 
   def farmer_training_participation_rows_from_sql(status, month_name:, fcoc_name:)
     selected_month = month_name.presence || "August"
-    fco_ids = training_fcoc_ids_from_param(fcoc_name)
+    fco_ids = params[:fcoc].present? ? training_fcoc_ids_from_param(fcoc_name) : nil
 
     if status.to_s == "green" || status.to_s == "1_plus_trainings" || status.to_s == "more_than_1"
       fco_filter_sql = fco_ids ? "#{fco_ids ? 'AND' : 'AND'} LOWER(BTRIM(a.fco_id)) IN (:fco_ids)" : ""
