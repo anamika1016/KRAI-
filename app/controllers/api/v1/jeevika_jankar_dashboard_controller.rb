@@ -238,14 +238,16 @@ module Api
         if selected_main_activity.present?
           normalized_main = web.send(:normalize_dashboard_text, selected_main_activity)
           main_matches = targets.select { |target| web.send(:normalize_dashboard_text, target.main_activity_name) == normalized_main }
-          if main_matches.blank? && selected_sub_activity.present?
-            main_matches = targets
-          end
           targets = main_matches
         elsif legacy_activity.present?
           targets.select! { |target| target.main_activity_name == legacy_activity || target.activity_name == legacy_activity }
         end
-        options[:sub_activities] = targets.map(&:activity_name).compact_blank.uniq.sort
+        options[:sub_activities] = web.send(:dashboard_filter_sub_activity_options, targets)
+        unless options[:sub_activities].any? { |value| same_text?(value, selected_sub_activity) }
+          selected_sub_activity = nil
+          params.delete(:sub_activity)
+          web.instance_variable_set(:@dashboard_filter_param_cache, {})
+        end
         if selected_sub_activity.present?
           normalized_sub = web.send(:normalize_dashboard_text, selected_sub_activity)
           targets.select! { |target| web.send(:normalize_dashboard_text, target.activity_name) == normalized_sub }
@@ -395,6 +397,7 @@ module Api
             red: participation_counts[:red].to_i,
             pending: participation_counts[:pending].to_i
           },
+          target_dashboard: target_dashboard_payload(targets),
           weekly_activity_target_status: weekly_counts.merge(
             selected_month: weekly_value,
             selected_fcoc: weekly_fcoc,
@@ -997,6 +1000,11 @@ module Api
       end
 
       def target_dashboard_payload(targets)
+        @target_achievement_records_by_id = ModuleRecord
+          .where(module_slug: %w[training-form seed-distribution-target papl360-target add-farmer-form])
+          .where("data::jsonb ->> 'target_mapping_id' IN (?)", targets.map { |target| target.id.to_s })
+          .select { |record| active_record?(record) }
+          .group_by { |record| record.data["target_mapping_id"].to_s }
         sub_activities = targets.filter_map { |target| target.activity_name.to_s.strip.presence }.uniq.sort
         {
           selected_month: filter_param(:month),
@@ -1103,8 +1111,11 @@ module Api
       end
 
       def target_achievement(target)
-        records = ModuleRecord.where(module_slug: %w[training-form seed-distribution-target papl360-target add-farmer-form])
-          .select { |record| record.data["target_mapping_id"].to_s == target.id.to_s && active_record?(record) }
+        @target_achievement_records_by_id ||= ModuleRecord
+          .where(module_slug: %w[training-form seed-distribution-target papl360-target add-farmer-form])
+          .select { |record| active_record?(record) }
+          .group_by { |record| record.data["target_mapping_id"].to_s }
+        records = @target_achievement_records_by_id.fetch(target.id.to_s, [])
         training_ids = records.select { |record| record.module_slug == "training-form" }
           .flat_map { |record| Array(record.data["selected_farmer_ids"]).map(&:to_s) }.reject(&:blank?).uniq
         other = records.reject { |record| record.module_slug == "training-form" }.sum do |record|

@@ -651,14 +651,17 @@ class ModulesController < ApplicationController
     if selected_main_activity.present?
       normalized_selected_main_activity = normalize_dashboard_text(selected_main_activity)
       main_activity_matches = t_scope.select { |t| normalize_dashboard_text(t.main_activity_name) == normalized_selected_main_activity }
-      if main_activity_matches.blank? && selected_sub_activity.present?
-        main_activity_matches = t_scope
-      end
       t_scope = main_activity_matches
     elsif legacy_activity.present?
       t_scope = t_scope.select { |t| t.main_activity_name == legacy_activity || t.activity_name == legacy_activity }
     end
-    @filter_sub_activity_options = t_scope.map(&:activity_name).uniq.compact_blank.sort
+    @filter_sub_activity_options = dashboard_filter_sub_activity_options(t_scope)
+    selected_sub_activity = nil unless @filter_sub_activity_options.any? { |value| normalize_dashboard_text(value) == normalize_dashboard_text(selected_sub_activity) }
+    if selected_sub_activity.nil?
+      params.delete(:sub_activity)
+      @dashboard_filter_param_cache = {}
+    end
+
     if selected_sub_activity.present?
       t_scope = t_scope.select { |t| normalize_dashboard_text(t.activity_name) == normalize_dashboard_text(selected_sub_activity) }
     end
@@ -835,98 +838,102 @@ class ModulesController < ApplicationController
     @participation_fcoc_filter_value = @dashboard_fcoc_filter_value.presence || dashboard_default_visible_fcoc(@filter_fcoc_options)
     @participation_week_filter_value = dashboard_filter_param(:weekly_target_week).to_i if dashboard_filter_param(:weekly_target_week).present?
     @participation_week_filter_value = nil unless (1..4).include?(@participation_week_filter_value)
-    participation_dashboard_counts = cached_training_participation_dashboard_counts(
-      month_name: @participation_selected_month,
-      fcoc_name: @participation_fcoc_filter_value,
-      week_number: @participation_week_filter_value
-    )
-    mapped_count, mapped_popups = farmer_training_mapped_farmer_count_and_popups(
-      month_name: @participation_selected_month,
-      fcoc_name: @participation_fcoc_filter_value
-    )
-    no_training_count, no_training_popups, red_fco_details = farmer_training_no_training_count_and_popups(
-      month_name: @participation_selected_month,
-      fcoc_name: @participation_fcoc_filter_value
-    )
-    yellow_count, yellow_popups = farmer_training_yellow_farmer_count_and_popups(
-      month_name: @participation_selected_month,
-      fcoc_name: @participation_fcoc_filter_value
-    )
-    green_count, green_popups = farmer_training_green_farmer_count_and_popups(
-      month_name: @participation_selected_month,
-      fcoc_name: @participation_fcoc_filter_value
-    )
-    participation_dashboard_counts[:red] = no_training_count if participation_dashboard_counts.is_a?(Hash)
-    participation_dashboard_counts[:yellow] = yellow_count if participation_dashboard_counts.is_a?(Hash)
-    participation_dashboard_counts[:green] = green_count if participation_dashboard_counts.is_a?(Hash)
-    participation_dashboard_counts[:total] = mapped_count if participation_dashboard_counts.is_a?(Hash)
+    if @dashboard_farmer_activity_mode
+      participation_dashboard_counts = cached_training_participation_dashboard_counts(
+        month_name: @participation_selected_month,
+        fcoc_name: @participation_fcoc_filter_value,
+        week_number: @participation_week_filter_value
+      )
+      mapped_count, mapped_popups = farmer_training_mapped_farmer_count_and_popups(
+        month_name: @participation_selected_month,
+        fcoc_name: @participation_fcoc_filter_value
+      )
+      no_training_count, no_training_popups, red_fco_details = farmer_training_no_training_count_and_popups(
+        month_name: @participation_selected_month,
+        fcoc_name: @participation_fcoc_filter_value
+      )
+      yellow_count, yellow_popups = farmer_training_yellow_farmer_count_and_popups(
+        month_name: @participation_selected_month,
+        fcoc_name: @participation_fcoc_filter_value
+      )
+      green_count, green_popups = farmer_training_green_farmer_count_and_popups(
+        month_name: @participation_selected_month,
+        fcoc_name: @participation_fcoc_filter_value
+      )
+      participation_dashboard_counts[:red] = no_training_count if participation_dashboard_counts.is_a?(Hash)
+      participation_dashboard_counts[:yellow] = yellow_count if participation_dashboard_counts.is_a?(Hash)
+      participation_dashboard_counts[:green] = green_count if participation_dashboard_counts.is_a?(Hash)
+      participation_dashboard_counts[:total] = mapped_count if participation_dashboard_counts.is_a?(Hash)
 
-    @training_participation_status_cards = training_participation_dashboard_status_cards(
-      participation_dashboard_counts,
-      month_name: @participation_selected_month,
-      fcoc_name: @participation_fcoc_filter_value,
-      week_number: @participation_week_filter_value
-    )
-    @training_registered_farmer_count = participation_dashboard_counts[:registered_farmer_total].to_i
-    @training_unique_farmer_count = mapped_count
-    @training_mapped_farmer_count = mapped_count
-    @training_mapped_farmer_popups = mapped_popups
-    @training_no_training_popups = no_training_popups
-    @training_red_fco_details = red_fco_details
-    @training_yellow_farmer_popups = yellow_popups
-    @training_green_farmer_popups = green_popups
-    @training_total_training_farmer_count = participation_dashboard_counts[:target_map_total].to_i
-    @training_completed_target_map_count = participation_dashboard_counts[:completed_target_map_total].to_i
-    visible_vrp_ids = @filtered_vrps.map(&:id)
-    ics_mappings = model_ready?(:VrpIcsMapping) ? VrpIcsMapping.where(vrp_id: visible_vrp_ids).to_a : []
-    if selected_ics_filter.present?
-      selected_ics = normalize_dashboard_text(selected_ics_filter)
-      ics_mappings.select! do |mapping|
-        normalize_dashboard_text(mapping.ics_name.presence || mapping.ics_id) == selected_ics
+      @training_participation_status_cards = training_participation_dashboard_status_cards(
+        participation_dashboard_counts,
+        month_name: @participation_selected_month,
+        fcoc_name: @participation_fcoc_filter_value,
+        week_number: @participation_week_filter_value
+      )
+      @training_registered_farmer_count = participation_dashboard_counts[:registered_farmer_total].to_i
+      @training_unique_farmer_count = mapped_count
+      @training_mapped_farmer_count = mapped_count
+      @training_mapped_farmer_popups = mapped_popups
+      @training_no_training_popups = no_training_popups
+      @training_red_fco_details = red_fco_details
+      @training_yellow_farmer_popups = yellow_popups
+      @training_green_farmer_popups = green_popups
+      @training_total_training_farmer_count = participation_dashboard_counts[:target_map_total].to_i
+      @training_completed_target_map_count = participation_dashboard_counts[:completed_target_map_total].to_i
+      visible_vrp_ids = @filtered_vrps.map(&:id)
+      ics_mappings = model_ready?(:VrpIcsMapping) ? VrpIcsMapping.where(vrp_id: visible_vrp_ids).to_a : []
+      if selected_ics_filter.present?
+        selected_ics = normalize_dashboard_text(selected_ics_filter)
+        ics_mappings.select! do |mapping|
+          normalize_dashboard_text(mapping.ics_name.presence || mapping.ics_id) == selected_ics
+        end
       end
+      # Full target/participation rows are available on their dedicated report
+      # pages. The dashboard renders summary boxes only, so building those large
+      # unused datasets here needlessly multiplies queries and memory usage.
+      @ics_farmer_report_month_value = @participation_month_filter_value
+      @ics_farmer_report_selected_month = @ics_farmer_report_month_value == "all" ? nil : @ics_farmer_report_month_value
+      ics_report_targets = training_participation_targets_for_dashboard(
+        month_name: @ics_farmer_report_selected_month,
+        fcoc_name: @participation_fcoc_filter_value
+      )
+      @ics_farmer_report_options = ics_farmer_report_options([], ics_report_targets)
+      @ics_farmer_report_selected_ics = dashboard_filter_param(:ics_report_ics)
+      @ics_farmer_report_summary = ics_farmer_report_summary([], selected_ics: @ics_farmer_report_selected_ics)
+      @weekly_target_month_filter_value = @dashboard_month_filter_value.presence || default_status_month
+      @weekly_dashboard_selected_month = @weekly_target_month_filter_value == "all" ? nil : @weekly_target_month_filter_value
+      @weekly_target_fcoc_filter_value = @dashboard_fcoc_filter_value.presence || dashboard_default_visible_fcoc(@filter_fcoc_options)
+      @weekly_target_week_filter_value = @participation_week_filter_value
+      weekly_dashboard_targets = dashboard_targets_for_month(weekly_target_scope, @weekly_dashboard_selected_month)
+      if selected_post_filter.present?
+        selected_post = selected_post_filter.to_s
+        weekly_dashboard_targets = weekly_dashboard_targets.select { |target| target.vrp&.role.to_s == selected_post }
+      end
+      if selected_vrp_filter.present?
+        selected_vrp_id = selected_vrp_filter.to_s
+        weekly_dashboard_targets = weekly_dashboard_targets.select { |target| target.vrp_id.to_s == selected_vrp_id }
+      end
+      weekly_dashboard_targets = filter_weekly_activity_targets(
+        weekly_dashboard_targets,
+        activity: dashboard_filter_param(:activity, :main_activity),
+        sub_activity: dashboard_filter_param(:training_sub_activity, :sub_activity),
+        fcoc: @weekly_target_fcoc_filter_value
+      )
+      @dashboard_weekly_target_cards = weekly_activity_target_status_cards(
+        weekly_dashboard_targets,
+        month_name: @weekly_dashboard_selected_month,
+        fcoc_name: @weekly_target_fcoc_filter_value,
+        week_number: @weekly_target_week_filter_value,
+        participation_counts: participation_dashboard_counts
+      )
+    else
+      @dashboard_other_activity_totals = dashboard_other_activity_totals(t_scope)
     end
-    # Full target/participation rows are available on their dedicated report
-    # pages. The dashboard renders summary boxes only, so building those large
-    # unused datasets here needlessly multiplies queries and memory usage.
-    @ics_farmer_report_month_value = @participation_month_filter_value
-    @ics_farmer_report_selected_month = @ics_farmer_report_month_value == "all" ? nil : @ics_farmer_report_month_value
-    ics_report_targets = training_participation_targets_for_dashboard(
-      month_name: @ics_farmer_report_selected_month,
-      fcoc_name: @participation_fcoc_filter_value
-    )
-    @ics_farmer_report_options = ics_farmer_report_options([], ics_report_targets)
-    @ics_farmer_report_selected_ics = dashboard_filter_param(:ics_report_ics)
-    @ics_farmer_report_summary = ics_farmer_report_summary([], selected_ics: @ics_farmer_report_selected_ics)
-    @weekly_target_month_filter_value = @dashboard_month_filter_value.presence || default_status_month
-    @weekly_dashboard_selected_month = @weekly_target_month_filter_value == "all" ? nil : @weekly_target_month_filter_value
-    @weekly_target_fcoc_filter_value = @dashboard_fcoc_filter_value.presence || dashboard_default_visible_fcoc(@filter_fcoc_options)
-    @weekly_target_week_filter_value = @participation_week_filter_value
-    weekly_dashboard_targets = dashboard_targets_for_month(weekly_target_scope, @weekly_dashboard_selected_month)
-    if selected_post_filter.present?
-      selected_post = selected_post_filter.to_s
-      weekly_dashboard_targets = weekly_dashboard_targets.select { |target| target.vrp&.role.to_s == selected_post }
-    end
-    if selected_vrp_filter.present?
-      selected_vrp_id = selected_vrp_filter.to_s
-      weekly_dashboard_targets = weekly_dashboard_targets.select { |target| target.vrp_id.to_s == selected_vrp_id }
-    end
-    weekly_dashboard_targets = filter_weekly_activity_targets(
-      weekly_dashboard_targets,
-      activity: dashboard_filter_param(:activity, :main_activity),
-      sub_activity: dashboard_filter_param(:training_sub_activity, :sub_activity),
-      fcoc: @weekly_target_fcoc_filter_value
-    )
-    @dashboard_weekly_target_cards = weekly_activity_target_status_cards(
-      weekly_dashboard_targets,
-      month_name: @weekly_dashboard_selected_month,
-      fcoc_name: @weekly_target_fcoc_filter_value,
-      week_number: @weekly_target_week_filter_value,
-      participation_counts: participation_dashboard_counts
-    )
     summary_targets = training_participation_active_vrp_targets(t_scope)
     @dashboard_summary_cards = dashboard_summary_cards(summary_targets)
-    @demonstration_method_cards = demonstration_method_cards
-    @dashboard_cards = dashboard_cards
+    @demonstration_method_cards = @dashboard_farmer_activity_mode ? demonstration_method_cards : []
+    @dashboard_cards = @dashboard_farmer_activity_mode ? dashboard_cards : []
     @dashboard_generated_at = Time.current
 
     respond_to do |format|
@@ -1857,6 +1864,35 @@ class ModulesController < ApplicationController
     return if jeevika_jankar_payment_module_access?(requested_slug)
 
     redirect_to dashboard_path, alert: "You are not allowed to access this menu."
+  end
+
+  def dashboard_filter_sub_activity_options(targets)
+    month = params.key?(:month) ? dashboard_filter_param(:month) : Date.current.prev_month.strftime("%B")
+    fcoc = dashboard_filter_param(:fcoc, :fco)
+    fco_values = training_fcoc_filter_values(fcoc) if fcoc.present?
+    ics = dashboard_filter_param(:ics, :ics_name)
+    cluster = dashboard_filter_param(:cluster_incharge)
+    vrp_id = dashboard_filter_param(:vrp_id)
+    post = dashboard_filter_param(:post)
+    Array(targets).select do |target|
+      (month.blank? || normalize_dashboard_text(target.month_name) == normalize_dashboard_text(month)) &&
+        (fco_values.blank? || (training_fcoc_filter_values(target.fco_name, target.fco_id, target.vrp&.fcoc) & fco_values).any?) &&
+        (ics.blank? || (target.ics_name.presence || target.ics_id).to_s == ics) &&
+        (cluster.blank? || cluster_label_matches?(cluster, target.vrp&.cluster_incharge)) &&
+        (vrp_id.blank? || target.vrp_id.to_s == vrp_id) &&
+        (post.blank? || target.vrp&.role.to_s == post)
+    end.map(&:activity_name).uniq.compact_blank.sort
+  end
+
+  def dashboard_other_activity_totals(targets)
+    @other_target_candidate_targets = Array(targets)
+    @other_target_candidate_targets_by_id = @other_target_candidate_targets.index_by { |target| target.id.to_s }
+    achievements = approved_other_target_achievement_index
+    assigned = @other_target_candidate_targets.sum { |target| target.target_quantity.to_f }
+    completed = @other_target_candidate_targets.sum do |target|
+      [achievements.dig(target.id.to_s, :achievement).to_f, target.target_quantity.to_f].min
+    end
+    { target: dashboard_quantity(assigned), completed: dashboard_quantity(completed), pending: dashboard_quantity([assigned - completed, 0].max) }
   end
 
   def prepare_vrp_dashboard
@@ -3673,7 +3709,7 @@ class ModulesController < ApplicationController
     end
 
     sql = <<~SQL.squish
-      WITH mapped_farmers AS (
+      WITH mapped_farmers AS MATERIALIZED (
         SELECT DISTINCT j.value AS afl_id
         FROM target_mappings t
         LEFT JOIN vrps v ON v.id = t.vrp_id
@@ -3685,7 +3721,7 @@ class ModulesController < ApplicationController
         ) AS j(value)
         WHERE #{target_conditions.join(' AND ')}
       ),
-      training_entries AS (
+      training_entries AS MATERIALIZED (
         SELECT DISTINCT
           sf.farmer_id,
           BTRIM(mr.data::jsonb ->> 'training_method') AS training_method
@@ -4866,9 +4902,14 @@ class ModulesController < ApplicationController
   end
 
   def training_participation_dashboard_counts_uncached(month_name:, fcoc_name:, week_number: nil)
+    participation_targets = training_participation_targets_for_dashboard(month_name: month_name, fcoc_name: fcoc_name)
+    if week_number.blank?
+      sql_counts = training_participation_dashboard_counts_from_sql(month_name: month_name, fcoc_name: fcoc_name, targets: participation_targets)
+      return sql_counts if sql_counts.present?
+    end
+
     participation_records = dashboard_training_participation_records(month_name: month_name, fcoc_name: fcoc_name)
     participation_records = participation_records.select { |record| training_record_week_number(record) == week_number.to_i } if week_number.present?
-    participation_targets = training_participation_targets_for_dashboard(month_name: month_name, fcoc_name: fcoc_name)
     participation_targets = training_participation_targets_for_week(participation_targets, week_number) if week_number.present?
     training_participation_dashboard_counts(
       month_name: month_name,
@@ -5080,7 +5121,7 @@ class ModulesController < ApplicationController
     end
 
     sql = <<~SQL.squish
-      WITH assigned AS (
+      WITH assigned AS MATERIALIZED (
         SELECT DISTINCT
           t.id::text AS target_mapping_id,
           TRIM(j.value) AS afl_id
@@ -5118,7 +5159,7 @@ class ModulesController < ApplicationController
           END
         ) AS tm(mapping_id)
       ),
-      completion_count AS (
+      completion_count AS MATERIALIZED (
         SELECT
           farmer_id,
           target_mapping_id,
@@ -5496,54 +5537,8 @@ class ModulesController < ApplicationController
   end
 
   def compute_farmer_training_yellow_farmer_count_and_popups(month_name:, fcoc_name:)
-    selected_month = month_name.presence || "August"
-    fco_ids = training_fcoc_ids_from_param(fcoc_name)
-    fco_filter_sql = "WHERE LOWER(BTRIM(a.fco_id)) IN (:fco_ids)"
-
-    sql = <<~SQL.squish
-      WITH august_training AS (
-          SELECT
-              sf.farmer_id,
-              mr.id AS training_id
-          FROM public.module_records mr
-          CROSS JOIN LATERAL jsonb_array_elements_text(
-              COALESCE(
-                  mr.data::jsonb -> 'selected_farmer_ids',
-                  '[]'::jsonb
-              )
-          ) AS sf(farmer_id)
-          WHERE mr.module_slug = 'training-form'
-            AND LOWER(TRIM(mr.data::jsonb ->> 'month')) = :month_name
-            AND LOWER(COALESCE(mr.data::jsonb ->> 'main_activity', '')) LIKE '%farmers'' training%'
-      ),
-      only_one_training AS (
-          SELECT farmer_id FROM august_training
-          GROUP BY farmer_id
-          HAVING COUNT(DISTINCT training_id) = 1
-      )
-      SELECT
-          a.fco_id,
-          COALESCE(MAX(NULLIF(BTRIM(a.fco), '')), a.fco_id) AS fco_name,
-          COUNT(DISTINCT a.id) AS farmer_count
-      FROM only_one_training o
-      INNER JOIN public.afls a ON a.id::text = o.farmer_id
-      #{fco_filter_sql}
-      GROUP BY a.fco_id
-      ORDER BY a.fco_id;
-    SQL
-
-    binds = { month_name: selected_month.strip.downcase, fco_ids: fco_ids.map(&:downcase) }
-    rows = ActiveRecord::Base.connection.exec_query(
-      ActiveRecord::Base.send(:sanitize_sql_array, [dashboard_scoped_training_sql(sql), binds])
-    ).to_a
-
-    total_count = rows.sum { |r| r["farmer_count"].to_i }
-    popups = format_fco_popups(rows, fco_ids, "farmer_count")
-
-    [total_count, popups]
-  rescue StandardError => e
-    Rails.logger.warn("Yellow farmer count SQL failed: #{e.message}")
-    [0, format_fco_popups([], fco_ids, "farmer_count")]
+    rows = farmer_training_attendance_counts_by_fco(month_name: month_name, fcoc_name: fcoc_name)
+    [rows.sum { |row| row["yellow_count"].to_i }, format_fco_popups(rows, training_fcoc_ids_from_param(fcoc_name), "yellow_count")]
   end
 
   def farmer_training_green_farmer_count_and_popups(month_name:, fcoc_name:)
@@ -5555,57 +5550,42 @@ class ModulesController < ApplicationController
   end
 
   def compute_farmer_training_green_farmer_count_and_popups(month_name:, fcoc_name:)
-    selected_month = month_name.presence || "August"
-    fco_ids = training_fcoc_ids_from_param(fcoc_name)
-    fco_filter_sql = "WHERE LOWER(BTRIM(a.fco_id)) IN (:fco_ids)"
+    rows = farmer_training_attendance_counts_by_fco(month_name: month_name, fcoc_name: fcoc_name)
+    [rows.sum { |row| row["green_count"].to_i }, format_fco_popups(rows, training_fcoc_ids_from_param(fcoc_name), "green_count")]
+  end
 
-    sql = <<~SQL.squish
-      WITH august_training AS (
-          SELECT
-              sf.farmer_id,
-              mr.id AS training_id
-          FROM public.module_records mr
-          CROSS JOIN LATERAL jsonb_array_elements_text(
-              COALESCE(
-                  mr.data::jsonb -> 'selected_farmer_ids',
-                  '[]'::jsonb
-              )
-          ) AS sf(farmer_id)
-          WHERE mr.module_slug = 'training-form'
-            AND LOWER(TRIM(mr.data::jsonb ->> 'month')) = :month_name
-            AND LOWER(COALESCE(mr.data::jsonb ->> 'main_activity', '')) LIKE '%farmers'' training%'
-      ),
-      farmer_training_count AS (
-          SELECT
-              farmer_id,
-              COUNT(DISTINCT training_id) AS training_count
-          FROM august_training
-          GROUP BY farmer_id
-          HAVING COUNT(DISTINCT training_id) > 1
+  def farmer_training_attendance_counts_by_fco(month_name:, fcoc_name:)
+    @farmer_training_attendance_counts_by_fco ||= {}
+    fco_ids = training_fcoc_ids_from_param(fcoc_name).map(&:downcase)
+    month = normalize_dashboard_text(month_name.presence || "August")
+    key = [month, fco_ids.sort]
+    return @farmer_training_attendance_counts_by_fco[key] if @farmer_training_attendance_counts_by_fco.key?(key)
+
+    sql = <<~SQL
+      WITH attendance AS MATERIALIZED (
+        SELECT sf.farmer_id, COUNT(DISTINCT mr.id) AS training_count
+        FROM public.module_records mr
+        CROSS JOIN LATERAL jsonb_array_elements_text(
+          COALESCE(mr.data::jsonb -> 'selected_farmer_ids', '[]'::jsonb)
+        ) AS sf(farmer_id)
+        WHERE mr.module_slug = 'training-form'
+          AND LOWER(TRIM(mr.data::jsonb ->> 'month')) = :month_name
+          AND LOWER(COALESCE(mr.data::jsonb ->> 'main_activity', '')) LIKE '%farmers'' training%'
+        GROUP BY sf.farmer_id
       )
-      SELECT
-          a.fco_id,
-          COALESCE(MAX(NULLIF(BTRIM(a.fco), '')), a.fco_id) AS fco_name,
-          COUNT(DISTINCT a.id) AS green_farmer_count
-      FROM farmer_training_count ft
-      INNER JOIN public.afls a ON a.id::text = ft.farmer_id
-      #{fco_filter_sql}
+      SELECT a.fco_id,
+        COALESCE(MAX(NULLIF(BTRIM(a.fco), '')), a.fco_id) AS fco_name,
+        COUNT(DISTINCT a.id) FILTER (WHERE attendance.training_count = 1) AS yellow_count,
+        COUNT(DISTINCT a.id) FILTER (WHERE attendance.training_count > 1) AS green_count
+      FROM public.afls a
+      JOIN attendance ON attendance.farmer_id = a.id::text
+      WHERE LOWER(BTRIM(a.fco_id)) IN (:fco_ids)
       GROUP BY a.fco_id
-      ORDER BY a.fco_id;
+      ORDER BY a.fco_id
     SQL
-
-    binds = { month_name: selected_month.strip.downcase, fco_ids: fco_ids.map(&:downcase) }
-    rows = ActiveRecord::Base.connection.exec_query(
-      ActiveRecord::Base.send(:sanitize_sql_array, [dashboard_scoped_training_sql(sql), binds])
+    @farmer_training_attendance_counts_by_fco[key] = ActiveRecord::Base.connection.exec_query(
+      ActiveRecord::Base.send(:sanitize_sql_array, [dashboard_scoped_training_sql(sql), { month_name: month, fco_ids: fco_ids }])
     ).to_a
-
-    total_count = rows.sum { |r| r["green_farmer_count"].to_i }
-    popups = format_fco_popups(rows, fco_ids, "green_farmer_count")
-
-    [total_count, popups]
-  rescue StandardError => e
-    Rails.logger.warn("Green farmer count SQL failed: #{e.message}")
-    [0, format_fco_popups([], fco_ids, "green_farmer_count")]
   end
 
   def format_fco_popups(rows, fco_ids, count_key)
@@ -8728,7 +8708,7 @@ class ModulesController < ApplicationController
   def cached_vrps_by_id
     return {} unless model_ready?(:Vrp)
 
-    @cached_vrps_by_id ||= Vrp.includes(:vrp_bank_master).index_by { |vrp| vrp.id.to_s }
+    @cached_vrps_by_id ||= Vrp.includes(:vrp_bank_master, :vrp_profile, photo_attachment: :blob).index_by { |vrp| vrp.id.to_s }
   end
 
   def module_cluster_visible_vrp_id_strings
@@ -9440,6 +9420,8 @@ class ModulesController < ApplicationController
   end
 
   def jeevika_bill_rows(records)
+    preload_dashboard_vrp_identity_records!(Array(records).filter_map { |record| jeevika_bill_vrp(record) }.uniq(&:id))
+    preload_jeevika_bill_process_totals(records)
     Array(records).map do |record|
       data = record.data
       summary = jeevika_bill_summary(record)
@@ -9524,6 +9506,7 @@ class ModulesController < ApplicationController
   end
 
   def jeevika_payment_selectable_rows(records)
+    preload_dashboard_vrp_identity_records!(Array(records).filter_map { |record| jeevika_bill_vrp(record) }.uniq(&:id))
     paid_ids = jeevika_paid_bill_ids
     Array(records)
       .select { |record| jeevika_bill_final_approved?(record) }
@@ -9615,18 +9598,13 @@ class ModulesController < ApplicationController
   def jeevika_completed_payment_item_visible?(item)
     return true if admin_dashboard_user?
 
-    bill_record = jeevika_payment_bill_record_for_item(item)
-    return jeevika_jankar_bill_record_visible?(bill_record) if bill_record.present?
+    vrp_id = item["jeevika_jankar_id"].presence
+    if vrp_id.blank?
+      bill_record = jeevika_payment_bill_record_for_item(item)
+      vrp_id = bill_record&.data&.[]("select_vrp")
+    end
+    scoped_jeevika_vrp_visible?(cached_vrp_lookup(vrp_id))
 
-    vrp = cached_vrp_lookup(item["jeevika_jankar_id"]) if item["jeevika_jankar_id"].present?
-    return false unless vrp
-
-    return vrp.id.to_s == current_vrp_record&.id.to_s if vrp_login_user?
-    return true if jeevika_bill_vrp_registered_by_current_user?(vrp)
-    return true if jeevika_bill_vrp_office_visible?(vrp)
-    return true if module_cluster_visible_vrp_id_strings.include?(vrp.id.to_s)
-
-    false
   end
 
   def jeevika_payment_bill_record_for_item(item)
@@ -9713,9 +9691,11 @@ class ModulesController < ApplicationController
   end
 
   def jeevika_jankar_bill_total_payment(record = nil)
-    return format("%.2f", JEEVIKA_JANKAR_BILL_FIXED_TOTAL) if record.blank?
+    fixed_total = format("%.2f", JEEVIKA_JANKAR_BILL_FIXED_TOTAL)
+    return fixed_total if record.blank?
 
-    record.data["grand_total"].presence || "0.00"
+    amount = record.data["grand_total"]
+    amount.presence && amount.to_f.positive? ? amount : fixed_total
   end
 
   def jeevika_bill_attachment_rows(record)
@@ -10541,7 +10521,13 @@ class ModulesController < ApplicationController
     @other_target_candidate_targets = targets
     @other_target_candidate_targets_by_id = targets.index_by { |target| target.id.to_s }
     farmers_by_id = jeevika_jankar_farmers_by_id(targets)
-    training_index = jeevika_jankar_training_index(targets)
+    training_index = if @bill_list_batch_totals
+      targets.group_by(&:vrp_id).each_value.each_with_object({}) do |vrp_targets, index|
+        index.merge!(jeevika_jankar_training_index(vrp_targets))
+      end
+    else
+      jeevika_jankar_training_index(targets)
+    end
     activity_settings = jeevika_jankar_main_activity_settings
     sub_activity_settings = jeevika_jankar_sub_activity_settings(activity_settings)
     other_target_achievement_index = approved_other_target_achievement_index
@@ -10876,6 +10862,10 @@ class ModulesController < ApplicationController
     if target_months.present?
       normalized_months = target_months.map { |month| normalize_dashboard_text(month) }.uniq
       records = records.where("LOWER(BTRIM(data::jsonb ->> 'month')) IN (?)", normalized_months)
+    end
+    if @bill_list_batch_totals
+      @bill_list_training_records_by_month ||= {}
+      records = @bill_list_training_records_by_month[target_months.sort] ||= records.to_a
     end
     records.each_with_object(Hash.new { |hash, key| hash[key] = [] }) do |record, index|
       farmer_ids = Array(record.data["selected_farmer_ids"]).map(&:to_s).reject(&:blank?) & target_farmer_ids
@@ -11324,6 +11314,31 @@ class ModulesController < ApplicationController
     data["status"] = data["status"].presence || "Submitted (Not sent for approval)"
     data["record_state"] = data["record_state"].presence || "Active"
     data
+  end
+
+  def preload_jeevika_bill_process_totals(records)
+    @jeevika_bill_process_totals ||= {}
+    Array(records).group_by { |record| normalize_dashboard_text(record.data["bill_month"]) }.each_value do |bills|
+      month = bills.first.data["bill_month"]
+      ids = bills.filter_map { |bill| bill.data["select_vrp"].presence }.uniq
+      next if month.blank? || ids.blank?
+
+      previous_summary = @jeevika_jankar_target_summary
+      previous_batch_mode = @bill_list_batch_totals
+      begin
+        @bill_list_batch_totals = true
+        remove_instance_variable(:@approved_other_target_completed_farmer_ids_by_target) if instance_variable_defined?(:@approved_other_target_completed_farmer_ids_by_target)
+        jeevika_jankar_bill_rows(vrp_id: ids.join(","), month_name: month)
+        bills.each do |bill|
+          id = bill.data["select_vrp"].to_s
+          month_key = normalize_dashboard_text(month)
+          @jeevika_bill_process_totals[[id, month_key]] = @jeevika_jankar_target_summary&.dig(id, month_key)
+        end
+      ensure
+        @bill_list_batch_totals = previous_batch_mode
+        @jeevika_jankar_target_summary = previous_summary
+      end
+    end
   end
 
   # Use the same ungrouped target summary as the Bill Process form.

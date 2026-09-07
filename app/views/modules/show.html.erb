@@ -49,7 +49,6 @@
             <p>Invoice Date: <%= bill_display_date(detail_record.data["invoice_date"].presence || detail_record.created_at) %></p>
             <p>Invoice Month: <%= detail_record.data["bill_month"].presence || "-" %></p>
             <p class="bill-print-location">FCO: <%= detail_summary[:fco].presence || "-" %>, TO: <%= detail_summary[:to].presence || bill_vrp&.to_name.presence || "-" %>, Block: <%= bill_print_block_name(bill_vrp) %></p>
-            <p>Activity: <%= detail_summary[:activity_groups].presence || "-" %></p>
           </div>
         </div>
 

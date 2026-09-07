@@ -475,6 +475,15 @@
   <% if farmer_activity_mode %>
     <%# ── TRAINING DASHBOARD ───────────────────────────────────────────── %>
     <%= render "farmer_training_dashboard" %>
+  <% elsif @dashboard_other_activity_totals.present? %>
+    <section class="module-card dashboard-summary-panel">
+      <div class="module-card-header"><h2><%= main_activity_filter_value.presence || "Activity" %> — <%= @dashboard_month_filter_value.presence || "All Months" %></h2></div>
+      <div class="training-participation-boxes dashboard-summary-boxes">
+        <% { target: "Total Target", completed: "Completed", pending: "Pending" }.each do |key, label| %>
+          <div class="training-participation-box total dashboard-summary-box"><span><%= label %></span><strong><%= @dashboard_other_activity_totals[key] %></strong></div>
+        <% end %>
+      </div>
+    </section>
   <% end %>
 
   <% if demonstration_method_cards.any? %>

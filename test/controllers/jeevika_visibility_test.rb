@@ -1,6 +1,32 @@
 require "test_helper"
 
 class JeevikaVisibilityTest < ActiveSupport::TestCase
+  test "completed payment visibility uses JJ assignment even when user approved the bill" do
+    controller = ModulesController.new
+    controller.define_singleton_method(:admin_dashboard_user?) { false }
+    controller.define_singleton_method(:cached_vrp_lookup) { |id| Vrp.new(id: id) }
+    controller.define_singleton_method(:scoped_jeevika_vrp_visible?) { |vrp| vrp&.id == 12 }
+    controller.define_singleton_method(:jeevika_jankar_bill_record_visible?) { |_| true }
+    assert controller.send(:jeevika_completed_payment_item_visible?, { "jeevika_jankar_id" => "12", "bill_id" => "1" })
+    refute controller.send(:jeevika_completed_payment_item_visible?, { "jeevika_jankar_id" => "13", "bill_id" => "2" })
+    refute controller.send(:jeevika_completed_payment_item_visible?, {})
+  end
+
+  test "bill summaries batch multiple JJ records in one calculation per month" do
+    controller = ModulesController.new
+    calls = []
+    controller.define_singleton_method(:jeevika_jankar_bill_rows) do |vrp_id:, month_name:|
+      calls << [vrp_id, month_name]
+      @jeevika_jankar_target_summary = { "12" => { "july" => { target: "40", achievement: "30" } }, "13" => { "july" => { target: "20", achievement: "10" } } }
+    end
+    records = %w[12 13].map { |id| ModuleRecord.new(data: { "select_vrp" => id, "bill_month" => "July" }) }
+    controller.send(:preload_jeevika_bill_process_totals, records)
+    assert_equal [["12,13", "July"]], calls
+    assert_equal "40", controller.send(:jeevika_jankar_bill_total_target, records.first)
+    assert_equal "10", controller.send(:jeevika_jankar_bill_total_achievement, records.last)
+    assert_equal 1, calls.size
+  end
+
   test "approver names remove repeated wrappers without losing the role" do
     controller = ModulesController.new
     name = "Shailesh Bagde"
