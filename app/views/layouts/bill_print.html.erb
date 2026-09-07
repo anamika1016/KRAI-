@@ -6,10 +6,21 @@
     <%= csrf_meta_tags %>
     <%= csp_meta_tag %>
     <%= stylesheet_link_tag :application, "data-turbo-track": "reload" %>
+    <style>
+      .bill-print-sheet .bill-print-footer { display: grid; grid-template-columns: 1fr; }
+      .bill-print-sheet .bill-print-prepared { text-align: right; justify-items: end; }
+      .bill-print-sheet .bill-print-approved { text-align: left; justify-items: start; }
+      .bill-print-sheet .bill-print-approved span { display: block; white-space: nowrap; font-size: 10px; }
+      .bill-print-sheet .bill-print-approved strong { font-size: 16px; margin-bottom: 8px; }
+      .bill-print-sheet .bill-approved-stamp { width: 110px; height: 88px; justify-self: start; }
+      .bill-print-sheet .bill-print-location { white-space: nowrap; }
+      .bill-print-sheet .bill-print-amount { text-align: right; }
+    </style>
   </head>
   <body class="bill-print-body">
     <div class="bill-print-toolbar no-print">
       <strong>Bill Preview</strong>
+      <span>Print settings: turn off Headers and footers to hide the page URL.</span>
       <button type="button" onclick="window.print()">Print / Save PDF</button>
     </div>
     <main class="bill-print-page">

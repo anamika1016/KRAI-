@@ -1,4 +1,12 @@
 module ApplicationHelper
+  def bill_print_block_name(vrp)
+    value = vrp&.vrp_profile&.block_id.to_s.strip
+    return "-" if value.blank?
+    return value unless value.match?(/\A\d+\z/)
+
+    ModuleRecord.find_by(module_slug: "block-master", id: value)&.data&.[]("block_name").presence || "-"
+  end
+
   def farmer_farm_information_select_options
     return [] unless "FarmerFarmInformation".safe_constantize&.table_exists?
 

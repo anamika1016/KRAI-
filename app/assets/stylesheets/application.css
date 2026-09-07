@@ -3228,8 +3228,8 @@ body {
 }
 
 .bill-print-logo {
-  max-width: 118px;
-  max-height: 68px;
+  max-width: 180px;
+  max-height: 90px;
   object-fit: contain;
 }
 
@@ -3310,7 +3310,7 @@ body {
 
 .bill-print-footer {
   display: grid;
-  grid-template-columns: 1fr 1.45fr;
+  grid-template-columns: 1fr;
   gap: 28px;
   align-items: start;
   margin-top: 34px;
@@ -3320,7 +3320,21 @@ body {
 .bill-print-approved {
   display: grid;
   gap: 5px;
-  text-align: center;
+  text-align: left;
+}
+
+.bill-approved-stamp {
+  width: 90px;
+  height: auto;
+  justify-self: start;
+}
+
+.bill-print-approved span {
+  display: block;
+  white-space: nowrap;
+  font-size: 9px;
+  letter-spacing: -0.15px;
+  break-inside: avoid;
 }
 
 .bill-final-approved {

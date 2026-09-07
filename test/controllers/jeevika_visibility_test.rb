@@ -1,6 +1,48 @@
 require "test_helper"
 
 class JeevikaVisibilityTest < ActiveSupport::TestCase
+  test "approver names remove repeated wrappers without losing the role" do
+    controller = ModulesController.new
+    name = "Shailesh Bagde"
+    expected = "#{name} (agricultural specialist)"
+    [expected, "#{name} (#{expected})", "#{name} (#{name} (#{expected}))"].each do |label|
+      assert_equal expected, controller.send(:jeevika_bill_approver_display_name, label, name)
+    end
+    assert_equal "Hemant Shakkarpude", controller.send(:jeevika_bill_approver_display_name, nil, "Hemant Shakkarpude")
+  end
+
+  test "equivalent approval levels appear once with the latest approver" do
+    controller = ModulesController.new
+    history = ["First Approval", " First  Approval ", "Level 1"].map.with_index do |level, index|
+      ModuleRecord.new(id: index + 1, created_at: Time.zone.parse("2026-07-06 12:00") + index.minutes, data: {
+        "action" => "Approved", "approval_level" => level,
+        "approver" => "Person #{index} (Specialist)"
+      })
+    end
+    controller.define_singleton_method(:jeevika_bill_approval_history) { |_record| history }
+    rows = controller.send(:jeevika_bill_approved_by_rows, ModuleRecord.new(data: {}))
+    assert_equal 1, rows.size
+    assert_equal "Person 2 (Specialist)", rows.first[1]
+  end
+
+  test "bill list totals use the process summary and cache it for the VRP month" do
+    controller = ModulesController.new
+    calls = []
+    controller.define_singleton_method(:jeevika_jankar_bill_rows) do |vrp_id:, month_name:|
+      calls << [vrp_id, month_name]
+      @jeevika_jankar_target_summary = { "12" => { "july" => { target: "50", achievement: "35" } } }
+      []
+    end
+    record = ModuleRecord.new(data: {
+      "select_vrp" => "12", "bill_month" => "July",
+      "bill_items" => [{ "assigned_count" => "10", "achievement_count" => "2" }]
+    })
+    assert_equal "50", controller.send(:jeevika_jankar_bill_total_target, record)
+    assert_equal "35", controller.send(:jeevika_jankar_bill_total_achievement, record)
+    assert_equal [["12", "July"]], calls
+    assert_nil controller.instance_variable_get(:@jeevika_jankar_target_summary)
+  end
+
   test "cluster sees its own bills even after JJ assignment changes" do
     controller = policy(cluster: true)
     controller.define_singleton_method(:module_cluster_vrp_visible?) { |_vrp| false }

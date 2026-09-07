@@ -9781,19 +9781,39 @@ class ModulesController < ApplicationController
     }
   end
 
+  def jeevika_bill_approver_display_name(approver, action_by)
+    label = approver.to_s.squish.presence || action_by.to_s.squish.presence || "-"
+    name = label.split("(", 2).first.to_s.strip
+    return label if name.blank?
+
+    # Older history can contain Name (Name (Role)), nested more than once.
+    loop do
+      match = label.match(/\A#{Regexp.escape(name)}\s*\(\s*(#{Regexp.escape(name)}(?:\s*\(.*\))?)\s*\)\z/i)
+      break unless match
+
+      label = match[1].strip
+    end
+    label
+  end
+
   def jeevika_bill_approved_by_rows(record)
     approved_history = jeevika_bill_approval_history(record)
       .select { |history| history.data["action"].to_s == "Approved" }
     approved_history = approved_history.group_by do |history|
-      history.data["approval_level"].to_s.strip.downcase.presence || "approval"
+      level = history.data["approval_level"].to_s.squish.downcase
+      if level.match?(/\bfinanc(?:e|ial)\b/)
+        "financial"
+      else
+        approval_level_sequence_from_text(level).presence || level.presence || "approval"
+      end
     end.values.map do |entries|
       entries.max_by { |history| [parse_bill_datetime(history.data["action_at"]) || history.created_at || Time.at(0), history.id.to_i] }
     end.sort_by { |history| approval_sequence_from_level(history.data["approval_level"]) }
     approved_history.map.with_index do |history, index|
-      approval_label = index == approved_history.size - 1 ? "Finance Approval" : history.data["approval_level"].presence || "Approval"
+      approval_label = jeevika_bill_final_approved?(record) && index == approved_history.size - 1 ? "Finance Approval" : history.data["approval_level"].presence || "Approval"
       [
         approval_label,
-        history.data["approver"].presence || history.data["action_by"].presence || "-",
+        jeevika_bill_approver_display_name(history.data["approver"], history.data["action_by"]),
         bill_display_datetime(history.data["action_at"]),
         history.data["action_by"].presence
       ]
@@ -11306,7 +11326,30 @@ class ModulesController < ApplicationController
     data
   end
 
+  # Use the same ungrouped target summary as the Bill Process form.
+  def jeevika_jankar_bill_process_totals(record)
+    vrp_id = record.data["select_vrp"].to_s
+    month = record.data["bill_month"].to_s
+    return if vrp_id.blank? || month.blank?
+
+    @jeevika_bill_process_totals ||= {}
+    key = [vrp_id, normalize_dashboard_text(month)]
+    return @jeevika_bill_process_totals[key] if @jeevika_bill_process_totals.key?(key)
+
+    previous_summary = @jeevika_jankar_target_summary
+    begin
+      jeevika_jankar_bill_rows(vrp_id: vrp_id, month_name: month)
+      ids = jeevika_jankar_bill_selected_vrp_ids(vrp_id)
+      @jeevika_bill_process_totals[key] = @jeevika_jankar_target_summary&.dig(ids.first, key.last)
+    ensure
+      @jeevika_jankar_target_summary = previous_summary
+    end
+  end
+
   def jeevika_jankar_bill_total_target(record)
+    summary = jeevika_jankar_bill_process_totals(record)
+    return summary[:target] if summary
+
     totals = jeevika_jankar_bill_item_totals(record.data["bill_items"])
     return dashboard_quantity(totals[:target]) if totals[:has_items]
 
@@ -11314,6 +11357,9 @@ class ModulesController < ApplicationController
   end
 
   def jeevika_jankar_bill_total_achievement(record)
+    summary = jeevika_jankar_bill_process_totals(record)
+    return summary[:achievement] if summary
+
     totals = jeevika_jankar_bill_item_totals(record.data["bill_items"])
     return dashboard_quantity(totals[:achievement]) if totals[:has_items]
 
@@ -11508,7 +11554,8 @@ class ModulesController < ApplicationController
   def jeevika_bill_vrp(record)
     return nil unless model_ready?(:Vrp)
 
-    cached_vrp_lookup(record&.data&.[]("select_vrp"))
+    data = record&.data || {}
+    cached_vrp_lookup(data["select_vrp"].presence || data["vrp_id"].presence || data["jeevika_jankar_id"].presence)
   end
 
   def first_present_from_items(items, *keys)
