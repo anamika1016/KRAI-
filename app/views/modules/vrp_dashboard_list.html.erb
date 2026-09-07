@@ -21,7 +21,11 @@
         <h2><%= detail[:title] %></h2>
         <p class="module-subtitle">Total: <%= detail[:total] %> | Rows: <%= detail[:rows].size %></p>
       </div>
-      <button type="button" class="list-btn export" data-export-table="vrp_dashboard_detail_table" data-export-include-all="true">Export</button>
+      <% if detail[:key] == "pending_target" %>
+        <%= link_to "Export", url_for(request.path_parameters.merge(request.query_parameters).merge(format: :xlsx)), class: "list-btn export" %>
+      <% else %>
+        <button type="button" class="list-btn export" data-export-table="vrp_dashboard_detail_table" data-export-include-all="true">Export</button>
+      <% end %>
     </div>
 
     <div class="table-shell">

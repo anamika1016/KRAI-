@@ -1358,20 +1358,37 @@ class ModulesController < ApplicationController
     respond_to do |format|
       format.html
       format.csv do
+        export_payload = export_dashboard_detail_payload(@vrp_dashboard_detail, targets, bills)
         send_data(
-          dashboard_detail_rows_csv(@vrp_dashboard_detail),
-          filename: "#{@vrp_dashboard_detail[:key]}-#{Time.current.strftime("%Y%m%d%H%M")}.csv",
+          dashboard_detail_rows_csv(export_payload),
+          filename: "#{export_payload[:key]}-#{Time.current.strftime("%Y%m%d%H%M")}.csv",
           type: "text/csv"
         )
       end
       format.xlsx do
+        export_payload = export_dashboard_detail_payload(@vrp_dashboard_detail, targets, bills)
         send_xlsx(
-          rows: dashboard_detail_rows_csv(@vrp_dashboard_detail),
-          filename: "#{@vrp_dashboard_detail[:key]}-#{Time.current.strftime("%Y%m%d%H%M")}.xlsx",
-          sheet_name: @vrp_dashboard_detail[:key].to_s.titleize
+          rows: dashboard_detail_rows_csv(export_payload),
+          filename: "#{export_payload[:key]}-#{Time.current.strftime("%Y%m%d%H%M")}.xlsx",
+          sheet_name: export_payload[:key].to_s.titleize
         )
       end
     end
+  end
+
+  def export_dashboard_detail_payload(detail, targets, bills)
+    return detail unless detail.is_a?(Hash) && detail[:key].to_s == "pending_target"
+
+    target_rows = vrp_dashboard_target_progress_rows(targets, bills)
+    pending_rows = vrp_dashboard_pending_farmer_rows(target_rows)
+    {
+      key: "pending_farmers",
+      title: "Pending Farmers",
+      caption: detail[:caption],
+      total: pending_rows.size,
+      headers: vrp_target_farmer_headers,
+      rows: pending_rows
+    }
   end
 
   def destroy_vrp_mapped_village
@@ -2743,7 +2760,13 @@ class ModulesController < ApplicationController
     Array(target_rows).flat_map do |row|
       target = row[:target_record]
       completed_ids = Array(row[:completed_farmer_ids]).map(&:to_s).reject(&:blank?).uniq
-      pending_ids = Array(row[:assigned_farmer_ids]).map(&:to_s).reject(&:blank?).uniq - completed_ids
+      assigned_ids = Array(row[:assigned_farmer_ids]).map(&:to_s).reject(&:blank?).uniq
+      if assigned_ids.blank? && target
+        assigned_ids = target_farmer_ids(target).map(&:to_s).reject(&:blank?).uniq
+        training_mapping_farmer_ids = vrp_target_farmer_ids_from_training_mappings([target])
+        assigned_ids = training_mapping_farmer_ids if assigned_ids.blank? && training_mapping_farmer_ids.any?
+      end
+      pending_ids = assigned_ids - completed_ids
       next [] if pending_ids.blank?
 
       target ? vrp_target_farmer_rows(target, pending_ids, completed_ids) : []
@@ -3757,6 +3780,7 @@ class ModulesController < ApplicationController
   def dashboard_fco_active_vrp_count(fco_name_or_id, month_name = "August", vrps = nil)
     return 0 if fco_name_or_id.blank?
 
+    selected_month = month_name.presence || "August"
     normalized = normalize_dashboard_text(fco_name_or_id)
     fco_conditions = if normalized.include?("1004") || normalized.include?("sausar")
                        "(LOWER(TRIM(t.fco_id)) IN ('1004', 'sausar') OR LOWER(TRIM(t.fco_name)) LIKE '%sausar%')"
@@ -3770,11 +3794,11 @@ class ModulesController < ApplicationController
       SELECT COUNT(DISTINCT t.vrp_id) AS active_vrp_count
       FROM public.target_mappings t
       WHERE #{fco_conditions}
-        AND LOWER(TRIM(t.main_activity_name)) LIKE '%training%'
-        AND t.vrp_id IS NOT NULL AND TRIM(t.vrp_id) != '';
+        AND LOWER(TRIM(t.month_name)) = :month_name
+        AND t.vrp_id IS NOT NULL AND TRIM(t.vrp_id::text) != '';
     SQL
 
-    binds = { norm: normalized }
+    binds = { norm: normalized, month_name: selected_month.strip.downcase }
     res = ActiveRecord::Base.connection.exec_query(
       ActiveRecord::Base.send(:sanitize_sql_array, [sql, binds])
     ).first
@@ -3816,16 +3840,14 @@ class ModulesController < ApplicationController
                nil
              end
 
-    # Hardcoded required and active counts for Sausar and Turekela per business requirement
+    selected_month = params[:month].presence || params[:training_month].presence || "August"
+    active_count   = dashboard_fco_active_vrp_count(fco_name, selected_month, vrps)
+
     if normalized_fco.include?("sausar") || fco_id == "1004"
-      required_count = 34
-      active_count   = 34
+      required_count = [34, active_count].max
     elsif normalized_fco.include?("turekela") || fco_id == "1006"
-      required_count = 24
-      active_count   = 24
+      required_count = [24, active_count].max
     else
-      selected_month = params[:month].presence || "August"
-      active_count   = dashboard_fco_active_vrp_count(fco_name, selected_month, vrps)
       fco_targets    = Array(targets).select { |t| normalize_dashboard_text(t.fco_name).include?(normalized_fco) }
       req            = fco_targets.map { |t| normalize_dashboard_text(t.village_name) }.reject(&:blank?).uniq.size
       required_count = [req, active_count].max
@@ -5271,8 +5293,9 @@ class ModulesController < ApplicationController
   def farmer_training_no_training_count_and_popups(month_name:, fcoc_name:)
     selected_month = month_name.presence || "August"
     fco_ids = training_fcoc_ids_from_param(fcoc_name)
+    fco_values = fco_ids.flat_map { |id| training_fcoc_filter_values(id) }.uniq.map(&:downcase)
     fco_filter_sql = "AND LOWER(BTRIM(a.fco_id)) IN (:fco_ids)"
-    fco_filter_t = "AND LOWER(BTRIM(t.fco_id)) IN (:fco_ids)"
+    fco_filter_t = "AND (LOWER(BTRIM(t.fco_id)) IN (:fco_values) OR LOWER(BTRIM(t.fco_name)) IN (:fco_values))"
 
     sql = <<~SQL.squish
       WITH august_any_mapping AS (
@@ -5318,8 +5341,8 @@ class ModulesController < ApplicationController
           COALESCE(MAX(NULLIF(BTRIM(a.fco), '')), a.fco_id) AS fco_name,
           COUNT(DISTINCT a.id) AS total_farmer_count,
           COUNT(DISTINCT CASE WHEN am.afl_id IS NOT NULL THEN a.id END) AS total_mapped_farmer_count,
-          COUNT(DISTINCT CASE WHEN am.afl_id IS NULL THEN a.id END) AS no_activity_mapping_count,
-          COUNT(DISTINCT CASE WHEN am.afl_id IS NOT NULL AND tm.afl_id IS NULL THEN a.id END) AS no_training_mapping_count,
+          COUNT(DISTINCT CASE WHEN am.afl_id IS NULL AND td.farmer_id IS NULL THEN a.id END) AS no_activity_mapping_count,
+          COUNT(DISTINCT CASE WHEN am.afl_id IS NOT NULL AND tm.afl_id IS NULL AND td.farmer_id IS NULL THEN a.id END) AS no_training_mapping_count,
           COUNT(DISTINCT CASE WHEN tm.afl_id IS NOT NULL AND td.farmer_id IS NULL THEN a.id END) AS training_mapped_but_no_entry_count,
           COUNT(DISTINCT a.id) FILTER (WHERE td.farmer_id IS NULL) AS red_farmer_count
       FROM public.afls a
@@ -5332,7 +5355,7 @@ class ModulesController < ApplicationController
       ORDER BY a.fco_id;
     SQL
 
-    binds = { month_name: selected_month.strip.downcase, fco_ids: fco_ids.map(&:downcase) }
+    binds = { month_name: selected_month.strip.downcase, fco_ids: fco_ids.map(&:downcase), fco_values: fco_values }
     rows = ActiveRecord::Base.connection.exec_query(
       ActiveRecord::Base.send(:sanitize_sql_array, [sql, binds])
     ).to_a
