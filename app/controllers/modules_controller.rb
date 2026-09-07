@@ -5321,7 +5321,7 @@ class ModulesController < ApplicationController
           COUNT(DISTINCT CASE WHEN am.afl_id IS NULL THEN a.id END) AS no_activity_mapping_count,
           COUNT(DISTINCT CASE WHEN am.afl_id IS NOT NULL AND tm.afl_id IS NULL THEN a.id END) AS no_training_mapping_count,
           COUNT(DISTINCT CASE WHEN tm.afl_id IS NOT NULL AND td.farmer_id IS NULL THEN a.id END) AS training_mapped_but_no_entry_count,
-          COUNT(DISTINCT CASE WHEN td.farmer_id IS NULL THEN a.id END) AS pending_farmer_count
+          COUNT(DISTINCT a.id) FILTER (WHERE td.farmer_id IS NULL) AS red_farmer_count
       FROM public.afls a
       LEFT JOIN august_any_mapping am ON am.afl_id = a.id::text
       LEFT JOIN august_training_mapping tm ON tm.afl_id = a.id::text
@@ -5337,14 +5337,14 @@ class ModulesController < ApplicationController
       ActiveRecord::Base.send(:sanitize_sql_array, [sql, binds])
     ).to_a
 
-    total_count = rows.sum { |r| r["pending_farmer_count"].to_i }
+    total_count = rows.sum { |r| r["red_farmer_count"].to_i }
     popups = format_red_fco_popups(rows, fco_ids)
     details = format_red_fco_details(rows, fco_ids)
 
     [total_count, popups, details]
   rescue StandardError => e
     Rails.logger.warn("No training count SQL failed: #{e.message}")
-    [0, format_fco_popups([], fco_ids, "pending_farmer_count"), []]
+    [0, format_fco_popups([], fco_ids, "red_farmer_count"), []]
   end
 
   def format_red_fco_popups(rows, fco_ids)
@@ -5356,7 +5356,7 @@ class ModulesController < ApplicationController
       row = rows_by_id[id.to_s.strip.downcase]
       raw_name = row&.dig("fco_name").presence || fco_name_map[id.to_s] || "FCO #{id}"
       name = raw_name.to_s.titleize
-      total_red = row ? row["pending_farmer_count"].to_i : 0
+      total_red = row ? row["red_farmer_count"].to_i : 0
       no_activity = row ? row["no_activity_mapping_count"].to_i : 0
       no_training = row ? row["no_training_mapping_count"].to_i : 0
       no_entry = row ? row["training_mapped_but_no_entry_count"].to_i : 0
@@ -5379,7 +5379,7 @@ class ModulesController < ApplicationController
       row = rows_by_id[id.to_s.strip.downcase]
       raw_name = row&.dig("fco_name").presence || fco_name_map[id.to_s] || "FCO #{id}"
       name = raw_name.to_s.titleize
-      total_red = row ? row["pending_farmer_count"].to_i : 0
+      total_red = row ? row["red_farmer_count"].to_i : 0
       no_activity = row ? row["no_activity_mapping_count"].to_i : 0
       no_training = row ? row["no_training_mapping_count"].to_i : 0
       no_entry = row ? row["training_mapped_but_no_entry_count"].to_i : 0
