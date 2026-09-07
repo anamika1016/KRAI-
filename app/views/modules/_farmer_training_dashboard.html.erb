@@ -48,7 +48,6 @@
         <div class="dashboard-summary-actions">
           <span class="dashboard-summary-action-popover">
             <%= link_to "View List", farmer_training_participation_path(unique_status_path_params), class: "table-action", data: { dashboard_card: true } %>
-            <%= link_to "Export Excel", farmer_training_participation_path(unique_status_path_params.merge(format: :xlsx)), class: "table-action export" %>
             <% if Array(@training_mapped_farmer_popups).any? %>
               <span class="dashboard-card-hover-popup" role="tooltip">
                 <% Array(@training_mapped_farmer_popups).each do |item| %>

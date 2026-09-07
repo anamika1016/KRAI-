@@ -1074,12 +1074,12 @@ class ModulesController < ApplicationController
     end
     if @mapped_farmer_details && request.format.csv?
       send_data(CSV.generate { |csv| csv << @mapped_farmer_details.columns; @mapped_farmer_details.rows.each { |row| csv << row } },
-        filename: "mapped-farmers.csv", type: "text/csv")
+        filename: "#{@training_participation_status}-farmers.csv", type: "text/csv")
       return
     end
     if @mapped_farmer_details && request.format.xlsx?
       send_xlsx(headers: @mapped_farmer_details.columns, rows: @mapped_farmer_details.rows,
-        filename: "mapped-farmers-#{selected_month.presence || 'August'}.xlsx", sheet_name: "Mapped Farmers")
+        filename: "#{@training_participation_status}-farmers-#{selected_month.presence || 'August'}.xlsx", sheet_name: "Farmer Details")
       return
     end
 
@@ -5852,29 +5852,10 @@ class ModulesController < ApplicationController
         ORDER BY a.fco_id, a.id;
       SQL
     else # "red", "total_red", "pending"
-      <<~SQL.squish
-        WITH august_training_done AS (
-            SELECT DISTINCT sf.farmer_id
-            FROM public.module_records mr
-            CROSS JOIN LATERAL jsonb_array_elements_text(
-                COALESCE(
-                    mr.data::jsonb -> 'selected_farmer_ids',
-                    '[]'::jsonb
-                )
-            ) AS sf(farmer_id)
-            WHERE mr.module_slug = 'training-form'
-              AND LOWER(TRIM(mr.data::jsonb ->> 'month')) = :month_name
-              AND LOWER(COALESCE(mr.data::jsonb ->> 'main_activity', '')) LIKE '%farmers'' training%'
-        )
-        SELECT a.id, a.fco_id, a.fco, a.fpo_id, a.fpo_name, a.ics_id, a.ics_name, a.village_id, a.village_name, a.tracenet_no, a.farmer_name, a.father_name, a.mobile_no
-        FROM public.afls a
-        LEFT JOIN august_training_done td ON td.farmer_id = a.id::text
-        WHERE td.farmer_id IS NULL #{fco_filter_a}
-        ORDER BY a.fco_id, a.village_name, a.farmer_name;
-      SQL
+      Rails.root.join("app/queries/no_training_farmer_details.sql").read
     end
 
-    if %w[unique mapped].include?(status.to_s)
+    if %w[unique mapped red pending total_red].include?(status.to_s)
       farmer_scope = Afl.where(fco_id: fco_ids)
       unless admin_dashboard_user?
         visible_vrps = Vrp.all.select { |vrp| scoped_jeevika_vrp_visible?(vrp) }
@@ -11442,6 +11423,9 @@ class ModulesController < ApplicationController
   def jeevika_jankar_bill_record_visible?(record)
     return true if admin_dashboard_user?
     return false unless record&.data.present?
+    if module_cluster_incharge_login? && !dashboard_agronomics_login? && !dashboard_source_fcoc_login? && !vrp_login_user?
+      return jeevika_bill_created_by_current_user?(record)
+    end
     vrp = jeevika_bill_vrp_for_visibility(record)
     return false unless vrp
     return scoped_jeevika_vrp_visible?(vrp) if jeevika_assignment_scope_required?
@@ -11458,7 +11442,7 @@ class ModulesController < ApplicationController
     return false unless vrp
     return vrp.id.to_s == current_vrp_record&.id.to_s if vrp_login_user?
     return jeevika_bill_vrp_registered_by_current_user?(vrp) if dashboard_agronomics_login?
-    return jeevika_bill_vrp_office_visible?(vrp) if dashboard_source_fcoc_login?
+    return jeevika_bill_vrp_fco_visible?(vrp) if dashboard_source_fcoc_login?
     return module_cluster_vrp_visible?(vrp) if module_cluster_incharge_login?
 
     jeevika_bill_vrp_registered_by_current_user?(vrp)
@@ -11500,6 +11484,10 @@ class ModulesController < ApplicationController
 
   def jeevika_bill_created_by_current_user?(record)
     data = record.data
+    if data["created_by_id"].present? && data["created_by_record_type"].present? &&
+        data["created_by_record_type"].to_s.casecmp(current_app_user&.dig("record_type").to_s).zero?
+      return data["created_by_id"].to_s == current_app_user&.dig("id").to_s
+    end
     current_user_values = normalized_visibility_values(
       current_app_user&.dig("username"),
       current_app_user&.dig("user_name"),
@@ -11549,6 +11537,19 @@ class ModulesController < ApplicationController
     return true if vrp.respond_to?(:user_id) && vrp.user_id.present? && current_ids.include?(vrp.user_id.to_s)
 
     false
+  end
+
+  def jeevika_bill_vrp_fco_visible?(vrp)
+    user = current_app_user || {}
+    values = [user["fcoc"], user["fcoc_name"], user["office_name"], user["parent_office"], user["office_category"], user["office"]].compact_blank
+    fco_values = values.select { |value| value.to_s.match?(/fco/i) }
+    fco_values = [user["fcoc"], user["fcoc_name"], user["office_name"]].compact_blank if fco_values.empty?
+    vrp_fco = normalized_bill_fco(vrp.fcoc)
+    vrp_fco.present? && fco_values.any? { |value| normalized_bill_fco(value) == vrp_fco }
+  end
+
+  def normalized_bill_fco(value)
+    normalize_dashboard_user_label(value.to_s.sub(/\A\s*fco(?:\s*[- ]?\s*c)?\s*[-:]?\s*/i, ""))
   end
 
   def jeevika_bill_vrp_office_visible?(vrp)
