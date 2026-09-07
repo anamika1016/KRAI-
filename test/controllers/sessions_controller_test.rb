@@ -1,6 +1,24 @@
 require "test_helper"
 
 class SessionsControllerTest < ActionDispatch::IntegrationTest
+  test "expired login token returns to a fresh uncached form without logging in" do
+    previous = ActionController::Base.allow_forgery_protection
+    ActionController::Base.allow_forgery_protection = true
+    get login_path
+    assert_response :success
+    assert_includes response.headers["Cache-Control"], "no-store"
+    assert_select 'meta[name="turbo-cache-control"][content="no-cache"]'
+    post login_path, params: { login: "anyone", password: "secret", authenticity_token: "expired" }
+    assert_response :see_other
+    assert_redirected_to login_path
+    follow_redirect!
+    assert_response :success
+    assert_includes response.body, "Login page expired"
+    assert_select 'input[name="authenticity_token"]'
+  ensure
+    ActionController::Base.allow_forgery_protection = previous
+  end
+
   test "vrp must accept agreement on first login" do
     village = ModuleRecord.create!(
       module_slug: "village-master",

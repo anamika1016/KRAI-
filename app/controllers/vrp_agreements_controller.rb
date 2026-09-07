@@ -26,7 +26,7 @@ class VrpAgreementsController < ApplicationController
   end
 
   def show
-    @vrp = Vrp.find_by(id: params[:id])
+    @vrp = visible_agreement_vrps.find_by(id: params[:id])
     unless @vrp&.agreement_accepted?
       redirect_to vrp_agreements_path, alert: "Signed agreement not found."
       return
@@ -36,7 +36,7 @@ class VrpAgreementsController < ApplicationController
   end
 
   def destroy
-    @vrp = Vrp.find_by(id: params[:id])
+    @vrp = visible_agreement_vrps.find_by(id: params[:id])
     unless @vrp
       redirect_to vrp_agreements_path, alert: "Agreement not found."
       return
@@ -48,10 +48,18 @@ class VrpAgreementsController < ApplicationController
 
   private
 
+  def visible_agreement_vrps
+    policy = ModulesController.new
+    policy.set_request!(request)
+    policy.set_response!(response)
+    policy.instance_variable_set(:@current_app_user, current_app_user)
+    Vrp.where(id: Vrp.all.select { |vrp| policy.send(:scoped_jeevika_vrp_visible?, vrp) }.map(&:id))
+  end
+
   def accepted_agreement_rows
     return [] unless vrp_agreement_enabled?
 
-    Vrp.includes(:vrp_profile)
+    visible_agreement_vrps.includes(:vrp_profile)
       .select(:id, :name, :user_name, :mobile_no, :agreement_accepted_at, :agreement_signature_data, :village_ids)
       .where.not(agreement_accepted_at: nil)
       .where.not(agreement_signature_data: [nil, ""])

@@ -1068,6 +1068,21 @@ class ModulesController < ApplicationController
     @training_participation_page = @training_participation_total_pages if @training_participation_page > @training_participation_total_pages
     @training_participation_page_rows = @training_participation_rows.slice((@training_participation_page - 1) * @training_participation_per_page, @training_participation_per_page) || []
 
+    if @mapped_farmer_details
+      @training_participation_total_pages = 1
+      @training_participation_page = 1
+    end
+    if @mapped_farmer_details && request.format.csv?
+      send_data(CSV.generate { |csv| csv << @mapped_farmer_details.columns; @mapped_farmer_details.rows.each { |row| csv << row } },
+        filename: "mapped-farmers.csv", type: "text/csv")
+      return
+    end
+    if @mapped_farmer_details && request.format.xlsx?
+      send_xlsx(headers: @mapped_farmer_details.columns, rows: @mapped_farmer_details.rows,
+        filename: "mapped-farmers-#{selected_month.presence || 'August'}.xlsx", sheet_name: "Mapped Farmers")
+      return
+    end
+
     respond_to do |format|
       format.html
       format.csv do
@@ -2169,8 +2184,9 @@ class ModulesController < ApplicationController
       assigned_farmer_ids = target_farmer_ids(target)
       completed_farmer_ids = vrp_dashboard_completed_farmer_ids_for_target(target) & assigned_farmer_ids
       activity_setting = jeevika_jankar_activity_setting_for(target, activity_settings, sub_activity_settings)
-      training_completion = activity_setting.blank? || training_main_activity_type?(activity_setting[:main_activity_type])
-      completion_uses_farmer_ids = activity_setting.blank? || training_main_activity_type?(activity_setting[:main_activity_type]) || completed_farmer_ids.any?
+      other_completion = other_target_achievement_index[target.id.to_s]
+      training_completion = other_completion.blank? && (activity_setting.blank? || training_main_activity_type?(activity_setting[:main_activity_type]))
+      completion_uses_farmer_ids = training_completion || (other_completion.blank? && completed_farmer_ids.any?)
       target_quantity = target.target_quantity.to_f
       effective_target = assigned_farmer_ids.any? ? assigned_farmer_ids.size.to_f : target_quantity
       completed = if training_completion && assigned_farmer_ids.any?
@@ -2255,7 +2271,9 @@ class ModulesController < ApplicationController
         # use the greatest achieved value instead of multiplying it per activity.
         rows.map { |row| row[:completed].to_f }.max.to_f
       end
-      completed_total = [completed_total, effective_target].min
+      # A grouped assignment can also have a quantity-based Other Target entry.
+      other_completed = rows.reject { |row| row[:training_completion] }.map { |row| row[:completed].to_f }.max.to_f
+      completed_total = [[completed_total, other_completed].max, effective_target].min
 
       first.merge(
         main_activity: main_activities.join("\n"),
@@ -3046,11 +3064,11 @@ class ModulesController < ApplicationController
     sub_activity_settings ||= jeevika_jankar_sub_activity_settings(activity_settings)
     activity_setting = jeevika_jankar_activity_setting_for(target, activity_settings, sub_activity_settings)
 
-    if activity_setting.present? && !training_main_activity_type?(activity_setting[:main_activity_type])
-      other_target_achievement = other_target_achievement_index&.dig(target.id.to_s) ||
-        approved_other_target_achievement_index[target.id.to_s]
-      return capped_target_achievement(target, other_target_achievement[:achievement]) if other_target_achievement.present?
-    elsif activity_setting.blank? || training_main_activity_type?(activity_setting[:main_activity_type])
+    other_target_achievement = other_target_achievement_index&.dig(target.id.to_s) ||
+      approved_other_target_achievement_index[target.id.to_s]
+    return capped_target_achievement(target, other_target_achievement[:achievement]) if other_target_achievement.present?
+
+    if activity_setting.blank? || training_main_activity_type?(activity_setting[:main_activity_type])
       # Older/renamed activity-master rows may not resolve to a setting. Matching
       # training submissions are still authoritative completion evidence and must
       # keep the dashboard's achieved/pending figures live.
@@ -5743,25 +5761,7 @@ class ModulesController < ApplicationController
 
     sql = case status.to_s
     when "unique", "mapped"
-      <<~SQL.squish
-        WITH august_any_mapping AS (
-            SELECT DISTINCT v.afl_id
-            FROM public.target_mappings t
-            CROSS JOIN LATERAL jsonb_array_elements_text(
-                CASE
-                  WHEN jsonb_typeof(t.afl_ids::jsonb) = 'array' THEN t.afl_ids::jsonb
-                  ELSE jsonb_build_array(t.afl_ids::jsonb)
-                END
-            ) AS v(afl_id)
-            WHERE LOWER(TRIM(t.month_name)) = :month_name
-              #{fco_filter_t}
-        )
-        SELECT a.id, a.fco_id, a.fco, a.fpo_id, a.fpo_name, a.ics_id, a.ics_name, a.village_id, a.village_name, a.tracenet_no, a.farmer_name, a.father_name, a.mobile_no
-        FROM public.afls a
-        INNER JOIN august_any_mapping am ON am.afl_id = a.id::text
-        WHERE 1=1 #{fco_filter_a}
-        ORDER BY a.fco_id, a.id;
-      SQL
+      Rails.root.join("app/queries/mapped_farmer_details.sql").read
     when "no_activity"
       <<~SQL.squish
         WITH august_any_mapping AS (
@@ -5872,6 +5872,30 @@ class ModulesController < ApplicationController
         WHERE td.farmer_id IS NULL #{fco_filter_a}
         ORDER BY a.fco_id, a.village_name, a.farmer_name;
       SQL
+    end
+
+    if %w[unique mapped].include?(status.to_s)
+      farmer_scope = Afl.where(fco_id: fco_ids)
+      unless admin_dashboard_user?
+        visible_vrps = Vrp.all.select { |vrp| scoped_jeevika_vrp_visible?(vrp) }
+        visible_targets = TargetMapping.where(vrp_id: visible_vrps.map(&:id))
+        if dashboard_source_fcoc_login?
+          allowed_fcos = visible_targets.distinct.pluck(:fco_id)
+          farmer_scope = farmer_scope.where(fco_id: allowed_fcos)
+        else
+          farmer_scope = farmer_scope.where(id: visible_targets.flat_map { |target| Array(target.afl_ids) }.uniq)
+        end
+      end
+      binds = { month_name: selected_month.strip.downcase, fco_ids: fco_ids, visible_farmer_ids: farmer_scope.pluck(:id) }
+      @mapped_farmer_details = ActiveRecord::Base.connection.exec_query(
+        ActiveRecord::Base.send(:sanitize_sql_array, [sql, binds])
+      )
+      return @mapped_farmer_details.map do |row|
+        { farmer_id: row["id"].to_s, farmer_name: row["farmer_name"], father_name: row["father_name"],
+          mobile_no: row["mobile_no"], tracenet_no: row["tracenet_no"], ics: row["ics_name"],
+          village: row["village_name"], fcoc: row["fco"], cluster_incharge: row["cluster_incharge"],
+          vrp: row["vrp_name"], months: selected_month, status_label: row["status"] }
+      end
     end
 
     binds = { month_name: selected_month.strip.downcase, fco_ids: fco_ids.flat_map { |id| [id.to_s, id.to_s.downcase] }.uniq }
@@ -6091,7 +6115,7 @@ class ModulesController < ApplicationController
   def training_participation_status_cards(targets, month_name: nil, sub_activity_name: nil, fcoc_name: nil)
     counts = training_participation_status_counts(targets, month_name: month_name)
 
-    %w[green yellow red pending].map do |status|
+    %w[red yellow green].map do |status|
       path_params = { status: status }
       path_params[:training_month] = month_name if month_name.present?
       path_params[:training_sub_activity] = sub_activity_name if sub_activity_name.present?
@@ -6111,7 +6135,7 @@ class ModulesController < ApplicationController
     counts = training_participation_status_counts_from_records(records)
     population_counts = population_rows.nil? ? {} : training_participation_status_counts_from_rows(population_rows)
 
-    %w[green yellow red pending].map do |status|
+    %w[red yellow green].map do |status|
       path_params = { status: status }
       path_params[:training_month] = month_name if month_name.present?
       path_params[:training_sub_activity] = sub_activity_name if sub_activity_name.present?
@@ -6667,7 +6691,7 @@ class ModulesController < ApplicationController
 
   def normalize_training_participation_status(status)
     value = status.to_s.strip.downcase
-    %w[total unique training_unique completed_map green yellow red pending pending_achievement].include?(value) ? value : nil
+    %w[total unique training_unique completed_map green yellow red pending pending_achievement no_activity no_training_mapping no_training training_mapped_no_entry no_entry].include?(value) ? value : nil
   end
 
   def training_participation_status_label(status)
@@ -7962,7 +7986,7 @@ class ModulesController < ApplicationController
     rows = if model_ready?(:Vrp) && Vrp.column_names.include?("agreement_accepted_at")
       Vrp.where.not(agreement_accepted_at: nil)
         .order(agreement_accepted_at: :desc)
-        .limit(50)
+        .select { |vrp| scoped_jeevika_vrp_visible?(vrp) }
         .map do |vrp|
           [
             vrp.name.presence || "-",
@@ -11418,17 +11442,26 @@ class ModulesController < ApplicationController
   def jeevika_jankar_bill_record_visible?(record)
     return true if admin_dashboard_user?
     return false unless record&.data.present?
-    return true if jeevika_bill_created_by_current_user?(record)
-    return true if jeevika_bill_approver_visible?(record)
-
     vrp = jeevika_bill_vrp_for_visibility(record)
     return false unless vrp
-    return true if vrp_login_user? && vrp.id.to_s == current_vrp_record&.id.to_s
-    return true if jeevika_bill_vrp_registered_by_current_user?(vrp)
-    return true if jeevika_bill_vrp_office_visible?(vrp)
-    return true if module_cluster_visible_vrp_id_strings.include?(vrp.id.to_s)
+    return scoped_jeevika_vrp_visible?(vrp) if jeevika_assignment_scope_required?
 
-    false
+    scoped_jeevika_vrp_visible?(vrp) || jeevika_bill_created_by_current_user?(record) || jeevika_bill_approver_visible?(record)
+  end
+
+  def jeevika_assignment_scope_required?
+    vrp_login_user? || dashboard_agronomics_login? || dashboard_source_fcoc_login? || module_cluster_incharge_login?
+  end
+
+  def scoped_jeevika_vrp_visible?(vrp)
+    return true if admin_dashboard_user?
+    return false unless vrp
+    return vrp.id.to_s == current_vrp_record&.id.to_s if vrp_login_user?
+    return jeevika_bill_vrp_registered_by_current_user?(vrp) if dashboard_agronomics_login?
+    return jeevika_bill_vrp_office_visible?(vrp) if dashboard_source_fcoc_login?
+    return module_cluster_vrp_visible?(vrp) if module_cluster_incharge_login?
+
+    jeevika_bill_vrp_registered_by_current_user?(vrp)
   end
 
   def jeevika_jankar_payment_module_access?(slug)
@@ -11539,7 +11572,8 @@ class ModulesController < ApplicationController
     fcoc_matches = vrp_fcoc_values.any? && (vrp_fcoc_values & current_office_values).any?
     to_matches = vrp_to_values.any? && (vrp_to_values & current_office_values).any?
 
-    return fcoc_matches || to_matches if vrp_fcoc_values.any? && vrp_to_values.any?
+    return to_matches if current_to_values.any? && vrp_to_values.any?
+    return fcoc_matches if vrp_fcoc_values.any? && vrp_to_values.any?
     return fcoc_matches if vrp_fcoc_values.any?
     return to_matches if vrp_to_values.any?
 

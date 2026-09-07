@@ -1,19 +1,20 @@
 <!DOCTYPE html>
 <html>
   <head>
-    <title><%= content_for(:title) || "Vrp" %></title>
+    <title><%= content_for(:title) || "JJ" %></title>
     <meta name="viewport" content="width=device-width,initial-scale=1">
     <meta name="apple-mobile-web-app-capable" content="yes">
-    <meta name="application-name" content="Vrp">
+    <meta name="application-name" content="JJ">
     <meta name="mobile-web-app-capable" content="yes">
     <%= csrf_meta_tags %>
     <%= csp_meta_tag %>
 
     <%= yield :head %>
 
+    <link rel="icon" href="/jj_logo.png" type="image/png">
     <link rel="icon" href="/icon.png" type="image/png">
-    <link rel="icon" href="/icon.svg" type="image/svg+xml">
-    <link rel="apple-touch-icon" href="/icon.png">
+    <link rel="icon" href="/favicon.ico" type="image/x-icon">
+    <link rel="apple-touch-icon" href="/jj_logo.png">
 
     <%= stylesheet_link_tag :application, "data-turbo-track": "reload" %>
     <%= javascript_importmap_tags %>
@@ -29,7 +30,7 @@
             <span>☰</span>
             <strong>Menu</strong>
           </button>
-          <span class="mobile-menu-title"><%= content_for(:title) || "VRP" %></span>
+          <span class="mobile-menu-title"><%= content_for(:title) || "JJ" %></span>
         </div>
         <button type="button" class="mobile-sidebar-backdrop" data-mobile-sidebar-backdrop aria-label="Close menu"></button>
         <%= render "layouts/sidebar" %>

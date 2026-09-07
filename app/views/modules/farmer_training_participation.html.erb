@@ -34,9 +34,9 @@
         <strong><%= status_counts[:unique].to_i %></strong>
         <small>Unique mapped farmers for the selected filters.</small>
       <% end %>
-      <% %w[red yellow green pending].each do |status| %>
+      <% %w[red yellow green].each do |status| %>
         <%= link_to farmer_training_participation_path(filter_params.merge(status: status)), class: "training-participation-box #{status} #{'is-active' if (%w[red no_activity no_training_mapping no_training training_mapped_no_entry no_entry].include?(@training_participation_status) && status == 'red') || @training_participation_status == status}" do %>
-          <span><%= status == "pending" ? "Pending Farmer" : training_participation_status_label(status) %></span>
+          <span><%= training_participation_status_label(status) %></span>
           <strong><%= status_counts[status.to_sym].to_i %></strong>
           <small><%= training_participation_status_caption(status) %></small>
         <% end %>
@@ -76,6 +76,18 @@
       <%= link_to "Export Excel", farmer_training_participation_path(filter_params.merge(status: @training_participation_status, format: :xlsx)), class: "list-btn export" %>
     </div>
 
+    <% if @mapped_farmer_details %>
+      <div class="table-shell">
+        <table class="module-table compact-table">
+          <thead><tr><% @mapped_farmer_details.columns.each do |column| %><th><%= column.humanize %></th><% end %></tr></thead>
+          <tbody>
+            <% @mapped_farmer_details.rows.each do |values| %>
+              <tr><% values.each do |value| %><td><%= value.presence || "-" %></td><% end %></tr>
+            <% end %>
+          </tbody>
+        </table>
+      </div>
+    <% else %>
     <div class="table-shell">
       <table class="module-table compact-table training-participation-table upload-report-table" id="training_participation_list">
         <thead>
@@ -169,6 +181,7 @@
           <span class="page-link disabled">Next</span>
         <% end %>
       </div>
+    <% end %>
     <% end %>
   </section>
 </section>

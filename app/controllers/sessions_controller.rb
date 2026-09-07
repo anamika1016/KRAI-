@@ -2,6 +2,8 @@ require "securerandom"
 
 class SessionsController < ApplicationController
   skip_before_action :require_app_login
+  before_action :prevent_session_page_caching
+  rescue_from ActionController::InvalidAuthenticityToken, with: :recover_expired_login_form
   helper_method :agreement_details
   FORGOT_PASSWORD_OTP_TTL = 10.minutes
 
@@ -148,6 +150,17 @@ class SessionsController < ApplicationController
   end
 
   private
+
+  def prevent_session_page_caching
+    response.headers["Cache-Control"] = "no-store, private"
+  end
+
+  def recover_expired_login_form
+    # Never authenticate a request whose CSRF check failed. Start with a fresh
+    # form/token, including when a cached tab belongs to an older session.
+    redirect_to login_path, status: :see_other,
+      alert: "Login page expired. Please enter your details again."
+  end
 
   def pending_vrp_agreement
     return unless "Vrp".safe_constantize&.table_exists?
