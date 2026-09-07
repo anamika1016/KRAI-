@@ -9428,6 +9428,7 @@ class ModulesController < ApplicationController
   end
 
   def prepare_jeevika_jankar_bill_list
+    @bill_list_master_months = month_master_month_options
     return if params[:view_id].blank?
 
     record = ModuleRecord.find_by(id: params[:view_id])

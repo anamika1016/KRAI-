@@ -1684,8 +1684,8 @@
     <% bill_rows = jeevika_bill_rows(@records) %>
     <% bill_months = bill_rows.map { |row| row[:bill_month] }.compact_blank.reject { |month| month == "-" }.uniq %>
     <% recent_month = Date.current.prev_month.strftime("%B") %>
-    <% default_bill_month = bill_months.find { |month| month.casecmp(recent_month).zero? } || bill_months.first || recent_month %>
-    <% bill_months << default_bill_month unless bill_months.include?(default_bill_month) %>
+    <% default_bill_month = recent_month %>
+    <% bill_months = (bill_months + Array(@bill_list_master_months) + [default_bill_month, params[:bill_month].presence_in(Date::MONTHNAMES.compact)]).compact_blank.map(&:strip).uniq { |month| month.downcase } %>
     <% bill_months.sort_by! { |month| Date::MONTHNAMES.index { |name| name.to_s.casecmp(month.to_s).zero? } || 99 } %>
     <% selected_bill_status = params[:bill_status].presence_in(["pending", "final-approved"]) || "pending" %>
     <% selected_record_state = params[:record_state].presence_in(["Active", "Inactive"]) %>
@@ -1695,7 +1695,7 @@
       <% bill_rows = bill_rows.select { |row| selected_bill_month.blank? || selected_bill_month == "all" || row[:bill_month].to_s.strip.casecmp(selected_bill_month.to_s.strip).zero? } %>
       <% bill_rows = bill_rows.select do |row|
         row_status = row[:status].to_s.downcase
-        selected_bill_status == "final-approved" ? row_status.include?("final approved") : (row_status.include?("pending") || row[:created_by_current_user] || row[:approver_visible])
+        selected_bill_status == "final-approved" ? row_status.include?("final approved") : (row_status.include?("pending") || row_status.include?("not sent for approval"))
       end %>
       <% bill_rows = bill_rows.select { |row| selected_record_state.blank? || row[:record_state].to_s.casecmp(selected_record_state).zero? } %>
     <% end %>
