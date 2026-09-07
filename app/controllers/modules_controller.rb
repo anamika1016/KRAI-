@@ -2179,6 +2179,7 @@ class ModulesController < ApplicationController
     sub_activity_settings = jeevika_jankar_sub_activity_settings(activity_settings)
     other_target_achievement_index = approved_other_target_achievement_index
     group_key_counts = dashboard_target_mapping_group_key_counts(targets)
+    training_participation_existing_farmer_id_set(targets)
 
     raw_rows = Array(targets).map do |target|
       assigned_farmer_ids = target_farmer_ids(target)
@@ -2553,9 +2554,9 @@ class ModulesController < ApplicationController
 
     targets.group_by { |target| normalize_dashboard_text(target.month_name) }.flat_map do |_month, month_targets|
       farmer_ids = month_targets.flat_map { |target| target_farmer_ids(target) }.map(&:to_s).reject(&:blank?).uniq
-      candidate_records = dashboard_training_form_records_for_month(month_targets.first.month_name, farmer_ids: farmer_ids)
       month_targets.flat_map do |target|
         assigned_ids = target_farmer_ids(target)
+        candidate_records = dashboard_training_form_records_for_month(target.month_name, farmer_ids: assigned_ids.presence || farmer_ids)
         candidate_records.select { |record| training_record_matches_dashboard_target?(record, target, assigned_ids) }
       end
     end.uniq(&:id)
@@ -2570,7 +2571,8 @@ class ModulesController < ApplicationController
     record_ids = farmer_ids.flat_map { |farmer_id| dashboard_training_form_record_ids_by_farmer_for_month(month)[farmer_id] }.compact.uniq
     return [] if record_ids.blank?
 
-    records_by_id = records.index_by(&:id)
+    @dashboard_training_form_records_index_by_month ||= {}
+    records_by_id = @dashboard_training_form_records_index_by_month[month] ||= records.index_by(&:id)
     record_ids.filter_map { |record_id| records_by_id[record_id] }
   end
 
@@ -2595,8 +2597,13 @@ class ModulesController < ApplicationController
 
   def vrp_dashboard_detail_payload(list_type, vrp, mappings, targets, bills, filters = {})
     key = list_type.to_s.presence || "assigned_target"
-    target_rows = vrp_dashboard_target_progress_rows(targets, bills)
-    farmer_status_sets = vrp_dashboard_farmer_status_sets(target_rows)
+    # Farmer/village lists do not display achievement calculations. Avoid
+    # loading training records and approval data for those requests.
+    simple_lists = %w[target_farmers mapped_farmers mapped_village_farmers ics_mapped_farmers mapped_villages]
+    target_rows = simple_lists.include?(key) ? [] : vrp_dashboard_target_progress_rows(targets, bills)
+    farmer_status_sets = if %w[complete_farmers red_farmers green_farmers yellow_farmers].include?(key)
+      vrp_dashboard_farmer_status_sets(target_rows)
+    end
 
     case key
     when "target_farmers"
@@ -3287,8 +3294,8 @@ class ModulesController < ApplicationController
     approved_bills = bill_records.count { |r| dashboard_bill_approved?(r) }
     pending_bills = bill_records.count { |r| dashboard_bill_pending?(r) }
     billing_items = [
-      { title: "Bill Approved", value: approved_bills, path: module_path("jeevika-jankar-bill-list", bill_status: "final-approved", record_state: "Active") },
-      { title: "Bill Pending", value: pending_bills, path: module_path("jeevika-jankar-bill-list", bill_status: "pending", record_state: "Active") }
+      { title: "Approved", value: approved_bills, path: module_path("jeevika-jankar-bill-list", bill_status: "final-approved", record_state: "Active") },
+      { title: "Pending", value: pending_bills, path: module_path("jeevika-jankar-bill-list", bill_status: "pending", record_state: "Active") }
     ]
 
     cards = [
@@ -3420,6 +3427,10 @@ class ModulesController < ApplicationController
   def dashboard_summary_target_sql_filters_base(include_activity_filters: true)
     conditions = ["1=1"]
     binds = {}
+    unless dashboard_global_view_user?
+      conditions << "t.vrp_id IN (:authorized_vrp_ids)"
+      binds[:authorized_vrp_ids] = dashboard_visible_vrp_ids
+    end
 
     if @dashboard_month_filter_value.present?
       conditions << "LOWER(BTRIM(t.month_name)) = :summary_month"
@@ -3458,10 +3469,10 @@ class ModulesController < ApplicationController
     elsif vrp_login_user? && current_vrp_record.present?
       conditions << "t.vrp_id = :summary_vrp_id"
       binds[:summary_vrp_id] = current_vrp_record.id
-    elsif dashboard_agronomics_login? && dashboard_registered_vrp_ids_for_current_user.any?
+    elsif dashboard_agronomics_login?
       conditions << "t.vrp_id IN (:summary_registered_vrp_ids)"
       binds[:summary_registered_vrp_ids] = dashboard_registered_vrp_ids_for_current_user
-    elsif dashboard_cc_vrp_scope_active? && module_cluster_visible_vrp_ids.any?
+    elsif dashboard_cc_vrp_scope_active?
       conditions << "t.vrp_id IN (:summary_visible_vrp_ids)"
       binds[:summary_visible_vrp_ids] = module_cluster_visible_vrp_ids
     end
@@ -3475,10 +3486,16 @@ class ModulesController < ApplicationController
   end
 
   def dashboard_summary_direct_afl_total?
-    !vrp_login_user? && !dashboard_agronomics_login?
+    !vrp_login_user? && !dashboard_agronomics_login? && !dashboard_cc_vrp_scope_active?
   end
 
   def dashboard_agronomics_login?
+    return @dashboard_agronomics_login if defined?(@dashboard_agronomics_login)
+
+    @dashboard_agronomics_login = compute_dashboard_agronomics_login
+  end
+
+  def compute_dashboard_agronomics_login
     [
       current_app_user&.dig("role"),
       current_app_user&.dig("role_name"),
@@ -3501,6 +3518,12 @@ class ModulesController < ApplicationController
   end
 
   def dashboard_source_fcoc_login?
+    return @dashboard_source_fcoc_login if defined?(@dashboard_source_fcoc_login)
+
+    @dashboard_source_fcoc_login = compute_dashboard_source_fcoc_login
+  end
+
+  def compute_dashboard_source_fcoc_login
     values = [
       current_app_user&.dig("role"),
       current_app_user&.dig("role_name"),
@@ -3540,6 +3563,9 @@ class ModulesController < ApplicationController
     selected_vrp_id = dashboard_filter_param(:vrp_id)
 
     training_conditions = ["mr.module_slug = 'training-form'", "sf.farmer_id <> ''"]
+    unless dashboard_global_view_user?
+      training_conditions << "sf.farmer_id IN (#{dashboard_visible_farmer_scope.select('afls.id::text').to_sql})"
+    end
     training_binds = {}
 
     if month_value.present?
@@ -3553,10 +3579,10 @@ class ModulesController < ApplicationController
     elsif vrp_login_user? && current_vrp_record.present?
       training_conditions << "mr.data::jsonb ->> 'created_by_id' = :created_by_id"
       training_binds[:created_by_id] = current_vrp_record.id.to_s
-    elsif dashboard_agronomics_login? && dashboard_registered_vrp_ids_for_current_user.any?
+    elsif dashboard_agronomics_login?
       training_conditions << "COALESCE(mr.data::jsonb ->> 'created_by_id', '') IN (:created_by_ids)"
       training_binds[:created_by_ids] = dashboard_registered_vrp_ids_for_current_user.map(&:to_s)
-    elsif dashboard_cc_vrp_scope_active? && module_cluster_visible_vrp_ids.any?
+    elsif dashboard_cc_vrp_scope_active?
       training_conditions << "COALESCE(mr.data::jsonb ->> 'created_by_id', '') IN (:created_by_ids)"
       training_binds[:created_by_ids] = module_cluster_visible_vrp_ids.map(&:to_s)
     end
@@ -3591,6 +3617,9 @@ class ModulesController < ApplicationController
     fcoc_value = @participation_fcoc_filter_value.presence || @dashboard_fcoc_filter_value.presence || dashboard_filter_param(:fcoc, :fco)
     selected_vrp_id = dashboard_filter_param(:vrp_id)
     target_conditions = ["j.value <> ''"]
+    unless dashboard_global_view_user?
+      target_conditions << "t.vrp_id IN (#{Vrp.where(id: dashboard_visible_vrp_ids).select(:id).to_sql})"
+    end
     target_binds = {}
     if month_value.present?
       target_conditions << "LOWER(BTRIM(t.month_name)) = :target_month"
@@ -3611,10 +3640,10 @@ class ModulesController < ApplicationController
     elsif vrp_login_user? && current_vrp_record.present?
       target_conditions << "t.vrp_id = :target_vrp_id"
       target_binds[:target_vrp_id] = current_vrp_record.id
-    elsif dashboard_agronomics_login? && dashboard_registered_vrp_ids_for_current_user.any?
+    elsif dashboard_agronomics_login?
       target_conditions << "t.vrp_id IN (:target_registered_vrp_ids)"
       target_binds[:target_registered_vrp_ids] = dashboard_registered_vrp_ids_for_current_user
-    elsif dashboard_cc_vrp_scope_active? && module_cluster_visible_vrp_ids.any?
+    elsif dashboard_cc_vrp_scope_active?
       target_conditions << "t.vrp_id IN (:target_visible_vrp_ids)"
       target_binds[:target_visible_vrp_ids] = module_cluster_visible_vrp_ids
     end
@@ -3624,6 +3653,9 @@ class ModulesController < ApplicationController
     end
 
     training_conditions = ["mr.module_slug = 'training-form'", "sf.farmer_id <> ''"]
+    unless dashboard_global_view_user?
+      training_conditions << "sf.farmer_id IN (#{dashboard_visible_farmer_scope.select('afls.id::text').to_sql})"
+    end
     training_binds = {}
     if month_value.present?
       training_conditions << "LOWER(COALESCE(mr.data::jsonb ->> 'month', '')) = :training_month"
@@ -3635,7 +3667,7 @@ class ModulesController < ApplicationController
     elsif vrp_login_user? && current_vrp_record.present?
       training_conditions << "mr.data::jsonb ->> 'created_by_id' = :created_by_id"
       training_binds[:created_by_id] = current_vrp_record.id.to_s
-    elsif dashboard_agronomics_login? && dashboard_registered_vrp_ids_for_current_user.any?
+    elsif dashboard_agronomics_login?
       training_conditions << "COALESCE(mr.data::jsonb ->> 'created_by_id', '') IN (:created_by_ids)"
       training_binds[:created_by_ids] = dashboard_registered_vrp_ids_for_current_user.map(&:to_s)
     end
@@ -3737,7 +3769,7 @@ class ModulesController < ApplicationController
   # This prevents name-based double-counting when some AFL rows have fco = 'FCO-C Sausar'
   # but a different fco_id, which would inflate the count.
   def dashboard_total_afl_farmer_scope
-    scope = Afl.where.not(id: nil)
+    scope = dashboard_visible_farmer_scope.where.not(id: nil)
     fcoc_value = @dashboard_fcoc_filter_value.presence || dashboard_filter_param(:fcoc, :fco)
     fco_values = dashboard_summary_fco_filter_values(fcoc_value)
 
@@ -3767,7 +3799,7 @@ class ModulesController < ApplicationController
   end
 
   def dashboard_total_afl_scope
-    scope = Afl.where.not(id: nil)
+    scope = dashboard_visible_farmer_scope.where.not(id: nil)
     fcoc_value = @dashboard_fcoc_filter_value.presence || dashboard_filter_param(:fcoc, :fco)
     fco_values = dashboard_summary_fco_filter_values(fcoc_value)
     scope = scope.where(
@@ -5005,6 +5037,9 @@ class ModulesController < ApplicationController
     return nil unless model_ready?(:TargetMapping) && model_ready?(:ModuleRecord)
 
     target_conditions = ["j.value <> ''"]
+    unless dashboard_global_view_user?
+      target_conditions << "t.vrp_id IN (#{Vrp.where(id: dashboard_visible_vrp_ids).select(:id).to_sql})"
+    end
     target_binds = {}
 
     if month_name.present?
@@ -5021,7 +5056,7 @@ class ModulesController < ApplicationController
     if vrp_login_user? && current_vrp_record.present?
       target_conditions << "t.vrp_id = :participation_vrp_id"
       target_binds[:participation_vrp_id] = current_vrp_record.id
-    elsif dashboard_agronomics_login? && dashboard_registered_vrp_ids_for_current_user.any?
+    elsif dashboard_agronomics_login?
       target_conditions << "t.vrp_id IN (:participation_vrp_ids)"
       target_binds[:participation_vrp_ids] = dashboard_registered_vrp_ids_for_current_user
     end
@@ -5232,7 +5267,7 @@ class ModulesController < ApplicationController
     cache_key = [fco_ids.sort.join(","), fco_names.sort.join(",")].join("|")
     return @training_registered_afl_count_cache[cache_key] if @training_registered_afl_count_cache.key?(cache_key)
 
-    scope = Afl.where.not(id: nil)
+    scope = dashboard_visible_farmer_scope.where.not(id: nil)
     if fco_ids.any? || fco_names.any?
       conditions = []
       binds = {}
@@ -5272,6 +5307,14 @@ class ModulesController < ApplicationController
   end
 
   def farmer_training_mapped_farmer_count_and_popups(month_name:, fcoc_name:)
+    @farmer_training_mapped_farmer_count_and_popups_cache ||= {}
+    key = [month_name, fcoc_name]
+    return @farmer_training_mapped_farmer_count_and_popups_cache[key] if @farmer_training_mapped_farmer_count_and_popups_cache.key?(key)
+
+    @farmer_training_mapped_farmer_count_and_popups_cache[key] = compute_farmer_training_mapped_farmer_count_and_popups(month_name: month_name, fcoc_name: fcoc_name)
+  end
+
+  def compute_farmer_training_mapped_farmer_count_and_popups(month_name:, fcoc_name:)
     selected_month = month_name.presence || "August"
     fco_ids = training_fcoc_ids_from_param(fcoc_name)
     fco_filter_sql = "AND LOWER(BTRIM(t.fco_id)) IN (:fco_ids)"
@@ -5296,7 +5339,7 @@ class ModulesController < ApplicationController
 
     binds = { month_name: selected_month.strip.downcase, fco_ids: fco_ids.map(&:downcase) }
     rows = ActiveRecord::Base.connection.exec_query(
-      ActiveRecord::Base.send(:sanitize_sql_array, [sql, binds])
+      ActiveRecord::Base.send(:sanitize_sql_array, [dashboard_scoped_training_sql(sql), binds])
     ).to_a
 
     total_count = rows.sum { |r| r["farmer_count"].to_i }
@@ -5309,6 +5352,14 @@ class ModulesController < ApplicationController
   end
 
   def farmer_training_no_training_count_and_popups(month_name:, fcoc_name:)
+    @farmer_training_no_training_count_and_popups_cache ||= {}
+    key = [month_name, fcoc_name]
+    return @farmer_training_no_training_count_and_popups_cache[key] if @farmer_training_no_training_count_and_popups_cache.key?(key)
+
+    @farmer_training_no_training_count_and_popups_cache[key] = compute_farmer_training_no_training_count_and_popups(month_name: month_name, fcoc_name: fcoc_name)
+  end
+
+  def compute_farmer_training_no_training_count_and_popups(month_name:, fcoc_name:)
     selected_month = month_name.presence || "August"
     fco_ids = training_fcoc_ids_from_param(fcoc_name)
     fco_values = fco_ids.flat_map { |id| training_fcoc_filter_values(id) }.uniq.map(&:downcase)
@@ -5375,7 +5426,7 @@ class ModulesController < ApplicationController
 
     binds = { month_name: selected_month.strip.downcase, fco_ids: fco_ids.map(&:downcase), fco_values: fco_values }
     rows = ActiveRecord::Base.connection.exec_query(
-      ActiveRecord::Base.send(:sanitize_sql_array, [sql, binds])
+      ActiveRecord::Base.send(:sanitize_sql_array, [dashboard_scoped_training_sql(sql), binds])
     ).to_a
 
     total_count = rows.sum { |r| r["red_farmer_count"].to_i }
@@ -5437,6 +5488,14 @@ class ModulesController < ApplicationController
   end
 
   def farmer_training_yellow_farmer_count_and_popups(month_name:, fcoc_name:)
+    @farmer_training_yellow_farmer_count_and_popups_cache ||= {}
+    key = [month_name, fcoc_name]
+    return @farmer_training_yellow_farmer_count_and_popups_cache[key] if @farmer_training_yellow_farmer_count_and_popups_cache.key?(key)
+
+    @farmer_training_yellow_farmer_count_and_popups_cache[key] = compute_farmer_training_yellow_farmer_count_and_popups(month_name: month_name, fcoc_name: fcoc_name)
+  end
+
+  def compute_farmer_training_yellow_farmer_count_and_popups(month_name:, fcoc_name:)
     selected_month = month_name.presence || "August"
     fco_ids = training_fcoc_ids_from_param(fcoc_name)
     fco_filter_sql = "WHERE LOWER(BTRIM(a.fco_id)) IN (:fco_ids)"
@@ -5475,7 +5534,7 @@ class ModulesController < ApplicationController
 
     binds = { month_name: selected_month.strip.downcase, fco_ids: fco_ids.map(&:downcase) }
     rows = ActiveRecord::Base.connection.exec_query(
-      ActiveRecord::Base.send(:sanitize_sql_array, [sql, binds])
+      ActiveRecord::Base.send(:sanitize_sql_array, [dashboard_scoped_training_sql(sql), binds])
     ).to_a
 
     total_count = rows.sum { |r| r["farmer_count"].to_i }
@@ -5488,6 +5547,14 @@ class ModulesController < ApplicationController
   end
 
   def farmer_training_green_farmer_count_and_popups(month_name:, fcoc_name:)
+    @farmer_training_green_farmer_count_and_popups_cache ||= {}
+    key = [month_name, fcoc_name]
+    return @farmer_training_green_farmer_count_and_popups_cache[key] if @farmer_training_green_farmer_count_and_popups_cache.key?(key)
+
+    @farmer_training_green_farmer_count_and_popups_cache[key] = compute_farmer_training_green_farmer_count_and_popups(month_name: month_name, fcoc_name: fcoc_name)
+  end
+
+  def compute_farmer_training_green_farmer_count_and_popups(month_name:, fcoc_name:)
     selected_month = month_name.presence || "August"
     fco_ids = training_fcoc_ids_from_param(fcoc_name)
     fco_filter_sql = "WHERE LOWER(BTRIM(a.fco_id)) IN (:fco_ids)"
@@ -5529,7 +5596,7 @@ class ModulesController < ApplicationController
 
     binds = { month_name: selected_month.strip.downcase, fco_ids: fco_ids.map(&:downcase) }
     rows = ActiveRecord::Base.connection.exec_query(
-      ActiveRecord::Base.send(:sanitize_sql_array, [sql, binds])
+      ActiveRecord::Base.send(:sanitize_sql_array, [dashboard_scoped_training_sql(sql), binds])
     ).to_a
 
     total_count = rows.sum { |r| r["green_farmer_count"].to_i }
@@ -5628,7 +5695,7 @@ class ModulesController < ApplicationController
 
       binds = { month_name: selected_month.strip.downcase, fco_ids: fco_ids.map(&:downcase) }
       raw_rows = ActiveRecord::Base.connection.exec_query(
-        ActiveRecord::Base.send(:sanitize_sql_array, [sql, binds])
+        ActiveRecord::Base.send(:sanitize_sql_array, [dashboard_scoped_training_sql(sql), binds])
       )
 
       return raw_rows.map do |row|
@@ -5725,7 +5792,7 @@ class ModulesController < ApplicationController
 
       binds = { month_name: selected_month.strip.downcase, fco_ids: fco_ids.map(&:downcase) }
       raw_rows = ActiveRecord::Base.connection.exec_query(
-        ActiveRecord::Base.send(:sanitize_sql_array, [sql, binds])
+        ActiveRecord::Base.send(:sanitize_sql_array, [dashboard_scoped_training_sql(sql), binds])
       )
 
       return raw_rows.map do |row|
@@ -5856,20 +5923,10 @@ class ModulesController < ApplicationController
     end
 
     if %w[unique mapped red pending total_red].include?(status.to_s)
-      farmer_scope = Afl.where(fco_id: fco_ids)
-      unless admin_dashboard_user?
-        visible_vrps = Vrp.all.select { |vrp| scoped_jeevika_vrp_visible?(vrp) }
-        visible_targets = TargetMapping.where(vrp_id: visible_vrps.map(&:id))
-        if dashboard_source_fcoc_login?
-          allowed_fcos = visible_targets.distinct.pluck(:fco_id)
-          farmer_scope = farmer_scope.where(fco_id: allowed_fcos)
-        else
-          farmer_scope = farmer_scope.where(id: visible_targets.flat_map { |target| Array(target.afl_ids) }.uniq)
-        end
-      end
+      farmer_scope = dashboard_visible_farmer_scope.where(fco_id: fco_ids)
       binds = { month_name: selected_month.strip.downcase, fco_ids: fco_ids, visible_farmer_ids: farmer_scope.pluck(:id) }
       @mapped_farmer_details = ActiveRecord::Base.connection.exec_query(
-        ActiveRecord::Base.send(:sanitize_sql_array, [sql, binds])
+        ActiveRecord::Base.send(:sanitize_sql_array, [dashboard_scoped_training_sql(sql), binds])
       )
       return @mapped_farmer_details.map do |row|
         { farmer_id: row["id"].to_s, farmer_name: row["farmer_name"], father_name: row["father_name"],
@@ -5881,7 +5938,7 @@ class ModulesController < ApplicationController
 
     binds = { month_name: selected_month.strip.downcase, fco_ids: fco_ids.flat_map { |id| [id.to_s, id.to_s.downcase] }.uniq }
     raw_rows = ActiveRecord::Base.connection.exec_query(
-      ActiveRecord::Base.send(:sanitize_sql_array, [sql, binds])
+      ActiveRecord::Base.send(:sanitize_sql_array, [dashboard_scoped_training_sql(sql), binds])
     )
 
     raw_rows.map do |row|
@@ -6012,7 +6069,8 @@ class ModulesController < ApplicationController
     return [] unless model_ready?(:ModuleRecord) && model_ready?(:Afl)
 
     visible_vrps = farmer_participation_visible_vrps
-    visible_vrp_ids = visible_vrps.map { |vrp| vrp.id.to_s }
+    visible_vrps_by_id = visible_vrps.index_by { |vrp| vrp.id.to_s }
+    visible_vrp_ids = visible_vrps_by_id.keys
     vrps_by_farmer_id = Hash.new { |hash, key| hash[key] = [] }
     visible_targets = if model_ready?(:TargetMapping)
       scope = TargetMapping.includes(:vrp)
@@ -6043,13 +6101,19 @@ class ModulesController < ApplicationController
     records.flat_map do |record|
       summary = training_summary(record)
       record_vrp_id = record.data["jeevika_jankar_id"].presence || record.data["vrp_id"].presence
-      explicitly_matched_vrp = visible_vrps.find { |vrp| vrp.id.to_s == record_vrp_id.to_s } if record_vrp_id.present?
+      explicitly_matched_vrp = visible_vrps_by_id[record_vrp_id.to_s] if record_vrp_id.present?
       explicitly_matched_vrp ||= visible_vrps.find { |vrp| training_record_matches_vrp?(record, vrp) }
 
+      # These values belong to the training entry, not to each attending farmer.
+      training_method = Array(record.data["training_method"]).map(&:to_s).compact_blank.join(", ").presence || "Not Recorded"
+      training_month = summary[:month].presence || parse_module_date(summary[:training_date])&.strftime("%B") || "-"
+      training_date = bill_display_date(summary[:training_date]).presence || bill_display_date(record.created_at)
+      register_urls = module_upload_public_urls(record.data["training_register_upload"])
+      photo_urls = module_upload_public_urls(record.data["training_photo_upload_with_geo_tag"])
       selected_farmer_names = Array(record.data["selected_farmer_names"]).map(&:to_s)
       training_record_selected_farmer_ids(record).each_with_index.filter_map do |farmer_id, farmer_index|
         farmer = farmers_by_id[farmer_id]
-        vrp = explicitly_matched_vrp || vrps_by_farmer_id[farmer_id].find { |candidate| visible_vrp_ids.include?(candidate.id.to_s) }
+        vrp = explicitly_matched_vrp || vrps_by_farmer_id[farmer_id].first
         next if !admin_dashboard_user? && vrp.blank?
 
         farmer_name = farmer&.farmer_name.presence || selected_farmer_names[farmer_index].presence || "Farmer ##{farmer_id}"
@@ -6063,11 +6127,11 @@ class ModulesController < ApplicationController
           village: record.data["gram_name"].presence || farmer&.village_name.presence || "-",
           main_activity: summary[:training_topic].presence || "-",
           sub_activity: summary[:training_subject].presence || "-",
-          training_method: Array(record.data["training_method"]).map(&:to_s).compact_blank.join(", ").presence || "Not Recorded",
-          month: summary[:month].presence || parse_module_date(summary[:training_date])&.strftime("%B") || "-",
-          training_date: bill_display_date(summary[:training_date]).presence || bill_display_date(record.created_at),
-          training_register_urls: module_upload_public_urls(record.data["training_register_upload"]),
-          training_photo_urls: module_upload_public_urls(record.data["training_photo_upload_with_geo_tag"]),
+          training_method: training_method,
+          month: training_month,
+          training_date: training_date,
+          training_register_urls: register_urls,
+          training_photo_urls: photo_urls,
           fcoc: summary[:department].presence || vrp&.fcoc.presence || "-",
           cluster_incharge: vrp&.cluster_incharge.presence || "-",
           role: vrp&.role.presence || "-",
@@ -8075,15 +8139,34 @@ class ModulesController < ApplicationController
     return @dashboard_vrps = [] unless model_ready?(:Vrp)
     return @dashboard_vrps = Vrp.all.to_a if current_app_user.blank? || dashboard_global_view_user?
 
-    mapped_vrps = module_cluster_visible_vrps
-    return @dashboard_vrps = mapped_vrps if module_mapped_vrp_scope_active?
+    @dashboard_vrps = Vrp.all.select { |vrp| scoped_jeevika_vrp_visible?(vrp) }
+  end
 
-    hierarchy_vrps = dashboard_hierarchy_vrps
-    if dashboard_hierarchy_cluster_scope?
-      return @dashboard_vrps = (dashboard_own_vrps_list + hierarchy_vrps).uniq
+  def dashboard_visible_vrp_ids
+    @dashboard_visible_vrp_ids ||= dashboard_vrps.map(&:id)
+  end
+
+  def dashboard_visible_target_scope
+    dashboard_global_view_user? ? TargetMapping.all : TargetMapping.where(vrp_id: dashboard_visible_vrp_ids)
+  end
+
+  def dashboard_visible_farmer_scope
+    return Afl.all if dashboard_global_view_user?
+    if dashboard_source_fcoc_login?
+      fco_values = dashboard_vrps.map(&:fcoc).compact_blank.uniq.flat_map { |fcoc| training_fcoc_filter_values(fcoc) }.map(&:downcase).uniq
+      return Afl.where("LOWER(BTRIM(fco_id)) IN (:values) OR LOWER(BTRIM(fco)) IN (:values)", values: fco_values)
     end
 
-    @dashboard_vrps = (dashboard_own_vrps_list + hierarchy_vrps + dashboard_office_visible_vrps + dashboard_approval_related_vrps).uniq
+    # Keep the membership join in PostgreSQL instead of loading every target
+    # and a large farmer ID array for every card and export.
+    target_sql = dashboard_visible_target_scope.select(:afl_ids).to_sql
+    Afl.where("afls.id::text IN (SELECT jsonb_array_elements_text(CASE WHEN jsonb_typeof(visible_targets.afl_ids::jsonb) = 'array' THEN visible_targets.afl_ids::jsonb ELSE '[]'::jsonb END) FROM (#{target_sql}) visible_targets)")
+  end
+
+  def dashboard_scoped_training_sql(sql)
+    return sql if dashboard_global_view_user?
+    sql.gsub("public.target_mappings", "(#{dashboard_visible_target_scope.to_sql})")
+      .gsub("public.afls", "(#{dashboard_visible_farmer_scope.to_sql})")
   end
 
   def dashboard_approved_vrps(vrps)
@@ -8115,13 +8198,7 @@ class ModulesController < ApplicationController
     scope = TargetMapping.includes(:vrp).order(updated_at: :desc)
     return @dashboard_target_mappings = scope.to_a if dashboard_global_view_user?
 
-    visible_vrp_ids = dashboard_vrps.map(&:id)
-    current_ids = dashboard_current_app_user_ids
-    visible_scope = TargetMapping.none
-    visible_scope = visible_scope.or(scope.where(vrp_id: visible_vrp_ids)) if visible_vrp_ids.any?
-    visible_scope = visible_scope.or(scope.where(created_by_id: current_ids)) if current_ids.any? && TargetMapping.column_names.include?("created_by_id")
-
-    @dashboard_target_mappings = visible_scope.to_a
+    @dashboard_target_mappings = scope.where(vrp_id: dashboard_visible_vrp_ids).to_a
   end
 
   def dashboard_target_summary_rows(targets)
@@ -9380,6 +9457,7 @@ class ModulesController < ApplicationController
         status: jeevika_bill_status_label(record),
         status_class: jeevika_bill_status_class(record),
         current_approver: jeevika_bill_current_approver?(record),
+        created_by_name: data["created_by_name"].presence || data["created_by_username"].presence || "-",
         created_by_current_user: jeevika_bill_created_by_current_user?(record),
         approver_visible: jeevika_bill_approver_visible?(record),
         approval_remarks: bill_approval_remarks_text(approval_history),
@@ -9607,6 +9685,14 @@ class ModulesController < ApplicationController
   end
 
   def jeevika_bill_summary(record)
+    @jeevika_bill_summary_cache ||= {}
+    key = [record&.id || record&.object_id, record&.data&.hash]
+    return @jeevika_bill_summary_cache[key] if @jeevika_bill_summary_cache.key?(key)
+
+    @jeevika_bill_summary_cache[key] = compute_jeevika_bill_summary(record)
+  end
+
+  def compute_jeevika_bill_summary(record)
     data = record&.data || {}
     items = jeevika_bill_detail_rows(record)
     amount = jeevika_jankar_bill_total_payment(record)
@@ -9697,6 +9783,11 @@ class ModulesController < ApplicationController
   def jeevika_bill_approved_by_rows(record)
     approved_history = jeevika_bill_approval_history(record)
       .select { |history| history.data["action"].to_s == "Approved" }
+    approved_history = approved_history.group_by do |history|
+      history.data["approval_level"].to_s.strip.downcase.presence || "approval"
+    end.values.map do |entries|
+      entries.max_by { |history| [parse_bill_datetime(history.data["action_at"]) || history.created_at || Time.at(0), history.id.to_i] }
+    end.sort_by { |history| approval_sequence_from_level(history.data["approval_level"]) }
     approved_history.map.with_index do |history, index|
       approval_label = index == approved_history.size - 1 ? "Finance Approval" : history.data["approval_level"].presence || "Approval"
       [
@@ -10022,13 +10113,18 @@ class ModulesController < ApplicationController
   end
 
   def module_cluster_incharge_login?
+    return @module_cluster_incharge_login if defined?(@module_cluster_incharge_login)
+
+    @module_cluster_incharge_login = compute_module_cluster_incharge_login
+  end
+
+  def compute_module_cluster_incharge_login
     return false if admin_dashboard_user? || vrp_login_user?
 
-    current_role = [
-      current_app_user&.dig("role"),
-      current_app_user&.dig("role_name")
-    ].compact_blank.join(" ")
-    return true if current_role.downcase.include?("cluster")
+    roles = %w[role role_name stakeholder_role user_management_role person_type designation].filter_map do |key|
+      current_app_user&.dig(key).presence
+    end
+    return true if roles.any? { |role| role.to_s.match?(/cluster|\bcc\b/i) }
 
     hierarchy_cluster_incharge_labels.any? do |mapped_label|
       current_cluster_incharge_labels.any? { |current_label| cluster_label_matches?(mapped_label, current_label) }
@@ -10063,8 +10159,7 @@ class ModulesController < ApplicationController
       .order(:name, :id)
       .select { |vrp| module_cluster_vrp_visible?(vrp) }
 
-    hierarchy_mapped_vrps = module_cluster_incharge_login? ? dashboard_hierarchy_vrps : []
-    visible_vrps = directly_mapped_vrps.presence || hierarchy_mapped_vrps
+    visible_vrps = directly_mapped_vrps
 
     @module_cluster_visible_vrps = visible_vrps.uniq(&:id).sort_by do |vrp|
       [vrp.name.to_s, vrp.id]
@@ -10072,6 +10167,12 @@ class ModulesController < ApplicationController
   end
 
   def current_cluster_incharge_labels
+    return @current_cluster_incharge_labels if defined?(@current_cluster_incharge_labels)
+
+    @current_cluster_incharge_labels = compute_current_cluster_incharge_labels
+  end
+
+  def compute_current_cluster_incharge_labels
     labels = [
       current_app_user&.dig("name"),
       current_app_user&.dig("username"),

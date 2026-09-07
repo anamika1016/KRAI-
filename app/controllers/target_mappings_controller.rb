@@ -1161,6 +1161,12 @@ class TargetMappingsController < ApplicationController
   end
 
   def visible_target_mappings
+    if params[:summary_mode].present?
+      policy = ModulesController.new
+      policy.request = request
+      policy.instance_variable_set(:@current_app_user, current_app_user)
+      return policy.send(:dashboard_visible_target_scope)
+    end
     return TargetMapping.all if admin_login?
     return TargetMapping.where(vrp_id: current_app_user["id"]) if non_admin_vrp_login?
 

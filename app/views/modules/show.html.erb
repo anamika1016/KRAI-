@@ -1683,7 +1683,8 @@
     <% table_id = "jeevika_jankar_bill_table" %>
     <% bill_rows = jeevika_bill_rows(@records) %>
     <% bill_months = bill_rows.map { |row| row[:bill_month] }.compact_blank.reject { |month| month == "-" }.uniq %>
-    <% default_bill_month = Date.current.prev_month.strftime("%B") %>
+    <% recent_month = Date.current.prev_month.strftime("%B") %>
+    <% default_bill_month = bill_months.find { |month| month.casecmp(recent_month).zero? } || bill_months.first || recent_month %>
     <% bill_months << default_bill_month unless bill_months.include?(default_bill_month) %>
     <% bill_months.sort_by! { |month| Date::MONTHNAMES.index { |name| name.to_s.casecmp(month.to_s).zero? } || 99 } %>
     <% selected_bill_status = params[:bill_status].presence_in(["pending", "final-approved"]) || "pending" %>
@@ -1691,7 +1692,7 @@
     <% dashboard_status_link = params[:bill_status].present? || params[:record_state].present? %>
     <% selected_bill_month = params[:bill_month].presence || (dashboard_status_link ? nil : default_bill_month) %>
     <% if @jeevika_bill_user_filters || params[:bill_month].present? || params[:bill_status].present? || params[:record_state].present? %>
-      <% bill_rows = bill_rows.select { |row| selected_bill_month.blank? || row[:bill_month].to_s.casecmp(selected_bill_month).zero? } %>
+      <% bill_rows = bill_rows.select { |row| selected_bill_month.blank? || selected_bill_month == "all" || row[:bill_month].to_s.strip.casecmp(selected_bill_month.to_s.strip).zero? } %>
       <% bill_rows = bill_rows.select do |row|
         row_status = row[:status].to_s.downcase
         selected_bill_status == "final-approved" ? row_status.include?("final approved") : (row_status.include?("pending") || row[:created_by_current_user] || row[:approver_visible])
@@ -1718,6 +1719,7 @@
           <label>
             <span>Bill Month</span>
             <select name="bill_month" data-bill-month-filter onchange="this.form.requestSubmit()">
+              <option value="all" <%= "selected" if selected_bill_month == "all" %>>All Months</option>
               <% bill_months.each do |month| %>
                 <option value="<%= month %>" <%= "selected" if selected_bill_month.present? && month.casecmp(selected_bill_month).zero? %>><%= month %></option>
               <% end %>
@@ -1750,6 +1752,7 @@
               <th>Jeevika Jankar ID</th>
               <th>Status</th>
               <th>Name</th>
+              <th>Bill Created By (CC)</th>
               <th>Financial Year</th>
               <th>Bill Month</th>
               <th>Activity Group</th>
@@ -1790,6 +1793,7 @@
                   <td><%= row[:vrp_id].presence || "-" %></td>
                   <td><span class="grid-status <%= row[:status_class] %>"><%= row[:status] %></span></td>
                   <td><%= row[:name].presence || "-" %></td>
+                  <td><%= row[:created_by_name] %></td>
                   <td><%= row[:financial_year] %></td>
                   <td><%= row[:bill_month] %></td>
                   <td><%= row[:activity_groups] %></td>
@@ -1813,7 +1817,7 @@
               <% end %>
             <% else %>
               <tr>
-                <td colspan="16">No Jeevika Jankar bill saved yet.</td>
+                <td colspan="17">No bills match the selected month and approval status. Select All Months to check other saved bills.</td>
               </tr>
             <% end %>
           </tbody>

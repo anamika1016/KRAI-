@@ -173,6 +173,100 @@ class ModulesControllerDashboardTest < ActiveSupport::TestCase
     assert_equal [mapped_vrp.id], controller.send(:module_cluster_visible_vrp_ids)
   end
 
+  test "CC dashboard counts and lists only registration mapped JJ farmers" do
+    own = create_vrp(user_name: "scope_own", cluster_incharge: "Mapped CC")
+    other = create_vrp(user_name: "scope_other", cluster_incharge: "Other CC", mobile_no: "9876500999", aadhar_no: "123456780999")
+    farmer = Afl.create!(farmer_name: "Own Farmer", fco_id: "1004")
+    hidden = Afl.create!(farmer_name: "Other Farmer", fco_id: "1004")
+    [[own, farmer], [other, hidden]].each do |vrp, afl|
+      target = TargetMapping.new(vrp_id: vrp.id, fco_id: "1004", ics_id: "test-ics", village_id: "test-village", target_quantity: 1, month_name: "August", main_activity_name: "Farmers' Training", activity_name: "Training", afl_ids: [afl.id.to_s])
+      target.save!(validate: false)
+    end
+    controller = ModulesController.new
+    controller.define_singleton_method(:current_app_user) { { "id" => "500", "name" => "Mapped CC", "role" => "Cluster Coordinator" } }
+    controller.define_singleton_method(:admin_dashboard_user?) { false }
+    controller.define_singleton_method(:current_cluster_incharge_labels) { ["Mapped CC"] }
+    assert_equal [own.id], controller.send(:dashboard_vrps).map(&:id)
+    assert_equal [own.id], controller.send(:dashboard_target_mappings).map(&:vrp_id).uniq
+    assert_equal 1, controller.send(:farmer_training_mapped_farmer_count_and_popups, month_name: "August", fcoc_name: "1004").first
+    rows = controller.send(:farmer_training_participation_rows_from_sql, "red", month_name: "August", fcoc_name: "1004")
+    assert_equal [farmer.id.to_s], rows.map { |row| row[:farmer_id] }
+  end
+
+  test "unmapped CC sees zero counts and query results are reused within request" do
+    controller = ModulesController.new
+    controller.define_singleton_method(:current_app_user) { { "id" => "501", "name" => "Unmapped CC", "role" => "Cluster Coordinator" } }
+    controller.define_singleton_method(:admin_dashboard_user?) { false }
+    controller.define_singleton_method(:current_cluster_incharge_labels) { ["Unmapped CC"] }
+    calls = []
+    subscriber = ActiveSupport::Notifications.subscribe("sql.active_record") { |*args| calls << args.last[:sql] }
+    first = controller.send(:farmer_training_mapped_farmer_count_and_popups, month_name: "August", fcoc_name: "1004")
+    count = calls.size
+    second = controller.send(:farmer_training_mapped_farmer_count_and_popups, month_name: "August", fcoc_name: "1004")
+    assert_equal 0, first.first
+    assert_equal first, second
+    assert_equal count, calls.size
+    assert_empty controller.send(:dashboard_visible_farmer_scope).to_a
+  ensure
+    ActiveSupport::Notifications.unsubscribe(subscriber) if subscriber
+  end
+
+  test "participation report processes attachments once per training entry" do
+    first = Afl.create!(farmer_name: "First")
+    second = Afl.create!(farmer_name: "Second")
+    record = ModuleRecord.create!(module_slug: "training-form", data: {
+      "selected_farmer_ids" => [first.id.to_s, second.id.to_s], "month" => "August",
+      "training_date" => "2026-08-10", "training_method" => "FFS",
+      "training_register_upload" => "register.pdf", "training_photo_upload_with_geo_tag" => "photo.jpg"
+    })
+    controller = ModulesController.new
+    controller.define_singleton_method(:admin_dashboard_user?) { true }
+    controller.define_singleton_method(:vrp_login_user?) { false }
+    controller.define_singleton_method(:farmer_participation_visible_vrps) { [] }
+    controller.define_singleton_method(:active_module_records_scope) { |_| ModuleRecord.where(id: record.id) }
+    calls = []
+    controller.define_singleton_method(:module_upload_public_urls) { |value| calls << value; [value] }
+    rows = controller.send(:farmer_participation_entries)
+    assert_equal [first.id.to_s, second.id.to_s], rows.map { |row| row[:farmer_id] }
+    assert_equal ["register.pdf", "photo.jpg"], calls
+    assert rows.all? { |row| row[:training_method] == "FFS" && row[:month] == "August" }
+  end
+
+  test "bill summary is reused within request and refreshed when bill data changes" do
+    controller = ModulesController.new
+    calls = 0
+    controller.define_singleton_method(:compute_jeevika_bill_summary) { |record| calls += 1; { amount: record.data["grand_total"] } }
+    record = ModuleRecord.new(data: { "grand_total" => "5000" })
+    assert_equal controller.send(:jeevika_bill_summary, record), controller.send(:jeevika_bill_summary, record)
+    assert_equal 1, calls
+    record.data["grand_total"] = "4000"
+    assert_equal "4000", controller.send(:jeevika_bill_summary, record)[:amount]
+    assert_equal 2, calls
+  end
+
+  test "CC designation is recognized even when session role is User" do
+    controller = ModulesController.new
+    controller.define_singleton_method(:current_app_user) { { "role" => "User", "stakeholder_role" => "CC" } }
+    assert controller.send(:module_cluster_incharge_login?)
+  end
+
+  test "agronomist dashboard excludes JJ registered by others" do
+    own = create_vrp(user_name: "agro_own", created_by_id: 801)
+    create_vrp(user_name: "agro_other", created_by_id: 802, mobile_no: "9876500999", aadhar_no: "123456780999")
+    controller = ModulesController.new
+    controller.define_singleton_method(:current_app_user) { { "id" => "801", "role" => "Agronomist", "record_type" => "User" } }
+    controller.define_singleton_method(:dashboard_current_app_user_ids) { [801] }
+    assert_equal [own.id], controller.send(:dashboard_visible_vrp_ids)
+  end
+
+  test "FCOC dashboard includes every JJ of its FCO regardless of CC" do
+    own = create_vrp(user_name: "fco_own", fcoc: "FCO-C Sausar", cluster_incharge: "Another CC")
+    create_vrp(user_name: "fco_other", fcoc: "FCO-C Turekela", mobile_no: "9876500999", aadhar_no: "123456780999")
+    controller = ModulesController.new
+    controller.define_singleton_method(:current_app_user) { { "id" => "803", "role" => "FCOC", "fcoc" => "FCO-C Sausar" } }
+    assert_equal [own.id], controller.send(:dashboard_visible_vrp_ids)
+  end
+
   private
 
   def create_vrp(attributes = {})
