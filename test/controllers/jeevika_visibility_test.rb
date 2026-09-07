@@ -51,6 +51,64 @@ class JeevikaVisibilityTest < ActiveSupport::TestCase
     assert_equal "Person 2 (Specialist)", rows.first[1]
   end
 
+  test "approver headings follow the bill channel instead of the stale stored level" do
+    controller = ModulesController.new
+    steps = [
+      ["First Approval", "Shailesh  Bagde (agricultural specialist)"],
+      ["Second Approval", "Hemant Shakkarpude (FCO-C Sausar)"],
+      ["Third Approval", "Dr Noushad Parvez (Assistant General Manager)"],
+      ["Fourth Approval", "Gaurav Mittal (Chief Financial Officer, PAPL)"]
+    ].map { |level, approver| ModuleRecord.new(data: { "approval_level" => level, "approver_approved_by" => approver }) }
+
+    # Channel changed after these were approved, so the stored levels are one short.
+    history = [
+      ["First Approval", "Hemant Shakkarpude (FCO-C Sausar)", "2026-07-06T07:55:41Z"],
+      ["Second Approval", "Dr Noushad Parvez (Assistant General Manager)", "2026-07-06T13:30:09Z"],
+      ["Third Approval", "Gaurav Mittal (Chief Financial Officer, PAPL)", "2026-07-09T10:51:17Z"]
+    ].map.with_index do |(level, approver, at), index|
+      ModuleRecord.new(id: index + 1, data: {
+        "action" => "Approved", "approval_level" => level, "approver" => approver, "action_at" => at
+      })
+    end
+
+    controller.define_singleton_method(:jeevika_bill_approval_steps) { |_record| steps }
+    controller.define_singleton_method(:jeevika_bill_approval_history) { |_record| history }
+
+    rows = controller.send(:jeevika_bill_approved_by_rows, ModuleRecord.new(data: { "status" => "Final Approved" }))
+    assert_equal ["Second Approval", "Third Approval", "Finance Approval"], rows.map(&:first)
+    assert_equal "Hemant Shakkarpude (FCO-C Sausar)", rows.first[1]
+  end
+
+  test "total payment falls back to the fixed amount when the saved amount is zero" do
+    controller = ModulesController.new
+    fixed = format("%.2f", ModulesController::JEEVIKA_JANKAR_BILL_FIXED_TOTAL)
+    ["0.00", "0", "", nil].each do |stored|
+      record = ModuleRecord.new(data: { "grand_total" => stored })
+      assert_equal fixed, controller.send(:jeevika_jankar_bill_total_payment, record)
+    end
+    record = ModuleRecord.new(data: { "grand_total" => "4200.00" })
+    assert_equal "4200.00", controller.send(:jeevika_jankar_bill_total_payment, record)
+  end
+
+  test "legacy bill without created_by resolves the channel of whoever sent it" do
+    controller = ModulesController.new
+    submitter = User.new(user_name: "Ashvin", first_name: "Ashvin", last_name: "Durve", stakeholder: "PAPL")
+    history = [
+      ModuleRecord.new(id: 2, data: { "action" => "Sent for Approval", "action_by" => "Ashvin  Durve", "action_at" => "2026-07-02T12:06:17Z" }),
+      ModuleRecord.new(id: 1, data: { "action" => "Sent for Approval", "action_by" => "Ashvin  Durve", "action_at" => "2026-07-02T12:05:23Z" })
+    ]
+    controller.define_singleton_method(:jeevika_bill_approval_history) { |_record| history }
+    controller.define_singleton_method(:model_ready?) { |_model| true }
+    controller.define_singleton_method(:bill_submitter_user) { |_label| submitter }
+
+    identity = controller.send(:bill_submitter_identity, ModuleRecord.new(data: {}))
+    assert_equal "Ashvin", identity[:user_name]
+    assert_equal "PAPL", identity[:stakeholder]
+
+    controller.define_singleton_method(:jeevika_bill_approval_history) { |_record| [] }
+    assert_nil controller.send(:bill_submitter_identity, ModuleRecord.new(data: {}))
+  end
+
   test "bill list totals use the process summary and cache it for the VRP month" do
     controller = ModulesController.new
     calls = []

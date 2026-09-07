@@ -9777,20 +9777,24 @@ class ModulesController < ApplicationController
   end
 
   def jeevika_bill_approved_by_rows(record)
+    steps = jeevika_bill_approval_steps(record)
+    last_sequence = steps.filter_map { |step| approval_sequence_from_level(step.data["approval_level"]) }.max
+
     approved_history = jeevika_bill_approval_history(record)
       .select { |history| history.data["action"].to_s == "Approved" }
-    approved_history = approved_history.group_by do |history|
-      level = history.data["approval_level"].to_s.squish.downcase
-      if level.match?(/\bfinanc(?:e|ial)\b/)
-        "financial"
-      else
-        approval_level_sequence_from_text(level).presence || level.presence || "approval"
-      end
-    end.values.map do |entries|
-      entries.max_by { |history| [parse_bill_datetime(history.data["action_at"]) || history.created_at || Time.at(0), history.id.to_i] }
-    end.sort_by { |history| approval_sequence_from_level(history.data["approval_level"]) }
+      .group_by { |history| jeevika_bill_history_sequence(history, steps) }
+      .values
+      .map { |entries| entries.max_by { |history| [parse_bill_datetime(history.data["action_at"]) || history.created_at || Time.at(0), history.id.to_i] } }
+      .sort_by { |history| jeevika_bill_history_sequence(history, steps) }
+
     approved_history.map.with_index do |history, index|
-      approval_label = jeevika_bill_final_approved?(record) && index == approved_history.size - 1 ? "Finance Approval" : history.data["approval_level"].presence || "Approval"
+      sequence = jeevika_bill_history_sequence(history, steps)
+      is_last = last_sequence ? sequence == last_sequence : index == approved_history.size - 1
+      approval_label = if jeevika_bill_final_approved?(record) && is_last
+        "Finance Approval"
+      else
+        approval_level_label_for_sequence(sequence)
+      end
       [
         approval_label,
         jeevika_bill_approver_display_name(history.data["approver"], history.data["action_by"]),
@@ -9798,6 +9802,19 @@ class ModulesController < ApplicationController
         history.data["action_by"].presence
       ]
     end
+  end
+
+  # Label each approval by its position in the bill's own approval channel. The level
+  # stored on history is frozen at approval time, so it goes stale whenever the channel
+  # changes and the same approver then prints under a different heading across bills.
+  def jeevika_bill_history_sequence(history, steps)
+    approver = history.data["approver"]
+    matched = Array(steps).find do |step|
+      dashboard_user_label_matches?(approver, [step.data["approver_approved_by"]])
+    end
+    return approval_sequence_from_level(matched.data["approval_level"]) if matched
+
+    approval_sequence_from_level(history.data["approval_level"])
   end
 
   def jeevika_bill_status_label(record)
@@ -9931,7 +9948,31 @@ class ModulesController < ApplicationController
     vrp = jeevika_bill_vrp(record)
     identities.concat(vrp_creator_identities_for_dashboard(vrp)) if vrp
     identities << current_bill_creator_identity(record)
+    identities << bill_submitter_identity(record)
     @jeevika_bill_approval_identities_cache[cache_key] = identities.compact.uniq
+  end
+
+  # Older bills never stored created_by_*, so the channel would otherwise fall back to
+  # the VRP registrant and silently drop that registrant's own approval step. Whoever
+  # sent the bill for approval is the real submitter, so match their channel too.
+  def bill_submitter_identity(record)
+    submitter = jeevika_bill_approval_history(record)
+      .select { |history| history.data["action"].to_s == "Sent for Approval" }
+      .min_by { |history| [parse_bill_datetime(history.data["action_at"]) || history.created_at || Time.at(0), history.id.to_i] }
+      &.data&.[]("action_by")
+    return if submitter.blank?
+
+    user = bill_submitter_user(submitter)
+    user ? user_dashboard_identity(user) : nil
+  end
+
+  def bill_submitter_user(label)
+    return unless model_ready?(:User)
+
+    @bill_submitter_users ||= User.all.to_a
+    @bill_submitter_users.find do |user|
+      dashboard_user_label_matches?(label, [user.full_name, user.user_name])
+    end
   end
 
   def current_bill_creator_identity(record)
