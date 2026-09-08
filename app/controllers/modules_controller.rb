@@ -9782,15 +9782,24 @@ class ModulesController < ApplicationController
   def jeevika_bill_prepared_by(record)
     sent_history = jeevika_bill_approval_history(record).find { |history| history.data["action"].to_s == "Sent for Approval" }
     {
-      name: sent_history&.data&.[]("action_by").presence || "-",
+      name: jeevika_bill_prepared_by_name(sent_history&.data&.[]("action_by")),
       at: bill_display_datetime(sent_history&.data&.[]("action_at").presence || record.created_at)
     }
+  end
+
+  # History only stores the plain name, so pull the role off the user to match the
+  # "Name (Role)" form used for approvers.
+  def jeevika_bill_prepared_by_name(action_by)
+    return "-" if action_by.blank?
+
+    role = bill_submitter_user(action_by)&.role.presence
+    jeevika_bill_approver_display_name(role ? "#{action_by.squish} (#{role})" : action_by, nil)
   end
 
   def jeevika_bill_approver_display_name(approver, action_by)
     label = approver.to_s.squish.presence || action_by.to_s.squish.presence || "-"
     name = label.split("(", 2).first.to_s.strip
-    return label if name.blank?
+    return jeevika_bill_role_display(label) if name.blank?
 
     # Older history can contain Name (Name (Role)), nested more than once.
     loop do
@@ -9799,7 +9808,16 @@ class ModulesController < ApplicationController
 
       label = match[1].strip
     end
-    label.gsub(/(?<=\()agricultural\b/i, "Agricultural")
+    jeevika_bill_role_display(label)
+  end
+
+  # Roles are captured free-text, so drop the company suffix and normalise the FCO
+  # prefix and casing to keep the printed headings consistent.
+  def jeevika_bill_role_display(label)
+    label
+      .gsub(/,\s*PAPL\b/i, "")
+      .gsub(/\bFCO-C\s+/i, "FCO-")
+      .gsub(/\(\s*\K[a-z]/) { |first_letter| first_letter.upcase }
   end
 
   def jeevika_bill_approved_by_rows(record)

@@ -106,7 +106,8 @@
 
         <div class="bill-print-footer">
           <div class="bill-print-approved">
-            <strong>Approver and Verification Details</strong>
+            <strong class="bill-print-approved-title">Approver and Verification Details</strong>
+            <span>Prepared by ==> <%= prepared_by[:name] %> <%= prepared_by[:at] %></span>
             <% if approved_rows.any? %>
               <% approved_rows.each do |level, approver, at, action_by| %>
                 <span><%= level.to_s.gsub(/Approval/i, "Approver").gsub(/\bFinance\b/i, "Financial") %> ==> <%= approver.presence || action_by %> <%= at %></span>
@@ -117,10 +118,6 @@
             <% if jeevika_bill_status_label(detail_record).to_s.downcase.include?("final approved") %>
               <%= render "modules/approved_stamp" %>
             <% end %>
-          </div>
-          <div class="bill-print-prepared">
-            <strong>Prepared by</strong>
-            <span><%= prepared_by[:name] %>(at: <%= prepared_by[:at] %>)</span>
           </div>
         </div>
       </section>

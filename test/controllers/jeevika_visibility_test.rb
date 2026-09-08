@@ -41,6 +41,19 @@ class JeevikaVisibilityTest < ActiveSupport::TestCase
     assert_equal "Hemant Shakkarpude", controller.send(:jeevika_bill_approver_display_name, nil, "Hemant Shakkarpude")
   end
 
+  test "printed roles drop the company suffix and shorten the FCO prefix" do
+    controller = ModulesController.new
+    controller.params = ActionController::Parameters.new
+    {
+      "Gaurav Mittal (Chief Financial Officer, PAPL)" => "Gaurav Mittal (Chief Financial Officer)",
+      "Hemant Shakkarpude (FCO-C Sausar)" => "Hemant Shakkarpude (FCO-Sausar)",
+      "Akash Mandal (FCO-C Turekela)" => "Akash Mandal (FCO-Turekela)",
+      "Dr Noushad Parvez (Assistant General Manager)" => "Dr Noushad Parvez (Assistant General Manager)"
+    }.each do |stored, expected|
+      assert_equal expected, controller.send(:jeevika_bill_approver_display_name, stored, nil)
+    end
+  end
+
   test "equivalent approval levels appear once with the latest approver" do
     controller = ModulesController.new
     controller.params = ActionController::Parameters.new
@@ -82,7 +95,7 @@ class JeevikaVisibilityTest < ActiveSupport::TestCase
 
     rows = controller.send(:jeevika_bill_approved_by_rows, ModuleRecord.new(data: { "status" => "Final Approved" }))
     assert_equal ["First Approval", "Second Approval", "Finance Approval"], rows.map(&:first)
-    assert_equal "Hemant Shakkarpude (FCO-C Sausar)", rows.first[1]
+    assert_equal "Hemant Shakkarpude (FCO-Sausar)", rows.first[1]
   end
 
   test "total payment falls back to the fixed amount when the saved amount is zero" do

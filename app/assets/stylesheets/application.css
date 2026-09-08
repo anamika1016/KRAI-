@@ -3316,7 +3316,6 @@ body {
   margin-top: 34px;
 }
 
-.bill-print-prepared,
 .bill-print-approved {
   display: grid;
   gap: 5px;
