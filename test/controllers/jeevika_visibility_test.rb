@@ -149,6 +149,41 @@ class JeevikaVisibilityTest < ActiveSupport::TestCase
     assert_nil rows.first[2]
   end
 
+  test "invoice follows the preparer's channel, not the VRP registrant's shorter chain" do
+    controller = ModulesController.new
+    controller.params = ActionController::Parameters.new
+    # Registrant (Shailesh) is himself an approver, so his own channel is a step shorter.
+    registrant_channel = [
+      ["First Approval", "Hemant Shakkarpude (FCO-C Sausar)"],
+      ["Second Approval", "Dr Noushad Parvez (Assistant General Manager)"],
+      ["Third Approval", "Gaurav Mittal (Chief Financial Officer, PAPL)"]
+    ].map { |level, who| ModuleRecord.new(data: { "approval_level" => level, "approver_approved_by" => who, "user_name" => "Shailesh Bagde" }) }
+    preparer_channel = [
+      ["First Approval", "Shailesh  Bagde (agricultural specialist)"],
+      ["Second Approval", "Hemant Shakkarpude (FCO-C Sausar)"],
+      ["Third Approval", "Dr Noushad Parvez (Assistant General Manager)"],
+      ["Fourth Approval", "Gaurav Mittal (Chief Financial Officer, PAPL)"]
+    ].map { |level, who| ModuleRecord.new(data: { "approval_level" => level, "approver_approved_by" => who, "user_name" => "Ashvin Durve" }) }
+
+    history = [
+      ModuleRecord.new(id: 1, data: { "action" => "Sent for Approval", "action_by" => "Ashvin  Durve", "action_at" => "2026-07-02T12:05:23Z" }),
+      ModuleRecord.new(id: 2, data: { "action" => "Approved", "approver" => "Hemant Shakkarpude (FCO-C Sausar)", "action_at" => "2026-07-06T07:55:41Z" }),
+      ModuleRecord.new(id: 3, data: { "action" => "Approved", "approver" => "Dr Noushad Parvez (Assistant General Manager)", "action_at" => "2026-07-06T13:30:09Z" }),
+      ModuleRecord.new(id: 4, data: { "action" => "Approved", "approver" => "Gaurav Mittal (Chief Financial Officer, PAPL)", "action_at" => "2026-07-09T10:51:17Z" })
+    ]
+
+    controller.define_singleton_method(:model_ready?) { |_model| true }
+    controller.define_singleton_method(:bill_submitter_user) { |_label| nil } # match by name string
+    controller.define_singleton_method(:jeevika_bill_approval_history) { |_record| history }
+    controller.define_singleton_method(:jeevika_bill_approval_steps) { |_record| registrant_channel }
+    controller.define_singleton_method(:jeevika_bill_all_channels) { [registrant_channel, preparer_channel] }
+
+    rows = controller.send(:jeevika_bill_approved_by_rows, ModuleRecord.new(data: { "status" => "Final Approved" }))
+    assert_equal ["First Approval", "Second Approval", "Third Approval", "Finance Approval"], rows.map(&:first)
+    assert_equal "Shailesh Bagde (Agricultural specialist)", rows.first[1]
+    assert_nil rows.first[2], "the preparer's extra step shows even though he never approved this bill"
+  end
+
   test "total payment falls back to the fixed amount when the saved amount is zero" do
     controller = ModulesController.new
     controller.params = ActionController::Parameters.new

@@ -9930,10 +9930,14 @@ class ModulesController < ApplicationController
     @jeevika_bill_approval_steps_cache[cache_key] = matching_channels.max_by { |records| approval_channel_priority(records) } || []
   end
 
-  # For the printed invoice: use the bill's own channel, but when the submitter has no
-  # channel configured, fall back to the Jeevika Jankar Bill channel that best fits so
-  # every bill still lists the same approvers instead of only its recorded history.
+  # For the printed invoice only (routing is untouched): show the channel of whoever
+  # PREPARED the bill, not the VRP registrant. A bill registered by an approver would
+  # otherwise borrow that approver's shorter chain and drop a step from the invoice.
+  # Falls back to the best-fitting channel when the preparer has none configured.
   def jeevika_bill_display_steps(record)
+    preparer_channel = jeevika_bill_preparer_channel(record)
+    return preparer_channel if preparer_channel.present?
+
     steps = jeevika_bill_approval_steps(record)
     return steps if steps.present?
 
@@ -9949,6 +9953,25 @@ class ModulesController < ApplicationController
         approvers.any? { |approver| dashboard_user_label_matches?(approver, [step.data["approver_approved_by"]]) }
       end
       [overlap, channel.size]
+    end
+  end
+
+  # The channel keyed to the bill's preparer (the "Sent for Approval" actor). The channel's
+  # user_name may hold the full name or the login, so match against both forms.
+  def jeevika_bill_preparer_channel(record)
+    preparer = jeevika_bill_approval_history(record)
+      .find { |history| history.data["action"].to_s == "Sent for Approval" }
+      &.data&.[]("action_by")
+    return if preparer.blank?
+
+    candidates = [preparer]
+    user = bill_submitter_user(preparer)
+    candidates += [user.user_name, user.full_name] if user
+    candidates = candidates.compact_blank.uniq
+    return if candidates.blank?
+
+    jeevika_bill_all_channels.find do |channel|
+      channel.any? { |step| dashboard_user_label_matches?(step.data["user_name"], candidates) }
     end
   end
 
