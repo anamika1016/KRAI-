@@ -143,6 +143,7 @@ Rails.application.routes.draw do
 
   resources :target_mappings, only: [:index, :create, :destroy] do
     get :vrp_mappings, on: :collection
+    get :saved_farmers, on: :collection
   end
 
   get "farmer-farm-information", to: "farmer_farm_information#index", as: :farmer_farm_information

@@ -47,6 +47,11 @@ class TargetMappingsController < ApplicationController
       return
     end
 
+    if (opg_error = training_target_opg_error)
+      redirect_to target_mappings_path, alert: opg_error
+      return
+    end
+
     if editable_target
       mappings = build_target_mappings_for_selected_activities
 
@@ -105,6 +110,15 @@ class TargetMappingsController < ApplicationController
         edit_target: edit_target_for_json
       )
     }
+  end
+
+  def saved_farmers
+    ids = params[:target_mapping_ids].to_s.split(",").uniq
+    targets = visible_target_mappings.where(id: ids)
+    farmer_ids = targets.pluck(:afl_ids).flat_map { |values| normalized_afl_ids(values) }.uniq
+    farmers = Afl.where(id: farmer_ids).order(:farmer_name, :id)
+      .select(:id, :farmer_name, :father_name, :tracenet_no, :mobile_no, :village_name)
+    render json: { farmers: farmers.as_json }
   end
 
   private
@@ -285,6 +299,26 @@ class TargetMappingsController < ApplicationController
     number.to_i
   rescue ArgumentError
     nil
+  end
+
+  # OPG Training is the ceiling: the four breakdown boxes (General Training/Meeting,
+  # Input Demo INM, Input Demo PM, FFS) together cannot exceed the OPG value.
+  OPG_BREAKDOWN_KEYS = %w[week_wise_opg input_demo_inm input_demo_pm ffs].freeze
+
+  def training_target_opg_error
+    targets = target_mapping_params[:training_targets]
+    return unless targets.respond_to?(:[])
+
+    supplied = TRAINING_TARGET_FIELDS.keys.select { |key| targets[key].present? }
+    return "Training target values must be non-negative whole numbers." if supplied.any? { |key| integer_plan_value(targets[key]).nil? }
+    return if supplied.empty?
+    return "Please enter OPG Training before allocating the four training targets." if targets["opg_training"].blank?
+
+    opg = integer_plan_value(targets["opg_training"])
+    breakdown = OPG_BREAKDOWN_KEYS.sum { |key| integer_plan_value(targets[key]).to_i }
+    return if breakdown == opg
+
+    "General Training/Meeting, Input Demo INM, Input Demo PM aur FFS ka total (#{breakdown}) OPG Training (#{opg}) ke equal hona chahiye; usse zyada nahi ho sakta."
   end
 
   def selected_main_activity_names
@@ -1318,6 +1352,7 @@ class TargetMappingsController < ApplicationController
       end
       {
         target: target,
+        target_mapping_ids: grouped_targets.map(&:id),
         main_activities: unique_activity_values(grouped_targets.map(&:main_activity_name)),
         sub_activities: unique_activity_values(grouped_targets.map(&:activity_name)),
         farmer_ids: grouped_targets.flat_map { |row| Array(row.afl_ids).map(&:to_s) }.reject(&:blank?).uniq,

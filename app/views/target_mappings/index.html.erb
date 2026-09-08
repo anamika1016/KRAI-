@@ -25,6 +25,7 @@
               <% end %>
             </div>
           <% end %>
+          <p data-target-load-status role="status" hidden></p>
           <div class="module-form-grid user-registration-grid">
             <label>
               <span>Jeevika Jankar <em>*</em></span>
@@ -126,6 +127,7 @@
           </div>
 
           <div class="target-training-fields" data-target-training-fields hidden>
+            <p data-opg-validation-message role="alert" hidden></p>
             <div class="target-mapping-toolbar">
               <strong>Training Monthly Target</strong>
             </div>
@@ -141,7 +143,7 @@
                   <span><%= label %></span>
                   <input type="number"
                          name="target_mapping[training_targets][<%= key %>]"
-                         min="1"
+                         min="0"
                          step="1"
                          placeholder="Enter target"
                          value="<%= @edit_payload.dig(:training_targets, key.to_sym) || @edit_payload.dig(:training_targets, key) %>"
@@ -440,7 +442,7 @@
                     <% if target_farmer_ids.any? %>
                       <% farmer_dialog_id = "target-farmers-#{target.id}" %>
                       <button type="button" class="table-action" data-saved-target-farmers-open="<%= farmer_dialog_id %>">View</button>
-                      <dialog id="<%= farmer_dialog_id %>" class="target-farmer-dialog" data-saved-target-farmers-dialog>
+                      <dialog id="<%= farmer_dialog_id %>" class="target-farmer-dialog" data-saved-target-farmers-dialog data-farmers-url="<%= saved_farmers_target_mappings_path(target_mapping_ids: Array(row[:target_mapping_ids]).join(",")) %>">
                         <div class="target-farmer-dialog-inner">
                           <div class="target-farmer-dialog-header">
                             <div>
@@ -450,16 +452,7 @@
                             <button type="button" data-saved-target-farmers-close aria-label="Close">×</button>
                           </div>
                           <div class="vrp-ics-farmer-list target-dialog-farmer-list">
-                            <% target_farmer_ids.each do |farmer_id| %>
-                              <% farmer = @target_farmers_by_id[farmer_id] %>
-                              <div class="vrp-ics-farmer-item">
-                                <span aria-hidden="true">•</span>
-                                <span>
-                                  <strong><%= farmer&.farmer_name.presence || "Farmer ##{farmer_id}" %></strong>
-                                  <small><%= [farmer&.father_name.presence && "Father: #{farmer.father_name}", farmer&.tracenet_no.presence && "Tracenet: #{farmer.tracenet_no}", farmer&.mobile_no.presence && "Mobile: #{farmer.mobile_no}", farmer&.village_name.presence && "Village: #{farmer.village_name}"].compact.join(" | ") %></small>
-                                </span>
-                              </div>
-                            <% end %>
+                            <p>Farmer details load when you click View.</p>
                           </div>
                         </div>
                       </dialog>

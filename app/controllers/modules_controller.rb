@@ -1723,7 +1723,6 @@ class ModulesController < ApplicationController
     return render json: { farmers: [] } if ids.blank? || !model_ready?(:TargetMapping)
 
     targets = training_target_scope.where(id: ids).includes(:vrp).to_a
-    targets = TargetMapping.where(id: ids).includes(:vrp).to_a if targets.blank?
     farmer_ids = targets.flat_map { |target| target_farmer_ids(target) }.map(&:to_s).reject(&:blank?).uniq
     completed_ids = targets.flat_map { |target| completed_training_farmer_ids_for(target, target_farmer_ids(target)) }.map(&:to_s).uniq
     completed_lookup = completed_ids.index_with(true)
@@ -12859,10 +12858,6 @@ class ModulesController < ApplicationController
         activity_setting = jeevika_jankar_activity_setting_for(target, activity_settings, sub_activity_settings)
         activity_setting.present? && training_main_activity_type?(activity_setting[:main_activity_type])
       end
-    include_completed_state = @record.present?
-
-    all_farmer_ids = targets.flat_map { |target| Array(target.afl_ids).map(&:to_s) }.reject(&:blank?).uniq
-    farmers_lookup = training_farmers_for_ids(all_farmer_ids).index_by { |farmer| farmer[:id].to_s }
 
     targets
       .map do |target|
@@ -12880,8 +12875,8 @@ class ModulesController < ApplicationController
           sub_activity: target.activity_name.to_s.strip,
           new_farmer_target: new_farmer_target_mapping?(target),
           farmer_ids: farmer_ids,
-          completed_farmer_ids: include_completed_state ? completed_training_farmer_ids_for(target, farmer_ids) : [],
-          farmers: farmer_ids.filter_map { |fid| farmers_lookup[fid] }
+          completed_farmer_ids: [],
+          farmers: []
         }
       end
       .reject { |mapping| mapping[:ics].blank? && mapping[:village].blank? }

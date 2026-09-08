@@ -1,6 +1,48 @@
 require "test_helper"
 
 class VrpDashboardTest < ActionDispatch::IntegrationTest
+  test "training picker marks only completed farmers in the same month village and indicator" do
+    vrp = create_vrp(user_name: "training_colour_jj", password: "secret", agreement_accepted_at: Time.current)
+    trained = create_afl(farmer_name: "Trained Farmer")
+    pending = create_afl(farmer_name: "Pending Farmer")
+    targets = [["August", "V1", "Soil"], ["July", "V1", "Soil"], ["August", "V2", "Soil"], ["August", "V1", "Compost"]].map do |month, village, activity|
+      TargetMapping.create!(vrp: vrp, fco_id: "FCO1", ics_id: "ICS1", village_id: village,
+        month_name: month, main_activity_name: "Farmers' Training", activity_name: activity,
+        target_quantity: 2, afl_ids: [trained.id, pending.id])
+    end
+    ModuleRecord.create!(module_slug: "training-form", data: {
+      "month" => "August", "vrp_id" => vrp.id.to_s, "selected_farmer_ids" => [trained.id.to_s],
+      "main_activity" => "Farmers' Training", "sub_activity" => "Soil", "ics" => "ICS1", "village" => "V1",
+      "training_date" => "2026-08-10"
+    })
+    post login_path, params: { login: vrp.user_name, password: "secret" }
+    targets.each_with_index do |target, index|
+      get training_target_farmers_module_path("training-form"), params: { target_mapping_ids: target.id }
+      assert_response :success
+      farmers = response.parsed_body.fetch("farmers").index_by { |farmer| farmer["id"].to_s }
+      assert_equal index.zero?, farmers.fetch(trained.id.to_s).fetch("already_included")
+      assert_equal false, farmers.fetch(pending.id.to_s).fetch("already_included")
+    end
+    get target_mappings_path
+    assert_response :success
+    assert_select "[data-saved-target-farmers-dialog] .vrp-ics-farmer-item", count: 0
+    get saved_farmers_target_mappings_path, params: { target_mapping_ids: targets.first.id }
+    assert_response :success
+    assert_equal ["Pending Farmer", "Trained Farmer"], response.parsed_body.fetch("farmers").map { |farmer| farmer["farmer_name"] }
+  end
+
+  test "target creation rejects an OPG over allocation before saving" do
+    User.create!(user_name: "opg_admin", password: "secret", first_name: "OPG Admin", user_type: "admin", status: "Active")
+    post login_path, params: { login: "opg_admin", password: "secret" }
+    assert_no_difference("TargetMapping.count") do
+      post target_mappings_path, params: { target_mapping: { training_targets: {
+        opg_training: "20", week_wise_opg: "10", input_demo_inm: "10", input_demo_pm: "10", ffs: "10"
+      } } }
+    end
+    assert_redirected_to target_mappings_path
+    assert_includes flash[:alert], "(40)"
+  end
+
   test "bill rows and saved bill totals follow dashboard assignments across months" do
     vrp = create_vrp(user_name: "bill_dashboard_match", password: "secret")
     farmer = create_afl
