@@ -9820,45 +9820,45 @@ class ModulesController < ApplicationController
       .gsub(/\(\s*\K[a-z]/) { |first_letter| first_letter.upcase }
   end
 
+  # Driven by the Jeevika Jankar Approval List so every bill on a channel prints the
+  # same steps. Approvals recorded outside the channel are kept so nothing is lost.
   def jeevika_bill_approved_by_rows(record)
-    steps = jeevika_bill_approval_steps(record)
+    approvals = jeevika_bill_approval_history(record).select { |history| history.data["action"].to_s == "Approved" }
+    matched = []
 
-    approved_history = jeevika_bill_approval_history(record)
-      .select { |history| history.data["action"].to_s == "Approved" }
-      .group_by { |history| jeevika_bill_history_sequence(history, steps) }
-      .values
-      .map { |entries| entries.max_by { |history| [parse_bill_datetime(history.data["action_at"]) || history.created_at || Time.at(0), history.id.to_i] } }
-      .sort_by { |history| jeevika_bill_history_sequence(history, steps) }
+    rows = jeevika_bill_display_steps(record).map do |step|
+      approver = step.data["approver_approved_by"]
+      # Consume every approval for this approver, so a re-approval cannot also surface below.
+      entries = approvals.select { |history| dashboard_user_label_matches?(history.data["approver"], [approver]) }
+      matched.concat(entries)
+      [approval_sequence_from_level(step.data["approval_level"]), approver, latest_bill_approval_entry(entries)]
+    end
 
-    approved_history.map.with_index do |history, index|
-      sequence = jeevika_bill_history_sequence(history, steps)
-      is_last = index == approved_history.size - 1
-      approval_label = if jeevika_bill_final_approved?(record) && is_last
+    (approvals - matched).group_by { |history| approval_sequence_from_level(history.data["approval_level"]) }.each do |sequence, entries|
+      history = latest_bill_approval_entry(entries)
+      rows << [sequence, history.data["approver"], history]
+    end
+
+    rows = rows.sort_by { |sequence, _approver, _history| sequence }
+    last_sequence = rows.map(&:first).max
+
+    rows.map do |sequence, approver, history|
+      approval_label = if jeevika_bill_final_approved?(record) && sequence == last_sequence
         "Finance Approval"
       else
         approval_level_label_for_sequence(sequence)
       end
       [
         approval_label,
-        jeevika_bill_approver_display_name(history.data["approver"], history.data["action_by"]),
-        bill_display_datetime(history.data["action_at"]),
-        history.data["action_by"].presence
+        jeevika_bill_approver_display_name(approver, history&.data&.[]("action_by")),
+        history ? bill_display_datetime(history.data["action_at"]) : nil,
+        history&.data&.[]("action_by").presence
       ]
     end
   end
 
-  # Preserve the level recorded when approval happened, even if today's channel changed.
-  def jeevika_bill_history_sequence(history, steps)
-    saved_sequence = approval_level_sequence_from_text(history.data["approval_level"])
-    return saved_sequence if saved_sequence
-
-    approver = history.data["approver"]
-    matched = Array(steps).find do |step|
-      dashboard_user_label_matches?(approver, [step.data["approver_approved_by"]])
-    end
-    return approval_sequence_from_level(matched.data["approval_level"]) if matched
-
-    approval_sequence_from_level(history.data["approval_level"])
+  def latest_bill_approval_entry(entries)
+    entries.max_by { |history| [parse_bill_datetime(history.data["action_at"]) || history.created_at || Time.at(0), history.id.to_i] }
   end
 
   def jeevika_bill_status_label(record)
@@ -9930,6 +9930,36 @@ class ModulesController < ApplicationController
     @jeevika_bill_approval_steps_cache[cache_key] = matching_channels.max_by { |records| approval_channel_priority(records) } || []
   end
 
+  # For the printed invoice: use the bill's own channel, but when the submitter has no
+  # channel configured, fall back to the Jeevika Jankar Bill channel that best fits so
+  # every bill still lists the same approvers instead of only its recorded history.
+  def jeevika_bill_display_steps(record)
+    steps = jeevika_bill_approval_steps(record)
+    return steps if steps.present?
+
+    channels = jeevika_bill_all_channels
+    return [] if channels.blank?
+
+    approvers = jeevika_bill_approval_history(record)
+      .select { |history| history.data["action"].to_s == "Approved" }
+      .filter_map { |history| history.data["approver"].presence }
+
+    channels.max_by do |channel|
+      overlap = channel.count do |step|
+        approvers.any? { |approver| dashboard_user_label_matches?(approver, [step.data["approver_approved_by"]]) }
+      end
+      [overlap, channel.size]
+    end
+  end
+
+  def jeevika_bill_all_channels
+    @jeevika_bill_all_channels ||= jeevika_bill_approval_master_steps
+      .group_by { |step| approval_channel_key(step) }
+      .values
+      .map { |records| ordered_approval_channel_steps(records) }
+      .reject(&:blank?)
+  end
+
   def jeevika_bill_approval_master_steps
     @jeevika_bill_approval_master_steps ||= ModuleRecord
       .where(module_slug: "approval-master")
@@ -9992,22 +10022,7 @@ class ModulesController < ApplicationController
     vrp = jeevika_bill_vrp(record)
     identities.concat(vrp_creator_identities_for_dashboard(vrp)) if vrp
     identities << current_bill_creator_identity(record)
-    identities << bill_submitter_identity(record)
     @jeevika_bill_approval_identities_cache[cache_key] = identities.compact.uniq
-  end
-
-  # Older bills never stored created_by_*, so the channel would otherwise fall back to
-  # the VRP registrant and silently drop that registrant's own approval step. Whoever
-  # sent the bill for approval is the real submitter, so match their channel too.
-  def bill_submitter_identity(record)
-    submitter = jeevika_bill_approval_history(record)
-      .select { |history| history.data["action"].to_s == "Sent for Approval" }
-      .min_by { |history| [parse_bill_datetime(history.data["action_at"]) || history.created_at || Time.at(0), history.id.to_i] }
-      &.data&.[]("action_by")
-    return if submitter.blank?
-
-    user = bill_submitter_user(submitter)
-    user ? user_dashboard_identity(user) : nil
   end
 
   def bill_submitter_user(label)

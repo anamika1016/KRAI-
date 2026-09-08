@@ -69,7 +69,7 @@ class JeevikaVisibilityTest < ActiveSupport::TestCase
     assert_equal "Person 2 (Specialist)", rows.first[1]
   end
 
-  test "approver headings preserve historical levels when the current channel changes" do
+  test "approver list comes from the approval channel so every bill prints the same steps" do
     controller = ModulesController.new
     controller.params = ActionController::Parameters.new
     steps = [
@@ -79,7 +79,7 @@ class JeevikaVisibilityTest < ActiveSupport::TestCase
       ["Fourth Approval", "Gaurav Mittal (Chief Financial Officer, PAPL)"]
     ].map { |level, approver| ModuleRecord.new(data: { "approval_level" => level, "approver_approved_by" => approver }) }
 
-    # Channel changed after these were approved, so the stored levels are one short.
+    # Shailesh never approved this one, and the stored levels are a step short.
     history = [
       ["First Approval", "Hemant Shakkarpude (FCO-C Sausar)", "2026-07-06T07:55:41Z"],
       ["Second Approval", "Dr Noushad Parvez (Assistant General Manager)", "2026-07-06T13:30:09Z"],
@@ -94,8 +94,59 @@ class JeevikaVisibilityTest < ActiveSupport::TestCase
     controller.define_singleton_method(:jeevika_bill_approval_history) { |_record| history }
 
     rows = controller.send(:jeevika_bill_approved_by_rows, ModuleRecord.new(data: { "status" => "Final Approved" }))
-    assert_equal ["First Approval", "Second Approval", "Finance Approval"], rows.map(&:first)
-    assert_equal "Hemant Shakkarpude (FCO-Sausar)", rows.first[1]
+    assert_equal ["First Approval", "Second Approval", "Third Approval", "Finance Approval"], rows.map(&:first)
+    assert_equal "Shailesh Bagde (Agricultural specialist)", rows.first[1]
+    assert_nil rows.first[2], "a step with no approval yet should print without a date"
+    assert_equal "Hemant Shakkarpude (FCO-Sausar)", rows.second[1]
+  end
+
+  test "a re-approval by the same approver does not duplicate the channel row" do
+    controller = ModulesController.new
+    controller.params = ActionController::Parameters.new
+    steps = [ModuleRecord.new(data: {
+      "approval_level" => "First Approval", "approver_approved_by" => "Shailesh  Bagde (agricultural specialist)"
+    })]
+    history = ["2026-07-03T11:30:00Z", "2026-07-03T15:02:00Z"].map.with_index do |at, index|
+      ModuleRecord.new(id: index + 1, data: {
+        "action" => "Approved", "approval_level" => "First Approval",
+        "approver" => "Shailesh  Bagde (agricultural specialist)", "action_at" => at
+      })
+    end
+    controller.define_singleton_method(:jeevika_bill_approval_steps) { |_record| steps }
+    controller.define_singleton_method(:jeevika_bill_approval_history) { |_record| history }
+
+    rows = controller.send(:jeevika_bill_approved_by_rows, ModuleRecord.new(data: {}))
+    assert_equal 1, rows.size
+    assert_equal "03-Jul-2026 08:32 PM", rows.first[2], "the latest approval wins"
+  end
+
+  test "a bill without its own channel falls back to the configured approval channel" do
+    controller = ModulesController.new
+    controller.params = ActionController::Parameters.new
+    channel = [
+      ["First Approval", "Shailesh  Bagde (agricultural specialist)"],
+      ["Second Approval", "Hemant Shakkarpude (FCO-C Sausar)"],
+      ["Third Approval", "Dr Noushad Parvez (Assistant General Manager)"],
+      ["Fourth Approval", "Gaurav Mittal (Chief Financial Officer, PAPL)"]
+    ].map { |level, approver| ModuleRecord.new(data: { "approval_level" => level, "approver_approved_by" => approver }) }
+
+    history = [
+      ["Hemant Shakkarpude (FCO-C Sausar)", "2026-07-06T07:55:41Z"],
+      ["Dr Noushad Parvez (Assistant General Manager)", "2026-07-06T13:30:09Z"],
+      ["Gaurav Mittal (Chief Financial Officer, PAPL)", "2026-07-09T10:51:17Z"]
+    ].map.with_index do |(approver, at), index|
+      ModuleRecord.new(id: index + 1, data: { "action" => "Approved", "approver" => approver, "action_at" => at })
+    end
+
+    # No submitter-specific channel, only the one configured channel exists.
+    controller.define_singleton_method(:jeevika_bill_approval_steps) { |_record| [] }
+    controller.define_singleton_method(:jeevika_bill_all_channels) { [channel] }
+    controller.define_singleton_method(:jeevika_bill_approval_history) { |_record| history }
+
+    rows = controller.send(:jeevika_bill_approved_by_rows, ModuleRecord.new(data: { "status" => "Final Approved" }))
+    assert_equal ["First Approval", "Second Approval", "Third Approval", "Finance Approval"], rows.map(&:first)
+    assert_equal "Shailesh Bagde (Agricultural specialist)", rows.first[1]
+    assert_nil rows.first[2]
   end
 
   test "total payment falls back to the fixed amount when the saved amount is zero" do
@@ -108,26 +159,6 @@ class JeevikaVisibilityTest < ActiveSupport::TestCase
     end
     record = ModuleRecord.new(data: { "grand_total" => "4200.00" })
     assert_equal "4200.00", controller.send(:jeevika_jankar_bill_total_payment, record)
-  end
-
-  test "legacy bill without created_by resolves the channel of whoever sent it" do
-    controller = ModulesController.new
-    controller.params = ActionController::Parameters.new
-    submitter = User.new(user_name: "Ashvin", first_name: "Ashvin", last_name: "Durve", stakeholder: "PAPL")
-    history = [
-      ModuleRecord.new(id: 2, data: { "action" => "Sent for Approval", "action_by" => "Ashvin  Durve", "action_at" => "2026-07-02T12:06:17Z" }),
-      ModuleRecord.new(id: 1, data: { "action" => "Sent for Approval", "action_by" => "Ashvin  Durve", "action_at" => "2026-07-02T12:05:23Z" })
-    ]
-    controller.define_singleton_method(:jeevika_bill_approval_history) { |_record| history }
-    controller.define_singleton_method(:model_ready?) { |_model| true }
-    controller.define_singleton_method(:bill_submitter_user) { |_label| submitter }
-
-    identity = controller.send(:bill_submitter_identity, ModuleRecord.new(data: {}))
-    assert_equal "Ashvin", identity[:user_name]
-    assert_equal "PAPL", identity[:stakeholder]
-
-    controller.define_singleton_method(:jeevika_bill_approval_history) { |_record| [] }
-    assert_nil controller.send(:bill_submitter_identity, ModuleRecord.new(data: {}))
   end
 
   test "bill list totals use the process summary and cache it for the VRP month" do
