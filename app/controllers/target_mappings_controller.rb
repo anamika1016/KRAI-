@@ -20,13 +20,9 @@ class TargetMappingsController < ApplicationController
     @target_sub_activity_map = target_sub_activity_map
     @target_summary_mode = params[:summary_mode].presence_in(%w[main_activity sub_activity])
     mapping_scope = filtered_visible_target_mappings.includes(:vrp, :vrp_ics_mapping).order(updated_at: :desc)
-    @target_mappings = if @target_summary_mode.present? || request.format.xlsx?
-      mapping_scope.to_a
-    else
-      mapping_scope.limit(150).to_a
-    end
+    @target_mappings = mapping_scope.to_a
     @target_mapping_rows = @target_summary_mode.present? ? target_mapping_summary_rows(@target_mappings) : grouped_target_mapping_rows(@target_mappings)
-    @target_mapping_display_rows = @target_summary_mode.present? ? @target_mapping_rows : @target_mapping_rows.first(100)
+    @target_mapping_display_rows = @target_mapping_rows
     @target_farmers_by_id = {}
     @edit_target = visible_target_mappings.find_by(id: params[:edit_id]) if params[:edit_id].present? && @admin_mapping_actions
     @edit_payload = edit_payload(@edit_target)
@@ -1161,16 +1157,24 @@ class TargetMappingsController < ApplicationController
   end
 
   def visible_target_mappings
-    if params[:summary_mode].present?
-      policy = ModulesController.new
-      policy.request = request
-      policy.instance_variable_set(:@current_app_user, current_app_user)
-      return policy.send(:dashboard_visible_target_scope)
-    end
+    return dashboard_target_policy.send(:dashboard_visible_target_scope) if params[:summary_mode].present?
     return TargetMapping.all if admin_login?
     return TargetMapping.where(vrp_id: current_app_user["id"]) if non_admin_vrp_login?
 
-    TargetMapping.where(created_by_type: current_app_user["record_type"], created_by_id: current_app_user["id"])
+    # Management users oversee a set of VRPs (the same set the dashboard shows). List every
+    # mapping for those VRPs, not only the ones this user personally created, so the master
+    # list reflects all assigned targets. Global-view users (admin/CFO) see everything.
+    policy = dashboard_target_policy
+    return TargetMapping.all if policy.send(:dashboard_global_view_user?)
+
+    TargetMapping.where(vrp_id: policy.send(:dashboard_visible_vrp_ids))
+  end
+
+  def dashboard_target_policy
+    policy = ModulesController.new
+    policy.request = request
+    policy.instance_variable_set(:@current_app_user, current_app_user)
+    policy
   end
 
   def filtered_visible_target_mappings

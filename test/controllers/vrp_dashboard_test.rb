@@ -1,6 +1,71 @@
 require "test_helper"
 
 class VrpDashboardTest < ActionDispatch::IntegrationTest
+  test "bill rows and saved bill totals follow dashboard assignments across months" do
+    vrp = create_vrp(user_name: "bill_dashboard_match", password: "secret")
+    farmer = create_afl
+    targets = %w[July August].flat_map do |month|
+      %w[Soil Compost].map do |activity|
+        TargetMapping.create!(vrp: vrp, fco_id: "FCO1", ics_id: "ICS1", village_id: "V1",
+          month_name: month, main_activity_name: "Farmers' Training", activity_name: activity,
+          target_quantity: 1, farmer_count: 1, afl_ids: [farmer.id])
+      end
+    end
+    2.times do
+      ModuleRecord.create!(module_slug: "training-form", data: {
+        "month" => "August", "vrp_id" => vrp.id.to_s, "selected_farmer_ids" => [farmer.id.to_s],
+        "main_activity" => "Farmers' Training", "sub_activity" => "Soil",
+        "ics" => "ICS1", "village" => "V1", "training_date" => "2026-08-10"
+      })
+    end
+    controller = ModulesController.new
+    controller.define_singleton_method(:vrp_login_user?) { false }
+    controller.define_singleton_method(:module_mapped_vrp_scope_active?) { false }
+    %w[August July].each do |month|
+      rows = controller.send(:jeevika_jankar_bill_rows, vrp_id: vrp.id.to_s, month_name: month)
+      dashboard = ModulesController.new.send(:vrp_dashboard_target_progress_rows, targets.select { |target| target.month_name == month }, [])
+      assert_equal 2, rows.size
+      assert_equal dashboard.sum { |row| row[:target] }, rows.sum { |row| row[:target_quantity] }
+      assert_equal dashboard.sum { |row| row[:completed] }, rows.sum { |row| row[:achievement_count] }
+      assert rows.none? { |row| row[:training_session_key].present? }
+      assert rows.all? { |row| row[:farmer_details].size == 1 }
+      assert_equal month == "August" ? 1 : 0, rows.sum { |row| row[:achievement_count] }
+      bill = ModuleRecord.new(data: { "select_vrp" => vrp.id.to_s, "bill_month" => month,
+        "total_target" => "999", "total_achievement" => "999" })
+      assert_equal 2, controller.send(:jeevika_jankar_bill_total_target, bill)
+      assert_equal (month == "August" ? 1 : 0), controller.send(:jeevika_jankar_bill_total_achievement, bill)
+    end
+  end
+
+  test "training list retains older months beyond the newest 300 visible records" do
+    controller = ModulesController.new
+    controller.instance_variable_set(:@slug, "training-form-list")
+    controller.define_singleton_method(:target_record_visible?) { |record| record.data["vrp_id"] == "older-month-jj" }
+    older = ModuleRecord.create!(module_slug: "training-form", data: { "month" => "July", "vrp_id" => "older-month-jj" }, created_at: 2.months.ago)
+    ModuleRecord.insert_all!(301.times.map do
+      { module_slug: "training-form", data: { "month" => "August", "vrp_id" => "older-month-jj" }, created_at: Time.current, updated_at: Time.current }
+    end)
+    hidden = ModuleRecord.create!(module_slug: "training-form", data: { "month" => "July", "vrp_id" => "another-jj" })
+    records = controller.send(:module_records)
+    assert_includes records.map(&:id), older.id
+    refute_includes records.map(&:id), hidden.id
+    assert_equal 302, records.size
+  end
+
+  test "recent target mappings include assignments beyond the old display limits" do
+    vrp = create_vrp(user_name: "all_targets_jj", password: "secret", agreement_accepted_at: Time.current)
+    TargetMapping.insert_all!(151.times.map do |index|
+      { vrp_id: vrp.id, fco_id: "FCO1", ics_id: "ICS1", village_id: "V1",
+        month_name: "July", main_activity_name: "Farmers' Training", activity_name: "Activity #{index}",
+        target_quantity: 1, afl_ids: [], created_at: Time.current, updated_at: Time.current + index.seconds }
+    end)
+    post login_path, params: { login: vrp.user_name, password: "secret" }
+    get target_mappings_path
+    assert_response :success
+    assert_select "#target_mapping_list tbody", text: /Activity 0\b/
+    assert_select "#target_mapping_list tbody", text: /Activity 150\b/
+  end
+
   test "dashboard counts a shared farmer plan once when grouped activities have different metrics" do
     vrp = create_vrp(user_name: "multi_activity_vrp", password: "secret", agreement_accepted_at: Time.current)
     farmer = create_afl(farmer_name: "Multi Activity Farmer", mobile_no: "9000000070")
