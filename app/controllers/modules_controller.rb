@@ -1568,6 +1568,9 @@ class ModulesController < ApplicationController
       return
     end
 
+    # Keep existing training evidence when an edit adds more files.
+    next_data = preserve_training_uploads(record.data, next_data) if record_source_slug == "training-form"
+
     if record.update(data: next_data)
       sync_stakeholder_name_change(previous_data, next_data)
       sync_vrp_master_record(record)
@@ -1969,6 +1972,7 @@ class ModulesController < ApplicationController
       dashboard_card("Main Activities", main_activity_count, "Main activities mapped in #{month_caption}", vrp_dashboard_list_path("main_activities", training_month: selected_month)),
       dashboard_card("Sub Activities", sub_activity_count, "Sub activities mapped in #{month_caption}", vrp_dashboard_list_path("sub_activities", training_month: selected_month)),
       dashboard_card("Assigned Target", dashboard_quantity(assigned_target_total), "Target quantity assigned in #{month_caption}", vrp_dashboard_list_path("assigned_target", training_month: selected_month)),
+      dashboard_card("Assigned Farmers", @vrp_target_rows.flat_map { |row| Array(row[:assigned_farmer_ids]) }.map(&:to_s).reject(&:blank?).uniq.size, "Unique farmers assigned in #{month_caption}", vrp_dashboard_list_path("mapped_farmers", training_month: selected_month)),
       dashboard_card("Achieved Target", dashboard_quantity(achieved_target_total), "Target completed in #{month_caption}", vrp_dashboard_list_path("achieved_target", training_month: selected_month)),
       dashboard_card("Pending Target", dashboard_quantity(pending_target_total), "Target pending in #{month_caption}", vrp_dashboard_list_path("pending_target", training_month: selected_month))
     ]
@@ -2665,21 +2669,9 @@ class ModulesController < ApplicationController
     when "mapped_villages"
       village_rows = vrp_dashboard_village_rows(vrp, mappings, targets)
       rows = village_rows.map do |row|
-        action = if row[:mapping_id].present?
-          {
-            button: true,
-            label: "Delete",
-            path: destroy_vrp_mapped_village_path(row[:mapping_id]),
-            method: :delete,
-            class: "table-action danger",
-            confirm: "Delete this mapped village?"
-          }
-        else
-          "-"
-        end
-        [row[:fco], row[:village], dashboard_quantity(row[:farmers]), dashboard_quantity(row[:targets]), dashboard_quantity(row[:target_quantity]), action]
+        [row[:fco], row[:village], dashboard_quantity(row[:farmers]), dashboard_quantity(row[:targets]), dashboard_quantity(row[:target_quantity])]
       end
-      dashboard_detail_payload(key, "Mapped Villages", "Villages assigned for field work.", rows.size, ["FCO", "Village", "Mapped Farmers", "Targets", "Target Quantity", "Action"], rows)
+      dashboard_detail_payload(key, "Mapped Villages", "Villages assigned for field work.", rows.size, ["FCO", "Village", "Mapped Farmers", "Targets", "Target Quantity"], rows)
     when "main_activities"
       rows = vrp_dashboard_grouped_target_rows(target_rows, :main_activity)
       dashboard_detail_payload(key, "Main Activities", "Main activities mapped to your targets.", rows.size, ["Main Activity", "Targets", "Target", "Completed", "Pending", "Progress"], rows)
@@ -8934,11 +8926,24 @@ class ModulesController < ApplicationController
   def module_records_required_for_show?
     return true if @record.present?
     return true if @slug.to_s.end_with?("-list")
+    return true if %w[
+      stakeholder-master stakeholder-role role-name
+      parent-office-add office-category-add office-mapping-add
+    ].include?(@slug)
     return true if @slug == "lg-directory-list"
     return true if @slug == "jeevika-jankar-payment-list-detail"
     return true if @slug == "jeevika-jankar-completed-payment-list"
 
     false
+  end
+
+  def preserve_training_uploads(previous_data, next_data)
+    %w[training_register_upload training_photo_upload_with_geo_tag].each do |key|
+      next if next_data[key].blank?
+
+      next_data[key] = (Array(previous_data[key]) + Array(next_data[key])).compact_blank.uniq
+    end
+    next_data
   end
 
   def active_module_records_scope(module_slug)
