@@ -3,6 +3,7 @@ require "test_helper"
 class JeevikaVisibilityTest < ActiveSupport::TestCase
   test "completed payment visibility uses JJ assignment even when user approved the bill" do
     controller = ModulesController.new
+    controller.params = ActionController::Parameters.new
     controller.define_singleton_method(:admin_dashboard_user?) { false }
     controller.define_singleton_method(:cached_vrp_lookup) { |id| Vrp.new(id: id) }
     controller.define_singleton_method(:scoped_jeevika_vrp_visible?) { |vrp| vrp&.id == 12 }
@@ -14,6 +15,7 @@ class JeevikaVisibilityTest < ActiveSupport::TestCase
 
   test "bill summaries batch multiple JJ records in one calculation per month" do
     controller = ModulesController.new
+    controller.params = ActionController::Parameters.new
     calls = []
     controller.define_singleton_method(:jeevika_jankar_bill_rows) do |vrp_id:, month_name:|
       calls << [vrp_id, month_name]
@@ -29,9 +31,11 @@ class JeevikaVisibilityTest < ActiveSupport::TestCase
 
   test "approver names remove repeated wrappers without losing the role" do
     controller = ModulesController.new
+    controller.params = ActionController::Parameters.new
     name = "Shailesh Bagde"
-    expected = "#{name} (agricultural specialist)"
-    [expected, "#{name} (#{expected})", "#{name} (#{name} (#{expected}))"].each do |label|
+    original = "#{name} (agricultural specialist)"
+    expected = "#{name} (Agricultural specialist)"
+    [original, "#{name} (#{original})", "#{name} (#{name} (#{original}))"].each do |label|
       assert_equal expected, controller.send(:jeevika_bill_approver_display_name, label, name)
     end
     assert_equal "Hemant Shakkarpude", controller.send(:jeevika_bill_approver_display_name, nil, "Hemant Shakkarpude")
@@ -39,6 +43,7 @@ class JeevikaVisibilityTest < ActiveSupport::TestCase
 
   test "equivalent approval levels appear once with the latest approver" do
     controller = ModulesController.new
+    controller.params = ActionController::Parameters.new
     history = ["First Approval", " First  Approval ", "Level 1"].map.with_index do |level, index|
       ModuleRecord.new(id: index + 1, created_at: Time.zone.parse("2026-07-06 12:00") + index.minutes, data: {
         "action" => "Approved", "approval_level" => level,
@@ -51,8 +56,9 @@ class JeevikaVisibilityTest < ActiveSupport::TestCase
     assert_equal "Person 2 (Specialist)", rows.first[1]
   end
 
-  test "approver headings follow the bill channel instead of the stale stored level" do
+  test "approver headings preserve historical levels when the current channel changes" do
     controller = ModulesController.new
+    controller.params = ActionController::Parameters.new
     steps = [
       ["First Approval", "Shailesh  Bagde (agricultural specialist)"],
       ["Second Approval", "Hemant Shakkarpude (FCO-C Sausar)"],
@@ -75,12 +81,13 @@ class JeevikaVisibilityTest < ActiveSupport::TestCase
     controller.define_singleton_method(:jeevika_bill_approval_history) { |_record| history }
 
     rows = controller.send(:jeevika_bill_approved_by_rows, ModuleRecord.new(data: { "status" => "Final Approved" }))
-    assert_equal ["Second Approval", "Third Approval", "Finance Approval"], rows.map(&:first)
+    assert_equal ["First Approval", "Second Approval", "Finance Approval"], rows.map(&:first)
     assert_equal "Hemant Shakkarpude (FCO-C Sausar)", rows.first[1]
   end
 
   test "total payment falls back to the fixed amount when the saved amount is zero" do
     controller = ModulesController.new
+    controller.params = ActionController::Parameters.new
     fixed = format("%.2f", ModulesController::JEEVIKA_JANKAR_BILL_FIXED_TOTAL)
     ["0.00", "0", "", nil].each do |stored|
       record = ModuleRecord.new(data: { "grand_total" => stored })
@@ -92,6 +99,7 @@ class JeevikaVisibilityTest < ActiveSupport::TestCase
 
   test "legacy bill without created_by resolves the channel of whoever sent it" do
     controller = ModulesController.new
+    controller.params = ActionController::Parameters.new
     submitter = User.new(user_name: "Ashvin", first_name: "Ashvin", last_name: "Durve", stakeholder: "PAPL")
     history = [
       ModuleRecord.new(id: 2, data: { "action" => "Sent for Approval", "action_by" => "Ashvin  Durve", "action_at" => "2026-07-02T12:06:17Z" }),
@@ -111,6 +119,7 @@ class JeevikaVisibilityTest < ActiveSupport::TestCase
 
   test "bill list totals use the process summary and cache it for the VRP month" do
     controller = ModulesController.new
+    controller.params = ActionController::Parameters.new
     calls = []
     controller.define_singleton_method(:jeevika_jankar_bill_rows) do |vrp_id:, month_name:|
       calls << [vrp_id, month_name]
@@ -148,6 +157,7 @@ class JeevikaVisibilityTest < ActiveSupport::TestCase
 
   test "FCO office match does not override a different territory" do
     controller = ModulesController.new
+    controller.params = ActionController::Parameters.new
     controller.define_singleton_method(:current_app_user) { { "fcoc" => "Shared FCO", "to_name" => "Turekela" } }
     refute controller.send(:jeevika_bill_vrp_office_visible?, Vrp.new(fcoc: "Shared FCO", to_name: "Sausar"))
     assert controller.send(:jeevika_bill_vrp_office_visible?, Vrp.new(fcoc: "Shared FCO", to_name: "Turekela"))
@@ -155,6 +165,7 @@ class JeevikaVisibilityTest < ActiveSupport::TestCase
 
   test "mapped report uses all farmer columns and query status fields" do
     controller = ModulesController.new
+    controller.params = ActionController::Parameters.new
     controller.define_singleton_method(:admin_dashboard_user?) { true }
     controller.send(:farmer_training_participation_rows_from_sql, "unique", month_name: "August", fcoc_name: "1004")
     result = controller.instance_variable_get(:@mapped_farmer_details)
@@ -175,6 +186,7 @@ class JeevikaVisibilityTest < ActiveSupport::TestCase
 
   test "bill creator identity survives username changes" do
     controller = ModulesController.new
+    controller.params = ActionController::Parameters.new
     controller.define_singleton_method(:current_app_user) { { "id" => 14, "record_type" => "User", "username" => "renamed" } }
     record = ModuleRecord.new(data: { "created_by_id" => "14", "created_by_record_type" => "User", "created_by_username" => "old" })
     assert controller.send(:jeevika_bill_created_by_current_user?, record)
@@ -195,6 +207,7 @@ class JeevikaVisibilityTest < ActiveSupport::TestCase
       "selected_farmer_ids" => [completed.id.to_s]
     })
     controller = ModulesController.new
+    controller.params = ActionController::Parameters.new
     controller.define_singleton_method(:admin_dashboard_user?) { true }
     controller.send(:farmer_training_participation_rows_from_sql, "red", month_name: "August", fcoc_name: "1004")
     result = controller.instance_variable_get(:@mapped_farmer_details)

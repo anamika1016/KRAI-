@@ -3599,7 +3599,7 @@ class ModulesController < ApplicationController
     selected_vrp_id = dashboard_filter_param(:vrp_id)
 
     training_conditions = ["mr.module_slug = 'training-form'", "sf.farmer_id <> ''"]
-    unless dashboard_global_view_user?
+    if !dashboard_global_view_user? || dashboard_filter_param(:ics, :ics_name).present?
       training_conditions << "sf.farmer_id IN (#{dashboard_visible_farmer_scope.select('afls.id::text').to_sql})"
     end
     training_binds = {}
@@ -3689,7 +3689,7 @@ class ModulesController < ApplicationController
     end
 
     training_conditions = ["mr.module_slug = 'training-form'", "sf.farmer_id <> ''"]
-    unless dashboard_global_view_user?
+    if !dashboard_global_view_user? || dashboard_filter_param(:ics, :ics_name).present?
       training_conditions << "sf.farmer_id IN (#{dashboard_visible_farmer_scope.select('afls.id::text').to_sql})"
     end
     training_binds = {}
@@ -4121,6 +4121,7 @@ class ModulesController < ApplicationController
       training_fcoc: @participation_fcoc_filter_value,
       main_activity: @dashboard_main_activity_filter_value.presence || dashboard_filter_param(:main_activity),
       training_sub_activity: dashboard_filter_param(:sub_activity),
+      ics: dashboard_filter_param(:ics, :ics_name),
       format: format
     }.compact_blank
     params_hash[:fco_id] = %w[1004 1006] if params_hash[:training_fcoc].blank?
@@ -4671,6 +4672,11 @@ class ModulesController < ApplicationController
 
     targets = dashboard_participation_targets
     targets = training_participation_active_vrp_targets(targets)
+    if dashboard_filter_param(:ics, :ics_name).present?
+      selected_ics = normalize_dashboard_text(dashboard_filter_param(:ics, :ics_name))
+      targets = targets.select { |target| [target.ics_id, target.ics_name].any? { |value| normalize_dashboard_text(value) == selected_ics } }
+    end
+
     targets = dashboard_targets_for_month(targets, month_name) if month_name.present?
     if fcoc_name.present?
       targets = Array(targets).select { |target| training_target_matches_fcoc?(target, fcoc_name) }
@@ -4937,7 +4943,8 @@ class ModulesController < ApplicationController
     vrp_version = dashboard_table_version(Vrp)
 
     [
-      "dashboard/training-participation-counts/v6",
+      "dashboard/training-participation-counts/v7",
+      normalize_dashboard_text(dashboard_filter_param(:ics, :ics_name)),
       normalize_dashboard_text(month_name),
       normalize_dashboard_text(fcoc_name),
       week_number.presence,
@@ -5082,6 +5089,11 @@ class ModulesController < ApplicationController
       target_conditions << "t.vrp_id IN (#{Vrp.where(id: dashboard_visible_vrp_ids).select(:id).to_sql})"
     end
     target_binds = {}
+    if dashboard_filter_param(:ics, :ics_name).present?
+      target_conditions << "(LOWER(BTRIM(t.ics_id)) = :participation_ics OR LOWER(BTRIM(t.ics_name)) = :participation_ics)"
+      target_binds[:participation_ics] = normalize_dashboard_text(dashboard_filter_param(:ics, :ics_name))
+    end
+
 
     if month_name.present?
       target_conditions << "LOWER(TRIM(t.month_name)) = :participation_month"
@@ -5954,7 +5966,7 @@ class ModulesController < ApplicationController
 
   def training_participation_dashboard_status_cards(counts, month_name:, fcoc_name:, week_number: nil)
     %w[red yellow green].map do |status|
-      path_params = { status: status }
+      path_params = { status: status, ics: dashboard_filter_param(:ics, :ics_name) }.compact_blank
       path_params[:training_month] = month_name if month_name.present?
       path_params[:training_fcoc] = fcoc_name if fcoc_name.present?
       path_params[:week] = week_number if week_number.present?
@@ -8096,6 +8108,8 @@ class ModulesController < ApplicationController
   end
 
   def dashboard_filter_param(*keys)
+    return nil if request.nil? && @_params.nil?
+
     @dashboard_filter_param_cache ||= {}
     cache_key = keys.map(&:to_s)
     return @dashboard_filter_param_cache[cache_key] if @dashboard_filter_param_cache.key?(cache_key)
@@ -8126,11 +8140,23 @@ class ModulesController < ApplicationController
     @dashboard_visible_vrp_ids ||= dashboard_vrps.map(&:id)
   end
 
+  def dashboard_ics_filtered_scope(scope)
+    ics = dashboard_filter_param(:ics, :ics_name)
+    return scope if ics.blank?
+
+    scope.where("LOWER(BTRIM(ics_id)) = :ics OR LOWER(BTRIM(ics_name)) = :ics", ics: normalize_dashboard_text(ics))
+  end
+
   def dashboard_visible_target_scope
-    dashboard_global_view_user? ? TargetMapping.all : TargetMapping.where(vrp_id: dashboard_visible_vrp_ids)
+    scope = dashboard_global_view_user? ? TargetMapping.all : TargetMapping.where(vrp_id: dashboard_visible_vrp_ids)
+    dashboard_ics_filtered_scope(scope)
   end
 
   def dashboard_visible_farmer_scope
+    dashboard_ics_filtered_scope(dashboard_user_visible_farmer_scope)
+  end
+
+  def dashboard_user_visible_farmer_scope
     return Afl.all if dashboard_global_view_user?
     if dashboard_source_fcoc_login?
       fco_values = dashboard_vrps.map(&:fcoc).compact_blank.uniq.flat_map { |fcoc| training_fcoc_filter_values(fcoc) }.map(&:downcase).uniq
@@ -8144,7 +8170,7 @@ class ModulesController < ApplicationController
   end
 
   def dashboard_scoped_training_sql(sql)
-    return sql if dashboard_global_view_user?
+    return sql if dashboard_global_view_user? && dashboard_filter_param(:ics, :ics_name).blank?
     sql.gsub("public.target_mappings", "(#{dashboard_visible_target_scope.to_sql})")
       .gsub("public.afls", "(#{dashboard_visible_farmer_scope.to_sql})")
   end
@@ -9773,12 +9799,11 @@ class ModulesController < ApplicationController
 
       label = match[1].strip
     end
-    label
+    label.gsub(/(?<=\()agricultural\b/i, "Agricultural")
   end
 
   def jeevika_bill_approved_by_rows(record)
     steps = jeevika_bill_approval_steps(record)
-    last_sequence = steps.filter_map { |step| approval_sequence_from_level(step.data["approval_level"]) }.max
 
     approved_history = jeevika_bill_approval_history(record)
       .select { |history| history.data["action"].to_s == "Approved" }
@@ -9789,7 +9814,7 @@ class ModulesController < ApplicationController
 
     approved_history.map.with_index do |history, index|
       sequence = jeevika_bill_history_sequence(history, steps)
-      is_last = last_sequence ? sequence == last_sequence : index == approved_history.size - 1
+      is_last = index == approved_history.size - 1
       approval_label = if jeevika_bill_final_approved?(record) && is_last
         "Finance Approval"
       else
@@ -9804,10 +9829,11 @@ class ModulesController < ApplicationController
     end
   end
 
-  # Label each approval by its position in the bill's own approval channel. The level
-  # stored on history is frozen at approval time, so it goes stale whenever the channel
-  # changes and the same approver then prints under a different heading across bills.
+  # Preserve the level recorded when approval happened, even if today's channel changed.
   def jeevika_bill_history_sequence(history, steps)
+    saved_sequence = approval_level_sequence_from_text(history.data["approval_level"])
+    return saved_sequence if saved_sequence
+
     approver = history.data["approver"]
     matched = Array(steps).find do |step|
       dashboard_user_label_matches?(approver, [step.data["approver_approved_by"]])

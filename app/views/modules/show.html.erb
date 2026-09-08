@@ -48,7 +48,7 @@
             <p>JJ Worksheet ID: #<%= detail_record.id %></p>
             <p>Invoice Date: <%= bill_display_date(detail_record.data["invoice_date"].presence || detail_record.created_at) %></p>
             <p>Invoice Month: <%= detail_record.data["bill_month"].presence || "-" %></p>
-            <p class="bill-print-location">FCO: <%= detail_summary[:fco].presence || "-" %>, TO: <%= detail_summary[:to].presence || bill_vrp&.to_name.presence || "-" %>, Block: <%= bill_print_block_name(bill_vrp) %></p>
+            <p class="bill-print-location">FCO: <%= detail_summary[:fco].presence || "-" %>, <%= detail_summary[:to].presence || bill_vrp&.to_name.presence || "-" %>, Block: <%= bill_print_block_name(bill_vrp) %></p>
           </div>
         </div>
 
@@ -61,7 +61,7 @@
               <th>Village Visited</th>
               <th>Major Work Indicator</th>
               <th>Activity</th>
-              <th>Number</th>
+              <th>Achievement</th>
             </tr>
           </thead>
           <tbody>
@@ -105,10 +105,6 @@
         </table>
 
         <div class="bill-print-footer">
-          <div class="bill-print-prepared">
-            <strong>Prepared by</strong>
-            <span><%= prepared_by[:name] %>(at: <%= prepared_by[:at] %>)</span>
-          </div>
           <div class="bill-print-approved">
             <strong>Approver and Verification Details</strong>
             <% if approved_rows.any? %>
@@ -121,6 +117,10 @@
             <% if jeevika_bill_status_label(detail_record).to_s.downcase.include?("final approved") %>
               <%= render "modules/approved_stamp" %>
             <% end %>
+          </div>
+          <div class="bill-print-prepared">
+            <strong>Prepared by</strong>
+            <span><%= prepared_by[:name] %>(at: <%= prepared_by[:at] %>)</span>
           </div>
         </div>
       </section>

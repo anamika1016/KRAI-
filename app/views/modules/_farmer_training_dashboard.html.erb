@@ -6,7 +6,7 @@
 <% participation_week_filter_value = @participation_week_filter_value.to_s %>
 <% filters_ready = selected_month.present? && selected_sub_activity.present? %>
 <% status_cards = Array(@training_participation_status_cards || []).reject { |card| card[:status].to_s == "pending" } %>
-<% participation_path_params = { status: "total" } %>
+<% participation_path_params = { status: "total", ics: params[:ics].presence || params[:ics_name].presence }.compact_blank %>
 <% participation_path_params[:training_month] = participation_selected_month if participation_selected_month.present? %>
 <% participation_path_params[:training_fcoc] = participation_fcoc_filter_value if participation_fcoc_filter_value.present? %>
 <% participation_path_params[:week] = participation_week_filter_value if participation_week_filter_value.present? %>
@@ -24,6 +24,7 @@
         <%= hidden_field_tag :training_sub_activity, params[:training_sub_activity] if params[:training_sub_activity].present? %>
         <%= hidden_field_tag :sub_activity, params[:sub_activity] if params[:sub_activity].present? %>
         <%= hidden_field_tag :fcoc, params[:fcoc] if params[:fcoc].present? %>
+        <%= hidden_field_tag :ics, params[:ics].presence || params[:ics_name].presence %>
         <%= hidden_field_tag :month, params[:month] if params[:month].present? %>
         <%= hidden_field_tag :vrp_id, params[:vrp_id] if params[:vrp_id].present? %>
         <label class="dashboard-month-select">
