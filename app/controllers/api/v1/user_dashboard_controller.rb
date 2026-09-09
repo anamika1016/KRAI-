@@ -91,6 +91,8 @@ module Api
 
       def user_dashboard_widget_catalog
         {
+          "cc_jj_work_status" => { heading: "CC and JJ Work Status", path: %i[cc_jj_work_status] },
+          "demonstration_method" => { heading: "Demonstration Method", path: %i[demonstration_method] },
           "total_registered" => { heading: "Total Registered Jeevika Jankar", path: %i[cards total_registered_vrp] },
           "final_approved" => { heading: "Final Approved Jeevika Jankar", path: %i[cards final_approved_vrp] },
           "pending_approval" => { heading: "Pending Approval", path: %i[cards vrp_pending_approval] },
@@ -110,6 +112,14 @@ module Api
 
         calculator = dashboard_calculator
         vrps, targets, options = filtered_scope(calculator)
+        if list_type == "cc_jj_work_status"
+          return { title: user_dashboard_list_catalog.fetch(list_type), headers: CcJjWorkStatusReport::HEADERS,
+            records: CcJjWorkStatusReport.new(calculator: calculator).rows }
+        end
+        if list_type == "demonstration_method"
+          return { title: user_dashboard_list_catalog.fetch(list_type), headers: DemonstrationMethodReport::HEADERS,
+            records: DemonstrationMethodReport.new(targets: targets, month: params.key?(:month) ? filter_param(:month) : Date.current.prev_month.strftime("%B")).rows }
+        end
         bills = filtered_bills(calculator, vrps)
         set_filtered_scope(calculator, vrps, targets, bills)
         months = calculator.send(:dashboard_month_options_for_targets, targets)
@@ -194,6 +204,8 @@ module Api
           user: user_payload,
           filters: applied_filters,
           filter_options: options,
+          cc_jj_work_status: CcJjWorkStatusReport.new(calculator: calculator).summary,
+          demonstration_method: DemonstrationMethodReport.new(targets: targets, month: params.key?(:month) ? filter_param(:month) : Date.current.prev_month.strftime("%B")).summary,
           cards: card_payload(calculator, vrps, targets, bills),
           dashboard_summary: dashboard_summary_payload(calculator, targets, participation, weekly),
           farmer_training_participation_status: participation_payload(participation, participation_month, participation_fcoc, months),
@@ -222,6 +234,7 @@ module Api
       def user_dashboard_cache_key
         version_parts = [
           cache_table_version(TargetMapping),
+          cache_table_version(VrpIcsMapping),
           cache_table_version(Vrp),
           cache_table_version(Afl),
           cache_module_records_version(%w[
@@ -235,7 +248,7 @@ module Api
         ]
         filters = request.query_parameters.to_h.sort.to_h
         user_key = current_api_user_payload.slice("id", "user_id", "username", "user_name", "user_type").sort.to_h
-        ["api-v1-user-dashboard", user_key, filters, version_parts].to_json
+        ["api-v1-user-dashboard-work-status-v5", user_key, filters, version_parts].to_json
       end
 
       def cache_table_version(model)

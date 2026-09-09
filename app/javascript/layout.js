@@ -2239,6 +2239,9 @@ function initDeferredLayoutPage() {
 
       const url = new URL(farmersUrl, window.location.origin);
       url.searchParams.set("target_mapping_ids", key);
+      if (selectedFarmerIds.size) {
+        url.searchParams.set("existing_farmer_ids", Array.from(selectedFarmerIds).join(","));
+      }
       const data = await fetchJson(url.toString());
       const farmers = Array.isArray(data.farmers) ? data.farmers : [];
       trainingFarmerCache.set(key, farmers);

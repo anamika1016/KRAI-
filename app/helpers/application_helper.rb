@@ -147,6 +147,7 @@ module ApplicationHelper
         # ["Farmer Training Topic Mapping", :module, "training-topic-mapping"],
         ["Training Form", :module, "training-form"],
         ["Training Form List", :module, "training-form-list"],
+        ["Training Form Edit Approval List", :route, :training_edit_approvals_path],
         ["Other Target", :module, "other-target"],
         ["Other Target List", :module, "other-target-list"],
         ["Farmer Participation Report", :route, :farmer_participation_report_path],
@@ -273,7 +274,7 @@ module ApplicationHelper
 
   def sidebar_access_cache_key
     [
-      "sidebar-access-keys",
+      "sidebar-access-keys-exact-v2",
       sidebar_access_user_cache_key,
       sidebar_access_records_fingerprint
     ].to_json
@@ -354,25 +355,25 @@ module ApplicationHelper
       keys.concat(["vrp-type", "add-jeevika-jankar-type", "jeevika-jankar-type"])
     end
     if ["Farmer Training", "Farmer Target"].include?(name.to_s.strip)
-      keys.concat(["farmer-training", "farmer-target", "farmer-participation-report", "seed-distribution-target", "papl360-target", "add-farmer-form"])
+      keys.concat(["farmer-training", "farmer-target"])
     end
     if ["Farmer Training Form", "Training Form", "Farmer Target Form"].include?(name.to_s.strip)
-      keys.concat(["farmer-training-form", "training-form", "farmer-target-form", "seed-distribution-target", "papl360-target", "other-target"])
+      keys.concat(["farmer-training-form", "training-form", "farmer-target-form"])
     end
     if ["Farmer Training Form List", "Training Form List", "Farmer Target Form List"].include?(name.to_s.strip)
-      keys.concat(["farmer-training-form-list", "training-form-list", "farmer-target-form-list", "farmer-participation-report", "seed-distribution-target-list", "papl360-target-list", "other-target-list"])
+      keys.concat(["farmer-training-form-list", "training-form-list", "farmer-target-form-list"])
     end
     if ["Seed Distribution Target", "Seed Distribution Target Form"].include?(name.to_s.strip)
-      keys.concat(["seed-distribution-target", "seed-distribution-target-form", "seed-distribution-target-list"])
+      keys.concat(["seed-distribution-target", "seed-distribution-target-form"])
     end
     if ["Seed Distribution Target List"].include?(name.to_s.strip)
       keys.concat(["seed-distribution-target-list"])
     end
     if ["PAPL360 Target", "PAPL360 Targate", "PAPL360 Target Form"].include?(name.to_s.strip)
-      keys.concat(["papl360-target", "papl360-targate", "papl360-target-form", "papl360-target-list", "add-farmer-form"])
+      keys.concat(["papl360-target", "papl360-targate", "papl360-target-form"])
     end
     if ["PAPL360 Target List", "PAPL360 Targate List"].include?(name.to_s.strip)
-      keys.concat(["papl360-target-list", "papl360-targate-list", "add-farmer-form"])
+      keys.concat(["papl360-target-list", "papl360-targate-list"])
     end
     if ["Add Farmer Form"].include?(name.to_s.strip)
       keys.concat(["add-farmer-form"])
@@ -477,6 +478,7 @@ module ApplicationHelper
       links: [
         ["Training Form", :module, "training-form"],
         ["Training Form List", :module, "training-form-list"],
+        ["Training Form Edit Approval List", :route, :training_edit_approvals_path],
         ["Other Target", :module, "other-target"],
         ["Other Target List", :module, "other-target-list"],
         ["Farmer Participation Report", :route, :farmer_participation_report_path],

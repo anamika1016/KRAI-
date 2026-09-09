@@ -4,6 +4,7 @@ require "csv"
 require "set"
 
 class ModulesController < ApplicationController
+  before_action :authorize_farmer_target_access
   before_action :authorize_jeevika_payment_module_access
 
   helper_method :module_field_options, :module_select_field?, :static_field_options, :role_management_mappings,
@@ -34,6 +35,7 @@ class ModulesController < ApplicationController
                 :training_trainee_department_default, :seed_distribution_target_mappings,
                 :seed_distribution_target_month_options, :current_seed_target_vrp_option,
                 :add_farmer_form_mappings, :dashboard_vrp_previous_status, :dashboard_vrp_status_label,
+                :training_edit_revision_for,
                 :dashboard_weekly_report_filter_params
 
   APPROVAL_REGISTRATION_MODULES = ["Farmer Registration", "VRP Registration", "Jeevika Jankar Registration"].freeze
@@ -753,6 +755,34 @@ class ModulesController < ApplicationController
 
     @filtered_vrps = v_scope
     @filtered_targets = t_scope
+    @demonstration_method_report = DemonstrationMethodReport.new(targets: t_scope, month: @dashboard_month_filter_value)
+    if params[:demonstration_list] == "true"
+      @demonstration_method_rows = @demonstration_method_report.rows
+      respond_to do |format|
+        format.html { render :demonstration_method_list }
+        format.json { render json: { success: true, records: @demonstration_method_rows, count: @demonstration_method_rows.size } }
+        format.xlsx do
+          send_xlsx(headers: DemonstrationMethodReport::HEADERS,
+            rows: @demonstration_method_rows.map { |row| DemonstrationMethodReport::HEADERS.map { |key| row[key] } },
+            filename: "demonstration-method.xlsx", sheet_name: "Demonstration Method")
+        end
+      end
+      return
+    end
+    @cc_jj_work_status_report = CcJjWorkStatusReport.new(calculator: self)
+    if params[:work_status_list] == "true"
+      @work_status_rows = @cc_jj_work_status_report.rows
+      respond_to do |format|
+        format.html { render :cc_jj_work_status_list }
+        format.json { render json: { success: true, records: @work_status_rows, count: @work_status_rows.size } }
+        format.xlsx do
+          send_xlsx(headers: CcJjWorkStatusReport::HEADERS,
+            rows: @work_status_rows.map { |row| CcJjWorkStatusReport::HEADERS.map { |key| row[key] } },
+            filename: "cc-jj-work-status.xlsx", sheet_name: "CC and JJ Work Status")
+        end
+      end
+      return
+    end
     preload_dashboard_vrp_identity_records!(@filtered_vrps)
 
     # ─── BILL FILTERING ───
@@ -1545,9 +1575,15 @@ class ModulesController < ApplicationController
       return
     end
 
-    previous_data = record.data.dup
+    previous_data = record.data.deep_dup
 
-    next_data = record.data.merge(normalized_module_data)
+    # Dynamic farmer controls may omit a saved farmer after target mappings
+    # change. Build an edit from the saved payload so details are retained.
+    next_data = if record_source_slug == "training-form"
+      normalized_module_data(base_data: record.data)
+    else
+      record.data.merge(normalized_module_data)
+    end
 
     data_errors = module_data_error_messages(next_data)
     if data_errors.any?
@@ -1570,6 +1606,16 @@ class ModulesController < ApplicationController
 
     # Keep existing training evidence when an edit adds more files.
     next_data = preserve_training_uploads(record.data, next_data) if record_source_slug == "training-form"
+
+    if record_source_slug == "training-form" && module_cluster_incharge_login? && !admin_dashboard_user?
+      begin
+        revision = TrainingEditApproval.submit!(record: record, proposed: next_data, actor: current_app_user)
+        redirect_to module_path("training-form-list"), notice: "Training changes submitted for approval. #{TrainingEditApproval.status_label(revision)}."
+      rescue TrainingEditApproval::InvalidTransition => error
+        redirect_to module_path("training-form-list"), alert: error.message
+      end
+      return
+    end
 
     if record.update(data: next_data)
       sync_stakeholder_name_change(previous_data, next_data)
@@ -1724,6 +1770,9 @@ class ModulesController < ApplicationController
 
     targets = training_target_scope.where(id: ids).includes(:vrp).to_a
     farmer_ids = targets.flat_map { |target| target_farmer_ids(target) }.map(&:to_s).reject(&:blank?).uniq
+    existing_ids = Array(params[:existing_farmer_ids]).flat_map { |value| value.to_s.split(",") }
+      .map(&:strip).reject(&:blank?)
+    farmer_ids |= existing_ids
     completed_ids = targets.flat_map { |target| completed_training_farmer_ids_for(target, target_farmer_ids(target)) }.map(&:to_s).uniq
     completed_lookup = completed_ids.index_with(true)
 
@@ -3564,22 +3613,19 @@ class ModulesController < ApplicationController
   end
 
   def demonstration_method_cards
-    training_method_counts = dashboard_training_method_counts
-    participation_params = dashboard_summary_participation_params(status: "training_unique").merge(main_activity: "Farmers' Training")
-    participation_export_params = dashboard_summary_participation_params(status: "training_unique", format: :xlsx).merge(main_activity: "Farmers' Training")
-
-    targets = @filtered_targets || dashboard_target_mappings
-    opg_target_total = Array(targets).sum { |target| target.opg_training_target.to_f }
-    opg_achievement_total = dashboard_opg_achievement_count
-
-    [
-      dashboard_summary_card("OPG Training Target", dashboard_quantity(opg_target_total), "Total OPG target assigned in target mapping", target_mappings_path(dashboard_summary_target_params), dashboard_path(dashboard_summary_target_params.merge(format: :xlsx))),
-      dashboard_summary_card("OPG Training Achievement", opg_achievement_total, "Total OPG training reports submitted", farmer_training_participation_path(participation_params.merge(training_method: "OPG")), farmer_training_participation_path(participation_export_params.merge(training_method: "OPG"))),
-      dashboard_summary_card("General Training/Meeting", training_method_counts["General Training/Meeting"].to_i, "Distinct mapped farmers with General Training/Meeting", farmer_training_participation_path(participation_params.merge(training_method: "General Training/Meeting")), farmer_training_participation_path(participation_export_params.merge(training_method: "General Training/Meeting"))),
-      dashboard_summary_card("Input Demo INM", training_method_counts["Input Demo INM"].to_i, "Distinct mapped farmers with Input Demo INM", farmer_training_participation_path(participation_params.merge(training_method: "Input Demo INM")), farmer_training_participation_path(participation_export_params.merge(training_method: "Input Demo INM"))),
-      dashboard_summary_card("FFS", training_method_counts["FFS"].to_i, "Distinct mapped farmers with FFS", farmer_training_participation_path(participation_params.merge(training_method: "FFS")), farmer_training_participation_path(participation_export_params.merge(training_method: "FFS"))),
-      dashboard_summary_card("Input Demo PM", training_method_counts["Input Demo PM"].to_i, "Distinct mapped farmers with Input Demo PM", farmer_training_participation_path(participation_params.merge(training_method: "Input Demo PM")), farmer_training_participation_path(participation_export_params.merge(training_method: "Input Demo PM")))
-    ]
+    report = @demonstration_method_report || DemonstrationMethodReport.new(
+      targets: @filtered_targets || dashboard_target_mappings,
+      month: params.key?(:month) ? dashboard_filter_param(:month) : Date.current.prev_month.strftime("%B"))
+    cards = DemonstrationMethodReport::METRICS.map do |metric|
+      dashboard_summary_card(metric == "OPG Target" ? "OPG Training Target" : metric,
+        dashboard_quantity(report.summary.sum { |row| row[metric] }), "Training method entries",
+        demonstration_method_list_path(request.query_parameters),
+        demonstration_method_list_path(request.query_parameters.merge(format: :xlsx)))
+    end
+    cards.insert(1, dashboard_summary_card("OPG Training Achievement", dashboard_opg_achievement_count,
+      "Total OPG training achievement", demonstration_method_list_path(request.query_parameters),
+      demonstration_method_list_path(request.query_parameters.merge(format: :xlsx))))
+    cards
   end
 
   def dashboard_opg_achievement_count
@@ -8881,6 +8927,27 @@ class ModulesController < ApplicationController
     "#{((value.to_f / total) * 100).round}%"
   end
 
+  def authorize_farmer_target_access
+    return if admin_dashboard_user?
+    slug = current_slug.to_s
+    sources = %w[training-form other-target seed-distribution-target papl360-target add-farmer-form]
+    source = RECORD_SOURCE_SLUGS.fetch(slug, slug)
+    if %w[access-control access-control-list].include?(slug)
+      return head :forbidden
+    end
+    report = action_name == "farmer_participation_report"
+    return unless sources.include?(source) || report
+
+    return head :forbidden if %w[destroy toggle_status set_status import].include?(action_name)
+    keys = view_context.allowed_sidebar_keys || []
+    requested = report ? "farmer-participation-report" : slug
+    # The dynamic farmer endpoint is called by the Training Form edit page.
+    # CC users with Training Form List access must be able to load the saved
+    # selected farmers before they submit the approval request.
+    requested = "#{source}-list" if %w[edit update selected_farmers training_target_farmers].include?(action_name)
+    head :forbidden unless keys.include?(requested)
+  end
+
   def load_module!
     @slug = current_slug
     @module = MODULES[@slug]
@@ -8910,6 +8977,18 @@ class ModulesController < ApplicationController
     return records.sort_by { |record| jeevika_bill_list_sort_value(record) } if @slug == "jeevika-jankar-bill-list"
 
     records.sort_by { |record| module_record_sort_value(record) }
+  end
+
+  def training_edit_revision_for(record)
+    return unless record&.module_slug == "training-form"
+
+    @training_edit_revisions_by_record ||= ModuleRecord.where(module_slug: TrainingEditApproval::SLUG)
+      .order(id: :desc).to_a.each_with_object({}) do |revision, index|
+        index[revision.data["record_id"].to_s] ||= revision
+      end
+    revision = @training_edit_revisions_by_record[record.id.to_s]
+    revision = TrainingEditApproval.assign_configured_channel!(revision) if revision
+    revision
   end
 
   def screen_limited_module_records?
@@ -8971,6 +9050,11 @@ class ModulesController < ApplicationController
       return false unless current_vrp_record.present?
 
       return target_record_matches_vrp?(record, current_vrp_record)
+    end
+
+    if module_cluster_incharge_login?
+      vrp = target_record_vrp_for_visibility(record)
+      return vrp.present? && module_cluster_visible_vrp_id_strings.include?(vrp.id.to_s)
     end
 
     return true if target_record_created_by_current_user?(record)
@@ -11327,12 +11411,16 @@ class ModulesController < ApplicationController
     params.require(:module_record).permit!
   end
 
-  def normalized_module_data
-    data = module_record_params.to_h.transform_values { |value| normalize_module_param_value(value) }
+  def normalized_module_data(base_data: nil)
+    submitted = module_record_params.to_h.transform_values { |value| normalize_module_param_value(value) }
+    data = base_data ? base_data.deep_dup.merge(submitted) : submitted
 
     if record_source_slug == "access-control"
       data["module_names"] ||= []
       data["sub_module_names"] ||= []
+      # Clear legacy fields during edits so deselected menus cannot reappear.
+      data["sub_module_name"] = ""
+      data["module_name"] = ""
       data["stakeholder"] = data["stakeholder_name"] if data["stakeholder_name"].present?
       data["vrp_type"] = data["jeevika_jankar_type"] if data["jeevika_jankar_type"].present?
       data["jeevika_jankar_type"] = data["vrp_type"].presence || data["select_vrp_type"] if data["jeevika_jankar_type"].blank?
@@ -11731,6 +11819,7 @@ class ModulesController < ApplicationController
   end
 
   def module_record_visible_for_current_context?(record)
+    return false unless record && record.module_slug == record_source_slug
     return jeevika_jankar_bill_record_visible?(record) if record&.module_slug == "jeevika-jankar-bill-process" || record_source_slug == "jeevika-jankar-bill-process"
     return target_record_visible?(record) if TARGET_RECORD_MODULE_SLUGS.include?(record&.module_slug) || target_record_source?
 
@@ -11872,8 +11961,8 @@ class ModulesController < ApplicationController
   def normalize_training_form_data(data)
     stamp_target_record_creator!(data)
     trainer_name, trainer_contact = training_trainer_defaults
-    data["trainer_name"] = trainer_name if trainer_name.present?
-    data["trainer_contact"] = trainer_contact if trainer_contact.present?
+    data["trainer_name"] = trainer_name if data["trainer_name"].blank? && trainer_name.present?
+    data["trainer_contact"] = trainer_contact if data["trainer_contact"].blank? && trainer_contact.present?
     data["fco_name"] = data["fco_name"].presence || data["trainee_department"].presence || training_trainee_department_default
     data["trainee_department"] = data["fco_name"] if data["trainee_department"].blank?
     data["cluster_coordinator_name"] = data["cluster_coordinator_name"].presence || data["internal_trainer_name_1"].presence
@@ -13577,7 +13666,7 @@ class ModulesController < ApplicationController
       "Achievement Fill" => ["Auto Fill", "Self"],
       "Office Level" => ["State", "District", "Block", "Gram Panchayat", "Village"],
       "Parent Office Type" => ["Parent Office", "Sub Parent Office"],
-      "Module Name" => ["Jeevika Jankar Registration", "Jeevika Jankar Bill"],
+      "Module Name" => ["Jeevika Jankar Registration", "Jeevika Jankar Bill", "Training Form Edit"],
       "VRP Name" => vrp_name_options,
       "Sub Module Name" => sidebar_submodule_names
     }[field] || []

@@ -486,22 +486,18 @@
     </section>
   <% end %>
 
-  <% if demonstration_method_cards.any? %>
+  <% if farmer_activity_mode %>
     <section class="module-card training-participation-status-card dashboard-status-panel dashboard-summary-panel demonstration-method-panel" id="demonstration_method_boxes">
       <div class="module-card-header training-participation-status-header">
-        <div>
-          <h2>Demonstration Method</h2>
-        </div>
+        <h2>Demonstration Method</h2>
+        <%= link_to "View List", demonstration_method_list_path(request.query_parameters), class: "table-action demonstration-common-list" %>
       </div>
-
       <div class="training-participation-boxes dashboard-summary-boxes demonstration-method-boxes">
         <% demonstration_method_cards.each do |card| %>
           <div class="training-participation-box total dashboard-summary-box">
             <span><%= card[:title] %></span>
             <strong><%= card[:value] %></strong>
-            <div class="dashboard-summary-actions">
-              <%= link_to "View List", card[:path], class: "table-action", data: { dashboard_card: true } %>
-            </div>
+
           </div>
         <% end %>
       </div>
@@ -526,6 +522,24 @@
           </div>
         </article>
       <% end %>
+      <article class="metric-card metric-card-group metric-card-group-registration cc-jj-work-status">
+        <span class="metric-card-group-title">CC and JJ Work Status</span>
+        <div class="cc-jj-status-groups">
+          <% @cc_jj_work_status_report.summary.each do |row| %>
+            <div class="cc-jj-status-group">
+              <strong><%= { "1004" => "Sausar", "1006" => "Turekela" }.fetch(row["fco_id"], row["fco_id"]) %> · <%= row["status"] %></strong>
+              <div class="metric-card-group-items">
+                <% { "toatl_cc" => "CC", "toatl_jj" => "JJ" }.each do |key, label| %>
+                  <%= link_to cc_jj_work_status_list_path(request.query_parameters), class: "metric-card-group-item" do %>
+                    <span><%= label %></span><strong><%= row[key] %></strong>
+                  <% end %>
+                <% end %>
+              </div>
+            </div>
+          <% end %>
+        </div>
+        <%= link_to "View List", cc_jj_work_status_list_path(request.query_parameters), class: "table-action" %>
+      </article>
     </div>
   <% end %>
 

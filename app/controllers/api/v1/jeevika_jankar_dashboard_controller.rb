@@ -200,6 +200,8 @@ module Api
 
       def admin_dashboard_widget_catalog
         {
+          "cc_jj_work_status" => { heading: "CC and JJ Work Status", path: %i[cc_jj_work_status] },
+          "demonstration_method" => { heading: "Demonstration Method", path: %i[demonstration_method] },
           "total_ics_count" => { heading: "Total ICS Count", path: %i[filter_options ics], count: true },
           "total_registered" => { heading: "Total Registered Jeevika Jankar", path: %i[sections registration total_registered] },
           "final_approved" => { heading: "Final Approved", path: %i[sections registration final_approved] },
@@ -361,6 +363,7 @@ module Api
       def admin_dashboard_cache_key(suffix)
         version_parts = [
           cache_table_version(TargetMapping),
+          cache_table_version(VrpIcsMapping),
           cache_table_version(Vrp),
           cache_table_version(Afl),
           cache_module_records_version(%w[
@@ -377,7 +380,7 @@ module Api
         ]
         filters = request.query_parameters.to_h.sort.to_h
         user_key = current_api_user_payload.slice("id", "user_id", "username", "user_name", "user_type").sort.to_h
-        ["api-v1-admin-dashboard", suffix, user_key, filters, version_parts].to_json
+        ["api-v1-admin-dashboard-work-status-v5", suffix, user_key, filters, version_parts].to_json
       end
 
       def cache_table_version(model)
@@ -588,6 +591,8 @@ module Api
         @exact_admin_dashboard_data = {
           filters: admin_filter_payload.merge(main_activity: selected_main_activity, sub_activity: selected_sub_activity, fcoc: selected_fcoc, month: selected_month, post: selected_post),
           filter_options: options,
+          cc_jj_work_status: CcJjWorkStatusReport.new(calculator: web).summary,
+          demonstration_method: DemonstrationMethodReport.new(targets: targets, month: params.key?(:month) ? filter_param(:month) : Date.current.prev_month.strftime("%B")).summary,
           sections: card_data,
           cards: card_data.values_at(:registration, :target_assignment, :billing).reduce({}, &:merge),
           mobile_widget_values: mobile_widget_values,
@@ -744,6 +749,8 @@ module Api
 
       def admin_dashboard_list_catalog
         {
+          "cc_jj_work_status" => "CC and JJ Work Status View List",
+          "demonstration_method" => "Demonstration Method View List",
           "total_registered" => "Total Registered Jeevika Jankar List",
           "final_approved" => "Final Approved Jeevika Jankar List",
           "pending_approval" => "Pending Approval Jeevika Jankar List",
@@ -895,6 +902,10 @@ module Api
         end.uniq
 
         records = case list_type
+        when "cc_jj_work_status"
+          CcJjWorkStatusReport.new(calculator: web).rows
+        when "demonstration_method"
+          DemonstrationMethodReport.new(targets: targets, month: params.key?(:month) ? filter_param(:month) : Date.current.prev_month.strftime("%B")).rows
         when "total_registered"
           vrps.map { |vrp| admin_vrp_list_row(vrp, assigned_ids, activity_ids) }
         when "final_approved"
@@ -961,12 +972,12 @@ module Api
         end
         return unless records
 
-        { title: admin_dashboard_list_catalog.fetch(list_type), records: records }
+        { title: admin_dashboard_list_catalog.fetch(list_type), records: records, headers: ({ "demonstration_method" => DemonstrationMethodReport::HEADERS, "cc_jj_work_status" => CcJjWorkStatusReport::HEADERS }[list_type]) }
       end
 
       def send_dashboard_list_export(payload)
         records = Array(payload[:records])
-        headers = records.flat_map { |record| record.respond_to?(:keys) ? record.keys : [] }.map(&:to_s).uniq
+        headers = payload[:headers] || records.flat_map { |record| record.respond_to?(:keys) ? record.keys : [] }.map(&:to_s).uniq
         rows = records.map do |record|
           headers.map { |header| dashboard_export_value(record[header] || record[header.to_sym]) }
         end

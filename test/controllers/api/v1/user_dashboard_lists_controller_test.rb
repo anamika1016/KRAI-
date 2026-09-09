@@ -19,6 +19,17 @@ class Api::V1::UserDashboardListsControllerTest < ActionDispatch::IntegrationTes
     assert response.parsed_body["records"].is_a?(Array)
   end
 
+  test "demonstration method list and export are available to office users" do
+    get "/api/v1/user-dashboard/lists/demonstration_method", params: { month: "August" }, headers: @headers
+    assert_response :success
+    assert_equal "Demonstration Method View List", response.parsed_body["title"]
+    assert_equal [], response.parsed_body["records"]
+
+    get "/api/v1/user-dashboard/lists/demonstration_method/export", params: { month: "August" }, headers: @headers
+    assert_response :success
+    assert_equal XlsxExporter::MIME_TYPE, response.media_type
+  end
+
   test "user dashboard list export returns an xlsx file" do
     get "/api/v1/user-dashboard/lists/total_registered/export", headers: @headers
 

@@ -2773,6 +2773,16 @@ body {
   border-bottom: 1px solid var(--vrp-line);
 }
 
+.training-edit-decision-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.training-edit-decision-actions form {
+  margin: 0;
+}
+
 .module-card-header h2 {
   margin: 0;
   font-size: 1.05rem;
@@ -7723,4 +7733,46 @@ body {
   display: block;
   line-height: 1.4;
   padding: 2px 0;
+}
+
+/* Keep work-status labels compact so adjacent dashboard cards do not stretch. */
+.cc-jj-status-groups {
+  display: grid;
+  gap: 10px;
+}
+.cc-jj-status-group > strong {
+  display: block;
+  margin-bottom: 6px;
+  font-size: 0.8rem;
+}
+.cc-jj-status-group .metric-card-group-items {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+.dashboard-grid.premium.dashboard-training-secondary-summaries {
+  align-items: start;
+}
+.dashboard-grid.premium.dashboard-training-secondary-summaries .metric-card-group {
+  height: auto;
+}
+
+.dashboard-grid.premium .cc-jj-work-status .cc-jj-status-group > strong {
+  font-size: 0.8rem;
+  line-height: 1.35;
+  margin: 0 0 6px;
+}
+.dashboard-grid.premium .cc-jj-work-status .cc-jj-status-group .metric-card-group-items {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 6px;
+}
+
+.dashboard-grid.premium.dashboard-training-secondary-summaries {
+  align-items: stretch;
+}
+.dashboard-grid.premium.dashboard-training-secondary-summaries .metric-card-group {
+  height: 100%;
+  box-sizing: border-box;
+}
+.dashboard-grid.premium .cc-jj-work-status .cc-jj-status-group .metric-card-group-items {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
 }

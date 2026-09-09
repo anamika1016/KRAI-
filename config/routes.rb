@@ -1,4 +1,5 @@
 Rails.application.routes.draw do
+  resources :training_edit_approvals, only: %i[index show update]
   scanner_not_found = ->(_env) { [404, { "Content-Type" => "text/plain" }, ["Not Found"]] }
   match "dns-query", to: scanner_not_found, via: :all
   match "query", to: scanner_not_found, via: :all
@@ -124,6 +125,8 @@ Rails.application.routes.draw do
 
   root "sessions#new"
   get "dashboard", to: "modules#dashboard", as: :dashboard
+  get "dashboard/cc-jj-work-status", to: "modules#dashboard", defaults: { work_status_list: "true" }, as: :cc_jj_work_status_list
+  get "dashboard/demonstration-method", to: "modules#dashboard", defaults: { demonstration_list: "true" }, as: :demonstration_method_list
   get "dashboard/vrp-list/:list_type", to: "modules#vrp_dashboard_list", as: :vrp_dashboard_list
   delete "dashboard/vrp-mapped-villages/:id", to: "modules#destroy_vrp_mapped_village", as: :destroy_vrp_mapped_village
   get "dashboard/farmer-training-participation", to: "modules#farmer_training_participation", as: :farmer_training_participation

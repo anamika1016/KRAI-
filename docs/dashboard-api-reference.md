@@ -104,3 +104,27 @@ For every box, replace `:list_type` with the required type, for example `total_i
 | JJ XLSX Export | `/jeevika-jankar-dashboard/lists/:list_type/export` |
 
 Widget response format: `{ success, dashboard_type, widget, heading, value, filters, generated_at }`.
+
+### Demonstration Method
+
+Admin and office-user dashboard responses include `demonstration_method`, an FCO-wise array with `fco_id`, `fco_name`, `OPG Target`, `General Training/Meeting`, `Input Demo INM`, `Input Demo PM`, and `FFS`.
+
+- `GET /api/v1/admin-dashboard/lists/demonstration_method?month=August`
+- `GET /api/v1/user-dashboard/lists/demonstration_method?month=August`
+- Append `/export` before the query string to download Excel.
+- `GET /api/v1/{admin-dashboard|user-dashboard}/widgets/demonstration_method?month=August` returns the summary widget.
+
+List rows additionally include `vrp_id` and `VRP Name`. The existing Demonstration Method section displays metric boxes; View List opens `/dashboard/demonstration-method` and Export Excel downloads the same VRP rows.
+
+The report follows dashboard filters and login visibility. The default dashboard month is the previous calendar month (August in September); use `month=August` explicitly to reproduce the supplied August query. OPG targets are summed across target rows per FCO/VRP, while each matching training-form entry is counted once per FCO/VRP. Training month and method whitespace are normalized. As in the supplied SQL, summary creator IDs are trimmed while the View List joins creator IDs exactly. VRPs with targets and no matching entries remain in the result with zero counts.
+
+### CC and JJ Work Status
+
+The card beside Gender Count and `cc_jj_work_status` in admin/user dashboard responses execute the report for the selected month and FCO with login visibility restrictions. One pending mapped farmer makes a JJ Red; one Red JJ makes its CC Red.
+
+- Web View List: `/dashboard/cc-jj-work-status`; the page includes Export Excel.
+- API View List: `/api/v1/{admin-dashboard|user-dashboard}/lists/cc_jj_work_status`.
+- API export: append `/export` to the list endpoint.
+- Widget: `/api/v1/{admin-dashboard|user-dashboard}/widgets/cc_jj_work_status`.
+
+The list uses the supplied FPO/CC/JJ grouping and includes no activity mapping, no training mapping, pending and completed entries, and CC/agronomist involvement. Its farmer population differs from the training-mapped JJ summary. The report follows `month` and `fcoc`/`fco`/`fco_id` (All FCOs is restricted to Sausar 1004 and Turekela 1006; all other FCOs are excluded from summary, list, and export); absent month defaults to the previous month. Legacy Sausar/Turekela target FCO names are normalized to 1004/1006 for joins. Names come from the monthly target assignment; missing assignments display Not mapped / Not assigned. FCOs without training mappings display zero status counts. Activity filters do not exclude the unmapped/non-training categories.

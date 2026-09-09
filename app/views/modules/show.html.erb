@@ -1244,7 +1244,7 @@
 
       <div class="vrp-list-toolbar compact">
         <button type="button" class="list-btn edit" data-module-edit-selected>Edit</button>
-        <% unless ["other-target-list", "seed-distribution-target-list", "papl360-target-list", "training-form-list"].include?(@slug) %>
+        <% if admin_access_user? || !["other-target-list", "seed-distribution-target-list", "papl360-target-list", "training-form-list"].include?(@slug) %>
           <button type="button" class="list-btn active" data-module-status-selected="Active">Active</button>
           <button type="button" class="list-btn deactive" data-module-status-selected="Inactive">Deactive</button>
           <button type="button" class="list-btn delete" data-module-delete-selected>Delete</button>
@@ -1813,11 +1813,14 @@
     <section class="module-card list-only-card">
       <div class="module-card-header list-title-header">
         <h2><%= { "activity-group-list" => "All Main Activities", "vrp-activity-list" => "All Sub Activities", "task-completion-indicator-list" => "All Task Completion Indicators", "approval-list" => "All Approvals", "access-control-list" => "All Access Control", "vrp-bill-list" => "All VRP Bills", "jeevika-jankar-bill-list" => "All Jeevika Jankar Bills", "training-form-list" => "All Training Records", "seed-distribution-target-list" => "All Seed Distribution Target Records", "papl360-target-list" => "All PAPL360 Target Records", "other-target-list" => "All Other Target Records" }[@slug] %></h2>
+        <% if @slug == "approval-list" %>
+          <%= link_to "Training Form Edit Approval List", training_edit_approvals_path, class: "table-action" %>
+        <% end %>
       </div>
 
       <div class="vrp-list-toolbar compact">
         <button type="button" class="list-btn edit" data-module-edit-selected>Edit</button>
-        <% unless ["other-target-list", "seed-distribution-target-list", "papl360-target-list", "training-form-list"].include?(@slug) %>
+        <% if admin_access_user? || !["other-target-list", "seed-distribution-target-list", "papl360-target-list", "training-form-list"].include?(@slug) %>
           <button type="button" class="list-btn active" data-module-status-selected="Active">Active</button>
           <button type="button" class="list-btn deactive" data-module-status-selected="Inactive">Deactive</button>
           <button type="button" class="list-btn delete" data-module-delete-selected>Delete</button>
@@ -1848,6 +1851,9 @@
           <thead>
             <tr>
               <th><input type="checkbox" data-module-select-all></th>
+              <% if @slug == "training-form-list" %>
+                <th>Approval Status</th>
+              <% end %>
               <% @module[:fields].each do |field| %>
                 <th><%= resource_person_label(field) %></th>
               <% end %>
@@ -1878,13 +1884,34 @@
                   raw_sub_activities = item.data["sub_activities"].presence || item.data["sub_activity"].presence || item.data["training_subject"]
                   raw_sub_activities.is_a?(Array) ? raw_sub_activities : raw_sub_activities.to_s.split(/,\s*(?=\d+\.\s*)/)
                 end.map(&:to_s).map(&:strip).reject(&:blank?).uniq %>
+                <% training_edit_revision = training_edit_revision_for(record) if @slug == "training-form-list" %>
                 <tr>
                   <% edit_slug = { "approval-list" => "approval-master", "access-control-list" => "access-control", "vrp-bill-list" => "vrp-bill-add", "jeevika-jankar-bill-list" => "jeevika-jankar-bill-process", "training-form-list" => "training-form", "seed-distribution-target-list" => "seed-distribution-target", "papl360-target-list" => "papl360-target", "other-target-list" => "other-target" }.fetch(@slug, @slug) %>
                   <td>
-                    <input type="checkbox"
-                      value="<%= edit_module_record_path(edit_slug, record) %>"
-                      data-module-row-select>
+                    <div class="table-actions">
+                      <input type="checkbox"
+                        value="<%= edit_module_record_path(edit_slug, record) %>"
+                        data-module-row-select>
+                      <% if @slug == "training-form-list" %>
+                        <%= link_to edit_module_record_path(edit_slug, record), class: "table-action icon-action", title: "View Training Form", aria: { label: "View Training Form" } do %>
+                          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M2 12s3.5-6 10-6 10 6 10 6-3.5 6-10 6S2 12 2 12Z"></path><circle cx="12" cy="12" r="3"></circle></svg>
+                        <% end %>
+                      <% end %>
+                    </div>
                   </td>
+                  <% if @slug == "training-form-list" %>
+                    <td>
+                      <% if training_edit_revision && TrainingEditApproval.can_decide?(training_edit_revision, current_app_user) %>
+                        <%= form_with url: training_edit_approval_path(training_edit_revision), method: :patch, class: "table-actions" do |form| %>
+                          <%= form.hidden_field :return_to, value: "training_form_list" %>
+                          <%= form.select :decision, [["Approve", "approve"], ["Reject", "reject"]] %>
+                          <%= form.submit "Update Status", class: "table-action" %>
+                        <% end %>
+                      <% else %>
+                        <%= training_edit_revision ? TrainingEditApproval.status_label(training_edit_revision) : "No pending edit" %>
+                      <% end %>
+                    </td>
+                  <% end %>
                   <% @module[:fields].each do |field| %>
                     <% field_key = field.parameterize(separator: "_") %>
                     <% value = module_record_field_value(record, field).presence || record.data[field_key].presence %>
@@ -2028,6 +2055,23 @@
     <section class="module-card" id="module-form" <% if ["role-management", "role-name", "user-management-role", "person-type"].include?(@slug) %>data-user-role-form data-role-map="<%= json_escape(role_management_mappings.to_json) %>"<% end %> <% if @slug == "parent-office-add" %>data-parent-office-form data-parent-office-map="<%= json_escape(parent_office_mappings.to_json) %>"<% end %> <% if has_location_fields %>data-location-form data-location-map="<%= json_escape(location_hierarchy_mappings.to_json) %>"<% end %> <% if @slug == "training-form" %>data-training-target-form data-training-target-map="<%= json_escape(training_target_mappings.to_json) %>" data-training-activity-map="<%= json_escape(training_activity_setup_mappings.to_json) %>" data-training-month-options="<%= json_escape(training_target_month_options.to_json) %>" data-training-farmers-url="<%= training_target_farmers_module_path(@slug) %>"<% end %> <% if other_target_form %>data-seed-target-form data-seed-target-map="<%= json_escape(seed_distribution_target_mappings.to_json) %>" data-seed-month-options="<%= json_escape(seed_distribution_target_month_options.to_json) %>" data-seed-current-vrp-option="<%= json_escape(current_seed_target_vrp_option.to_json) %>" data-seed-farmers-url="<%= seed_target_farmers_module_path(@slug) %>"<% end %> <% if add_farmer_form %>data-add-farmer-form data-add-farmer-map="<%= json_escape(add_farmer_form_mappings.to_json) %>"<% end %>>
       <div class="module-card-header">
         <h2><%= @slug == "new-user" ? "Registration" : (@record.present? ? "Edit Record" : "Fields") %></h2>
+        <% if @slug == "training-form" && @record.present? %>
+          <% training_form_revision = training_edit_revision_for(@record) %>
+          <% if training_form_revision && TrainingEditApproval.can_decide?(training_form_revision, current_app_user) %>
+            <div class="training-edit-decision-actions">
+              <%= form_with url: training_edit_approval_path(training_form_revision), method: :patch do |form| %>
+                <%= form.hidden_field :return_to, value: "training_form_list" %>
+                <%= form.hidden_field :decision, value: "approve" %>
+                <%= form.submit "Approve", class: "list-btn active" %>
+              <% end %>
+              <%= form_with url: training_edit_approval_path(training_form_revision), method: :patch do |form| %>
+                <%= form.hidden_field :return_to, value: "training_form_list" %>
+                <%= form.hidden_field :decision, value: "reject" %>
+                <%= form.submit "Return", class: "list-btn deactive" %>
+              <% end %>
+            </div>
+          <% end %>
+        <% end %>
       </div>
       <% form_url = @record.present? ? module_record_path(@slug, @record) : records_module_path(@slug) %>
       <% form_method = @record.present? ? :patch : :post %>

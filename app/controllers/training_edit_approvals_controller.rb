@@ -1,0 +1,29 @@
+class TrainingEditApprovalsController < ApplicationController
+  def index
+    @revisions = ModuleRecord.where(module_slug: TrainingEditApproval::SLUG).order(id: :desc).select do |revision|
+      TrainingEditApproval.visible?(revision, current_app_user)
+    end
+  end
+
+  def show
+    @revision = ModuleRecord.where(module_slug: TrainingEditApproval::SLUG).find(params[:id])
+    head :forbidden unless TrainingEditApproval.visible?(@revision, current_app_user)
+  end
+
+  def update
+    revision = ModuleRecord.where(module_slug: TrainingEditApproval::SLUG).find(params[:id])
+    remarks = params[:remarks].presence || "Updated from Training Form List."
+    TrainingEditApproval.decide!(revision: revision, actor: current_app_user, decision: params[:decision], remarks: remarks)
+    redirect_to approval_return_path(revision), notice: "Training edit request updated."
+  rescue TrainingEditApproval::InvalidTransition => error
+    redirect_to approval_return_path(revision), alert: error.message
+  end
+
+  private
+
+  def approval_return_path(_revision)
+    return module_path("training-form-list") if params[:return_to] == "training_form_list"
+
+    training_edit_approval_path(params[:id])
+  end
+end
