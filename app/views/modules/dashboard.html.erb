@@ -525,14 +525,21 @@
       <article class="metric-card metric-card-group metric-card-group-registration cc-jj-work-status">
         <span class="metric-card-group-title">CC and JJ Work Status</span>
         <div class="cc-jj-status-groups">
-          <% @cc_jj_work_status_report.summary.each do |row| %>
-            <div class="cc-jj-status-group">
-              <strong><%= { "1004" => "Sausar", "1006" => "Turekela" }.fetch(row["fco_id"], row["fco_id"]) %> · <%= row["status"] %></strong>
-              <div class="metric-card-group-items">
-                <% { "toatl_cc" => "CC", "toatl_jj" => "JJ" }.each do |key, label| %>
-                  <%= link_to cc_jj_work_status_list_path(request.query_parameters), class: "metric-card-group-item" do %>
-                    <span><%= label %></span><strong><%= row[key] %></strong>
-                  <% end %>
+          <% @cc_jj_work_status_report.summary.group_by { |row| row["fco_id"] }.each do |fco_id, fco_rows| %>
+            <div class="cc-jj-status-fco-row">
+              <strong class="cc-jj-status-fco-name"><%= { "1004" => "Sausar", "1006" => "Turekela" }.fetch(fco_id, fco_id) %></strong>
+              <div class="cc-jj-status-fco-groups">
+                <% fco_rows.each do |row| %>
+                  <div class="cc-jj-status-group">
+                    <strong><%= row["status"] %></strong>
+                    <div class="metric-card-group-items">
+                      <% { "toatl_cc" => "CC", "toatl_jj" => "JJ" }.each do |key, label| %>
+                        <%= link_to cc_jj_work_status_list_path(request.query_parameters), class: "metric-card-group-item" do %>
+                          <span><%= label %></span><strong><%= row[key] %></strong>
+                        <% end %>
+                      <% end %>
+                    </div>
+                  </div>
                 <% end %>
               </div>
             </div>

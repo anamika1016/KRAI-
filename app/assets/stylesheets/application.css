@@ -7738,7 +7738,25 @@ body {
 /* Keep work-status labels compact so adjacent dashboard cards do not stretch. */
 .cc-jj-status-groups {
   display: grid;
-  gap: 10px;
+  gap: 14px;
+}
+.cc-jj-status-fco-row {
+  display: grid;
+  gap: 6px;
+}
+.cc-jj-status-fco-name {
+  font-size: 0.85rem;
+  font-weight: 800;
+}
+/* All of one FCO's status boxes (Red + Completed) sit on a single line. */
+.cc-jj-status-fco-groups {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 14px;
+}
+.cc-jj-status-fco-groups .cc-jj-status-group {
+  flex: 1 1 0;
+  min-width: 0;
 }
 .cc-jj-status-group > strong {
   display: block;
