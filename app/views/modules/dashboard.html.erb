@@ -57,7 +57,7 @@
       </div>
     <% end %>
 
-  <% demonstration_method_titles = ["OPG Training Target", "OPG Training Achievement", "General Training/Meeting", "Input Demo INM", "FFS", "Input Demo PM"] %>
+  <% demonstration_method_titles = ["OPG Training Target", "OPG Training Achievement", "General Training/Meeting", "Input Demo INM", "FFS", "Input Demo PM", "Exposure"] %>
     <% all_dashboard_summary_cards = Array(@dashboard_summary_cards) %>
     <% demonstration_method_cards = Array(@demonstration_method_cards).presence || all_dashboard_summary_cards.select { |card| demonstration_method_titles.include?(card[:title].to_s) } %>
     <% dashboard_summary_cards = all_dashboard_summary_cards.reject { |card| demonstration_method_titles.include?(card[:title].to_s) } %>
@@ -431,7 +431,7 @@
     </div>
   <% end %>
 
-  <% demonstration_method_titles = ["OPG Training Target", "OPG Training Achievement", "General Training/Meeting", "Input Demo INM", "FFS", "Input Demo PM"] %>
+  <% demonstration_method_titles = ["OPG Training Target", "OPG Training Achievement", "General Training/Meeting", "Input Demo INM", "FFS", "Input Demo PM", "Exposure"] %>
   <% all_dashboard_summary_cards = Array(@dashboard_summary_cards) %>
   <% demonstration_method_cards = Array(@demonstration_method_cards).presence || all_dashboard_summary_cards.select { |card| demonstration_method_titles.include?(card[:title].to_s) } %>
   <% dashboard_summary_cards = all_dashboard_summary_cards.reject { |card| demonstration_method_titles.include?(card[:title].to_s) } %>
@@ -512,6 +512,7 @@
         <% next unless card.is_a?(Hash) && card[:items].present? %>
         <article class="metric-card metric-card-group metric-card-group-<%= card[:style] %>">
           <span class="metric-card-group-title"><%= card[:title] %></span>
+          <button type="button" class="metric-card-popup-trigger" data-card-popup-trigger title="Open in popup" aria-label="Open <%= card[:title] %> details">⤢</button>
           <div class="metric-card-group-items">
             <% card[:items].each do |item| %>
               <%= link_to item[:path], class: "metric-card-group-item metric-card-group-item-#{item[:title].to_s.parameterize}", data: { dashboard_card: true } do %>
@@ -524,6 +525,7 @@
       <% end %>
       <article class="metric-card metric-card-group metric-card-group-registration cc-jj-work-status">
         <span class="metric-card-group-title">CC and JJ Work Status</span>
+        <button type="button" class="metric-card-popup-trigger" data-card-popup-trigger title="Open in popup" aria-label="Open CC and JJ Work Status details">⤢</button>
         <div class="cc-jj-status-groups">
           <% summary_by_fco = @cc_jj_work_status_report.summary.group_by { |row| row["fco_id"] } %>
           <% { "1004" => "Sausar", "1006" => "Turekela" }.each do |fco_id, fco_name| %>
@@ -532,7 +534,7 @@
               <div class="cc-jj-status-fco-groups">
                 <% ["Red", "Completed"].each do |status| %>
                   <% row = (summary_by_fco[fco_id] || []).find { |r| r["status"].to_s.casecmp(status).zero? } %>
-                  <div class="cc-jj-status-group">
+                  <div class="cc-jj-status-group cc-jj-status-<%= status.downcase %>">
                     <strong><%= status %></strong>
                     <div class="metric-card-group-items">
                       <% { "toatl_cc" => "CC", "toatl_jj" => "JJ" }.each do |key, label| %>
@@ -549,6 +551,14 @@
         </div>
         <%= link_to "View List", cc_jj_work_status_list_path(request.query_parameters), class: "table-action" %>
       </article>
+
+      <dialog class="metric-card-popup" data-card-popup>
+        <div class="metric-card-popup-head">
+          <strong data-card-popup-title></strong>
+          <button type="button" class="metric-card-popup-close" data-card-popup-close aria-label="Close">×</button>
+        </div>
+        <div class="metric-card-popup-body" data-card-popup-body></div>
+      </dialog>
     </div>
   <% end %>
 

@@ -3616,16 +3616,14 @@ class ModulesController < ApplicationController
     report = @demonstration_method_report || DemonstrationMethodReport.new(
       targets: @filtered_targets || dashboard_target_mappings,
       month: params.key?(:month) ? dashboard_filter_param(:month) : Date.current.prev_month.strftime("%B"))
-    cards = DemonstrationMethodReport::METRICS.map do |metric|
-      dashboard_summary_card(metric == "OPG Target" ? "OPG Training Target" : metric,
+    # Display titles only; the underlying metric/data keys ("OPG Target", "FFS") are unchanged.
+    demonstration_method_card_titles = { "OPG Target" => "OPG Training Target", "FFS" => "Exposure" }
+    DemonstrationMethodReport::METRICS.map do |metric|
+      dashboard_summary_card(demonstration_method_card_titles.fetch(metric, metric),
         dashboard_quantity(report.summary.sum { |row| row[metric] }), "Training method entries",
         demonstration_method_list_path(request.query_parameters),
         demonstration_method_list_path(request.query_parameters.merge(format: :xlsx)))
     end
-    cards.insert(1, dashboard_summary_card("OPG Training Achievement", dashboard_opg_achievement_count,
-      "Total OPG training achievement", demonstration_method_list_path(request.query_parameters),
-      demonstration_method_list_path(request.query_parameters.merge(format: :xlsx))))
-    cards
   end
 
   def dashboard_opg_achievement_count

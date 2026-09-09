@@ -188,6 +188,41 @@ document.addEventListener("turbo:click", () => {
 });
 
 function initDeferredLayoutPage() {
+  // Card detail popup: a small trigger box opens that card's detail inside a modal dialog.
+  const cardPopup = document.querySelector("[data-card-popup]");
+  if (cardPopup && cardPopup.dataset.cardPopupBound !== "true") {
+    cardPopup.dataset.cardPopupBound = "true";
+    const popupTitle = cardPopup.querySelector("[data-card-popup-title]");
+    const popupBody = cardPopup.querySelector("[data-card-popup-body]");
+    const closeCardPopup = () => {
+      if (typeof cardPopup.close === "function") cardPopup.close();
+      else cardPopup.removeAttribute("open");
+    };
+
+    document.querySelectorAll("[data-card-popup-trigger]").forEach((trigger) => {
+      if (trigger.dataset.cardPopupTriggerBound === "true") return;
+      trigger.dataset.cardPopupTriggerBound = "true";
+      trigger.addEventListener("click", () => {
+        const card = trigger.closest(".metric-card-group");
+        if (!card) return;
+        const title = card.querySelector(".metric-card-group-title");
+        const detail = card.querySelector(".cc-jj-status-groups, .metric-card-group-items");
+        if (popupTitle) popupTitle.textContent = title ? title.textContent.trim() : "";
+        if (popupBody) {
+          popupBody.innerHTML = "";
+          if (detail) popupBody.appendChild(detail.cloneNode(true));
+        }
+        if (typeof cardPopup.showModal === "function") cardPopup.showModal();
+        else cardPopup.setAttribute("open", "");
+      });
+    });
+
+    cardPopup.querySelectorAll("[data-card-popup-close]").forEach((btn) => btn.addEventListener("click", closeCardPopup));
+    cardPopup.addEventListener("click", (event) => {
+      if (event.target === cardPopup) closeCardPopup();
+    });
+  }
+
   document.querySelectorAll("[data-participation-filter-form]").forEach((form) => {
     if (form.dataset.participationFilterBound === "true") return;
 

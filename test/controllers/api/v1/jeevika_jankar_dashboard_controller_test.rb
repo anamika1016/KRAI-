@@ -41,7 +41,9 @@ class Api::V1::JeevikaJankarDashboardControllerTest < ActionDispatch::Integratio
     assert_select ".demonstration-method-report", count: 0
     assert_select "#demonstration_method_boxes h2", "Demonstration Method"
     assert_select "#demonstration_method_boxes .demonstration-common-list", text: "View List"
-    assert_select "#demonstration_method_boxes .dashboard-summary-box", count: 6
+    assert_select "#demonstration_method_boxes .dashboard-summary-box", count: 5
+    assert_select "#demonstration_method_boxes .dashboard-summary-box span", text: "Exposure"
+    assert_select "#demonstration_method_boxes .dashboard-summary-box span", text: "OPG Training Achievement", count: 0
     assert_select ".cc-jj-work-status", text: /CC and JJ Work Status/
     assert_operator response.body.index("Gender Count"), :<, response.body.index("CC and JJ Work Status")
     get cc_jj_work_status_list_path
