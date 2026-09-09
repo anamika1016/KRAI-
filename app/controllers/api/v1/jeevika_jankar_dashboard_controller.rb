@@ -59,6 +59,57 @@ module Api
         }, status: :ok
       end
 
+      # A mobile-only XLSX export. The web dashboard routes and views are not used.
+      def export
+        unless admin_dashboard_request?
+          return render json: { success: false, message: "Admin login required." }, status: :forbidden
+        end
+
+        payload = cached_admin_dashboard_list_payload(params[:list_type])
+        return render json: { success: false, message: "Invalid dashboard list type.", available_list_types: admin_dashboard_list_catalog.keys }, status: :unprocessable_entity unless payload
+
+        send_dashboard_list_export(payload)
+      end
+
+      # Dynamic one-box endpoint for React Native dashboard cards.
+      def widget
+        unless admin_dashboard_request?
+          return render json: { success: false, message: "Admin login required." }, status: :forbidden
+        end
+
+        config = admin_dashboard_widget_catalog[params[:widget]]
+        return render json: { success: false, message: "Invalid dashboard widget.", available_widgets: admin_dashboard_widget_catalog.keys }, status: :unprocessable_entity unless config
+
+        dashboard = cached_admin_dashboard_summary
+        value = config[:path].reduce(dashboard) { |data, key| data.respond_to?(:[]) ? data[key] || data[key.to_s] : nil }
+        value = value.size if config[:count]
+        render json: { success: true, dashboard_type: "admin", widget: params[:widget], heading: config[:heading], value: value, filters: dashboard[:filters], generated_at: Time.current.iso8601 }
+      end
+
+      # Dropdown data for the React Native Admin dashboard. This is separate
+      # from the web form and dynamically reflects the current database.
+      def filters
+        unless admin_dashboard_request?
+          return render json: { success: false, message: "Admin login required." }, status: :forbidden
+        end
+
+        dashboard = exact_admin_dashboard_data
+        options = dashboard[:filter_options]
+        render json: {
+          success: true,
+          dashboard_type: "admin",
+          filters: dashboard_filter_groups(
+            main_activities: options[:main_activities],
+            sub_activities: options[:sub_activities],
+            fcos: options[:fcos],
+            ics_names: options[:ics],
+            months: options[:months]
+          ),
+          applied_filters: dashboard[:filters],
+          generated_at: Time.current.iso8601
+        }
+      end
+
       def farmer_training_participation
         unless admin_dashboard_request?
           return render json: { success: false, message: "Admin login required." }, status: :forbidden
@@ -69,12 +120,162 @@ module Api
         render json: response, status: :ok
       end
 
+      # JJ dashboard table/card drill-downs for the React Native app.
+      def vrp_list
+        vrp = current_dashboard_vrp
+        return render json: { success: false, message: "Valid Jeevika Jankar login required." }, status: :unprocessable_entity unless vrp
+
+        payload = vrp_dashboard_list_payload(vrp, params[:list_type])
+        return render json: { success: false, message: "Invalid dashboard list type.", available_list_types: vrp_dashboard_list_catalog.keys }, status: :unprocessable_entity unless payload
+
+        render json: { success: true, dashboard_type: "jeevika_jankar", list_type: params[:list_type], **payload, generated_at: Time.current.iso8601 }
+      end
+
+      def vrp_export
+        vrp = current_dashboard_vrp
+        return render json: { success: false, message: "Valid Jeevika Jankar login required." }, status: :unprocessable_entity unless vrp
+
+        payload = vrp_dashboard_list_payload(vrp, params[:list_type])
+        return render json: { success: false, message: "Invalid dashboard list type.", available_list_types: vrp_dashboard_list_catalog.keys }, status: :unprocessable_entity unless payload
+
+        send_dashboard_list_export(payload)
+      end
+
+      def vrp_widget
+        vrp = current_dashboard_vrp
+        return render json: { success: false, message: "Valid Jeevika Jankar login required." }, status: :unprocessable_entity unless vrp
+
+        config = vrp_dashboard_widget_catalog[params[:widget]]
+        return render json: { success: false, message: "Invalid dashboard widget.", available_widgets: vrp_dashboard_widget_catalog.keys }, status: :unprocessable_entity unless config
+
+        targets = TargetMapping.where(vrp_id: vrp.id).order(:month_name, :main_activity_name, :activity_name, :id).to_a
+        selected_month = filter_param(:month, :training_month) || default_month(targets.filter_map { |target| target.month_name.to_s.strip.presence }.uniq)
+        targets.select! { |target| same_text?(target.month_name, selected_month) } if selected_month.present?
+        progress = web_parity_progress(targets, vrp)
+        value = case params[:widget]
+        when "mapped_farmers" then targets.flat_map { |target| mapped_farmer_ids(target) }.uniq.size
+        when "mapped_villages" then targets.map { |target| [target.village_id.to_s, target.village_name.to_s.downcase] }.uniq.size
+        when "main_activities" then unique_count(targets, :main_activity_name)
+        when "sub_activities" then unique_count(targets, :activity_name)
+        when "assigned_target" then number(progress.sum { |row| row[:assigned].to_f })
+        when "achieved_target" then number(progress.sum { |row| row[:achieved].to_f })
+        when "pending_target" then number(progress.sum { |row| row[:pending].to_f })
+        end
+        render json: { success: true, dashboard_type: "jeevika_jankar", widget: params[:widget], heading: config, value: value, filters: { month: selected_month }.compact, generated_at: Time.current.iso8601 }
+      end
+
       private
 
       def admin_dashboard_request?
         user = current_api_user_payload
         user["user_type"].to_s.casecmp("admin").zero? &&
           (request.path.include?("/admin-dashboard") || filter_param(:vrp_id).blank?)
+      end
+
+      def vrp_dashboard_list_catalog
+        {
+          "mapped_villages" => "Mapped Villages List",
+          "main_activities" => "Main Activities List",
+          "sub_activities" => "Sub Activities List",
+          "assigned_target" => "Assigned Target Progress List",
+          "mapped_farmers" => "Assigned Farmers List",
+          "achieved_target" => "Achieved Target List",
+          "pending_target" => "Pending Target List",
+          "target_progress" => "Assigned Target Progress List",
+          "weekly_target_plan" => "Weekly Target Plan"
+        }
+      end
+
+      def vrp_dashboard_widget_catalog
+        {
+          "mapped_villages" => "Mapped Villages",
+          "main_activities" => "Main Activities",
+          "sub_activities" => "Sub Activities",
+          "assigned_target" => "Assigned Target",
+          "mapped_farmers" => "Assigned Farmers",
+          "achieved_target" => "Achieved Target",
+          "pending_target" => "Pending Target"
+        }
+      end
+
+      def admin_dashboard_widget_catalog
+        {
+          "total_ics_count" => { heading: "Total ICS Count", path: %i[filter_options ics], count: true },
+          "total_registered" => { heading: "Total Registered Jeevika Jankar", path: %i[sections registration total_registered] },
+          "final_approved" => { heading: "Final Approved", path: %i[sections registration final_approved] },
+          "pending_approval" => { heading: "Pending Approval", path: %i[sections registration pending_approval] },
+          "target_records" => { heading: "Target Records", path: %i[sections target_assignment target_records] },
+          "without_target" => { heading: "Without Target", path: %i[sections target_assignment without_target] },
+          "activities_assigned" => { heading: "Activities Assigned", path: %i[sections target_assignment activities_assigned] },
+          "without_activity" => { heading: "Without Activity", path: %i[sections target_assignment without_activity] },
+          "level_2_users" => { heading: "Level 2 Users", path: %i[sections billing level_2_users] },
+          "bill_approved" => { heading: "Bill Approved", path: %i[sections billing bill_approved] },
+          "bill_pending" => { heading: "Bill Pending", path: %i[sections billing bill_pending] },
+          "total_villages_count" => { heading: "Total Villages Count", path: [ :mobile_widget_values, "Total Villages Count" ] },
+          "total_farmer_count" => { heading: "Total Farmer Count", path: [ :mobile_widget_values, "Total Farmer Count" ] },
+          "total_mapped_main_activities" => { heading: "Total Mapped Main Major Work Indicators", path: [ :mobile_widget_values, "Total Mapped Main Activities" ] },
+          "total_mapped_sub_activities" => { heading: "Total Mapped Sub-Major Work Indicators", path: [ :mobile_widget_values, "Total Mapped Sub-Activities" ] },
+          "mapped_farmer" => { heading: "Mapped Farmer", path: %i[farmer_training_participation_status total_unique_farmers_distinct] },
+          "no_training" => { heading: "No Training", path: [ :mobile_widget_values, "No Training" ] },
+          "only_1_training" => { heading: "Only 1 Training", path: [ :mobile_widget_values, "Yellow" ] },
+          "one_plus_trainings" => { heading: "1+ Trainings", path: [ :mobile_widget_values, "Green" ] },
+          "opg_training_target" => { heading: "OPG Training Target", path: [ :mobile_widget_values, "OPG Training Target" ] },
+          "opg_training_achievement" => { heading: "OPG Training Achievement", path: [ :mobile_widget_values, "OPG Training Achievement" ] },
+          "general_training_meeting" => { heading: "General Training/Meeting", path: [ :mobile_widget_values, "General Training/Meeting" ] },
+          "input_demo_inm" => { heading: "Input Demo INM", path: [ :mobile_widget_values, "Input Demo INM" ] },
+          "ffs" => { heading: "FFS", path: [ :mobile_widget_values, "FFS" ] },
+          "input_demo_pm" => { heading: "Input Demo PM", path: [ :mobile_widget_values, "Input Demo PM" ] },
+          "sausar_required" => { heading: "Sausar Required", path: [ :mobile_widget_values, "Sausar Required" ] },
+          "sausar_active" => { heading: "Sausar Active", path: [ :mobile_widget_values, "Sausar Active" ] },
+          "sausar_vacant" => { heading: "Sausar Vacant", path: [ :mobile_widget_values, "Sausar Vacant" ] },
+          "turekela_required" => { heading: "Turekela Required", path: [ :mobile_widget_values, "Turekela Required" ] },
+          "turekela_active" => { heading: "Turekela Active", path: [ :mobile_widget_values, "Turekela Active" ] },
+          "turekela_vacant" => { heading: "Turekela Vacant", path: [ :mobile_widget_values, "Turekela Vacant" ] },
+          "sausar_male" => { heading: "Sausar Male", path: [ :mobile_widget_values, "Sausar Male" ] },
+          "sausar_female" => { heading: "Sausar Female", path: [ :mobile_widget_values, "Sausar Female" ] },
+          "turekela_male" => { heading: "Turekela Male", path: [ :mobile_widget_values, "Turekela Male" ] },
+          "turekela_female" => { heading: "Turekela Female", path: [ :mobile_widget_values, "Turekela Female" ] }
+        }
+      end
+
+      def dashboard_filter_groups(main_activities:, sub_activities:, fcos:, ics_names:, months:)
+        [
+          { key: "main_activity", heading: "Main Major Work Indicator", all_option: "All Main Major Work Indicators", options: Array(main_activities) },
+          { key: "sub_activity", heading: "Sub Major Work Indicator", all_option: "All Sub Major Work Indicators", options: Array(sub_activities) },
+          { key: "fco", heading: "FCO", all_option: "All FCO", options: Array(fcos) },
+          { key: "ics", heading: "ICS Name", all_option: "All ICS", options: Array(ics_names) },
+          { key: "month", heading: "Month", all_option: "All Months", options: Array(months) }
+        ]
+      end
+
+      def vrp_dashboard_list_payload(vrp, list_type)
+        return unless vrp_dashboard_list_catalog.key?(list_type)
+
+        targets = TargetMapping.where(vrp_id: vrp.id).order(:month_name, :main_activity_name, :activity_name, :id).to_a
+        selected_month = filter_param(:month, :training_month)
+        targets.select! { |target| same_text?(target.month_name, selected_month) } if selected_month.present?
+        progress = web_parity_progress(targets, vrp)
+        raw_rows = ModulesController.new.send(:vrp_dashboard_target_progress_rows, targets, ModulesController.new.send(:vrp_dashboard_bills, vrp))
+        records = case list_type
+        when "mapped_villages"
+          progress.group_by { |row| row[:village].to_s }.map { |village, rows| { village: village, target_records: rows.size, assigned: number(rows.sum { |row| row[:assigned].to_f }), achieved: number(rows.sum { |row| row[:achieved].to_f }), pending: number(rows.sum { |row| row[:pending].to_f }) } }
+        when "main_activities"
+          progress.group_by { |row| row[:main_activity].to_s }.map { |name, rows| { main_activity: name, target_records: rows.size, assigned: number(rows.sum { |row| row[:assigned].to_f }), achieved: number(rows.sum { |row| row[:achieved].to_f }), pending: number(rows.sum { |row| row[:pending].to_f }) } }
+        when "sub_activities"
+          progress.group_by { |row| row[:sub_activity].to_s }.map { |name, rows| { sub_activity: name, target_records: rows.size, assigned: number(rows.sum { |row| row[:assigned].to_f }), achieved: number(rows.sum { |row| row[:achieved].to_f }), pending: number(rows.sum { |row| row[:pending].to_f }) } }
+        when "mapped_farmers"
+          farmer_ids = targets.flat_map { |target| mapped_farmer_ids(target) }.uniq
+          farmer_ids.map { |id| { farmer_id: id, assignment_status: "Assigned" } }
+        when "achieved_target"
+          progress.select { |row| row[:achieved].to_f.positive? }
+        when "pending_target"
+          progress.select { |row| row[:pending].to_f.positive? }
+        when "weekly_target_plan"
+          raw_rows.map { |row| row.slice(:month, :village, :main_activity, :activity, :target, :week_1, :week_2, :week_3, :week_4, :completed, :pending, :completion_date) }
+        else
+          progress
+        end
+        { title: vrp_dashboard_list_catalog.fetch(list_type), count: records.size, records: records, filters: { month: selected_month }.compact }
       end
 
       def render_admin_dashboard
@@ -361,6 +562,14 @@ module Api
         target_progress = admin_dashboard_progress(web, targets, vrps)
 
         card_data = exact_admin_card_data(web, vrps, targets, all_targets, bills)
+        web_summary_cards = web.send(:dashboard_summary_cards, targets)
+        web_demo_cards = web.send(:demonstration_method_cards)
+        web_training_cards = web.send(:training_participation_dashboard_status_cards,
+          participation_counts, month_name: participation_month, fcoc_name: participation_fcoc,
+          week_number: dashboard_list_week_number)
+        web_group_items = web.send(:dashboard_cards).flat_map { |card| Array(card[:items]) }
+        mobile_widget_values = (web_summary_cards + web_demo_cards + web_training_cards + web_group_items)
+          .each_with_object({}) { |card, values| values[card[:title].to_s] = card[:value] }
         @admin_dashboard_api_context = {
           web: web,
           vrps: vrps,
@@ -381,6 +590,7 @@ module Api
           filter_options: options,
           sections: card_data,
           cards: card_data.values_at(:registration, :target_assignment, :billing).reduce({}, &:merge),
+          mobile_widget_values: mobile_widget_values,
           list_endpoints: admin_dashboard_list_catalog.to_h do |type, title|
             [type, { title: title, endpoint: "#{request.base_url}/api/v1/admin-dashboard/lists/#{type}" }]
           end,
@@ -538,12 +748,17 @@ module Api
           "final_approved" => "Final Approved Jeevika Jankar List",
           "pending_approval" => "Pending Approval Jeevika Jankar List",
           "target_records" => "Jeevika Jankar Target Records List",
+          "total_ics_count" => "Total ICS List",
           "total_mapped_villages" => "Total Mapped Villages List",
           "targeted_farmers" => "Targeted Farmers List",
           "total_mapped_main_activities" => "Total Mapped Main Activities List",
           "total_mapped_sub_activities" => "Total Mapped Sub-Activities List",
+          "farmer_wise_target_mapping" => "Farmer-wise Target Mapping List",
           "farmer_wise_achievement" => "Farmer-wise Achievement List",
           "farmer_wise_pending_achievement" => "Farmer-wise Pending Achievement List",
+          "activity_wise_target_mapping" => "Activity-wise Target Mapping List",
+          "activity_wise_achievement" => "Activity-wise Achievement List",
+          "activity_wise_pending_achievement" => "Activity-wise Pending Achievement List",
           "without_target" => "Jeevika Jankar Without Target List",
           "activities_assigned" => "Jeevika Jankar Activities Assigned List",
           "without_activity" => "Jeevika Jankar Without Activity List",
@@ -688,6 +903,10 @@ module Api
           web.send(:dashboard_pending_approval_vrps, vrps).map { |vrp| admin_vrp_list_row(vrp, assigned_ids, activity_ids) }
         when "target_records"
           grouped_admin_targets(targets)
+        when "total_ics_count"
+          targets.group_by { |target| target.ics_name.presence || target.ics_id }.reject { |name, _| name.blank? }.map do |name, rows|
+            { ics: name, target_records: rows.size, jeevika_jankar_count: rows.filter_map(&:vrp_id).uniq.size, villages: rows.filter_map(&:village_name).uniq.size }
+          end
         when "total_mapped_villages"
           grouped_admin_villages(targets)
         when "targeted_farmers"
@@ -743,6 +962,23 @@ module Api
         return unless records
 
         { title: admin_dashboard_list_catalog.fetch(list_type), records: records }
+      end
+
+      def send_dashboard_list_export(payload)
+        records = Array(payload[:records])
+        headers = records.flat_map { |record| record.respond_to?(:keys) ? record.keys : [] }.map(&:to_s).uniq
+        rows = records.map do |record|
+          headers.map { |header| dashboard_export_value(record[header] || record[header.to_sym]) }
+        end
+        file = XlsxExporter.generate(headers: headers, rows: rows, sheet_name: payload[:title])
+        send_data file,
+          filename: "#{params[:list_type].to_s.parameterize.presence || 'dashboard-list'}-#{Date.current}.xlsx",
+          type: XlsxExporter::MIME_TYPE,
+          disposition: "attachment"
+      end
+
+      def dashboard_export_value(value)
+        value.is_a?(Array) || value.is_a?(Hash) ? value.to_json : value
       end
 
       def admin_vrp_list_row(vrp, assigned_ids, activity_ids)

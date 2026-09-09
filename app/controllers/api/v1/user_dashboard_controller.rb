@@ -1,11 +1,72 @@
 module Api
   module V1
-    class UserDashboardController < BaseController
+    class UserDashboardController < JeevikaJankarDashboardController
       def show
         return render_vrp_error if current_api_user.is_a?(Vrp)
 
         response = cached_user_dashboard_response
         render json: response, status: response[:success] ? :ok : :internal_server_error
+      end
+
+      # Scoped drill-down for CC, Agronomist, FCO and other office users.
+      # It deliberately uses only the VRPs and targets already visible to this login.
+      def list
+        return render_vrp_error if current_api_user.is_a?(Vrp)
+
+        payload = user_dashboard_list_payload(params[:list_type])
+        return render json: { success: false, message: "Invalid dashboard list type.", available_list_types: user_dashboard_list_catalog.keys }, status: :unprocessable_entity unless payload
+
+        render json: {
+          success: true,
+          message: "#{payload[:title]} fetched successfully.",
+          dashboard_type: "user",
+          list_type: params[:list_type],
+          title: payload[:title],
+          filters: applied_filters,
+          count: payload[:records].size,
+          records: payload[:records],
+          generated_at: Time.current.iso8601
+        }
+      end
+
+      def export
+        return render_vrp_error if current_api_user.is_a?(Vrp)
+
+        payload = user_dashboard_list_payload(params[:list_type])
+        return render json: { success: false, message: "Invalid dashboard list type.", available_list_types: user_dashboard_list_catalog.keys }, status: :unprocessable_entity unless payload
+
+        send_dashboard_list_export(payload)
+      end
+
+      def widget
+        return render_vrp_error if current_api_user.is_a?(Vrp)
+
+        config = user_dashboard_widget_catalog[params[:widget]]
+        return render json: { success: false, message: "Invalid dashboard widget.", available_widgets: user_dashboard_widget_catalog.keys }, status: :unprocessable_entity unless config
+
+        dashboard = cached_user_dashboard_response
+        value = config[:path].reduce(dashboard) { |data, key| data.respond_to?(:[]) ? data[key] || data[key.to_s] : nil }
+        render json: { success: true, dashboard_type: "user", widget: params[:widget], heading: config[:heading], value: value, filters: dashboard[:filters], generated_at: Time.current.iso8601 }
+      end
+
+      def filters
+        return render_vrp_error if current_api_user.is_a?(Vrp)
+
+        dashboard = cached_user_dashboard_response
+        options = dashboard[:filter_options] || {}
+        render json: {
+          success: true,
+          dashboard_type: "user",
+          filters: dashboard_filter_groups(
+            main_activities: options[:main_activities] || options["main_activities"],
+            sub_activities: options[:sub_activities] || options["sub_activities"],
+            fcos: options[:fcos] || options["fcos"],
+            ics_names: options[:ics_names] || options["ics_names"],
+            months: options[:months] || options["months"]
+          ),
+          applied_filters: dashboard[:filters] || dashboard["filters"],
+          generated_at: Time.current.iso8601
+        }
       end
 
       private
@@ -17,6 +78,74 @@ module Api
       rescue StandardError => error
         Rails.logger.warn("User dashboard cache skipped: #{error.class}: #{error.message}")
         build_user_dashboard_response
+      end
+
+      def user_dashboard_list_catalog
+        admin_dashboard_list_catalog.merge(
+          "farmer_wise_target_mapping" => "Farmer-wise Target Mapping List",
+          "activity_wise_target_mapping" => "Activity-wise Target Mapping List",
+          "activity_wise_achievement" => "Activity-wise Achievement List",
+          "activity_wise_pending_achievement" => "Activity-wise Pending Achievement List"
+        )
+      end
+
+      def user_dashboard_widget_catalog
+        {
+          "total_registered" => { heading: "Total Registered Jeevika Jankar", path: %i[cards total_registered_vrp] },
+          "final_approved" => { heading: "Final Approved Jeevika Jankar", path: %i[cards final_approved_vrp] },
+          "pending_approval" => { heading: "Pending Approval", path: %i[cards vrp_pending_approval] },
+          "target_records" => { heading: "Target Records", path: %i[cards vrp_targets_assigned] },
+          "activities_assigned" => { heading: "Activities Assigned", path: %i[cards activities_assigned] },
+          "bill_approved" => { heading: "Bill Approved", path: %i[cards bill_approved] },
+          "bill_pending" => { heading: "Bill Pending", path: %i[cards bill_pending] },
+          "total_mapped_villages" => { heading: "Total Mapped Villages", path: %i[dashboard_summary values total_mapped_villages] },
+          "targeted_farmers" => { heading: "Targeted Farmers", path: %i[dashboard_summary values targeted_farmers] },
+          "farmer_wise_achievement" => { heading: "Farmer-wise Achievement", path: %i[dashboard_summary values farmer_wise_achievement] },
+          "farmer_wise_pending_achievement" => { heading: "Farmer-wise Pending Achievement", path: %i[dashboard_summary values farmer_wise_pending_achievement] }
+        }
+      end
+
+      def user_dashboard_list_payload(list_type)
+        return unless user_dashboard_list_catalog.key?(list_type)
+
+        calculator = dashboard_calculator
+        vrps, targets, options = filtered_scope(calculator)
+        bills = filtered_bills(calculator, vrps)
+        set_filtered_scope(calculator, vrps, targets, bills)
+        months = calculator.send(:dashboard_month_options_for_targets, targets)
+        participation_month = selected_month(:participation_month, months, calculator, targets)
+        participation_fcoc = filter_param(:participation_fcoc) || calculator.send(:dashboard_default_visible_fcoc, options[:fcos])
+        participation_records = calculator.send(:dashboard_training_participation_records, month_name: participation_month, fcoc_name: participation_fcoc)
+        population = calculator.send(:training_participation_population_rows,
+          month_name: participation_month, fcoc_name: participation_fcoc, records: participation_records)
+        weekly_month = selected_month(:weekly_target_month, months, calculator)
+        weekly_fcoc = filter_param(:weekly_target_fcoc) || calculator.send(:dashboard_default_visible_fcoc, options[:fcos])
+        weekly_targets = calculator.send(:dashboard_targets_for_month, targets, weekly_month)
+        weekly_targets = weekly_targets.select { |target| same?(target.vrp&.fcoc, weekly_fcoc) } if weekly_fcoc.present?
+        weekly_rows = calculator.send(:weekly_activity_target_farmer_status_rows,
+          weekly_targets, month_name: weekly_month, fcoc_name: weekly_fcoc, week_number: selected_week)
+        ics_month = filter_param(:ics_report_month) || participation_month
+        ics_targets = calculator.send(:training_participation_targets_for_dashboard,
+          month_name: ics_month, fcoc_name: participation_fcoc)
+        ics_records = calculator.send(:dashboard_training_participation_records,
+          month_name: ics_month, fcoc_name: participation_fcoc)
+        selected_ics = filter_param(:ics_report_ics)
+        ics_rows = selected_ics.present? ? calculator.send(:ics_farmer_report_rows, ics_targets, ics_records, selected_ics: selected_ics) : []
+
+        context = {
+          web: calculator, vrps: vrps, targets: targets, all_targets: targets, bills: bills,
+          participation_records: participation_records, participation_population: population,
+          participation_month: participation_month, participation_month_value: participation_month,
+          weekly_rows: weekly_rows, ics_rows: ics_rows
+        }
+        @admin_dashboard_api_context = context
+        payload = admin_dashboard_list_payload(list_type)
+        return unless payload
+
+        payload.merge(title: user_dashboard_list_catalog.fetch(list_type))
+      rescue StandardError => error
+        Rails.logger.error("User dashboard list API failed: #{error.class}: #{error.message}")
+        nil
       end
 
       def build_user_dashboard_response
