@@ -7748,15 +7748,17 @@ body {
   font-size: 0.85rem;
   font-weight: 800;
 }
-/* All of one FCO's status boxes (Red + Completed) sit on a single line. */
+/* One FCO's 4 boxes (Red CC/JJ + Completed CC/JJ) fill the full card width in one line. */
 .cc-jj-status-fco-groups {
-  display: flex;
-  flex-wrap: wrap;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 14px;
 }
 .cc-jj-status-fco-groups .cc-jj-status-group {
-  flex: 1 1 0;
   min-width: 0;
+}
+.cc-jj-status-fco-groups .cc-jj-status-group .metric-card-group-items {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
 }
 .cc-jj-status-group > strong {
   display: block;
@@ -7793,4 +7795,27 @@ body {
 }
 .dashboard-grid.premium .cc-jj-work-status .cc-jj-status-group .metric-card-group-items {
   grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+/* Make the CC/JJ boxes fill the full card width and give them a bigger size. */
+.dashboard-grid.premium .cc-jj-work-status .cc-jj-status-fco-groups {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 16px;
+  width: 100%;
+}
+.dashboard-grid.premium .cc-jj-work-status .cc-jj-status-fco-groups .metric-card-group-items {
+  grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+  gap: 10px;
+  width: 100%;
+  justify-items: stretch;
+}
+.dashboard-grid.premium .cc-jj-work-status .metric-card-group-item {
+  width: 100%;
+  justify-self: stretch;
+  min-height: 64px;
+  padding: 10px 12px;
+}
+.dashboard-grid.premium .cc-jj-work-status .metric-card-group-item > strong {
+  font-size: 1.2rem;
 }
