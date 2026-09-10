@@ -206,11 +206,15 @@ function initDeferredLayoutPage() {
         const card = trigger.closest(".metric-card-group");
         if (!card) return;
         const title = card.querySelector(".metric-card-group-title");
+        const titleText = title ? title.textContent.trim() : "";
         const detail = card.querySelector(".cc-jj-status-groups, .metric-card-group-items");
-        if (popupTitle) popupTitle.textContent = title ? title.textContent.trim() : "";
+        if (popupTitle) popupTitle.textContent = titleText;
         if (popupBody) {
           popupBody.innerHTML = "";
           if (detail) popupBody.appendChild(detail.cloneNode(true));
+          // FCO-wise JJ Requirement: 3 boxes per row so Sausar is row 1 and Turekela is row 2.
+          const grid = popupBody.querySelector(".metric-card-group-items");
+          if (grid) grid.style.gridTemplateColumns = `repeat(${/requirement/i.test(titleText) ? 3 : 2}, minmax(0, 1fr))`;
         }
         if (typeof cardPopup.showModal === "function") cardPopup.showModal();
         else cardPopup.setAttribute("open", "");
@@ -4798,6 +4802,21 @@ function initDeferredLayoutPage() {
     });
   });
 
+  // Simple client-side row filter for report tables (Demonstration Method / CC and JJ lists).
+  document.querySelectorAll("[data-report-search]").forEach((input) => {
+    if (input.dataset.reportSearchBound === "true") return;
+    input.dataset.reportSearchBound = "true";
+    input.addEventListener("input", () => {
+      const query = input.value.trim().toLowerCase();
+      const scope = input.closest("section") || document;
+      const table = scope.querySelector("[data-report-search-table]") || document.querySelector("[data-report-search-table]");
+      if (!table) return;
+      table.querySelectorAll("tbody tr").forEach((tr) => {
+        tr.style.display = tr.textContent.toLowerCase().includes(query) ? "" : "none";
+      });
+    });
+  });
+
   document.querySelectorAll("[data-import-file]").forEach((input) => {
     input.addEventListener("change", () => {
       if (!input.files.length) return;
@@ -6051,10 +6070,12 @@ function initDeferredLayoutPage() {
   });
 
   const initializeLanguageSwitcher = () => {
+    const boundLanguageButtons = window.__vrpBoundLanguageButtons ||= new WeakSet();
     const unboundSignatureShell = document.querySelector(
       "[data-agreement-signature-shell]:not([data-agreement-signature-bound])"
     );
-    const unboundLanguageButton = document.querySelector("[data-language-option]:not([data-language-bound='true'])");
+    const unboundLanguageButton = Array.from(document.querySelectorAll("[data-language-option]"))
+      .find((button) => !boundLanguageButtons.has(button));
 
     if (window.__vrpLanguageSwitcherInitialized && !unboundSignatureShell && !unboundLanguageButton) {
       const language = localStorage.getItem("vrp_language") || "en";
@@ -6551,48 +6572,60 @@ function initDeferredLayoutPage() {
       document.cookie = `googtrans=${value};path=/`;
       document.cookie = `googtrans=${value};path=/;domain=${window.location.hostname}`;
     };
+    const initializeGoogleTranslate = () => {
+      const holder = document.getElementById("google_translate_element");
+      if (!holder || holder.dataset.googleInitialized === "true") return;
+      if (!window.google?.translate?.TranslateElement) return;
+      holder.dataset.googleInitialized = "true";
+      new window.google.translate.TranslateElement({
+        pageLanguage: "en", includedLanguages: "en,hi,mr,or,gu", autoDisplay: false
+      }, "google_translate_element");
+    };
     const loadGoogleTranslate = () => {
-      if (window.google?.translate?.TranslateElement) return Promise.resolve();
+      if (window.google?.translate?.TranslateElement) {
+        initializeGoogleTranslate();
+        return Promise.resolve();
+      }
       if (window.__vrpGoogleTranslateLoading) return window.__vrpGoogleTranslateLoading;
 
       window.__vrpGoogleTranslateLoading = new Promise((resolve) => {
         window.googleTranslateElementInit = () => {
-          if (window.google?.translate?.TranslateElement) {
-            new window.google.translate.TranslateElement({
-              pageLanguage: "en",
-              includedLanguages: "en,hi,mr,or,gu",
-              autoDisplay: false
-            }, "google_translate_element");
-          }
+          initializeGoogleTranslate();
           resolve();
         };
 
         const script = document.createElement("script");
         script.src = "https://translate.google.com/translate_a/element.js?cb=googleTranslateElementInit";
         script.async = true;
-        script.onerror = () => resolve();
+        script.onerror = () => {
+          window.__vrpGoogleTranslateLoading = null;
+          script.remove();
+          resolve();
+        };
         document.head.appendChild(script);
       });
 
       return window.__vrpGoogleTranslateLoading;
     };
     const applyGoogleLanguage = (language) => {
+      const requestId = window.__vrpGoogleLanguageRequest = (window.__vrpGoogleLanguageRequest || 0) + 1;
       setGoogleTranslateCookie(language);
-      if (language === "en") {
-        const combo = document.querySelector(".goog-te-combo");
-        if (combo) {
-          combo.value = "";
-          combo.dispatchEvent(new Event("change"));
-        }
-        return;
-      }
+      if (language === "en" && !window.google?.translate?.TranslateElement && !window.__vrpGoogleTranslateLoading) return;
 
       loadGoogleTranslate().then(() => {
-        const combo = document.querySelector(".goog-te-combo");
-        if (!combo) return;
-
-        combo.value = googleLanguageCodes[language] || "en";
-        combo.dispatchEvent(new Event("change"));
+        // The script callback can run before Google has populated its select.
+        const applyWhenReady = (attempt = 0) => {
+          if (requestId !== window.__vrpGoogleLanguageRequest) return;
+          const combo = document.querySelector(".goog-te-combo");
+          const code = googleLanguageCodes[language] || "en";
+          if (combo && Array.from(combo.options).some((option) => option.value === code)) {
+            combo.value = code;
+            combo.dispatchEvent(new Event("change", { bubbles: true }));
+          } else if (attempt < 100) {
+            setTimeout(() => applyWhenReady(attempt + 1), 100);
+          }
+        };
+        applyWhenReady();
       });
     };
 
@@ -6649,7 +6682,7 @@ function initDeferredLayoutPage() {
     const translateTextNode = (node, language) => {
       if (!node.nodeValue.trim()) return;
       const parent = node.parentElement;
-      if (!parent || parent.closest("script, style, textarea, code, pre")) return;
+      if (!parent || parent.closest("script, style, textarea, code, pre, .skiptranslate, #google_translate_element, font[style]")) return;
 
       const original = originalText.get(node) || node.nodeValue;
       originalText.set(node, original);
@@ -6677,7 +6710,6 @@ function initDeferredLayoutPage() {
       }
     };
 
-    let languageMutationTimer = null;
     let languageApplying = false;
 	    const applyLanguage = (language, root = document.body) => {
       languageApplying = true;
@@ -6719,8 +6751,9 @@ function initDeferredLayoutPage() {
 
     if (switcher) {
       languageButtons.forEach((button) => {
-        if (button.dataset.languageBound === "true") return;
+        if (boundLanguageButtons.has(button)) return;
 
+        boundLanguageButtons.add(button);
         button.dataset.languageBound = "true";
         button.addEventListener("click", () => setLanguage(button.dataset.languageOption));
       });
@@ -6836,32 +6869,27 @@ function initDeferredLayoutPage() {
 
     setLanguage(localStorage.getItem("vrp_language") || "en");
 
-    if (!window.__vrpLanguageObserver) {
-      const observeTarget = () => document.querySelector(".app-main") || document.body;
-      window.__vrpLanguageObserver = new MutationObserver((mutations) => {
-        if (languageApplying) return;
-
-        const language = localStorage.getItem("vrp_language") || "en";
-        if (language === "en" && !window.__vrpHadNonEnglishLanguage) {
-          mutations.forEach((mutation) => mutation.addedNodes.forEach((node) => {
-            if (node.nodeType === Node.TEXT_NODE) translateTextNode(node, language);
-            else if (node.nodeType === Node.ELEMENT_NODE) {
-              translateAttributes(node, language);
-              const walker = document.createTreeWalker(node, NodeFilter.SHOW_TEXT);
-              while (walker.nextNode()) translateTextNode(walker.currentNode, language);
-              node.querySelectorAll("[placeholder], [title], [aria-label]").forEach((element) => translateAttributes(element, language));
-            }
-          }));
-          return;
+    window.__vrpLanguageObserver?.disconnect();
+    window.__vrpLanguageObserver = new MutationObserver((mutations) => {
+      if (languageApplying) return;
+      const language = localStorage.getItem("vrp_language") || "en";
+      // Translate inserted UI only; rescanning the page would overwrite Google's
+      // translated text and repeatedly walk large, paginated tables.
+      mutations.forEach((mutation) => mutation.addedNodes.forEach((node) => {
+        if (node.nodeType === Node.TEXT_NODE) {
+          if (!originalText.has(node)) translateTextNode(node, language);
+        } else if (node.nodeType === Node.ELEMENT_NODE) {
+          if (node.closest(".skiptranslate, #google_translate_element, font[style]")) return;
+          translateAttributes(node, language);
+          const walker = document.createTreeWalker(node, NodeFilter.SHOW_TEXT);
+          while (walker.nextNode()) {
+            if (!originalText.has(walker.currentNode)) translateTextNode(walker.currentNode, language);
+          }
+          node.querySelectorAll("[placeholder], [title], [aria-label], [data-turbo-confirm]").forEach((element) => translateAttributes(element, language));
         }
-
-        clearTimeout(languageMutationTimer);
-        languageMutationTimer = setTimeout(() => {
-          window.__vrpApplyLanguage(language, observeTarget());
-        }, 250);
-      });
-      window.__vrpLanguageObserver.observe(observeTarget(), { childList: true, subtree: true });
-    }
+      }));
+    });
+    window.__vrpLanguageObserver.observe(document.body, { childList: true, subtree: true });
   };
 
   initializeLanguageSwitcher();

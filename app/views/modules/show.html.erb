@@ -136,7 +136,7 @@
           </div>
         </div>
         <% if vrp_photo&.attached? %>
-          <%= image_tag rails_blob_path(vrp_photo, only_path: true), alt: "VRP Photo", class: "bill-print-vrp-photo" %>
+          <%= image_tag rails_blob_path(vrp_photo, only_path: true), alt: "JJ Photo", class: "bill-print-vrp-photo" %>
         <% end %>
       <% end %>
       <div class="module-card-header list-title-header">
@@ -161,7 +161,7 @@
           <span><%= detail_record.id %></span>
         </div>
         <div>
-          <strong>VRP</strong>
+          <strong>JJ</strong>
           <span><%= jeevika_jankar_display_name(detail_record.data["select_vrp_name"].presence || jeevika_jankar_vrp_label(detail_record.data["select_vrp"])).presence || "-" %></span>
         </div>
         <div>
@@ -311,7 +311,7 @@
             <div class="approval-progress-card <%= state %>">
               <div class="approval-progress-icon"><%= state == "approved" ? "✓" : (closing_action == "Returned" ? "↩" : (state == "rejected" ? "×" : "•")) %></div>
               <h3><%= step.data["approval_level"] %></h3>
-              <p><%= step.data["approver_approved_by"].presence || "-" %></p>
+              <p><%= jeevika_bill_approver_display_name(step.data["approver_approved_by"], nil) %></p>
               <% if step_history %>
                 <small><%= step_history.data["action"] %> at <%= step_history.data["action_at"] %></small>
                 <% if step_history.data["remarks"].present? %>
@@ -808,8 +808,8 @@
           </label>
 
           <label>
-            <span>Financial Year</span>
-            <select name="module_record[financial_year]">
+            <span>Financial Year <em>*</em></span>
+            <select name="module_record[financial_year]" required>
               <option value="">Select Financial Year</option>
               <% @jeevika_jankar_financial_year_options.each do |option| %>
                 <option value="<%= option %>" <%= "selected" if @record&.data&.[]("financial_year").to_s == option.to_s %>><%= option %></option>
@@ -890,9 +890,9 @@
       <%= form_with url: form_url, method: form_method, html: { class: "module-entry-form", multipart: true } do %>
         <div class="module-form-grid user-registration-grid">
           <label>
-            <span>Select VRP <em>*</em></span>
+            <span>Select JJ <em>*</em></span>
             <select name="module_record[select_vrp]" required>
-              <option value="">Select VRP</option>
+              <option value="">Select JJ</option>
               <% @approved_vrp_options.each do |label, value| %>
                 <option value="<%= value %>" <%= "selected" if @record&.data&.[]("select_vrp").to_s == value.to_s %>><%= label %></option>
               <% end %>
@@ -992,7 +992,7 @@
 
         <div class="module-form-actions bill-save-actions">
           <%= link_to "Clear", module_path(@slug), class: "btn btn-secondary" %>
-          <button type="submit" class="btn btn-primary">Save VRP Bill</button>
+          <button type="submit" class="btn btn-primary">Save JJ Bill</button>
         </div>
       <% end %>
 
@@ -1649,8 +1649,7 @@
     </section>
   <% elsif @slug == "jeevika-jankar-bill-list" && @record.blank? %>
     <% table_id = "jeevika_jankar_bill_table" %>
-    <% bill_rows = jeevika_bill_rows(@records) %>
-    <% bill_months = bill_rows.map { |row| row[:bill_month] }.compact_blank.reject { |month| month == "-" }.uniq %>
+    <% bill_months = @records.map { |record| record.data["bill_month"].presence || "-" }.compact_blank.reject { |month| month == "-" }.uniq %>
     <% recent_month = Date.current.prev_month.strftime("%B") %>
     <% default_bill_month = recent_month %>
     <% bill_months = (bill_months + Array(@bill_list_master_months) + [default_bill_month, params[:bill_month].presence_in(Date::MONTHNAMES.compact)]).compact_blank.map(&:strip).uniq { |month| month.downcase } %>
@@ -1659,14 +1658,16 @@
     <% selected_record_state = params[:record_state].presence_in(["Active", "Inactive"]) %>
     <% dashboard_status_link = params[:bill_status].present? || params[:record_state].present? %>
     <% selected_bill_month = params[:bill_month].presence || (dashboard_status_link ? nil : default_bill_month) %>
+    <% bill_records = @records %>
     <% if @jeevika_bill_user_filters || params[:bill_month].present? || params[:bill_status].present? || params[:record_state].present? %>
-      <% bill_rows = bill_rows.select { |row| selected_bill_month.blank? || selected_bill_month == "all" || row[:bill_month].to_s.strip.casecmp(selected_bill_month.to_s.strip).zero? } %>
-      <% bill_rows = bill_rows.select do |row|
-        row_status = row[:status].to_s.downcase
+      <% bill_records = bill_records.select { |record| selected_bill_month.blank? || selected_bill_month == "all" || (record.data["bill_month"].presence || "-").to_s.strip.casecmp(selected_bill_month.to_s.strip).zero? } %>
+      <% bill_records = bill_records.select do |record|
+        row_status = jeevika_bill_status_label(record).to_s.downcase
         selected_bill_status == "final-approved" ? row_status.include?("final approved") : (row_status.include?("pending") || row_status.include?("not sent for approval"))
       end %>
-      <% bill_rows = bill_rows.select { |row| selected_record_state.blank? || row[:record_state].to_s.casecmp(selected_record_state).zero? } %>
+      <% bill_records = bill_records.select { |record| selected_record_state.blank? || (record.data["record_state"].presence || "Active").to_s.casecmp(selected_record_state).zero? } %>
     <% end %>
+    <% bill_rows = jeevika_bill_rows(bill_records) %>
     <section class="module-card list-only-card">
       <div class="module-card-header list-title-header">
         <h2>Jeevika Jankar Bill List</h2>

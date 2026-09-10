@@ -16,7 +16,7 @@
   <div class="dashboard-topbar">
     <div>
       <p class="vrp-eyebrow">Farmer Training Participation Status</p>
-      <h1><%= @training_participation_title %> Farmers</h1>
+      <h1><%= @training_participation_title.to_s.sub(/\s*Farmers?\s*\z/i, "") %> Farmers</h1>
       <p><%= @training_participation_caption %></p>
     </div>
 
@@ -56,7 +56,7 @@
   <section class="module-card">
     <div class="module-card-header">
       <div>
-        <h2><%= @training_participation_title %> Farmer List</h2>
+        <h2><%= @training_participation_title.to_s.sub(/\s*Farmers?\s*\z/i, "") %> Farmer List</h2>
         <p class="module-subtitle">
           Total: <%= total_count %>
           <% if @training_participation_total_pages.to_i > 1 %>
@@ -76,10 +76,17 @@
       <%= link_to "Export Excel", farmer_training_participation_path(filter_params.merge(status: @training_participation_status, format: :xlsx)), class: "list-btn export" %>
     </div>
 
+    <div class="list-controls">
+      <div class="list-search">
+        <span>⌕</span>
+        <input type="search" placeholder="Search records" data-report-search aria-label="Search records">
+      </div>
+    </div>
+
     <% if @mapped_farmer_details %>
       <div class="table-shell">
-        <table class="module-table compact-table">
-          <thead><tr><% @mapped_farmer_details.columns.each do |column| %><th><%= column.humanize %></th><% end %></tr></thead>
+        <table class="module-table compact-table" data-report-search-table>
+          <thead><tr><% @mapped_farmer_details.columns.each do |column| %><th><%= { "vrp" => "JJ", "vrp_name" => "JJ Name", "vrp_id" => "JJ ID" }[column] || column.humanize %></th><% end %></tr></thead>
           <tbody>
             <% @mapped_farmer_details.rows.each do |values| %>
               <tr><% values.each do |value| %><td><%= value.presence || "-" %></td><% end %></tr>
@@ -89,11 +96,10 @@
       </div>
     <% else %>
     <div class="table-shell">
-      <table class="module-table compact-table training-participation-table upload-report-table" id="training_participation_list">
+      <table class="module-table compact-table training-participation-table upload-report-table" id="training_participation_list" data-report-search-table>
         <thead>
           <tr>
             <th>Farmer</th>
-            <th>Mobile</th>
             <th>TraceNet No</th>
             <th>ICS</th>
             <th>Village</th>
@@ -122,7 +128,6 @@
                     <small>Father: <%= row[:father_name] %></small>
                   <% end %>
                 </td>
-                <td><%= row[:mobile_no].presence || "-" %></td>
                 <td><%= row[:tracenet_no].presence || "-" %></td>
                 <td><%= row[:ics].presence || "-" %></td>
                 <td><%= row[:village].presence || "-" %></td>

@@ -5,11 +5,11 @@
     <div class="vrp-list-header">
       <div>
         <p class="vrp-eyebrow"><%= @vrp_target_view ? "Jeevika Jankar Targets" : "Target Mapping Master" %></p>
-        <h1><%= @vrp_target_view ? "Recent Target Mappings" : "Target Mapping" %></h1>
+        <h1><%= (@vrp_target_view || @target_summary_mode.present?) ? "Recent Target Mappings" : "Target Mapping" %></h1>
       </div>
     </div>
 
-    <% unless @vrp_target_view %>
+    <% unless @vrp_target_view || @target_summary_mode.present? %>
       <section class="module-card target-mapping-card"
         data-target-mapping
         data-edit-target="<%= html_escape(@edit_payload.to_json) %>"
@@ -140,7 +140,7 @@
                 ["FFS", "ffs"]
               ].each do |label, key| %>
                 <label>
-                  <span><%= label %></span>
+                  <span><%= label == "FFS" ? "FFS Exposure" : label %></span>
                   <input type="number"
                          name="target_mapping[training_targets][<%= key %>]"
                          min="0"
@@ -372,7 +372,7 @@
                 <th class="target-training-column">General Training/<wbr>Meeting</th>
                 <th class="target-training-column">Input Demo INM</th>
                 <th class="target-training-column">Input Demo PM</th>
-                <th class="target-training-column">FFS</th>
+                <th class="target-training-column">FFS Exposure</th>
                 <th class="target-count-column">Farmer Target</th>
                 <th class="target-count-column">Week 1</th>
                 <th class="target-count-column">Week 2</th>
@@ -390,18 +390,20 @@
             <% if target_mapping_display_rows.any? %>
               <% target_mapping_display_rows.each do |row| %>
                 <% if @target_summary_mode == "main_activity" %>
+                  <% afl_filters = request.query_parameters.slice("fcoc", "fco_id", "ics", "ics_id", "month") %>
                   <tr>
                     <td><%= row[:main_activity].presence || "-" %></td>
-                    <td><%= row[:sub_activity_count].to_i %></td>
-                    <td><%= row[:farmer_count].to_i %></td>
-                    <td><%= row[:target_count].to_i %></td>
+                    <td><%= link_to row[:sub_activity_count].to_i, target_mappings_path(request.query_parameters.merge("summary_mode" => "sub_activity", "main_activity" => row[:main_activity])), class: "table-action" %></td>
+                    <td><%= link_to row[:farmer_count].to_i, afls_path(afl_filters.merge("main_activity" => row[:main_activity])), class: "table-action" %></td>
+                    <td><%= link_to row[:target_count].to_i, target_mappings_path(request.query_parameters.except("summary_mode").merge("main_activity" => row[:main_activity])), class: "table-action" %></td>
                   </tr>
                 <% elsif @target_summary_mode == "sub_activity" %>
+                  <% afl_filters = request.query_parameters.slice("fcoc", "fco_id", "ics", "ics_id", "month") %>
                   <tr>
                     <td><%= row[:sub_activity].presence || "-" %></td>
                     <td><%= row[:main_activity].presence || "-" %></td>
-                    <td><%= row[:farmer_count].to_i %></td>
-                    <td><%= row[:target_count].to_i %></td>
+                    <td><%= link_to row[:farmer_count].to_i, afls_path(afl_filters.merge("main_activity" => row[:main_activity], "sub_activity" => row[:sub_activity])), class: "table-action" %></td>
+                    <td><%= link_to row[:target_count].to_i, target_mappings_path(request.query_parameters.except("summary_mode").merge("main_activity" => row[:main_activity], "sub_activity" => row[:sub_activity])), class: "table-action" %></td>
                   </tr>
                 <% else %>
                   <% target = row[:target] %>

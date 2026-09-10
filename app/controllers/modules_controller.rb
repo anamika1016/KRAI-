@@ -3433,8 +3433,6 @@ class ModulesController < ApplicationController
     sql = <<~SQL.squish
       WITH mapped_rows AS (
         SELECT
-          t.main_activity_name,
-          t.activity_name,
           j.value AS afl_id
         FROM target_mappings t
         LEFT JOIN vrps v ON v.id = t.vrp_id
@@ -3447,12 +3445,8 @@ class ModulesController < ApplicationController
         WHERE #{target_where}
       )
       SELECT
-        COUNT(DISTINCT NULLIF(BTRIM(a.ics_id::text), '')) AS ics_count,
-        COUNT(DISTINCT NULLIF(BTRIM(a.village_id::text), '')) AS village_count,
-        COUNT(DISTINCT NULLIF(BTRIM(a.tracenet_no::text), '')) AS farmer_count,
         COUNT(DISTINCT mapped_rows.afl_id) AS mapped_farmer_count
       FROM mapped_rows
-      LEFT JOIN afls a ON a.id::text = mapped_rows.afl_id
     SQL
 
     row = ActiveRecord::Base.connection.exec_query(
@@ -3617,7 +3611,7 @@ class ModulesController < ApplicationController
       targets: @filtered_targets || dashboard_target_mappings,
       month: params.key?(:month) ? dashboard_filter_param(:month) : Date.current.prev_month.strftime("%B"))
     # Display titles only; the underlying metric/data keys ("OPG Target", "FFS") are unchanged.
-    demonstration_method_card_titles = { "OPG Target" => "OPG Training Target", "FFS" => "Exposure" }
+    demonstration_method_card_titles = { "OPG Target" => "OPG Training Target", "FFS" => "FFS Exposure" }
     DemonstrationMethodReport::METRICS.map do |metric|
       dashboard_summary_card(demonstration_method_card_titles.fetch(metric, metric),
         dashboard_quantity(report.summary.sum { |row| row[metric] }), "Training method entries",
@@ -3820,11 +3814,13 @@ class ModulesController < ApplicationController
     when :village
       # Matches: SELECT fco_id, fco, fpo_id, fpo_name, ics_id, ics_name, village_id, village_name, COUNT(tracenet_no) FROM afls WHERE fco_id = '1004' OR fco_id = '1006' GROUP BY fco_id, fco, fpo_id, fpo_name, ics_id, ics_name, village_id, village_name
       scope = dashboard_total_afl_farmer_scope.where.not(village_id: [nil, ""])
-      scope.group(:fco_id, :fco, :fpo_id, :fpo_name, :ics_id, :ics_name, :village_id, :village_name).count.size
+      groups = scope.select(:fco_id, :fco, :fpo_id, :fpo_name, :ics_id, :ics_name, :village_id, :village_name).distinct
+      Afl.unscoped.from(groups, :afl_groups).count
     when :ics
       # Matches: SELECT fco_id, fco, fpo_id, fpo_name, ics_id, ics_name, COUNT(tracenet_no) FROM afls WHERE fco_id = '1004' OR fco_id = '1006' GROUP BY fco_id, fco, fpo_id, fpo_name, ics_id, ics_name
       scope = dashboard_total_afl_farmer_scope.where.not(ics_id: [nil, ""])
-      scope.group(:fco_id, :fco, :fpo_id, :fpo_name, :ics_id, :ics_name).count.size
+      groups = scope.select(:fco_id, :fco, :fpo_id, :fpo_name, :ics_id, :ics_name).distinct
+      Afl.unscoped.from(groups, :afl_groups).count
     else
       # Farmer count: COUNT(tracenet_no) using fco_id ONLY — no name matching
       # Matches: SELECT COUNT(tracenet_no) FROM afls WHERE (fco_id = '1004' OR fco_id = '1006')
@@ -5535,14 +5531,15 @@ class ModulesController < ApplicationController
     target_ids.flat_map do |id|
       row = rows_by_id[id.to_s.strip.downcase]
       raw_name = row&.dig("fco_name").presence || fco_name_map[id.to_s] || "FCO #{id}"
-      name = raw_name.to_s.titleize
+      # Show the plain FCO name (e.g. "Sausar") without the "(1004)" id suffix.
+      name = fco_name_map[id.to_s] || raw_name.to_s.sub(/\s*\(\s*\d+\s*\)\s*/, " ").squish.titleize
       total_red = row ? row["red_farmer_count"].to_i : 0
       no_activity = row ? row["no_activity_mapping_count"].to_i : 0
       no_training = row ? row["no_training_mapping_count"].to_i : 0
       no_entry = row ? row["training_mapped_but_no_entry_count"].to_i : 0
 
       [
-        "#{name} (#{id}): #{total_red}",
+        "#{name}: #{total_red}",
         "  • कुल मेप नहीं किये गये किसान: #{no_activity}",
         "  • कुल फार्मर ट्रेनिंग से मेप नहीं किये गये किसान: #{no_training}",
         "  • कुल फार्मर ट्रेनिंग में किसान की एंट्री नहीं हुई: #{no_entry}"
@@ -5558,7 +5555,8 @@ class ModulesController < ApplicationController
     target_ids.map do |id|
       row = rows_by_id[id.to_s.strip.downcase]
       raw_name = row&.dig("fco_name").presence || fco_name_map[id.to_s] || "FCO #{id}"
-      name = raw_name.to_s.titleize
+      # Show the plain FCO name (e.g. "Sausar") without the "(1004)" id suffix.
+      name = fco_name_map[id.to_s] || raw_name.to_s.sub(/\s*\(\s*\d+\s*\)\s*/, " ").squish.titleize
       total_red = row ? row["red_farmer_count"].to_i : 0
       no_activity = row ? row["no_activity_mapping_count"].to_i : 0
       no_training = row ? row["no_training_mapping_count"].to_i : 0
@@ -5644,8 +5642,9 @@ class ModulesController < ApplicationController
       row = rows_by_id[id.to_s.strip.downcase]
       count = row ? row[count_key].to_i : 0
       raw_name = row&.dig("fco_name").presence || fco_name_map[id.to_s] || "FCO #{id}"
-      name = raw_name.to_s.titleize
-      "#{name} (#{id}): #{count}"
+      # Plain FCO name (e.g. "Sausar"), no "(1004)" id suffix.
+      name = fco_name_map[id.to_s] || raw_name.to_s.sub(/\s*\(\s*\d+\s*\)\s*/, " ").squish.titleize
+      "#{name}: #{count}"
     end
   end
 
@@ -6007,7 +6006,7 @@ class ModulesController < ApplicationController
       path_params[:week] = week_number if week_number.present?
       {
         status: status,
-        title: status == "red" ? "No Training" : training_participation_status_label(status),
+        title: status == "red" ? "Pending" : training_participation_status_label(status),
         value: counts[status.to_sym].to_i,
         caption: status == "red" ? "August me koi training entry nahi hui." : training_participation_status_caption(status),
         path: farmer_training_participation_path(path_params)
@@ -9002,6 +9001,8 @@ class ModulesController < ApplicationController
     return true if %w[
       stakeholder-master stakeholder-role role-name
       parent-office-add office-category-add office-mapping-add
+      month-master
+      state-master district-master block-master gram-panchayat-master village-master
     ].include?(@slug)
     return true if @slug == "lg-directory-list"
     return true if @slug == "jeevika-jankar-payment-list-detail"
@@ -9558,7 +9559,7 @@ class ModulesController < ApplicationController
         bill_id: record.id,
         vrp_id: data["select_vrp"],
         name: jeevika_jankar_display_name(data["select_vrp_name"].presence || jeevika_jankar_vrp_label(data["select_vrp"])),
-        financial_year: data["financial_year"].presence || "-",
+        financial_year: data["financial_year"].presence || jeevika_month_financial_year(data["bill_month"]).presence || "-",
         bill_month: data["bill_month"].presence || "-",
         activity_groups: summary[:activity_groups].presence || "-",
         activity_names: summary[:activity_names].presence || "-",
@@ -9614,6 +9615,24 @@ class ModulesController < ApplicationController
       .reverse
   end
 
+  # Older bills never stored financial_year. Each month maps to a single financial year
+  # in Month Master, so fall back to that so the payment lists always show it.
+  def jeevika_month_financial_year(month_name)
+    return nil if month_name.blank?
+
+    @jeevika_month_financial_year ||= month_master_rows.each_with_object({}) do |record, map|
+      month = normalize_dashboard_text(record.data["month_name"])
+      year = record.data["financial_year"].presence
+      map[month] ||= year if month.present? && year
+    end
+    @jeevika_month_financial_year[normalize_dashboard_text(month_name)]
+  end
+
+  def jeevika_bill_financial_year(record)
+    data = record.respond_to?(:data) ? record.data : record
+    data["financial_year"].presence || jeevika_month_financial_year(data["bill_month"]).presence || "-"
+  end
+
   def jeevika_payment_selectable_rows(records)
     preload_dashboard_vrp_identity_records!(Array(records).filter_map { |record| jeevika_bill_vrp(record) }.uniq(&:id))
     paid_ids = jeevika_paid_bill_ids
@@ -9630,7 +9649,7 @@ class ModulesController < ApplicationController
           name: jeevika_jankar_display_name(record.data["select_vrp_name"].presence || jeevika_jankar_vrp_label(record.data["select_vrp"])).presence || "-",
           mobile_no: vrp&.mobile_no.presence || "-",
           bill_month: record.data["bill_month"].presence || "-",
-          financial_year: record.data["financial_year"].presence || "-",
+          financial_year: jeevika_bill_financial_year(record),
           amount: format("%.2f", jeevika_jankar_bill_total_payment(record).to_f)
         }
       end
@@ -9664,7 +9683,7 @@ class ModulesController < ApplicationController
           jeevika_jankar_id: item["jeevika_jankar_id"].presence || "-",
           name: item["jeevika_jankar_name"].presence || vrp&.name.presence || "-",
           mobile_no: vrp&.mobile_no.presence || "-",
-          financial_year: item["financial_year"].presence || "-",
+          financial_year: item["financial_year"].presence || jeevika_month_financial_year(item["bill_month"]).presence || "-",
           bill_month: item["bill_month"].presence || "-",
           approval_date: item["approval_date"].presence || record.data["approval_date"].presence || "-",
           amount: item["amount"].presence || format("%.2f", JEEVIKA_JANKAR_BILL_FIXED_TOTAL),
@@ -9898,9 +9917,12 @@ class ModulesController < ApplicationController
   # prefix and casing to keep the printed headings consistent.
   def jeevika_bill_role_display(label)
     label
+      .to_s
       .gsub(/,\s*PAPL\b/i, "")
       .gsub(/\bFCO-C\s+/i, "FCO-")
-      .gsub(/\(\s*\K[a-z]/) { |first_letter| first_letter.upcase }
+      # Title-case the role inside the parentheses (e.g. "agricultural specialist"
+      # -> "Agricultural Specialist"); already-capitalised words/acronyms stay as is.
+      .gsub(/\([^)]*\)/) { |paren| paren.gsub(/\b[a-z]/, &:upcase) }
   end
 
   # Driven by the Jeevika Jankar Approval List so every bill on a channel prints the
@@ -11251,8 +11273,9 @@ class ModulesController < ApplicationController
     cache_key = [module_slug.to_s, keys.map(&:to_s)]
     return @module_record_values_cache[cache_key] if @module_record_values_cache.key?(cache_key)
 
-    @module_record_values_cache[cache_key] = active_module_records_scope(module_slug)
-      .order(created_at: :desc)
+    @module_value_records ||= {}
+    records = @module_value_records[module_slug.to_s] ||= active_module_records_scope(module_slug).order(created_at: :desc).to_a
+    @module_record_values_cache[cache_key] = records
       .flat_map do |record|
         keys.filter_map { |key| record.data[key].presence }
       end
@@ -11265,7 +11288,11 @@ class ModulesController < ApplicationController
   def first_present_data(record, *keys)
     data = record.respond_to?(:data) ? record.data : record
     data ||= {}
-    keys.filter_map { |key| data[key].presence }.first
+    keys.each do |key|
+      value = data[key].presence
+      return value if value
+    end
+    nil
   end
 
   def record_source_slug
@@ -11336,7 +11363,8 @@ class ModulesController < ApplicationController
     return nil if field.blank?
     return village_master_gram_panchayat_name(record) if record.module_slug == "village-master" && field == "Gram Panchayat"
 
-    keys = [
+    @module_field_keys ||= {}
+    keys = @module_field_keys[field] ||= [
       field.parameterize(separator: "_"),
       *module_field_aliases(field)
     ].compact.uniq
@@ -12635,6 +12663,7 @@ class ModulesController < ApplicationController
     errors = missing_required_data_errors(
       data,
       "bill_month" => "Bill Month",
+      "financial_year" => "Financial Year",
       "select_vrp" => "Jeevika Jankar Name"
     )
     return errors if errors.any?
@@ -12950,6 +12979,10 @@ class ModulesController < ApplicationController
   end
 
   def training_target_mappings
+    @training_target_mappings ||= build_training_target_mappings
+  end
+
+  def build_training_target_mappings
     return [] unless model_ready?(:TargetMapping)
 
     activity_settings = jeevika_jankar_main_activity_settings

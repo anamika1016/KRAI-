@@ -46,7 +46,8 @@ class DashboardLogicUnitTest < Minitest::Test
     c = controller
     calls = []
     c.instance_variable_set(:@jeevika_jankar_target_summary, { original: true })
-    c.define_singleton_method(:jeevika_jankar_bill_rows) do |vrp_id:, month_name:|
+    c.define_singleton_method(:jeevika_jankar_bill_rows) do |vrp_id:, month_name:, totals_only:|
+      raise "Bill list should only load totals" unless totals_only
       calls << [vrp_id, month_name]
       @jeevika_jankar_target_summary = vrp_id.split(",").to_h do |id|
         [id, { month_name.downcase => { target: id.to_i, achievement: 1 } }]

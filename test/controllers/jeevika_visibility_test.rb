@@ -35,7 +35,7 @@ class JeevikaVisibilityTest < ActiveSupport::TestCase
     controller.params = ActionController::Parameters.new
     name = "Shailesh Bagde"
     original = "#{name} (agricultural specialist)"
-    expected = "#{name} (Agricultural specialist)"
+    expected = "#{name} (Agricultural Specialist)"
     [original, "#{name} (#{original})", "#{name} (#{name} (#{original}))"].each do |label|
       assert_equal expected, controller.send(:jeevika_bill_approver_display_name, label, name)
     end
@@ -96,7 +96,7 @@ class JeevikaVisibilityTest < ActiveSupport::TestCase
 
     rows = controller.send(:jeevika_bill_approved_by_rows, ModuleRecord.new(data: { "status" => "Final Approved" }))
     assert_equal ["First Approval", "Second Approval", "Third Approval", "Finance Approval"], rows.map(&:first)
-    assert_equal "Shailesh Bagde (Agricultural specialist)", rows.first[1]
+    assert_equal "Shailesh Bagde (Agricultural Specialist)", rows.first[1]
     assert_nil rows.first[2], "a step with no approval yet should print without a date"
     assert_equal "Hemant Shakkarpude (FCO-Sausar)", rows.second[1]
   end
@@ -146,7 +146,7 @@ class JeevikaVisibilityTest < ActiveSupport::TestCase
 
     rows = controller.send(:jeevika_bill_approved_by_rows, ModuleRecord.new(data: { "status" => "Final Approved" }))
     assert_equal ["First Approval", "Second Approval", "Third Approval", "Finance Approval"], rows.map(&:first)
-    assert_equal "Shailesh Bagde (Agricultural specialist)", rows.first[1]
+    assert_equal "Shailesh Bagde (Agricultural Specialist)", rows.first[1]
     assert_nil rows.first[2]
   end
 
@@ -181,7 +181,7 @@ class JeevikaVisibilityTest < ActiveSupport::TestCase
 
     rows = controller.send(:jeevika_bill_approved_by_rows, ModuleRecord.new(data: { "status" => "Final Approved" }))
     assert_equal ["First Approval", "Second Approval", "Third Approval", "Finance Approval"], rows.map(&:first)
-    assert_equal "Shailesh Bagde (Agricultural specialist)", rows.first[1]
+    assert_equal "Shailesh Bagde (Agricultural Specialist)", rows.first[1]
     assert_nil rows.first[2], "the preparer's extra step shows even though he never approved this bill"
   end
 

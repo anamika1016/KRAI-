@@ -1231,6 +1231,13 @@ class TargetMappingsController < ApplicationController
     scope
   end
 
+  # Some target rows store the FCO code (1004/1006), others the legacy name
+  # (sausar/turekela). Match both so a code filter still finds name rows and vice versa.
+  FCO_CODE_NAME_ALIASES = {
+    "1004" => "sausar", "sausar" => "1004",
+    "1006" => "turekela", "turekela" => "1006"
+  }.freeze
+
   def target_mapping_fco_filter_values(value)
     raw_values = Array(value).flatten.map(&:to_s).map(&:strip).reject(&:blank?)
     return [] if raw_values.blank?
@@ -1239,8 +1246,8 @@ class TargetMappingsController < ApplicationController
 
     raw_values.flat_map do |entry|
       short_name = entry.sub(/\Afco\s*-\s*c\s+/i, "").strip
-      [entry, short_name]
-    end.map(&:downcase).reject(&:blank?).uniq
+      [entry, short_name, FCO_CODE_NAME_ALIASES[entry.downcase], FCO_CODE_NAME_ALIASES[short_name.downcase]]
+    end.compact.map(&:downcase).reject(&:blank?).uniq
   end
 
   def visible_vrp_ics_mappings

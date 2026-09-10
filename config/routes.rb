@@ -28,6 +28,8 @@ Rails.application.routes.draw do
       post "forgot-password/send-otp", to: "password_resets#send_otp"
       post "forgot-password/reset", to: "password_resets#reset"
       get "me", to: "sessions#show"
+      post "translate", to: "translations#create"
+      get "translate/languages", to: "translations#languages"
       get "user-dashboard", to: "user_dashboard#show"
       get "user-dashboard/filters", to: "user_dashboard#filters"
       get "user-dashboard/widgets/:widget", to: "user_dashboard#widget"

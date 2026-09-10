@@ -123,6 +123,14 @@ class AflsController < ApplicationController
       )
     end
 
+    if (village_filter = params[:village_id].presence)
+      village_values = afl_filter_values(village_filter)
+      scope = scope.where(
+        "LOWER(BTRIM(COALESCE(village_name, ''))) IN (:v) OR LOWER(BTRIM(COALESCE(village_id, ''))) IN (:v)",
+        v: village_values
+      )
+    end
+
     if @summary_mode.blank?
       target_farmer_ids = target_mapping_farmer_ids_for_filters
       scope = scope.where(id: target_farmer_ids) if target_farmer_ids

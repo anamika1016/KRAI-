@@ -1,6 +1,15 @@
+<div class="list-controls">
+  <div class="list-search">
+    <span>⌕</span>
+    <input type="search" placeholder="Search records" data-report-search aria-label="Search records">
+  </div>
+</div>
+<% header_label = ->(h) {
+  { "vrp_name" => "JJ Name", "vrp_id" => "JJ ID", "VRP Name" => "JJ Name", "FFS" => "FFS Exposure" }[h] || h.to_s.gsub(/\bvrp\b/i, "JJ")
+} %>
 <div class="table-shell">
-  <table class="module-table compact-table">
-    <thead><tr><% headers.each do |header| %><th><%= header %></th><% end %></tr></thead>
+  <table class="module-table compact-table" data-report-search-table>
+    <thead><tr><% headers.each do |header| %><th><%= header_label.(header) %></th><% end %></tr></thead>
     <tbody>
       <% rows.each do |row| %>
         <tr><% headers.each do |header| %><td><%= row[header] %></td><% end %></tr>

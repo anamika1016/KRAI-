@@ -1,6 +1,40 @@
 require "test_helper"
 
 class DashboardLoadingPerformanceTest < ActiveSupport::TestCase
+  test "SQL group totals preserve nulls, duplicate locations and visible scope" do
+    rows = [
+      { fco_id: "1004", ics_id: "A", village_id: "V", tracenet_no: "one" },
+      { fco_id: "1004", ics_id: "A", village_id: "V", tracenet_no: "two" },
+      { fco_id: "1006", ics_id: "A", village_id: "V", tracenet_no: " " },
+      { fco_id: "1004", ics_id: nil, village_id: "V", tracenet_no: nil },
+      { fco_id: "1004", ics_id: "", village_id: "", tracenet_no: "three" }
+    ].map { |attributes| Afl.create!(attributes.merge(farmer_name: "Performance farmer")) }
+    scope = Afl.where(id: rows.map(&:id))
+    controller = ModulesController.new
+    controller.define_singleton_method(:dashboard_total_afl_farmer_scope) { scope }
+    columns = %i[fco_id fco fpo_id fpo_name ics_id ics_name]
+    expected_ics = scope.where.not(ics_id: [nil, ""]).group(*columns).count.size
+    expected_villages = scope.where.not(village_id: [nil, ""]).group(*columns, :village_id, :village_name).count.size
+    assert_equal expected_ics, controller.send(:dashboard_total_afl_ics_count)
+    assert_equal expected_villages, controller.send(:dashboard_total_afl_village_count)
+    assert_equal 3, controller.send(:dashboard_total_afl_farmer_count)
+    controller.define_singleton_method(:dashboard_total_afl_farmer_scope) { Afl.none }
+    assert_equal 0, controller.send(:dashboard_total_afl_ics_count)
+    assert_equal 0, controller.send(:dashboard_total_afl_village_count)
+  end
+
+  test "field lookup retains alias precedence and false blank zero handling" do
+    controller = ModulesController.new
+    record = ModuleRecord.new(module_slug: "training-form", data: {
+      "main_activity" => "Primary", "training_topic" => "Alias", "farmer_count" => 0
+    })
+    assert_equal "Primary", controller.send(:module_record_field_value, record, "Main Activity")
+    record.data["main_activity"] = " "
+    assert_equal "Alias", controller.send(:module_record_field_value, record, "Main Activity")
+    assert_equal 0, controller.send(:module_record_field_value, record, "Farmer Count")
+    assert_equal "yes", controller.send(:first_present_data, { "a" => false, "b" => "yes" }, "a", "b")
+  end
+
   test "bill totals match full details without loading farmer display data" do
     vrp = Vrp.new(name: "Performance JJ", email: "performance-jj@example.test",
       aadhar_no: "123456789012", account_no: "1234", address: "Test", branch: "Test",

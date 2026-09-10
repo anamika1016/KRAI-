@@ -36,10 +36,6 @@
         </div>
       </div>
 
-      <div class="vrp-list-toolbar compact">
-        <button type="button" class="list-btn delete" data-afl-delete-selected data-afl-bulk-destroy-url="<%= bulk_destroy_afls_path %>">Delete</button>
-      </div>
-
       <% if params[:report_id].present? %>
         <div class="import-report-banner">
           <span>Skipped rows ka exact reason report ready hai.</span>
@@ -136,7 +132,11 @@
                     <td><%= afl[:ics_name].presence || "-" %></td>
                     <td><%= afl[:village_id] %></td>
                     <td><%= afl[:village_name].presence || "-" %></td>
-                    <td><%= afl[:farmer_count].to_i %></td>
+                    <td>
+                      <%= link_to afl[:farmer_count].to_i,
+                            afls_path(request.query_parameters.merge(summary_mode: "farmer", ics_id: afl[:ics_id], village_id: afl[:village_id], page: nil)),
+                            class: "table-action" %>
+                    </td>
                   </tr>
                 <% elsif @summary_mode == "farmer" %>
                   <tr>
