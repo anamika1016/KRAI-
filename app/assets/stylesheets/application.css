@@ -8209,8 +8209,8 @@ body {
 :root:not([data-theme="dark"]) .dashboard-page .dashboard-summary-boxes > .training-participation-box:nth-child(5n + 5) {
   background: #dfefeb; border-color: #b8d5ce;
 }
-:root:not([data-theme="dark"]) .dashboard-page .training-participation-box.red { background: #fbdcdc; border-color: #eeb4b4; } /* halka red */
-:root:not([data-theme="dark"]) .dashboard-page .training-participation-box.yellow { background: #fbeec2; border-color: #ecd694; } /* halka yellow */
+:root:not([data-theme="dark"]) .dashboard-page .training-participation-box.red { background: #f6bcbc; border-color: #e59a9a; } /* red */
+:root:not([data-theme="dark"]) .dashboard-page .training-participation-box.yellow { background: #f4dd8a; border-color: #e0c766; } /* yellow */
 :root:not([data-theme="dark"]) .dashboard-page .training-participation-box.green { background: #e3efe5; border-color: #bbd4c0; }
 .dashboard-page .dashboard-summary-boxes > .training-participation-box {
   border-left-width: 1px;
