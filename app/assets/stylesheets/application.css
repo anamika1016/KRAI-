@@ -7995,3 +7995,487 @@ body {
 .dashboard-grid.premium .cc-jj-work-status .metric-card-group-item > strong {
   font-size: 1.2rem;
 }
+
+/* Dashboard visual refresh: scoped to dashboard; no changes to report behavior. */
+.dashboard-page {
+  --dashboard-ink: #29394b;
+  --dashboard-accent: #466a7e;
+  --dashboard-border: #e1e7ec;
+  gap: 24px;
+}
+.dashboard-page .dashboard-topbar {
+  position: relative;
+  padding: 22px 28px;
+  border: 1px solid #e1e7ec;
+  border-radius: 16px;
+  border-left-width: 1px;
+  background: linear-gradient(110deg, #ffffff 35%, #f3f7fa 75%, #f0f6f1 100%);
+  box-shadow: 0 4px 18px #263b5006;
+  color: #29394b;
+  gap: 20px;
+}
+.dashboard-page .dashboard-topbar h1 {
+  color: #29394b;
+  font-size: clamp(1.55rem, 2.2vw, 2rem);
+  font-weight: 750;
+  letter-spacing: -0.045em;
+  line-height: 1.2;
+  margin: 5px 0 7px;
+}
+.dashboard-page .dashboard-topbar p { color: #72808d; line-height: 1.6; }
+.dashboard-page .dashboard-topbar .vrp-eyebrow {
+  color: #6c8a79;
+  font-size: 0.68rem;
+  letter-spacing: 0.16em;
+  font-weight: 750;
+}
+.dashboard-page .dashboard-header-clock {
+  border: 1px solid #e0e8e6;
+  border-radius: 12px;
+  background: #ffffffb3;
+  box-shadow: none;
+  padding: 10px 14px;
+  color: #fff;
+}
+.dashboard-page .dashboard-header-clock strong,
+.dashboard-page .dashboard-header-clock small { color: #516577; }
+.dashboard-page .dashboard-header-clock span { background: #e3eee5; color: #477359; }
+.dashboard-page .dashboard-actions .list-search {
+  border-radius: 10px;
+  border: 1px solid #dfe6eb;
+  background: #fff;
+  color: #344e42;
+  min-height: 42px;
+}
+.dashboard-page .dashboard-actions .list-search input { color: #243e31; background: transparent; }
+.dashboard-page .dashboard-filter-bar {
+  padding: 22px 24px;
+  background: var(--vrp-panel);
+  border: 1px solid var(--dashboard-border);
+  border-radius: 16px;
+  box-shadow: 0 3px 12px #183e3205;
+}
+.dashboard-page .dashboard-filter-grid { gap: 16px; }
+.dashboard-page .dashboard-filter-field label {
+  font-size: 0.68rem;
+  line-height: 1.5;
+  letter-spacing: 0.07em;
+  font-weight: 700;
+}
+.dashboard-page .dashboard-filter-select {
+  min-height: 44px;
+  border-radius: 9px;
+  border-color: var(--dashboard-border);
+  background: var(--vrp-panel-soft);
+  font-size: 0.84rem;
+}
+.dashboard-page .dashboard-filter-actions .list-btn.active {
+  min-height: 44px;
+  padding: 10px 19px;
+  border-radius: 9px;
+  border: 1px solid #c9dcd1;
+  background: #e5efe8;
+  color: #355c46;
+  box-shadow: none;
+}
+.dashboard-page .module-card {
+  border: 1px solid var(--dashboard-border);
+  border-radius: 16px;
+  background: var(--vrp-panel);
+  box-shadow: 0 4px 18px #153d2e06;
+}
+.dashboard-page .dashboard-status-panel > .training-participation-status-header {
+  border-left: 0;
+  border-bottom: 1px solid var(--dashboard-border);
+  padding: 17px 24px;
+  background: transparent;
+  color: var(--vrp-text);
+}
+.dashboard-page .module-card-header h2 {
+  font-size: 1rem;
+  font-weight: 750;
+  letter-spacing: -0.025em;
+}
+.dashboard-page .dashboard-status-panel > .training-participation-boxes {
+  padding: 22px 24px;
+  gap: 16px;
+  background: transparent;
+}
+.dashboard-page .training-participation-box {
+  border: 1px solid var(--dashboard-border);
+  border-top: 1px solid var(--dashboard-border);
+  border-radius: 12px;
+  padding: 18px;
+  background: var(--vrp-panel-soft);
+  box-shadow: none;
+  min-width: 0;
+  transition: border-color 160ms ease, box-shadow 160ms ease;
+}
+.dashboard-page .training-participation-box > span {
+  font-size: 0.8rem;
+  font-weight: 650;
+  line-height: 1.5;
+  color: var(--vrp-muted);
+  letter-spacing: 0.01em;
+}
+.dashboard-page .training-participation-box > strong {
+  display: block;
+  margin: 10px 0 14px;
+  color: var(--vrp-text);
+  font-size: clamp(1.65rem, 2vw, 2.15rem);
+  line-height: 1.1;
+  font-weight: 750;
+  letter-spacing: -0.045em;
+  font-variant-numeric: tabular-nums;
+}
+.dashboard-page .training-participation-box.red { border-top-color: #d36767; }
+.dashboard-page .training-participation-box.yellow { border-top-color: #d69a35; }
+.dashboard-page .training-participation-box.green { border-top-color: #54976b; }
+.dashboard-page .training-participation-box.red > strong { color: #b64242; }
+.dashboard-page .training-participation-box.yellow > strong { color: #98600d; }
+.dashboard-page .training-participation-box.green > strong { color: #287549; }
+.dashboard-page .training-participation-box .table-action {
+  padding: 8px 12px;
+  min-height: 34px;
+  border-radius: 7px;
+  border: 1px solid var(--dashboard-border);
+  background: var(--vrp-panel);
+  color: var(--dashboard-accent);
+  font-size: 0.73rem;
+  font-weight: 700;
+}
+.dashboard-page .training-participation-box .table-action:hover {
+  background: #e7f2eb;
+  border-color: #95bea5;
+}
+.dashboard-page .training-participation-box:hover {
+  box-shadow: 0 6px 16px #183e320a;
+}
+.dashboard-page .filter-chip {
+  border-radius: 7px;
+  background: #e8f2eb;
+  border-color: #cadfce;
+  color: #286042;
+  padding: 6px 12px;
+}
+.dashboard-page .metric-card-group { border-radius: 14px; }
+.dashboard-page .metric-card-group-header { padding: 16px 18px; }
+.dashboard-page :is(a, button, input, select):focus-visible {
+  outline: 3px solid #84ad66;
+  outline-offset: 3px;
+}
+:root[data-theme="dark"] .dashboard-page {
+  --dashboard-border: #384b43;
+  --dashboard-accent: #a2d1b4;
+}
+:root[data-theme="dark"] .dashboard-page .training-participation-box.red > strong { color: #f09b99; }
+:root[data-theme="dark"] .dashboard-page .training-participation-box.yellow > strong { color: #efc279; }
+:root[data-theme="dark"] .dashboard-page .training-participation-box.green > strong { color: #a0d6ad; }
+:root[data-theme="dark"] .dashboard-page .training-participation-box .table-action:hover { background: #304b3b; }
+@media (max-width: 900px) {
+  .dashboard-page .dashboard-topbar { padding: 24px; flex-wrap: wrap; }
+  .dashboard-page .dashboard-actions { width: 100%; flex-wrap: wrap; }
+  .dashboard-page .dashboard-filter-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .dashboard-page .dashboard-filter-field--activity { grid-column: auto; min-width: 0; }
+  .dashboard-page .dashboard-summary-boxes { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+@media (max-width: 540px) {
+  .dashboard-page { gap: 16px; }
+  .dashboard-page .dashboard-topbar { padding: 22px 18px; border-radius: 14px; }
+  .dashboard-page .dashboard-filter-bar { padding: 18px; }
+  .dashboard-page .dashboard-filter-grid { grid-template-columns: minmax(0, 1fr); }
+  .dashboard-page .dashboard-status-panel > .training-participation-status-header { padding: 16px; }
+  .dashboard-page .dashboard-status-panel > .training-participation-boxes { padding: 16px; gap: 10px; }
+  .dashboard-page .training-participation-box { padding: 14px; }
+  .dashboard-page .dashboard-header-clock { flex-wrap: wrap; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .dashboard-page .training-participation-box { transition: none; }
+}
+
+/* Soft dashboard palette: quiet surfaces with restrained status accents. */
+:root:not([data-theme="dark"]) .dashboard-page .dashboard-summary-boxes > .training-participation-box:nth-child(5n + 1) {
+  background: #e2edf7; border-color: #bfd2e4;
+}
+:root:not([data-theme="dark"]) .dashboard-page .dashboard-summary-boxes > .training-participation-box:nth-child(5n + 2) {
+  background: #e5eee1; border-color: #c4d5bc;
+}
+:root:not([data-theme="dark"]) .dashboard-page .dashboard-summary-boxes > .training-participation-box:nth-child(5n + 3) {
+  background: #eae4f5; border-color: #cfc2e3;
+}
+:root:not([data-theme="dark"]) .dashboard-page .dashboard-summary-boxes > .training-participation-box:nth-child(5n + 4) {
+  background: #f5ead6; border-color: #e0cba4;
+}
+:root:not([data-theme="dark"]) .dashboard-page .dashboard-summary-boxes > .training-participation-box:nth-child(5n + 5) {
+  background: #dfefeb; border-color: #b8d5ce;
+}
+:root:not([data-theme="dark"]) .dashboard-page .training-participation-box.red { background: #f7e4e2; border-color: #e5bfbb; }
+:root:not([data-theme="dark"]) .dashboard-page .training-participation-box.yellow { background: #f7edd5; border-color: #e3cea0; }
+:root:not([data-theme="dark"]) .dashboard-page .training-participation-box.green { background: #e3efe5; border-color: #bbd4c0; }
+.dashboard-page .dashboard-summary-boxes > .training-participation-box {
+  border-left-width: 1px;
+  border-top-width: 1px;
+}
+.dashboard-page .training-participation-box .table-action {
+  background: transparent;
+  border-color: transparent;
+  border-top: 1px solid var(--dashboard-border);
+  border-radius: 0;
+  text-align: left;
+  padding: 10px 0 0;
+}
+.dashboard-page .training-participation-box .table-action::after {
+  content: "\2192";
+  margin-left: 10px;
+}
+.dashboard-page .training-participation-box .table-action:hover {
+  background: transparent;
+  color: #284c65;
+  border-color: transparent;
+  border-top-color: #afc3cf;
+}
+.dashboard-page .metric-card-group .metric-card-group-title {
+  color: #496358 !important;
+  background: #eaf2ed;
+  font-weight: 700;
+}
+.dashboard-page .metric-card-group-fco .metric-card-group-title { background: #efebf6; color: #66567e !important; }
+.dashboard-page .metric-card-group-billing .metric-card-group-title { background: #f7efdf; color: #806538 !important; }
+.dashboard-page .metric-card-group-assignment .metric-card-group-title { background: #eaf1f7; color: #49657c !important; }
+.dashboard-page .metric-card-popup-trigger {
+  background: #ffffff80;
+  border-color: #a9b9b7;
+  color: #566878;
+}
+:root[data-theme="dark"] .dashboard-page .dashboard-topbar {
+  background: linear-gradient(110deg, #25313a, #293c37);
+  border-color: #40524b;
+}
+:root[data-theme="dark"] .dashboard-page .dashboard-topbar h1 { color: #eef3f5; }
+:root[data-theme="dark"] .dashboard-page .dashboard-topbar p { color: #b4c1c8; }
+:root[data-theme="dark"] .dashboard-page .dashboard-header-clock { background: #24342e; border-color: #40524b; }
+:root[data-theme="dark"] .dashboard-page .dashboard-header-clock strong,
+:root[data-theme="dark"] .dashboard-page .dashboard-header-clock small { color: #d2dfd8; }
+
+/* Four detail launchers: readable cards rather than heading-only strips. */
+.dashboard-page .dashboard-grid.dashboard-training-secondary-summaries {
+  gap: 18px;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+.dashboard-page .dashboard-grid.dashboard-training-secondary-summaries .metric-card-group {
+  --detail-accent: #356558;
+  --detail-tint: #e6efe9;
+  position: relative;
+  min-height: 172px;
+  padding: 20px !important;
+  border: 1px solid #cbd8d5;
+  border-top: 4px solid var(--detail-accent);
+  border-radius: 12px;
+  background: var(--vrp-panel);
+  box-shadow: 0 4px 12px #2437480a;
+  transition: box-shadow 160ms ease;
+}
+.dashboard-page .dashboard-training-secondary-summaries .metric-card-group-fco {
+  --detail-accent: #655389;
+  --detail-tint: #eee8f6;
+}
+.dashboard-page .dashboard-training-secondary-summaries .metric-card-group-billing {
+  --detail-accent: #91631f;
+  --detail-tint: #f7eddb;
+}
+.dashboard-page .dashboard-training-secondary-summaries .metric-card-group:nth-child(3) {
+  --detail-accent: #436e94;
+  --detail-tint: #e6eef7;
+}
+.dashboard-page .dashboard-grid.dashboard-training-secondary-summaries .metric-card-group-title {
+  display: block;
+  min-height: 0;
+  margin: 0 !important;
+  padding: 0 !important;
+  border-radius: 0;
+  background: transparent;
+  color: var(--vrp-text) !important;
+  font-size: 1rem;
+  line-height: 1.45;
+  font-weight: 750;
+  letter-spacing: -0.015em;
+}
+.dashboard-page .dashboard-training-secondary-summaries .metric-card-group-title::after {
+  content: "Explore the detailed breakdown";
+  display: block;
+  margin-top: 9px;
+  font-size: 0.8rem;
+  line-height: 1.5;
+  font-weight: 450;
+  letter-spacing: 0;
+  color: var(--vrp-muted);
+}
+.dashboard-page .dashboard-grid.dashboard-training-secondary-summaries .metric-card-popup-trigger {
+  position: static;
+  transform: none;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  width: 100%;
+  height: auto;
+  min-height: 38px;
+  margin-top: auto;
+  padding: 9px 12px;
+  border: 1px solid transparent;
+  border-radius: 7px;
+  background: var(--detail-tint);
+  color: var(--detail-accent);
+  font: inherit;
+  font-size: 0.8rem;
+  font-weight: 700;
+  cursor: pointer;
+}
+.dashboard-page .dashboard-grid.dashboard-training-secondary-summaries .metric-card-popup-trigger:hover {
+  border-color: var(--detail-accent);
+  background: var(--detail-tint);
+}
+.dashboard-page .training-participation-box > span {
+  color: var(--vrp-text);
+  font-size: 0.82rem;
+  font-weight: 600;
+}
+.dashboard-page .module-card-header h2 { font-size: 1.1rem; }
+.dashboard-page .training-participation-box .table-action { font-size: 0.8rem; font-weight: 700; }
+:root[data-theme="dark"] .dashboard-page .dashboard-grid.dashboard-training-secondary-summaries .metric-card-group {
+  border-color: #53616d;
+  border-top-color: var(--detail-accent);
+}
+@media (max-width: 1100px) {
+  .dashboard-page .dashboard-grid.dashboard-training-secondary-summaries { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+@media (max-width: 560px) {
+  .dashboard-page .dashboard-grid.dashboard-training-secondary-summaries { grid-template-columns: minmax(0, 1fr); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .dashboard-page .dashboard-grid.dashboard-training-secondary-summaries .metric-card-group { transition: none; }
+}
+
+/* Black dashboard text in light mode. */
+:root:not([data-theme="dark"]) .dashboard-page .training-participation-box > span,
+:root:not([data-theme="dark"]) .dashboard-page .training-participation-box > strong,
+:root:not([data-theme="dark"]) .dashboard-page .training-participation-box .table-action,
+:root:not([data-theme="dark"]) .dashboard-page .dashboard-training-secondary-summaries .metric-card-group-title::after,
+:root:not([data-theme="dark"]) .dashboard-page .dashboard-grid.dashboard-training-secondary-summaries .metric-card-popup-trigger {
+  color: #111;
+}
+:root:not([data-theme="dark"]) .dashboard-page .dashboard-grid.dashboard-training-secondary-summaries .metric-card-group-title {
+  color: #111 !important;
+}
+
+/* Distinct colors for the four report cards, matching the summary palette. */
+:root:not([data-theme="dark"]) .dashboard-page .dashboard-grid.dashboard-training-secondary-summaries .metric-card-group:nth-child(1) {
+  background: #eae4f5;
+  border-color: #cfc2e3;
+  border-top-color: #9a80bc;
+}
+:root:not([data-theme="dark"]) .dashboard-page .dashboard-grid.dashboard-training-secondary-summaries .metric-card-group:nth-child(2) {
+  background: #f5ead6;
+  border-color: #e0cba4;
+  border-top-color: #c19a57;
+}
+:root:not([data-theme="dark"]) .dashboard-page .dashboard-grid.dashboard-training-secondary-summaries .metric-card-group:nth-child(3) {
+  background: #e2edf7;
+  border-color: #bfd2e4;
+  border-top-color: #7c9fc0;
+}
+:root:not([data-theme="dark"]) .dashboard-page .dashboard-grid.dashboard-training-secondary-summaries .metric-card-group:nth-child(4) {
+  background: #dfefeb;
+  border-color: #b8d5ce;
+  border-top-color: #77a598;
+}
+:root:not([data-theme="dark"]) .dashboard-page .training-status-panel .training-participation-box.total {
+  background: #e2edf7;
+  border-color: #bfd2e4;
+}
+
+/* Compact right-aligned detail icon; keeps the existing dialog trigger. */
+.dashboard-page .dashboard-grid.dashboard-training-secondary-summaries .metric-card-group {
+  min-height: 126px;
+  padding-right: 76px !important;
+}
+.dashboard-page .dashboard-grid.dashboard-training-secondary-summaries .metric-card-popup-trigger {
+  position: absolute;
+  top: 20px;
+  right: 18px;
+  transform: none;
+  width: 40px;
+  height: 40px;
+  min-height: 40px;
+  padding: 9px;
+  margin: 0;
+  justify-content: center;
+  border: 1px solid #9faeaa;
+  border-radius: 9px;
+  background: var(--vrp-panel);
+  color: var(--vrp-text);
+}
+.dashboard-page .dashboard-grid.dashboard-training-secondary-summaries .metric-card-popup-trigger:hover {
+  background: var(--vrp-panel-soft);
+  border-color: #56776a;
+}
+.dashboard-page .dashboard-grid.dashboard-training-secondary-summaries .metric-card-popup-trigger:focus-visible {
+  outline: 3px solid #56776a;
+  outline-offset: 3px;
+}
+
+/* Short, one-time dashboard entrance; no timers or extra data requests. */
+@keyframes dashboard-arrive {
+  from { opacity: 0.65; transform: translateY(7px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+@media (prefers-reduced-motion: no-preference) {
+  .dashboard-page > .dashboard-topbar,
+  .dashboard-page > .dashboard-filter-bar,
+  .dashboard-page > .dashboard-status-panel {
+    animation: dashboard-arrive 360ms cubic-bezier(0.22, 1, 0.36, 1) backwards;
+  }
+  .dashboard-page > .dashboard-filter-bar { animation-delay: 40ms; }
+  .dashboard-page > #dashboard_summary_boxes { animation-delay: 80ms; }
+  .dashboard-page > .training-status-panel { animation-delay: 120ms; }
+  .dashboard-page > #demonstration_method_boxes { animation-delay: 160ms; }
+  .dashboard-page .training-participation-box,
+  .dashboard-page .dashboard-grid.dashboard-training-secondary-summaries .metric-card-group {
+    transition: transform 180ms ease, box-shadow 180ms ease, border-color 180ms ease;
+  }
+  .dashboard-page .table-action,
+  .dashboard-page .list-btn,
+  .dashboard-page .metric-card-popup-trigger {
+    transition: background-color 160ms ease, border-color 160ms ease, box-shadow 160ms ease;
+  }
+  .dashboard-page .table-action::after,
+  .dashboard-page .metric-card-popup-trigger svg {
+    transition: transform 180ms ease;
+  }
+}
+@media (hover: hover) and (pointer: fine) and (prefers-reduced-motion: no-preference) {
+  .dashboard-page .training-participation-box:hover,
+  .dashboard-page .dashboard-grid.dashboard-training-secondary-summaries .metric-card-group:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 7px 16px #263c5014;
+  }
+  .dashboard-page .table-action:hover::after { transform: translateX(3px); }
+  .dashboard-page .metric-card-popup-trigger:hover svg { transform: translate(1px, -1px); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .dashboard-page > *,
+  .dashboard-page .training-participation-box,
+  .dashboard-page .dashboard-grid.dashboard-training-secondary-summaries .metric-card-group,
+  .dashboard-page .table-action,
+  .dashboard-page .list-btn,
+  .dashboard-page .metric-card-popup-trigger,
+  .dashboard-page .table-action::after,
+  .dashboard-page .metric-card-popup-trigger svg {
+    animation: none;
+    transition: none;
+  }
+  .dashboard-page .training-participation-box:hover,
+  .dashboard-page .dashboard-grid.dashboard-training-secondary-summaries .metric-card-group:hover {
+    transform: none;
+  }
+}

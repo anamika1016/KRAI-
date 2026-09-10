@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2026_09_07_190000) do
+ActiveRecord::Schema[8.1].define(version: 2026_09_09_180000) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "pg_catalog.plpgsql"
 
@@ -84,6 +84,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_09_07_190000) do
     t.datetime "updated_at", null: false
     t.string "village_id"
     t.string "village_name"
+    t.index "((id)::text)", name: "index_afls_on_text_id"
     t.index "lower(btrim((COALESCE(fco_id, ''::character varying))::text))", name: "index_afls_on_normalized_coalesced_fco_id"
     t.index "lower(btrim((fco)::text))", name: "index_afls_on_normalized_fco_name"
     t.index "lower(btrim((fco_id)::text))", name: "index_afls_on_normalized_fco_id"
@@ -415,6 +416,8 @@ ActiveRecord::Schema[8.1].define(version: 2026_09_07_190000) do
     t.index "lower(btrim((ics_name)::text))", name: "index_target_mappings_on_normalized_ics_name"
     t.index "lower(btrim((main_activity_name)::text))", name: "index_target_mappings_on_normalized_main_activity"
     t.index "lower(btrim((month_name)::text))", name: "index_target_mappings_on_normalized_month_name"
+    t.index "lower(btrim((month_name)::text)), lower(btrim((fco_id)::text))", name: "index_targets_on_normalized_month_fco_id"
+    t.index "lower(btrim((month_name)::text)), lower(btrim((fco_name)::text))", name: "index_targets_on_normalized_month_fco_name"
     t.index ["created_by_type", "created_by_id", "updated_at"], name: "index_target_mappings_on_creator_and_updated_at", order: { updated_at: :desc }
     t.index ["created_by_type", "created_by_id"], name: "index_target_mappings_on_creator"
     t.index ["fco_id", "ics_id", "village_id", "main_activity_name", "activity_name"], name: "index_target_mappings_on_activity_scope"

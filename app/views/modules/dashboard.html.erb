@@ -512,7 +512,7 @@
         <% next unless card.is_a?(Hash) && card[:items].present? %>
         <article class="metric-card metric-card-group metric-card-group-<%= card[:style] %>">
           <span class="metric-card-group-title"><%= card[:title] %></span>
-          <button type="button" class="metric-card-popup-trigger" data-card-popup-trigger title="Open in popup" aria-label="Open <%= card[:title] %> details">⤢</button>
+          <button type="button" class="metric-card-popup-trigger" data-card-popup-trigger title="Open in popup" aria-label="Open <%= card[:title] %> details"><svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M14 4h6v6M20 4l-9 9"/><path d="M10 4H5a1 1 0 0 0-1 1v14a1 1 0 0 0 1 1h14a1 1 0 0 0 1-1v-5"/></svg></button>
           <div class="metric-card-group-items">
             <% card[:items].each do |item| %>
               <%= link_to item[:path], class: "metric-card-group-item metric-card-group-item-#{item[:title].to_s.parameterize}", data: { dashboard_card: true } do %>
@@ -525,7 +525,7 @@
       <% end %>
       <article class="metric-card metric-card-group metric-card-group-registration cc-jj-work-status">
         <span class="metric-card-group-title">CC and JJ Work Status</span>
-        <button type="button" class="metric-card-popup-trigger" data-card-popup-trigger title="Open in popup" aria-label="Open CC and JJ Work Status details">⤢</button>
+        <button type="button" class="metric-card-popup-trigger" data-card-popup-trigger title="Open in popup" aria-label="Open CC and JJ Work Status details"><svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M14 4h6v6M20 4l-9 9"/><path d="M10 4H5a1 1 0 0 0-1 1v14a1 1 0 0 0 1 1h14a1 1 0 0 0 1-1v-5"/></svg></button>
         <div class="cc-jj-status-groups">
           <% summary_by_fco = @cc_jj_work_status_report.summary.group_by { |row| row["fco_id"] } %>
           <% { "1004" => "Sausar", "1006" => "Turekela" }.each do |fco_id, fco_name| %>

@@ -26,6 +26,7 @@ class CcJjWorkStatusReportTest < ActiveSupport::TestCase
     targets << TargetMapping.create!(vrp: vrps.last, fco_id: "1009", ics_id: "1", village_id: "1", month_name: "August",
       main_activity_name: "Farmers' Training", activity_name: "Activity", target_quantity: 1, afl_ids: [farmers.last.id])
     all_fcos = CcJjWorkStatusReport.new(calculator: calculator, month: "August")
+    all_fcos.define_singleton_method(:rows) { raise "summary must not generate full detail rows" }
     assert_equal ["1004", "1006"], all_fcos.summary.map { |row| row["fco_id"] }.uniq.sort
     assert_equal "August · Sausar and Turekela", all_fcos.caption
     excluded = CcJjWorkStatusReport.new(calculator: calculator, month: "August", fco: "1009")

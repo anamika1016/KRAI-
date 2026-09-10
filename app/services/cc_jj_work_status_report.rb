@@ -16,7 +16,7 @@ class CcJjWorkStatusReport
     @summary ||= begin
       result = execute("summary")
       represented = result.map { |row| row["fco_id"] }
-      rows.map { |row| row["fco_id"] }.uniq.each do |fco_id|
+      execute("represented_fcos").map { |row| row["fco_id"] }.each do |fco_id|
         next if represented.include?(fco_id)
 
         result << { "month" => all_months? ? "All Months" : @month, "fco_id" => fco_id,

@@ -10700,7 +10700,7 @@ class ModulesController < ApplicationController
     normalized_status == "active" || normalized_status.include?("approved")
   end
 
-  def jeevika_jankar_bill_rows(vrp_id: nil, month_name: nil)
+  def jeevika_jankar_bill_rows(vrp_id: nil, month_name: nil, totals_only: false)
     return [] unless model_ready?(:TargetMapping)
 
     selected_vrp_ids = jeevika_jankar_bill_selected_vrp_ids(vrp_id)
@@ -10726,6 +10726,24 @@ class ModulesController < ApplicationController
     targets = targets.order(:month_name, :vrp_id, :village_name, :main_activity_name, :activity_name, :id).to_a
     @other_target_candidate_targets = targets
     @other_target_candidate_targets_by_id = targets.index_by { |target| target.id.to_s }
+    if totals_only
+      # Bill lists need the same assignment totals, but not farmer profiles,
+      # training evidence or per-farmer display hashes for the Bill Process form.
+      rows = vrp_dashboard_target_progress_rows(targets, []).map do |progress|
+        target = progress[:target_record]
+        {
+          target_mapping_id: progress[:target_mapping_id],
+          vrp_id: target.vrp_id.to_s,
+          month_name: progress[:month],
+          target_quantity: progress[:target],
+          assigned_count: progress[:target],
+          achievement_count: progress[:completed]
+        }
+      end
+      @jeevika_jankar_target_summary = jeevika_jankar_target_summary_from_rows(rows)
+      return rows
+    end
+
     farmers_by_id = jeevika_jankar_farmers_by_id(targets)
     training_index = if @bill_list_batch_totals
       targets.group_by(&:vrp_id).each_value.each_with_object({}) do |vrp_targets, index|
@@ -11512,7 +11530,7 @@ class ModulesController < ApplicationController
       begin
         @bill_list_batch_totals = true
         remove_instance_variable(:@approved_other_target_completed_farmer_ids_by_target) if instance_variable_defined?(:@approved_other_target_completed_farmer_ids_by_target)
-        jeevika_jankar_bill_rows(vrp_id: ids.join(","), month_name: month)
+        jeevika_jankar_bill_rows(vrp_id: ids.join(","), month_name: month, totals_only: true)
         bills.each do |bill|
           id = bill.data["select_vrp"].to_s
           month_key = normalize_dashboard_text(month)
@@ -11537,7 +11555,7 @@ class ModulesController < ApplicationController
 
     previous_summary = @jeevika_jankar_target_summary
     begin
-      jeevika_jankar_bill_rows(vrp_id: vrp_id, month_name: month)
+      jeevika_jankar_bill_rows(vrp_id: vrp_id, month_name: month, totals_only: true)
       ids = jeevika_jankar_bill_selected_vrp_ids(vrp_id)
       @jeevika_bill_process_totals[key] = @jeevika_jankar_target_summary&.dig(ids.first, key.last)
     ensure

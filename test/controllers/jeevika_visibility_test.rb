@@ -17,7 +17,8 @@ class JeevikaVisibilityTest < ActiveSupport::TestCase
     controller = ModulesController.new
     controller.params = ActionController::Parameters.new
     calls = []
-    controller.define_singleton_method(:jeevika_jankar_bill_rows) do |vrp_id:, month_name:|
+    controller.define_singleton_method(:jeevika_jankar_bill_rows) do |vrp_id:, month_name:, totals_only:|
+      raise "details requested for totals" unless totals_only
       calls << [vrp_id, month_name]
       @jeevika_jankar_target_summary = { "12" => { "july" => { target: "40", achievement: "30" } }, "13" => { "july" => { target: "20", achievement: "10" } } }
     end
@@ -200,7 +201,8 @@ class JeevikaVisibilityTest < ActiveSupport::TestCase
     controller = ModulesController.new
     controller.params = ActionController::Parameters.new
     calls = []
-    controller.define_singleton_method(:jeevika_jankar_bill_rows) do |vrp_id:, month_name:|
+    controller.define_singleton_method(:jeevika_jankar_bill_rows) do |vrp_id:, month_name:, totals_only:|
+      raise "details requested for totals" unless totals_only
       calls << [vrp_id, month_name]
       @jeevika_jankar_target_summary = { "12" => { "july" => { target: "50", achievement: "35" } } }
       []
