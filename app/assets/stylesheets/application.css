@@ -8479,3 +8479,10 @@ body {
     transform: none;
   }
 }
+/* Bill Process: retain rate/amount inputs for existing calculations and saves. */
+.jeevika-bill-table > thead > tr > th:nth-child(8),
+.jeevika-bill-table > thead > tr > th:nth-child(9),
+.jeevika-bill-table > tbody > tr:not(.jeevika-farmer-row) > td:nth-child(8),
+.jeevika-bill-table > tbody > tr:not(.jeevika-farmer-row) > td:nth-child(9) {
+  display: none;
+}

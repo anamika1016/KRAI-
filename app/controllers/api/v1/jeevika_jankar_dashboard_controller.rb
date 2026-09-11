@@ -418,7 +418,10 @@ module Api
       end
 
       def cache_admin_dashboard_payload(suffix)
-        Rails.cache.fetch(admin_dashboard_cache_key(suffix), expires_in: 10.minutes, race_condition_ttl: 30.seconds) { yield }
+        fill_key = [suffix, current_api_user_payload, request.query_parameters.to_h.sort.to_h].to_json
+        DashboardCacheFill.synchronize(fill_key) do
+          Rails.cache.fetch(admin_dashboard_cache_key(suffix), expires_in: 10.minutes, race_condition_ttl: 30.seconds) { yield }
+        end
       rescue StandardError => error
         Rails.logger.warn("Admin dashboard cache skipped: #{error.class}: #{error.message}")
         yield

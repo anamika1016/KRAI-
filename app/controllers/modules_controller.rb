@@ -1937,14 +1937,41 @@ class ModulesController < ApplicationController
   end
 
   def dashboard_other_activity_totals(targets)
-    @other_target_candidate_targets = Array(targets)
-    @other_target_candidate_targets_by_id = @other_target_candidate_targets.index_by { |target| target.id.to_s }
-    achievements = approved_other_target_achievement_index
-    assigned = @other_target_candidate_targets.sum { |target| target.target_quantity.to_f }
-    completed = @other_target_candidate_targets.sum do |target|
-      [achievements.dig(target.id.to_s, :achievement).to_f, target.target_quantity.to_f].min
+    @other_target_candidate_targets = Array(targets).uniq { |target| target.id }.select do |target|
+      fco_id = target.fco_id.to_s.strip
+      if fco_id.match?(/\A\d+\z/)
+        %w[1004 1006].include?(fco_id)
+      else
+        [target.fco_name, fco_id].any? { |value| value.to_s.match?(/\b(?:sausar|turekela)\b/i) }
+      end
     end
-    { target: dashboard_quantity(assigned), completed: dashboard_quantity(completed), pending: dashboard_quantity([assigned - completed, 0].max) }
+    return { target: 0, completed: 0, pending: 0 } if @other_target_candidate_targets.empty?
+
+    @other_target_candidate_targets_by_id = @other_target_candidate_targets.index_by { |target| target.id.to_s }
+    preload_training_farmers_for_targets!(@other_target_candidate_targets)
+    # Reuse JJ completion evidence and assignment deduplication. Numeric-only
+    # aggregation missed completed farmer submissions and repeated mappings.
+    totals = { assigned: 0.0, achieved: 0.0, pending: 0.0 }
+    @other_target_candidate_targets.group_by do |target|
+      [target.month_name, target.main_activity_name, target.activity_name].map { |value| normalize_dashboard_text(value) }
+    end.each_value do |activity_targets|
+      rows = vrp_dashboard_target_progress_rows(activity_targets, [])
+      farmer_rows, quantity_rows = rows.partition { |row| Array(row[:assigned_farmer_ids]).any? }
+      assigned_ids = farmer_rows.flat_map { |row| Array(row[:assigned_farmer_ids]).map(&:to_s) }.uniq
+      completed_ids = farmer_rows.flat_map { |row| Array(row[:completed_farmer_ids]).map(&:to_s) }.uniq & assigned_ids
+      # Legacy numeric achievements have no individual farmer evidence. Keep
+      # that quantity, once per identical assignment, capped at distinct farmers.
+      numeric_completion = farmer_rows.group_by { |row| Array(row[:assigned_farmer_ids]).map(&:to_s).uniq.sort }.sum do |_ids, duplicates|
+        duplicates.map { |row| [row[:completed].to_f - Array(row[:completed_farmer_ids]).map(&:to_s).uniq.size, 0].max }.max.to_f
+      end
+      quantities = vrp_dashboard_target_totals(quantity_rows)
+      assigned = assigned_ids.size + quantities[:assigned]
+      completed = [completed_ids.size + numeric_completion, assigned_ids.size].min + quantities[:achieved]
+      totals[:assigned] += assigned
+      totals[:achieved] += completed
+      totals[:pending] += [assigned - completed, 0].max
+    end
+    { target: dashboard_quantity(totals[:assigned]), completed: dashboard_quantity(totals[:achieved]), pending: dashboard_quantity(totals[:pending]) }
   end
 
   def prepare_vrp_dashboard
@@ -4943,8 +4970,10 @@ class ModulesController < ApplicationController
     cache_key = training_participation_dashboard_counts_cache_key(month_name: month_name, fcoc_name: fcoc_name, week_number: week_number)
     return training_participation_dashboard_counts_uncached(month_name: month_name, fcoc_name: fcoc_name, week_number: week_number) if cache_key.blank?
 
-    Rails.cache.fetch(cache_key, expires_in: 30.minutes) do
-      training_participation_dashboard_counts_uncached(month_name: month_name, fcoc_name: fcoc_name, week_number: week_number)
+    DashboardCacheFill.synchronize(cache_key) do
+      Rails.cache.fetch(cache_key, expires_in: 30.minutes) do
+        training_participation_dashboard_counts_uncached(month_name: month_name, fcoc_name: fcoc_name, week_number: week_number)
+      end
     end
   end
 

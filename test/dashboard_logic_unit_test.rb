@@ -25,8 +25,11 @@ class DashboardLogicUnitTest < Minitest::Test
 
   def test_other_activity_totals_use_quantity_and_cap_completion
     c = controller
-    c.define_singleton_method(:approved_other_target_achievement_index) { { "1" => { achievement: 30 }, "2" => { achievement: 50 } } }
-    targets = [OpenStruct.new(id: 1, target_quantity: 40), OpenStruct.new(id: 2, target_quantity: 20)]
+    c.define_singleton_method(:preload_training_farmers_for_targets!) { |_| }
+    c.define_singleton_method(:vrp_dashboard_target_progress_rows) do |*_|
+      [{ target: 40, completed: 30 }, { target: 20, completed: 20 }]
+    end
+    targets = [OpenStruct.new(id: 1, fco_id: "1004", target_quantity: 40), OpenStruct.new(id: 2, fco_id: "1006", target_quantity: 20)]
     assert_equal({ target: 60, completed: 50, pending: 10 }, c.send(:dashboard_other_activity_totals, targets))
     assert_equal({ target: 0, completed: 0, pending: 0 }, c.send(:dashboard_other_activity_totals, []))
   end
