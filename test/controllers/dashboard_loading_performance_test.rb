@@ -1,6 +1,45 @@
 require "test_helper"
 
 class DashboardLoadingPerformanceTest < ActiveSupport::TestCase
+  test "approval label normalization is reused within a request with identical legacy matching" do
+    controller = ModulesController.new
+    labels = [nil, "", "AB", " Person  One (FCO-C Sausar) ", "PERSON ONE", "Person Two"]
+    calls = 0
+    controller.define_singleton_method(:normalize_dashboard_user_label) do |label|
+      calls += 1
+      super(label)
+    end
+    labels.each do |label|
+      normalize = ->(value) { value.to_s.downcase.gsub(/[^a-z0-9]+/, " ").squish }
+      expected = [normalize.call(label), normalize.call(label.to_s.sub(/\s*\([^)]*\)\s*\z/, ""))]
+        .compact_blank.reject { |value| value.length < 3 }.uniq
+      assert_equal expected, controller.send(:dashboard_user_label_match_values, label)
+    end
+    initial_calls = calls
+    10.times { labels.each { |label| controller.send(:dashboard_user_label_match_values, label) } }
+    assert_equal initial_calls, calls
+    assert controller.send(:dashboard_user_label_matches?, labels[3], ["Person One"])
+    assert_not controller.send(:dashboard_user_label_matches?, labels[3], ["Person Two"])
+  end
+
+  test "training mapping preload resolves referenced IDs without loading the whole dashboard" do
+    vrp = Vrp.new(name: "Mapping preload JJ", email: "mapping-preload@example.test",
+      aadhar_no: "123456789012", account_no: "1234", address: "Test", branch: "Test",
+      date_of_birth: Date.new(1990, 1, 1), date_of_joining: Date.current,
+      experience_in_years: 1, father_husband_name: "Test", gender: :male,
+      ifsc_code: "SBIN0001234", mobile_no: "9876543210", office_detail_id: 1, to_office_detail_id: 1)
+    vrp.save!(validate: false)
+    target = TargetMapping.create!(vrp: vrp, fco_id: "1004", ics_id: "perf", village_id: "perf",
+      month_name: "August", main_activity_name: "Training", activity_name: "Performance Training", target_quantity: 1)
+    record = ModuleRecord.new(module_slug: "training-form", data: { "target_mapping_ids" => [target.id.to_s, "999999999"] })
+    controller = ModulesController.new
+    controller.define_singleton_method(:dashboard_target_mappings) { raise "unnecessary full target population" }
+    controller.send(:preload_training_target_mappings_for_records!, [record])
+    assert_equal target, controller.send(:training_target_mapping_for_dashboard, target.id)
+    assert_nil controller.send(:training_target_mapping_for_dashboard, "999999999")
+    assert controller.send(:training_target_mapping_for_dashboard, target.id).association(:vrp).loaded?
+  end
+
   test "progress bill lookup loads once and preserves all legacy labels and order" do
     controller = ModulesController.new
     first = Vrp.new(id: 81001, name: "Performance JJ", user_name: "perf-jj", mobile_no: "9876500001")

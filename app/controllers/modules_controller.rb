@@ -16,7 +16,7 @@ class ModulesController < ApplicationController
                 :jeevika_bill_status_label, :jeevika_bill_status_class, :jeevika_bill_rows,
                 :jeevika_bill_detail_rows, :jeevika_bill_current_approval_step,
                 :jeevika_bill_approval_history, :jeevika_bill_current_approver?,
-                :jeevika_bill_approval_steps, :jeevika_bill_summary,
+                :jeevika_bill_approval_steps, :jeevika_bill_summary, :jeevika_bill_approver_display_name,
                 :jeevika_bill_attachment_rows, :jeevika_jankar_display_name,
                 :jeevika_jankar_vrp_label, :jeevika_bill_time_slot_rows,
                 :jeevika_bill_description_rows, :jeevika_bill_bank_rows,
@@ -2249,7 +2249,10 @@ class ModulesController < ApplicationController
   def vrp_dashboard_targets(vrp)
     return [] unless model_ready?(:TargetMapping)
 
-    TargetMapping.includes(:vrp).where(vrp_id: vrp.id).order(Arel.sql("completion_date ASC NULLS LAST"), :month_name, :main_activity_name, :activity_name, :id).to_a
+    targets = TargetMapping.includes(:vrp).where(vrp_id: vrp.id).order(Arel.sql("completion_date ASC NULLS LAST"), :month_name, :main_activity_name, :activity_name, :id).to_a
+    @training_record_target_mapping_cache ||= {}
+    targets.each { |target| @training_record_target_mapping_cache[target.id.to_s] = target }
+    targets
   end
 
   def vrp_dashboard_bills(vrp)
@@ -7901,7 +7904,9 @@ class ModulesController < ApplicationController
     @training_record_target_mapping_cache ||= {}
     return @training_record_target_mapping_cache[mapping_id] if @training_record_target_mapping_cache.key?(mapping_id)
 
-    @dashboard_target_mapping_index ||= dashboard_target_mappings.index_by { |target| target.id.to_s }
+    # Reuse targets already loaded by the dashboard, but do not load the entire
+    # visible target population just to resolve IDs from a few training forms.
+    @dashboard_target_mapping_index ||= Array(@dashboard_target_mappings).index_by { |target| target.id.to_s }
     return @training_record_target_mapping_cache[mapping_id] = @dashboard_target_mapping_index[mapping_id] if @dashboard_target_mapping_index.key?(mapping_id)
 
     @training_record_target_mapping_cache[mapping_id] = TargetMapping.includes(:vrp).find_by(id: mapping_id)
@@ -7918,7 +7923,7 @@ class ModulesController < ApplicationController
     return if mapping_ids.blank?
 
     @training_record_target_mapping_cache ||= {}
-    @dashboard_target_mapping_index ||= dashboard_target_mappings.index_by { |target| target.id.to_s }
+    @dashboard_target_mapping_index ||= Array(@dashboard_target_mappings).index_by { |target| target.id.to_s }
 
     mapping_ids.each do |mapping_id|
       if @dashboard_target_mapping_index.key?(mapping_id)
@@ -8212,10 +8217,13 @@ class ModulesController < ApplicationController
   end
 
   def dashboard_user_label_match_values(label)
-    normalized = normalize_dashboard_user_label(label)
-    base = normalize_dashboard_user_label(label.to_s.sub(/\s*\([^)]*\)\s*\z/, ""))
+    @dashboard_user_label_match_values_cache ||= {}
+    @dashboard_user_label_match_values_cache[label.to_s] ||= begin
+      normalized = normalize_dashboard_user_label(label)
+      base = normalize_dashboard_user_label(label.to_s.sub(/\s*\([^)]*\)\s*\z/, ""))
 
-    [normalized, base].compact_blank.reject { |value| value.length < 3 }.uniq
+      [normalized, base].compact_blank.reject { |value| value.length < 3 }.uniq
+    end
   end
 
   def normalize_dashboard_user_label(label)

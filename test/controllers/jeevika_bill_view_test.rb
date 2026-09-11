@@ -21,9 +21,19 @@ class JeevikaBillViewTest < ActionDispatch::IntegrationTest
       ]
     })
 
+    ModuleRecord.create!(module_slug: "approval-master", data: {
+      "module_name" => "Jeevika Jankar Bill", "approval_level" => "First Approval",
+      "approver_approved_by" => "Review Person (agricultural specialist)"
+    })
+    ModuleRecord.create!(module_slug: "jeevika-jankar-bill-approval-history", data: {
+      "bill_id" => record.id.to_s, "approval_level" => "First Approval",
+      "action" => "Approved", "approver" => "Review Person (agricultural specialist)"
+    })
+
     get "/modules/jeevika-jankar-bill-list", params: { view_id: record.id }
     assert_response :success
     assert_select "h2", text: "Jeevika Jankar Bill Details"
     assert_select "td", text: "Farmer One"
+    assert_select ".approval-progress-card p", text: "Review Person (Agricultural Specialist)"
   end
 end
