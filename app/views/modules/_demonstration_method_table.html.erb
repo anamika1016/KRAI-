@@ -7,12 +7,19 @@
 <% header_label = ->(h) {
   { "vrp_name" => "JJ Name", "vrp_id" => "JJ ID", "VRP Name" => "JJ Name", "FFS" => "FFS Exposure" }[h] || h.to_s.gsub(/\bvrp\b/i, "JJ")
 } %>
+<% farmer_list_month = @dashboard_month_filter_value.presence || request.query_parameters[:training_month].presence || request.query_parameters[:month].presence %>
 <div class="table-shell">
   <table class="module-table compact-table" data-report-search-table>
     <thead><tr><% headers.each do |header| %><th><%= header_label.(header) %></th><% end %></tr></thead>
     <tbody>
       <% rows.each do |row| %>
-        <tr><% headers.each do |header| %><td><%= row[header] %></td><% end %></tr>
+        <tr><% headers.each do |header| %><td>
+          <% if header == "Target Farmer Count" && row["vrp_id"].present? && row[header].to_i > 0 %>
+            <%= link_to row[header], demonstration_method_farmers_path(vrp_id: row["vrp_id"], fco_id: row["fco_id"], training_month: farmer_list_month), class: "table-action", data: { dashboard_card: true } %>
+          <% else %>
+            <%= row[header] %>
+          <% end %>
+        </td><% end %></tr>
       <% end %>
       <% if rows.empty? %><tr><td colspan="<%= headers.size %>">No demonstration method records found.</td></tr><% end %>
     </tbody>

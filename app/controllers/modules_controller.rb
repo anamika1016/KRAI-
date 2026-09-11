@@ -981,6 +981,42 @@ class ModulesController < ApplicationController
   end
 
 
+  # Drill-down for the Demonstration Method View List "Target Farmer Count" column.
+  # Lists the targeted farmers (from target_mappings.afl_ids) for one JJ + month,
+  # restricted to the farmers/targets the current user is allowed to see.
+  def demonstration_method_farmers
+    vrp_id = params[:vrp_id].to_s.strip
+    month = params[:training_month].presence || params[:month].presence
+    @demonstration_farmer_vrp = model_ready?(:Vrp) ? Vrp.find_by(id: vrp_id) : nil
+    @demonstration_farmer_month = month
+
+    base = dashboard_visible_target_scope
+    base = base.where(vrp_id: vrp_id) if vrp_id.present?
+    base = base.where("LOWER(TRIM(month_name)) = ?", month.to_s.strip.downcase) if month.present?
+
+    farmer_sql = <<~SQL
+      SELECT DISTINCT a.id AS "Farmer ID", a.farmer_name AS "Farmer Name",
+        a.father_name AS "Father Name", a.tracenet_no AS "TraceNet No", a.mobile_no AS "Mobile No"
+      FROM (#{base.select(:afl_ids).to_sql}) t
+      CROSS JOIN LATERAL jsonb_array_elements_text(
+        CASE WHEN jsonb_typeof(t.afl_ids::jsonb) = 'array' THEN t.afl_ids::jsonb ELSE '[]'::jsonb END
+      ) AS af(afl_id)
+      JOIN afls a ON a.id::text = af.afl_id
+      ORDER BY a.farmer_name
+    SQL
+    @demonstration_farmers = TargetMapping.connection.select_all(farmer_sql).to_a
+
+    respond_to do |format|
+      format.html { render :demonstration_method_farmers }
+      format.xlsx do
+        headers = @demonstration_farmers.first&.keys || ["Farmer ID", "Farmer Name", "Father Name", "TraceNet No", "Mobile No"]
+        send_xlsx(headers: headers,
+          rows: @demonstration_farmers.map { |r| headers.map { |k| r[k] } },
+          filename: "demonstration-method-farmers.xlsx", sheet_name: "Targeted Farmers")
+      end
+    end
+  end
+
   def farmer_training_participation
     selected_month = dashboard_filter_param(:training_month, :month)
     selected_sub_activity = dashboard_filter_param(:training_sub_activity, :sub_activity)
@@ -4413,7 +4449,7 @@ class ModulesController < ApplicationController
       },
       {
         status: "red",
-        title: "No Training",
+        title: "Pending",
         value: pending_quantity.to_i,
         caption: "Farmer not attended training. Missing training.",
         path: weekly_activity_target_report_path(filter_params.merge(status: "red"))
@@ -5769,7 +5805,7 @@ class ModulesController < ApplicationController
             COUNT(DISTINCT at.training_id) AS training_count,
             MIN(at.training_date) AS training_date,
             MIN(at.sub_activity) AS sub_activity,
-            MIN(at.training_method) AS training_method,
+            STRING_AGG(DISTINCT NULLIF(BTRIM(at.training_method), ''), ', ') AS training_method,
             MIN(at.trainer_name) AS trainer_name,
             STRING_AGG(DISTINCT NULLIF(BTRIM(at.training_register_upload), ''), ', ') AS training_register_urls,
             STRING_AGG(DISTINCT NULLIF(BTRIM(at.training_photo_upload), ''), ', ') AS training_photo_urls
@@ -5820,6 +5856,7 @@ class ModulesController < ApplicationController
           months: selected_month,
           main_activities: "Farmers' Training",
           sub_activities: row["sub_activity"].to_s.presence || "-",
+          training_method: row["training_method"].to_s.presence || "-",
           attendance_count: row["training_count"].to_i,
           status: "green",
           status_label: "1+ Trainings",
@@ -5872,7 +5909,7 @@ class ModulesController < ApplicationController
             COUNT(at.training_id) AS training_count,
             MIN(at.training_date) AS training_date,
             MIN(at.sub_activity) AS sub_activity,
-            MIN(at.training_method) AS training_method,
+            STRING_AGG(DISTINCT NULLIF(BTRIM(at.training_method), ''), ', ') AS training_method,
             MIN(at.trainer_name) AS trainer_name,
             STRING_AGG(DISTINCT NULLIF(BTRIM(at.training_register_upload), ''), ', ') AS training_register_urls,
             STRING_AGG(DISTINCT NULLIF(BTRIM(at.training_photo_upload), ''), ', ') AS training_photo_urls
@@ -5923,6 +5960,7 @@ class ModulesController < ApplicationController
           months: selected_month,
           main_activities: "Farmers' Training",
           sub_activities: row["sub_activity"].to_s.presence || "-",
+          training_method: row["training_method"].to_s.presence || "-",
           attendance_count: row["training_count"].to_i,
           status: "yellow",
           status_label: "Only 1 Training",
@@ -6908,7 +6946,7 @@ class ModulesController < ApplicationController
       "completed_map" => "Multiple Total Complete Training",
       "green" => "1+ Trainings",
       "yellow" => "Only 1 Training",
-      "red" => "No Training",
+      "red" => "Pending",
       "pending" => "Pending",
       "pending_achievement" => "Pending Achievement",
       "completed" => "Completed"

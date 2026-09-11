@@ -15,16 +15,29 @@ class DemonstrationMethodReportTest < ActiveSupport::TestCase
     entry(@second, "FFS", "July")
   end
 
-  test "sums repeated targets without multiplying method entries and includes zero entries" do
+  test "de-duplicates targets per village and splits method entries into record and farmer counts" do
     report = DemonstrationMethodReport.new(targets: @targets)
     assert_equal 2, report.rows.size
     first = report.rows.find { |row| row["vrp_id"] == @vrp.id }
-    assert_equal 7, first["OPG Target"]
-    DemonstrationMethodReport::METRICS.drop(1).each { |key| assert_equal 1, first[key] }
+    # View list OPG target is village-deduped per JJ: both @vrp targets (3 and 4)
+    # share village_id "1", so the JJ total is MAX(3, 4) = 4, not the row SUM of 7.
+    assert_equal 4, first["OPG Target"]
+    assert_equal 0, first["Target Farmer Count"]
+    # Each method has one training-form record (Count = 1); the records carry no
+    # selected_farmer_ids, so the distinct-farmer count stays 0.
+    ["General Training/Meeting", "Input Demo INM", "Input Demo PM", "FFS"].each do |method|
+      assert_equal 1, first["#{method} Count"]
+      assert_equal 0, first["#{method} Farmer"]
+    end
     zero = report.rows.find { |row| row["vrp_id"] == @second.id }
-    DemonstrationMethodReport::METRICS.each { |key| assert_equal 0, zero[key] }
+    ["General Training/Meeting", "Input Demo INM", "Input Demo PM", "FFS"].each do |method|
+      assert_equal 0, zero["#{method} Count"]
+      assert_equal 0, zero["#{method} Farmer"]
+    end
     assert_equal 1, report.summary.size
-    assert_equal 7, report.summary.first["OPG Target"]
+    # FCO summary also de-duplicates OPG target per village (MAX per village_id,
+    # then SUM per FCO) => MAX(3, 4) = 4.
+    assert_equal 4, report.summary.first["OPG Target"]
     assert_equal 1, report.summary.first["FFS"]
   end
 
@@ -36,11 +49,13 @@ class DemonstrationMethodReportTest < ActiveSupport::TestCase
     assert_empty DemonstrationMethodReport.new(targets: []).summary
   end
 
-  test "summary trims creator IDs while view list uses the supplied exact ID join" do
+  test "summary and view list both trim padded creator IDs" do
     ModuleRecord.create!(module_slug: "training-form", data: { created_by_id: " #{@vrp.id} ", month: "August", training_method: "FFS" })
     report = DemonstrationMethodReport.new(targets: @targets)
     assert_equal 2, report.summary.first["FFS"]
-    assert_equal 1, report.rows.find { |row| row["vrp_id"] == @vrp.id }["FFS"]
+    # The view list now trims created_by_id too, so this padded record is counted
+    # alongside the original FFS record => FFS Count 2.
+    assert_equal 2, report.rows.find { |row| row["vrp_id"] == @vrp.id }["FFS Count"]
   end
 
   private
