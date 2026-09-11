@@ -42,6 +42,7 @@ Rails.application.routes.draw do
       get "admin-dashboard/lists/:list_type/export", to: "jeevika_jankar_dashboard#export"
       get "admin-dashboard/farmer-training-participation", to: "jeevika_jankar_dashboard#farmer_training_participation"
       get "jeevika-jankar-dashboard", to: "jeevika_jankar_dashboard#show"
+      get "jeevika-jankar-dashboard/filters", to: "jeevika_jankar_dashboard#vrp_filters"
       get "jeevika-jankar-dashboard/widgets/:widget", to: "jeevika_jankar_dashboard#vrp_widget"
       get "jeevika-jankar-dashboard/lists/:list_type", to: "jeevika_jankar_dashboard#vrp_list"
       get "jeevika-jankar-dashboard/lists/:list_type/export", to: "jeevika_jankar_dashboard#vrp_export"

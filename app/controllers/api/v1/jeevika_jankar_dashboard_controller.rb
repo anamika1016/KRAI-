@@ -11,30 +11,20 @@ module Api
         vrp = current_dashboard_vrp
         return render json: { success: false, message: "Valid Jeevika Jankar login required." }, status: :unprocessable_entity unless vrp
 
-        targets = TargetMapping.where(vrp_id: vrp.id).order(:month_name, :main_activity_name, :activity_name, :id).to_a
-        months = targets.filter_map { |target| target.month_name.to_s.strip.presence }.uniq
-        selected_month = filter_param(:month, :training_month) || default_month(months)
-        targets = targets.select { |target| same_text?(target.month_name, selected_month) } if selected_month.present?
-        progress = web_parity_progress(targets, vrp)
-        assigned = progress.sum { |row| row[:assigned].to_f }
-        achieved = progress.sum { |row| row[:achieved].to_f }
+        context = jj_dashboard_context(vrp)
+        progress = web_parity_progress(context[:targets], vrp)
 
         render json: {
           success: true,
           message: "Jeevika Jankar dashboard fetched successfully.",
           jeevika_jankar: { id: vrp.id, name: vrp.name, user_name: vrp.user_name, mobile_no: vrp.mobile_no },
-          months: months,
-          selected_month: selected_month,
-          cards: {
-            mapped_farmers: targets.flat_map { |target| mapped_farmer_ids(target) }.uniq.size,
-            mapped_villages: targets.map { |target| [target.village_id.to_s, target.village_name.to_s.downcase] }.uniq.size,
-            main_activities: unique_count(targets, :main_activity_name),
-            sub_activities: unique_count(targets, :activity_name),
-            assigned_target: number(assigned),
-            achieved_target: number(achieved),
-            pending_target: number([assigned - achieved, 0].max)
-          },
+          dashboard_type: "jeevika_jankar",
+          months: context[:months],
+          selected_month: context[:month],
+          cards: vrp_dashboard_widget_catalog.keys.to_h { |key| [key, jj_widget_value(key, vrp)] },
           target_progress: progress,
+          weekly_target_plan: jj_weekly_rows(vrp),
+          selected_week: jj_selected_week,
           generated_at: Time.current.iso8601
         }, status: :ok
       end
@@ -148,20 +138,19 @@ module Api
         config = vrp_dashboard_widget_catalog[params[:widget]]
         return render json: { success: false, message: "Invalid dashboard widget.", available_widgets: vrp_dashboard_widget_catalog.keys }, status: :unprocessable_entity unless config
 
-        targets = TargetMapping.where(vrp_id: vrp.id).order(:month_name, :main_activity_name, :activity_name, :id).to_a
-        selected_month = filter_param(:month, :training_month) || default_month(targets.filter_map { |target| target.month_name.to_s.strip.presence }.uniq)
-        targets.select! { |target| same_text?(target.month_name, selected_month) } if selected_month.present?
-        progress = web_parity_progress(targets, vrp)
-        value = case params[:widget]
-        when "mapped_farmers" then targets.flat_map { |target| mapped_farmer_ids(target) }.uniq.size
-        when "mapped_villages" then targets.map { |target| [target.village_id.to_s, target.village_name.to_s.downcase] }.uniq.size
-        when "main_activities" then unique_count(targets, :main_activity_name)
-        when "sub_activities" then unique_count(targets, :activity_name)
-        when "assigned_target" then number(progress.sum { |row| row[:assigned].to_f })
-        when "achieved_target" then number(progress.sum { |row| row[:achieved].to_f })
-        when "pending_target" then number(progress.sum { |row| row[:pending].to_f })
-        end
-        render json: { success: true, dashboard_type: "jeevika_jankar", widget: params[:widget], heading: config, value: value, filters: { month: selected_month }.compact, generated_at: Time.current.iso8601 }
+        context = jj_dashboard_context(vrp)
+        value = jj_widget_value(params[:widget], vrp)
+        render json: { success: true, dashboard_type: "jeevika_jankar", widget: params[:widget], heading: config, value: value, filters: { month: context[:month] }, generated_at: Time.current.iso8601 }
+      end
+
+      def vrp_filters
+        vrp = current_dashboard_vrp
+        return render json: { success: false, message: "Valid Jeevika Jankar login required." }, status: :unprocessable_entity unless vrp
+
+        context = jj_dashboard_context(vrp)
+        render json: { success: true, dashboard_type: "jeevika_jankar", months: context[:months], selected_month: context[:month],
+          weeks: [{ value: "all", label: "All Weeks" }] + (1..4).map { |week| { value: "week_#{week}", label: "Week #{week}" } },
+          selected_week: jj_selected_week }
       end
 
       private
@@ -253,31 +242,106 @@ module Api
       def vrp_dashboard_list_payload(vrp, list_type)
         return unless vrp_dashboard_list_catalog.key?(list_type)
 
-        targets = TargetMapping.where(vrp_id: vrp.id).order(:month_name, :main_activity_name, :activity_name, :id).to_a
-        selected_month = filter_param(:month, :training_month)
-        targets.select! { |target| same_text?(target.month_name, selected_month) } if selected_month.present?
-        progress = web_parity_progress(targets, vrp)
-        raw_rows = ModulesController.new.send(:vrp_dashboard_target_progress_rows, targets, ModulesController.new.send(:vrp_dashboard_bills, vrp))
+        context = jj_dashboard_context(vrp)
+        targets = context[:targets]
+        calculator = context[:calculator]
         records = case list_type
         when "mapped_villages"
-          progress.group_by { |row| row[:village].to_s }.map { |village, rows| { village: village, target_records: rows.size, assigned: number(rows.sum { |row| row[:assigned].to_f }), achieved: number(rows.sum { |row| row[:achieved].to_f }), pending: number(rows.sum { |row| row[:pending].to_f }) } }
-        when "main_activities"
-          progress.group_by { |row| row[:main_activity].to_s }.map { |name, rows| { main_activity: name, target_records: rows.size, assigned: number(rows.sum { |row| row[:assigned].to_f }), achieved: number(rows.sum { |row| row[:achieved].to_f }), pending: number(rows.sum { |row| row[:pending].to_f }) } }
-        when "sub_activities"
-          progress.group_by { |row| row[:sub_activity].to_s }.map { |name, rows| { sub_activity: name, target_records: rows.size, assigned: number(rows.sum { |row| row[:assigned].to_f }), achieved: number(rows.sum { |row| row[:achieved].to_f }), pending: number(rows.sum { |row| row[:pending].to_f }) } }
+          progress_by_village = jj_raw_progress(vrp).group_by do |row|
+            calculator.send(:dashboard_target_village_key, row[:target_record])
+          end
+          targets_by_id = targets.index_by(&:id)
+          calculator.send(:vrp_dashboard_village_rows, vrp, [], targets).map do |village|
+            key = calculator.send(:dashboard_target_village_key, targets_by_id.fetch(village[:mapping_id]))
+            rows = progress_by_village.fetch(key, [])
+            village.merge(target_records: rows.size, assigned: number(rows.sum { |row| row[:target].to_f }),
+              achieved: number(rows.sum { |row| row[:completed].to_f }), pending: number(rows.sum { |row| row[:pending].to_f }))
+          end
         when "mapped_farmers"
-          farmer_ids = targets.flat_map { |target| mapped_farmer_ids(target) }.uniq
-          farmer_ids.map { |id| { farmer_id: id, assignment_status: "Assigned" } }
+          ids = jj_raw_progress(vrp).flat_map { |row| Array(row[:assigned_farmer_ids]) }.map(&:to_s).reject(&:blank?).uniq
+          farmers = Afl.where(id: ids).index_by { |farmer| farmer.id.to_s }
+          ids.map do |id|
+            farmer = farmers[id]
+            { farmer_id: id, assignment_status: "Assigned", farmer_name: farmer&.farmer_name,
+              father_name: farmer&.father_name, tracenet_no: farmer&.tracenet_no,
+              ics: farmer&.ics_name.presence || farmer&.ics_id,
+              village: farmer&.village_name.presence || farmer&.village_id }
+          end
+        when "main_activities", "sub_activities"
+          field = list_type == "main_activities" ? :main_activity : :sub_activity
+          web_parity_progress(targets, vrp).group_by { |row| row[field].to_s }.map do |name, rows|
+            { field => name, target_records: rows.size, assigned: number(rows.sum { |row| row[:assigned].to_f }),
+              achieved: number(rows.sum { |row| row[:achieved].to_f }), pending: number(rows.sum { |row| row[:pending].to_f }) }
+          end
         when "achieved_target"
-          progress.select { |row| row[:achieved].to_f.positive? }
+          web_parity_progress(targets, vrp).select { |row| row[:achieved].to_f.positive? }
         when "pending_target"
-          progress.select { |row| row[:pending].to_f.positive? }
+          web_parity_progress(targets, vrp).select { |row| row[:pending].to_f.positive? }
         when "weekly_target_plan"
-          raw_rows.map { |row| row.slice(:month, :village, :main_activity, :activity, :target, :week_1, :week_2, :week_3, :week_4, :completed, :pending, :completion_date) }
+          jj_weekly_rows(vrp)
         else
-          progress
+          web_parity_progress(targets, vrp)
         end
-        { title: vrp_dashboard_list_catalog.fetch(list_type), count: records.size, records: records, filters: { month: selected_month }.compact }
+        { title: vrp_dashboard_list_catalog.fetch(list_type), count: records.size, records: records,
+          filters: { month: context[:month], target_week: jj_selected_week },
+          total: vrp_dashboard_widget_catalog.key?(list_type) ? jj_widget_value(list_type, vrp) : records.size }
+      end
+
+      def jj_dashboard_context(vrp)
+        @jj_dashboard_context ||= begin
+          calculator = ModulesController.new
+          calculator.set_request!(request)
+          calculator.params = params.dup
+          identity = app_user_session_payload(vrp)
+          calculator.define_singleton_method(:current_app_user) { identity }
+          calculator.instance_variable_set(:@current_vrp_record, vrp)
+          targets = calculator.send(:vrp_dashboard_targets, vrp)
+          months = calculator.send(:dashboard_month_options_for_targets, targets)
+          requested = params[:month].presence || params[:training_month].presence
+          month = requested.present? ? (all_filter_value?(requested) ? nil : requested.to_s.strip) : calculator.send(:default_vrp_dashboard_month, months, targets)
+          targets = targets.select { |target| same_text?(target.month_name, month) } if month.present?
+          { calculator: calculator, targets: targets, months: months, month: month }
+        end
+      end
+
+      def jj_raw_progress(vrp)
+        @jj_raw_progress ||= begin
+          context = jj_dashboard_context(vrp)
+          calculator = context[:calculator]
+          calculator.send(:preload_training_farmers_for_targets!, context[:targets])
+          calculator.send(:vrp_dashboard_target_progress_rows, context[:targets], calculator.send(:vrp_dashboard_bills, vrp))
+        end
+      end
+
+      def jj_widget_value(key, vrp)
+        context = jj_dashboard_context(vrp)
+        targets = context[:targets]
+        case key
+        when "mapped_villages" then context[:calculator].send(:vrp_dashboard_village_rows, vrp, [], targets).size
+        when "main_activities" then unique_count(targets, :main_activity_name)
+        when "sub_activities" then unique_count(targets, :activity_name)
+        when "mapped_farmers" then jj_raw_progress(vrp).flat_map { |row| Array(row[:assigned_farmer_ids]) }.map(&:to_s).reject(&:blank?).uniq.size
+        else
+          totals = context[:calculator].send(:vrp_dashboard_target_totals, jj_raw_progress(vrp))
+          number(totals.fetch({ "assigned_target" => :assigned, "achieved_target" => :achieved, "pending_target" => :pending }.fetch(key)))
+        end
+      end
+
+      def jj_selected_week
+        value = params[:target_week].to_s
+        %w[week_1 week_2 week_3 week_4].include?(value) ? value : "all"
+      end
+
+      def jj_weekly_rows(vrp)
+        jj_raw_progress(vrp).map do |row|
+          item = row.slice(:target_mapping_id, :month, :village, :main_activity, :activity, :main_activities, :sub_activities,
+            :target, :week_1, :week_2, :week_3, :week_4, :week_1_achieved, :week_2_achieved, :week_3_achieved, :week_4_achieved,
+            :completed, :pending, :completion_date)
+          if jj_selected_week != "all"
+            item = item.merge(selected_week: jj_selected_week, week_plan: row[jj_selected_week.to_sym], week_achieved: row["#{jj_selected_week}_achieved".to_sym])
+          end
+          item
+        end
       end
 
       def render_admin_dashboard
@@ -1325,14 +1389,15 @@ module Api
       # The web calculation handles Main Activity Type, farmer/activity/month matching,
       # completion deadlines, approved Other targets, and the bill fallback.
       def web_parity_progress(targets, vrp)
-        calculator = ModulesController.new
-        bills = calculator.send(:vrp_dashboard_bills, vrp)
-        rows = calculator.send(:vrp_dashboard_target_progress_rows, targets, bills)
+        rows = jj_raw_progress(vrp)
 
         rows.map do |row|
           assigned = row[:target].to_f
           achieved = [row[:completed].to_f, assigned].min
           {
+            **row.slice(:farmers, :main_activities, :sub_activities, :assigned_farmer_ids, :completed_farmer_ids,
+              :week_1, :week_2, :week_3, :week_4, :week_1_achieved, :week_2_achieved, :week_3_achieved, :week_4_achieved,
+              :opg_training, :general_training, :input_demo_inm, :input_demo_pm, :ffs),
             target_mapping_id: row[:target_mapping_id],
             month: row[:month],
             fco: row[:fco],

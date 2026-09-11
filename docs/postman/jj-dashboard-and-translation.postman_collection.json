@@ -1,0 +1,526 @@
+{
+  "info": {
+    "name": "JJ Dashboard and Translation - React Native",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json",
+    "description": "Authenticated mobile APIs. Set username/password or token. New code must be deployed on the chosen host. Google translation requires GOOGLE_TRANSLATE_API_KEY on the backend. No web changes."
+  },
+  "variable": [
+    {
+      "key": "base_url",
+      "value": "https://krai.ploughmanagro.com"
+    },
+    {
+      "key": "token",
+      "value": ""
+    },
+    {
+      "key": "username",
+      "value": ""
+    },
+    {
+      "key": "password",
+      "value": ""
+    },
+    {
+      "key": "month",
+      "value": "August"
+    },
+    {
+      "key": "target_week",
+      "value": "all"
+    }
+  ],
+  "auth": {
+    "type": "bearer",
+    "bearer": [
+      {
+        "key": "token",
+        "value": "{{token}}",
+        "type": "string"
+      }
+    ]
+  },
+  "item": [
+    {
+      "name": "Login and Filters",
+      "item": [
+        {
+          "name": "JJ Login",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{base_url}}/api/v1/jeevika-jankar-login",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"login\": \"{{username}}\",\n  \"password\": \"{{password}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "auth": {
+              "type": "noauth"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "if (pm.response.code === 200) { const data = pm.response.json(); if (data.token) pm.collectionVariables.set(\"token\", data.token); }"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Month and Week Dropdowns",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{base_url}}/api/v1/jeevika-jankar-dashboard/filters?month={{month}}"
+          }
+        },
+        {
+          "name": "Complete JJ Dashboard",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{base_url}}/api/v1/jeevika-jankar-dashboard?month={{month}}&target_week={{target_week}}"
+          }
+        }
+      ]
+    },
+    {
+      "name": "Each Dashboard Box",
+      "item": [
+        {
+          "name": "Mapped Villages",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{base_url}}/api/v1/jeevika-jankar-dashboard/widgets/mapped_villages?month={{month}}"
+          }
+        },
+        {
+          "name": "Main Major Work Indicators",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{base_url}}/api/v1/jeevika-jankar-dashboard/widgets/main_activities?month={{month}}"
+          }
+        },
+        {
+          "name": "Sub Major Work Indicators",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{base_url}}/api/v1/jeevika-jankar-dashboard/widgets/sub_activities?month={{month}}"
+          }
+        },
+        {
+          "name": "Assigned Target",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{base_url}}/api/v1/jeevika-jankar-dashboard/widgets/assigned_target?month={{month}}"
+          }
+        },
+        {
+          "name": "Assigned Farmers",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{base_url}}/api/v1/jeevika-jankar-dashboard/widgets/mapped_farmers?month={{month}}"
+          }
+        },
+        {
+          "name": "Achieved Target",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{base_url}}/api/v1/jeevika-jankar-dashboard/widgets/achieved_target?month={{month}}"
+          }
+        },
+        {
+          "name": "Pending Target",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{base_url}}/api/v1/jeevika-jankar-dashboard/widgets/pending_target?month={{month}}"
+          }
+        }
+      ]
+    },
+    {
+      "name": "Each Detail List and Tables",
+      "item": [
+        {
+          "name": "Mapped Villages",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{base_url}}/api/v1/jeevika-jankar-dashboard/lists/mapped_villages?month={{month}}"
+          }
+        },
+        {
+          "name": "Main Major Work Indicators",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{base_url}}/api/v1/jeevika-jankar-dashboard/lists/main_activities?month={{month}}"
+          }
+        },
+        {
+          "name": "Sub Major Work Indicators",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{base_url}}/api/v1/jeevika-jankar-dashboard/lists/sub_activities?month={{month}}"
+          }
+        },
+        {
+          "name": "Assigned Target",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{base_url}}/api/v1/jeevika-jankar-dashboard/lists/assigned_target?month={{month}}"
+          }
+        },
+        {
+          "name": "Assigned Farmers",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{base_url}}/api/v1/jeevika-jankar-dashboard/lists/mapped_farmers?month={{month}}"
+          }
+        },
+        {
+          "name": "Achieved Target",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{base_url}}/api/v1/jeevika-jankar-dashboard/lists/achieved_target?month={{month}}"
+          }
+        },
+        {
+          "name": "Pending Target",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{base_url}}/api/v1/jeevika-jankar-dashboard/lists/pending_target?month={{month}}"
+          }
+        },
+        {
+          "name": "Assigned Target Progress",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{base_url}}/api/v1/jeevika-jankar-dashboard/lists/target_progress?month={{month}}"
+          }
+        },
+        {
+          "name": "Weekly Target Plan",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{base_url}}/api/v1/jeevika-jankar-dashboard/lists/weekly_target_plan?month={{month}}&target_week={{target_week}}"
+          }
+        }
+      ]
+    },
+    {
+      "name": "Excel Exports",
+      "item": [
+        {
+          "name": "Mapped Villages Excel",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{base_url}}/api/v1/jeevika-jankar-dashboard/lists/mapped_villages/export?month={{month}}"
+          }
+        },
+        {
+          "name": "Main Major Work Indicators Excel",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{base_url}}/api/v1/jeevika-jankar-dashboard/lists/main_activities/export?month={{month}}"
+          }
+        },
+        {
+          "name": "Sub Major Work Indicators Excel",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{base_url}}/api/v1/jeevika-jankar-dashboard/lists/sub_activities/export?month={{month}}"
+          }
+        },
+        {
+          "name": "Assigned Target Excel",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{base_url}}/api/v1/jeevika-jankar-dashboard/lists/assigned_target/export?month={{month}}"
+          }
+        },
+        {
+          "name": "Assigned Farmers Excel",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{base_url}}/api/v1/jeevika-jankar-dashboard/lists/mapped_farmers/export?month={{month}}"
+          }
+        },
+        {
+          "name": "Achieved Target Excel",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{base_url}}/api/v1/jeevika-jankar-dashboard/lists/achieved_target/export?month={{month}}"
+          }
+        },
+        {
+          "name": "Pending Target Excel",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{base_url}}/api/v1/jeevika-jankar-dashboard/lists/pending_target/export?month={{month}}"
+          }
+        },
+        {
+          "name": "Assigned Target Progress Excel",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{base_url}}/api/v1/jeevika-jankar-dashboard/lists/target_progress/export?month={{month}}"
+          }
+        },
+        {
+          "name": "Weekly Target Plan Excel",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{base_url}}/api/v1/jeevika-jankar-dashboard/lists/weekly_target_plan/export?month={{month}}&target_week={{target_week}}"
+          }
+        }
+      ]
+    },
+    {
+      "name": "Translation",
+      "item": [
+        {
+          "name": "Supported Languages",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{base_url}}/api/v1/translate/languages"
+          }
+        },
+        {
+          "name": "Translate Screen Labels to Hindi",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{base_url}}/api/v1/translate",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"q\": [\n    \"Mapped Villages\",\n    \"Assigned Target\",\n    \"Assigned Farmers\",\n    \"Weekly Target Plan\"\n  ],\n  \"source\": \"en\",\n  \"target\": \"hi\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "English Identity Check - No Google Required",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{base_url}}/api/v1/translate",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"q\": [\n    \"Dashboard\"\n  ],\n  \"source\": \"en\",\n  \"target\": \"en\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        }
+      ]
+    }
+  ]
+}

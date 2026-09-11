@@ -1404,6 +1404,7 @@ class ModulesController < ApplicationController
     mappings = vrp_dashboard_mappings(@vrp)
     targets = vrp_dashboard_targets(@vrp)
     targets = dashboard_targets_for_month(targets, params[:training_month]) if params[:training_month].present?
+    targets = targets.select { |target| target.village_id.to_s == params[:village_id].to_s } if params[:village_id].present?
     bills = vrp_dashboard_bills(@vrp)
     @vrp_dashboard_detail = vrp_dashboard_detail_payload(params[:list_type], @vrp, mappings, targets, bills, params)
 
@@ -2717,7 +2718,16 @@ class ModulesController < ApplicationController
     when "mapped_villages"
       village_rows = vrp_dashboard_village_rows(vrp, mappings, targets)
       rows = village_rows.map do |row|
-        [row[:fco], row[:village], dashboard_quantity(row[:farmers]), dashboard_quantity(row[:targets]), dashboard_quantity(row[:target_quantity])]
+        village_link = ->(list_type, label) do
+          { label: label, path: vrp_dashboard_list_path(list_type, training_month: filters[:training_month].presence, village_id: row[:village_id]) }
+        end
+        [
+          row[:fco],
+          row[:village],
+          village_link.call("mapped_village_farmers", dashboard_quantity(row[:farmers])),
+          village_link.call("assigned_target", dashboard_quantity(row[:targets])),
+          village_link.call("assigned_target", dashboard_quantity(row[:target_quantity]))
+        ]
       end
       dashboard_detail_payload(key, "Mapped Villages", "Villages assigned for field work.", rows.size, ["FCO", "Village", "Mapped Farmers", "Targets", "Target Quantity"], rows)
     when "main_activities"

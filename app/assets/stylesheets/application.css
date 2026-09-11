@@ -8301,7 +8301,7 @@ body {
   letter-spacing: -0.015em;
 }
 .dashboard-page .dashboard-training-secondary-summaries .metric-card-group-title::after {
-  content: "Explore the detailed breakdown";
+  content: "";
   display: block;
   margin-top: 9px;
   font-size: 0.8rem;
