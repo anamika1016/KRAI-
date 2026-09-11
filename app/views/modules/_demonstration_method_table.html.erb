@@ -5,7 +5,8 @@
   </div>
 </div>
 <% header_label = ->(h) {
-  { "vrp_name" => "JJ Name", "vrp_id" => "JJ ID", "VRP Name" => "JJ Name", "FFS" => "FFS Exposure" }[h] || h.to_s.gsub(/\bvrp\b/i, "JJ")
+  base = { "vrp_name" => "JJ Name", "vrp_id" => "JJ ID", "VRP Name" => "JJ Name" }[h] || h.to_s.gsub(/\bvrp\b/i, "JJ")
+  base.gsub(/\bFFS\b/, "FFS Exposure")
 } %>
 <% farmer_list_month = @dashboard_month_filter_value.presence || request.query_parameters[:training_month].presence || request.query_parameters[:month].presence %>
 <div class="table-shell">

@@ -42,7 +42,18 @@ class DemonstrationMethodReport
             SUM(farmer_count) AS farmer_count
           FROM village_target
           GROUP BY fco_id, fco_name, vrp_id
-        ), entry_data AS (
+        ), training_entries AS MATERIALIZED (
+          -- Decode each record once before its farmer array multiplies rows.
+          SELECT mr.id AS record_id,
+            TRIM(mr.data::jsonb ->> 'created_by_id') AS vrp_id,
+            LOWER(TRIM(mr.data::jsonb ->> 'training_method')) AS training_method,
+            COALESCE(mr.data::jsonb -> 'selected_farmer_ids', '[]'::jsonb) AS farmer_ids
+          FROM module_records mr
+          WHERE mr.module_slug = 'training-form' AND #{month_filter}
+            AND TRIM(mr.data::jsonb ->> 'created_by_id') IN (
+              SELECT DISTINCT td.vrp_id::text FROM target_data td
+            )
+        ), entry_data AS MATERIALIZED (
           SELECT x.vrp_id,
             COUNT(DISTINCT x.record_id) FILTER (WHERE x.training_method = 'general training/meeting') AS gtm_count,
             COUNT(DISTINCT x.farmer_id) FILTER (WHERE x.training_method = 'general training/meeting') AS gtm_farmer,
@@ -53,15 +64,10 @@ class DemonstrationMethodReport
             COUNT(DISTINCT x.record_id) FILTER (WHERE x.training_method = 'ffs') AS ffs_count,
             COUNT(DISTINCT x.farmer_id) FILTER (WHERE x.training_method = 'ffs') AS ffs_farmer
           FROM (
-            SELECT mr.id AS record_id,
-              TRIM(mr.data::jsonb ->> 'created_by_id') AS vrp_id,
-              LOWER(TRIM(mr.data::jsonb ->> 'training_method')) AS training_method,
+            SELECT te.record_id, te.vrp_id, te.training_method,
               sf.farmer_id
-            FROM module_records mr
-            LEFT JOIN LATERAL jsonb_array_elements_text(
-              COALESCE(mr.data::jsonb -> 'selected_farmer_ids', '[]'::jsonb)
-            ) AS sf(farmer_id) ON TRUE
-            WHERE mr.module_slug = 'training-form' AND #{month_filter}
+            FROM training_entries te
+            LEFT JOIN LATERAL jsonb_array_elements_text(te.farmer_ids) AS sf(farmer_id) ON TRUE
           ) x
           GROUP BY x.vrp_id
         )

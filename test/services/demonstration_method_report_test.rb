@@ -58,6 +58,23 @@ class DemonstrationMethodReportTest < ActiveSupport::TestCase
     assert_equal 2, report.rows.find { |row| row["vrp_id"] == @vrp.id }["FFS Count"]
   end
 
+  test "expanded farmer arrays preserve distinct record and farmer counts including empty arrays" do
+    shared = { created_by_id: " #{@vrp.id} ", month: " AUGUST ", training_method: " FFS " }
+    ModuleRecord.create!(module_slug: "training-form", data: shared.merge(selected_farmer_ids: ["11", "11", "12", nil, ""]))
+    ModuleRecord.create!(module_slug: "training-form", data: shared.merge(selected_farmer_ids: ["12", "13"]))
+    ModuleRecord.create!(module_slug: "training-form", data: shared.merge(selected_farmer_ids: []))
+    ModuleRecord.create!(module_slug: "training-form", data: shared.merge(created_by_id: "999999", selected_farmer_ids: ["99"]))
+    report = DemonstrationMethodReport.new(targets: @targets)
+    row = report.rows.find { |item| item["vrp_id"] == @vrp.id }
+    # The original FFS entry and the empty-array entry still count as records;
+    # SQL COUNT(DISTINCT farmer_id) includes an empty string but excludes NULL.
+    assert_equal 4, row["FFS Count"]
+    assert_equal 4, row["FFS Farmer"]
+    assert_equal 4, report.summary.first["FFS"]
+    assert_equal 4, row["OPG Target"]
+    assert_equal 5, DemonstrationMethodReport.new(targets: @targets, month: "all").rows.find { |item| item["vrp_id"] == @vrp.id }["FFS Count"]
+  end
+
   private
 
   def build_vrp(name)

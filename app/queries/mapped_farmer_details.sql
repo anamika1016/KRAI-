@@ -66,37 +66,14 @@ vrp_details AS (
 ),
 
 
-august_training_done AS (
+training_records AS MATERIALIZED (
+    -- Extract record fields once, before expanding the selected farmer array.
     SELECT
-        sf.farmer_id,
-
-        STRING_AGG(
-            DISTINCT NULLIF(
-                TRIM(mr.data::jsonb ->> 'main_activity_type'),
-                ''
-            ),
-            ', '
-        ) AS main_activity_type,
-
-        STRING_AGG(
-            DISTINCT NULLIF(BTRIM(mr.data::jsonb ->> 'training_register_upload'), ''),
-            ', '
-        ) AS training_register_urls,
-
-        STRING_AGG(
-            DISTINCT NULLIF(BTRIM(mr.data::jsonb ->> 'training_photo_upload_with_geo_tag'), ''),
-            ', '
-        ) AS training_photo_urls
-
+        NULLIF(TRIM(mr.data::jsonb ->> 'main_activity_type'), '') AS main_activity_type,
+        COALESCE(mr.data::jsonb -> 'selected_farmer_ids', '[]'::jsonb) AS farmer_ids,
+        NULLIF(BTRIM(mr.data::jsonb ->> 'training_register_upload'), '') AS training_register_urls,
+        NULLIF(BTRIM(mr.data::jsonb ->> 'training_photo_upload_with_geo_tag'), '') AS training_photo_urls
     FROM public.module_records mr
-
-    CROSS JOIN LATERAL jsonb_array_elements_text(
-        COALESCE(
-            mr.data::jsonb -> 'selected_farmer_ids',
-            '[]'::jsonb
-        )
-    ) AS sf(farmer_id)
-
     WHERE mr.module_slug = 'training-form'
       AND LOWER(
             TRIM(
@@ -104,8 +81,16 @@ august_training_done AS (
             )
           ) = :month_name
 
-    GROUP BY
-        sf.farmer_id
+),
+
+august_training_done AS MATERIALIZED (
+    SELECT sf.farmer_id,
+        STRING_AGG(DISTINCT tr.main_activity_type, ', ') AS main_activity_type,
+        STRING_AGG(DISTINCT tr.training_register_urls, ', ') AS training_register_urls,
+        STRING_AGG(DISTINCT tr.training_photo_urls, ', ') AS training_photo_urls
+    FROM training_records tr
+    CROSS JOIN LATERAL jsonb_array_elements_text(tr.farmer_ids) AS sf(farmer_id)
+    GROUP BY sf.farmer_id
 ),
 
 

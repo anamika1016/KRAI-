@@ -154,7 +154,7 @@
                 <td><%= row[:months].presence || "-" %></td>
                 <td><%= row[:main_activities].presence || "-" %></td>
                 <td><%= row[:sub_activities].presence || "-" %></td>
-                <td><%= row[:training_method].presence || "-" %></td>
+                <td><%= row[:training_method].to_s.gsub(/\bFFS\b/, "FFS Exposure").presence || "-" %></td>
                 <td><%= row[:attendance_count].to_i %></td>
                 <td><span class="training-status-pill <%= row[:status] %>"><%= row[:status_label] %></span></td>
                 <td><%= row[:training_dates].presence || "-" %></td>

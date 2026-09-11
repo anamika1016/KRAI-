@@ -1,5 +1,12 @@
 # Dashboard and Jeevika payment review
 
+September 11 SQL execution follow-up:
+
+- Demonstration drill-down now materializes only the required training fields before expanding farmer arrays, and computes the per-JJ aggregate once. The original local plan repeatedly evaluated JSON-derived expressions over expanded farmers and ran the aggregate twice. Distinct record/farmer counts, empty-array record counts, creator trimming, village target deduplication, summary calculations and filters are preserved.
+- Mapped/red SQL lists and yellow/green SQL lists similarly extract display fields once per training record before expanding its farmers. Upload strings, dates, duplicates, status selection and access scoping retain their existing behavior. No count formulas or dashboard count queries were changed.
+- Alternating before/after `EXPLAIN (ANALYZE, BUFFERS)` samples (three per variant) returned identical complete result rows. Median local execution times: demonstration list 534.3 → 1.5 ms; mapped list (5,532 rows) 106.7 → 13.8 ms; red list (5,532 rows) 41.5 → 10.9 ms. A separate rolled-back test transaction with 400 farmers produced 200 yellow and 200 green rows: yellow 97.0 → 2.3 ms and green 81.3 → 2.8 ms, with identical outputs. These are database execution timings on local data, not production HTTP latency estimates.
+- The supplied production fingerprints did not match the captured local SQL fingerprints. Slow-query logging now appends the originating application file and line (`source=app/...rb:123`) while retaining existing fingerprints and omitting SQL literals. This allows remaining production queries to be identified after deployment without guessing from the `WITH` keyword. No deployment or database migration was performed.
+
 September 11 follow-up:
 
 - `vrp_dashboard_bills` previously loaded and normalized the entire legacy bill table once per JJ. It now builds a request-local label index once, preserving ID/name/username/mobile/combined-label matching and database row ordering. This removes repeated queries and ActiveRecord hydration as JJ count grows.

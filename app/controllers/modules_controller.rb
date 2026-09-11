@@ -996,7 +996,8 @@ class ModulesController < ApplicationController
 
     farmer_sql = <<~SQL
       SELECT DISTINCT a.id AS "Farmer ID", a.farmer_name AS "Farmer Name",
-        a.father_name AS "Father Name", a.tracenet_no AS "TraceNet No", a.mobile_no AS "Mobile No"
+        a.father_name AS "Father Name", a.tracenet_no AS "TraceNet No",
+        CASE WHEN UPPER(BTRIM(COALESCE(a.mobile_no, ''))) IN ('', 'NULL') THEN NULL ELSE a.mobile_no END AS "Mobile No"
       FROM (#{base.select(:afl_ids).to_sql}) t
       CROSS JOIN LATERAL jsonb_array_elements_text(
         CASE WHEN jsonb_typeof(t.afl_ids::jsonb) = 'array' THEN t.afl_ids::jsonb ELSE '[]'::jsonb END
@@ -5766,9 +5767,8 @@ class ModulesController < ApplicationController
     if status.to_s == "green" || status.to_s == "1_plus_trainings" || status.to_s == "more_than_1"
       fco_filter_sql = "AND LOWER(BTRIM(a.fco_id)) IN (:fco_ids)"
       sql = <<~SQL.squish
-        WITH august_training AS (
+        WITH training_records AS MATERIALIZED (
             SELECT
-                sf.farmer_id,
                 mr.id AS training_id,
                 mr.created_at,
                 mr.data::jsonb ->> 'training_date' AS training_date,
@@ -5776,17 +5776,18 @@ class ModulesController < ApplicationController
                 mr.data::jsonb ->> 'training_method' AS training_method,
                 mr.data::jsonb ->> 'trainer_name' AS trainer_name,
                 mr.data::jsonb ->> 'training_register_upload' AS training_register_upload,
-                mr.data::jsonb ->> 'training_photo_upload_with_geo_tag' AS training_photo_upload
+                mr.data::jsonb ->> 'training_photo_upload_with_geo_tag' AS training_photo_upload,
+                COALESCE(mr.data::jsonb -> 'selected_farmer_ids', '[]'::jsonb) AS farmer_ids
             FROM public.module_records mr
-            CROSS JOIN LATERAL jsonb_array_elements_text(
-                COALESCE(
-                    mr.data::jsonb -> 'selected_farmer_ids',
-                    '[]'::jsonb
-                )
-            ) AS sf(farmer_id)
             WHERE mr.module_slug = 'training-form'
               AND LOWER(TRIM(mr.data::jsonb ->> 'month')) = :month_name
               AND LOWER(COALESCE(mr.data::jsonb ->> 'main_activity', '')) LIKE '%farmers'' training%'
+        ), august_training AS (
+            SELECT sf.farmer_id, tr.training_id, tr.created_at,
+                tr.training_date, tr.sub_activity, tr.training_method,
+                tr.trainer_name, tr.training_register_upload, tr.training_photo_upload
+            FROM training_records tr
+            CROSS JOIN LATERAL jsonb_array_elements_text(tr.farmer_ids) AS sf(farmer_id)
         )
         SELECT
             a.id AS farmer_id,
@@ -5870,9 +5871,8 @@ class ModulesController < ApplicationController
 
     if status.to_s == "yellow" || status.to_s == "only_1_training"
       sql = <<~SQL.squish
-        WITH august_training AS (
+        WITH training_records AS MATERIALIZED (
             SELECT
-                sf.farmer_id,
                 mr.id AS training_id,
                 mr.created_at,
                 mr.data::jsonb ->> 'training_date' AS training_date,
@@ -5880,17 +5880,18 @@ class ModulesController < ApplicationController
                 mr.data::jsonb ->> 'training_method' AS training_method,
                 mr.data::jsonb ->> 'trainer_name' AS trainer_name,
                 mr.data::jsonb ->> 'training_register_upload' AS training_register_upload,
-                mr.data::jsonb ->> 'training_photo_upload_with_geo_tag' AS training_photo_upload
+                mr.data::jsonb ->> 'training_photo_upload_with_geo_tag' AS training_photo_upload,
+                COALESCE(mr.data::jsonb -> 'selected_farmer_ids', '[]'::jsonb) AS farmer_ids
             FROM public.module_records mr
-            CROSS JOIN LATERAL jsonb_array_elements_text(
-                COALESCE(
-                    mr.data::jsonb -> 'selected_farmer_ids',
-                    '[]'::jsonb
-                )
-            ) AS sf(farmer_id)
             WHERE mr.module_slug = 'training-form'
               AND LOWER(TRIM(mr.data::jsonb ->> 'month')) = :month_name
               AND LOWER(COALESCE(mr.data::jsonb ->> 'main_activity', '')) LIKE '%farmers'' training%'
+        ), august_training AS (
+            SELECT sf.farmer_id, tr.training_id, tr.created_at,
+                tr.training_date, tr.sub_activity, tr.training_method,
+                tr.trainer_name, tr.training_register_upload, tr.training_photo_upload
+            FROM training_records tr
+            CROSS JOIN LATERAL jsonb_array_elements_text(tr.farmer_ids) AS sf(farmer_id)
         )
         SELECT
             a.id AS farmer_id,

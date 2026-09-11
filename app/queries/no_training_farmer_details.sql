@@ -56,27 +56,12 @@ vrp_details AS (
 ),
 
 
-august_training_done AS (
+training_records AS MATERIALIZED (
+    -- Extract record fields once, before expanding the selected farmer array.
     SELECT
-        sf.farmer_id,
-
-        STRING_AGG(
-            DISTINCT NULLIF(
-                TRIM(mr.data::jsonb ->> 'main_activity_type'),
-                ''
-            ),
-            ', '
-        ) AS main_activity_type
-
+        NULLIF(TRIM(mr.data::jsonb ->> 'main_activity_type'), '') AS main_activity_type,
+        COALESCE(mr.data::jsonb -> 'selected_farmer_ids', '[]'::jsonb) AS farmer_ids
     FROM public.module_records mr
-
-    CROSS JOIN LATERAL jsonb_array_elements_text(
-        COALESCE(
-            mr.data::jsonb -> 'selected_farmer_ids',
-            '[]'::jsonb
-        )
-    ) AS sf(farmer_id)
-
     WHERE mr.module_slug = 'training-form'
       AND LOWER(
             TRIM(
@@ -85,8 +70,14 @@ august_training_done AS (
           ) = :month_name
       AND LOWER(TRIM(COALESCE(mr.data::jsonb ->> 'main_activity', ''))) LIKE '%farmers'' training%'
 
-    GROUP BY
-        sf.farmer_id
+),
+
+august_training_done AS MATERIALIZED (
+    SELECT sf.farmer_id,
+        STRING_AGG(DISTINCT tr.main_activity_type, ', ') AS main_activity_type
+    FROM training_records tr
+    CROSS JOIN LATERAL jsonb_array_elements_text(tr.farmer_ids) AS sf(farmer_id)
+    GROUP BY sf.farmer_id
 ),
 
 
