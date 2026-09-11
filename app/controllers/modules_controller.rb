@@ -5727,9 +5727,11 @@ class ModulesController < ApplicationController
                 mr.id AS training_id,
                 mr.created_at,
                 mr.data::jsonb ->> 'training_date' AS training_date,
-                mr.data::jsonb -> 'sub_activity' AS sub_activity,
+                mr.data::jsonb ->> 'sub_activity' AS sub_activity,
                 mr.data::jsonb ->> 'training_method' AS training_method,
-                mr.data::jsonb ->> 'trainer_name' AS trainer_name
+                mr.data::jsonb ->> 'trainer_name' AS trainer_name,
+                mr.data::jsonb ->> 'training_register_upload' AS training_register_upload,
+                mr.data::jsonb ->> 'training_photo_upload_with_geo_tag' AS training_photo_upload
             FROM public.module_records mr
             CROSS JOIN LATERAL jsonb_array_elements_text(
                 COALESCE(
@@ -5757,9 +5759,11 @@ class ModulesController < ApplicationController
             a.mobile_no,
             COUNT(DISTINCT at.training_id) AS training_count,
             MIN(at.training_date) AS training_date,
-            MIN(at.sub_activity::text) AS sub_activity,
+            MIN(at.sub_activity) AS sub_activity,
             MIN(at.training_method) AS training_method,
-            MIN(at.trainer_name) AS trainer_name
+            MIN(at.trainer_name) AS trainer_name,
+            STRING_AGG(DISTINCT NULLIF(BTRIM(at.training_register_upload), ''), ', ') AS training_register_urls,
+            STRING_AGG(DISTINCT NULLIF(BTRIM(at.training_photo_upload), ''), ', ') AS training_photo_urls
         FROM august_training at
         INNER JOIN public.afls a
             ON a.id::text = at.farmer_id
@@ -5812,8 +5816,8 @@ class ModulesController < ApplicationController
           status_label: "1+ Trainings",
           training_dates: row["training_date"].to_s.presence || "-",
           last_training_date: row["training_date"].to_s.presence || "-",
-          training_register_urls: [],
-          training_photo_urls: []
+          training_register_urls: row["training_register_urls"].to_s.split(",").map(&:strip).reject(&:blank?),
+          training_photo_urls: row["training_photo_urls"].to_s.split(",").map(&:strip).reject(&:blank?)
         }
       end
     end
@@ -5826,8 +5830,11 @@ class ModulesController < ApplicationController
                 mr.id AS training_id,
                 mr.created_at,
                 mr.data::jsonb ->> 'training_date' AS training_date,
+                mr.data::jsonb ->> 'sub_activity' AS sub_activity,
                 mr.data::jsonb ->> 'training_method' AS training_method,
-                mr.data::jsonb ->> 'trainer_name' AS trainer_name
+                mr.data::jsonb ->> 'trainer_name' AS trainer_name,
+                mr.data::jsonb ->> 'training_register_upload' AS training_register_upload,
+                mr.data::jsonb ->> 'training_photo_upload_with_geo_tag' AS training_photo_upload
             FROM public.module_records mr
             CROSS JOIN LATERAL jsonb_array_elements_text(
                 COALESCE(
@@ -5855,8 +5862,11 @@ class ModulesController < ApplicationController
             a.mobile_no,
             COUNT(at.training_id) AS training_count,
             MIN(at.training_date) AS training_date,
+            MIN(at.sub_activity) AS sub_activity,
             MIN(at.training_method) AS training_method,
-            MIN(at.trainer_name) AS trainer_name
+            MIN(at.trainer_name) AS trainer_name,
+            STRING_AGG(DISTINCT NULLIF(BTRIM(at.training_register_upload), ''), ', ') AS training_register_urls,
+            STRING_AGG(DISTINCT NULLIF(BTRIM(at.training_photo_upload), ''), ', ') AS training_photo_urls
         FROM august_training at
         INNER JOIN public.afls a
             ON a.id::text = at.farmer_id
@@ -5903,14 +5913,14 @@ class ModulesController < ApplicationController
           registered_by: row["trainer_name"].to_s.presence || "-",
           months: selected_month,
           main_activities: "Farmers' Training",
-          sub_activities: "-",
+          sub_activities: row["sub_activity"].to_s.presence || "-",
           attendance_count: row["training_count"].to_i,
           status: "yellow",
           status_label: "Only 1 Training",
           training_dates: row["training_date"].to_s.presence || "-",
           last_training_date: row["training_date"].to_s.presence || "-",
-          training_register_urls: [],
-          training_photo_urls: []
+          training_register_urls: row["training_register_urls"].to_s.split(",").map(&:strip).reject(&:blank?),
+          training_photo_urls: row["training_photo_urls"].to_s.split(",").map(&:strip).reject(&:blank?)
         }
       end
     end

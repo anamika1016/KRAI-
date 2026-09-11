@@ -359,6 +359,17 @@
     <% end %>
     <div class="dashboard-filter-grid">
 
+      <%# Month (shown first) %>
+      <div class="dashboard-filter-field">
+        <label for="dash_month">Month</label>
+        <%= f.select :month,
+              options_for_select(
+                [["All Months", ""]] + (@filter_month_options || []).map { |v| [v, v] },
+                @dashboard_month_filter_value
+              ),
+              {},
+              id: "dash_month", class: "form-select dashboard-filter-select", data: { dashboard_filter_select: true } %>
+      </div>
 
       <div class="dashboard-filter-field">
         <label for="dash_main_activity">Main Activity</label>
@@ -392,18 +403,6 @@
               ),
               {},
               id: "dash_ics", class: "form-select dashboard-filter-select", data: { dashboard_filter_select: true } %>
-      </div>
-
-      <%# Month %>
-      <div class="dashboard-filter-field">
-        <label for="dash_month">Month</label>
-        <%= f.select :month,
-              options_for_select(
-                [["All Months", ""]] + (@filter_month_options || []).map { |v| [v, v] },
-                @dashboard_month_filter_value
-              ),
-              {},
-              id: "dash_month", class: "form-select dashboard-filter-select", data: { dashboard_filter_select: true } %>
       </div>
 
       <div class="dashboard-filter-actions">

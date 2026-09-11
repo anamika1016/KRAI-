@@ -6,7 +6,17 @@ WITH august_any_mapping AS (
         STRING_AGG(
             DISTINCT t.vrp_id::text,
             ', '
-        ) AS vrp_ids
+        ) AS vrp_ids,
+
+        STRING_AGG(
+            DISTINCT NULLIF(BTRIM(t.main_activity_name), ''),
+            ', '
+        ) AS main_activities,
+
+        STRING_AGG(
+            DISTINCT NULLIF(BTRIM(t.activity_name), ''),
+            ', '
+        ) AS sub_activities
 
     FROM public.target_mappings t
 
@@ -133,10 +143,13 @@ SELECT
     fvd.vrp_name,
     fvd.cluster_incharge,
 
-    
+
     td.main_activity_type,
 
-    
+    am.main_activities,
+    am.sub_activities,
+
+
     CASE
 
         WHEN am.afl_id IS NULL

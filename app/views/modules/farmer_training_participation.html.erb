@@ -94,7 +94,7 @@
     <% if @mapped_farmer_details %>
       <div class="table-shell">
         <table class="module-table compact-table" data-report-search-table>
-          <thead><tr><% @mapped_farmer_details.columns.each do |column| %><th><%= { "vrp" => "JJ", "vrp_name" => "JJ Name", "vrp_id" => "JJ ID", "cluster_incharge" => "ClusterCoordinator", "training_register_urls" => "Training Register Upload", "training_photo_urls" => "Training Photo Upload with Geo Tag" }[column] || column.humanize %></th><% end %></tr></thead>
+          <thead><tr><% @mapped_farmer_details.columns.each do |column| %><th><%= { "vrp" => "JJ", "vrp_name" => "JJ Name", "vrp_id" => "JJ ID", "cluster_incharge" => "ClusterCoordinator", "main_activities" => "Main Major Work Indicator", "sub_activities" => "Sub Major Work Indicator", "training_register_urls" => "Training Register Upload", "training_photo_urls" => "Training Photo Upload with Geo Tag" }[column] || column.humanize %></th><% end %></tr></thead>
           <tbody>
             <% @mapped_farmer_details.rows.each do |values| %>
               <tr><% values.each_with_index do |value, index| %><td>
