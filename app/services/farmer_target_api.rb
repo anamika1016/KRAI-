@@ -410,7 +410,7 @@ class FarmerTargetApi
     end
 
     selected_farmer_ids = Array(data["selected_farmer_ids"]).map(&:to_s).reject(&:blank?).uniq
-    if training_form_activity_scope_present?(data)
+    if selected_farmer_ids.any? && training_form_activity_scope_present?(data)
       pending_farmer_ids = pending_training_farmer_ids_for(data)
       selected_farmer_ids &= pending_farmer_ids unless pending_farmer_ids.nil?
     end
@@ -579,9 +579,10 @@ class FarmerTargetApi
     errors
   end
 
-  def training_target_mappings
-    return @training_target_mappings if defined?(@training_target_mappings)
-    return @training_target_mappings = [] unless model_ready?(:TargetMapping)
+  def training_target_mappings(include_farmers: true)
+    @training_target_mappings_by_mode ||= {}
+    return @training_target_mappings_by_mode[include_farmers] if @training_target_mappings_by_mode.key?(include_farmers)
+    return @training_target_mappings_by_mode[include_farmers] = [] unless model_ready?(:TargetMapping)
 
     activity_settings = main_activity_settings
     sub_activity_settings = sub_activity_settings_for(activity_settings)
@@ -589,14 +590,14 @@ class FarmerTargetApi
       .includes(:vrp)
       .order(:ics_name, :ics_id, :village_name, :village_id, :id)
       .to_a
-    preload_training_farmers_for_targets!(targets)
+    preload_training_farmers_for_targets!(targets) if include_farmers
 
-    @training_target_mappings = targets
+    @training_target_mappings_by_mode[include_farmers] = targets
       .filter_map do |target|
         activity_setting = activity_setting_for(target, activity_settings, sub_activity_settings)
         next if activity_setting.blank? || !training_main_activity_type?(activity_setting[:main_activity_type])
 
-        farmer_ids = training_target_farmer_ids(target)
+        farmer_ids = include_farmers ? training_target_farmer_ids(target) : []
         {
           target_mapping_id: target.id.to_s,
           vrp_id: target.vrp_id.to_s,
@@ -614,8 +615,8 @@ class FarmerTargetApi
           main_activity: target.main_activity_name.to_s.strip,
           sub_activity: target.activity_name.to_s.strip,
           new_farmer_target: new_farmer_target_mapping?(target),
-          completed_farmer_ids: completed_training_farmer_ids_for(target, farmer_ids),
-          farmers: training_farmers_for_ids(farmer_ids)
+          completed_farmer_ids: include_farmers ? completed_training_farmer_ids_for(target, farmer_ids) : [],
+          farmers: include_farmers ? training_farmers_for_ids(farmer_ids) : []
         }
       end
       .reject { |mapping| mapping[:ics].blank? && mapping[:village].blank? }
@@ -754,7 +755,7 @@ class FarmerTargetApi
     selected_sub_activity = normalize_text(data["sub_activity"].presence || data["training_subject"])
     selected_main_activity_type = normalize_text(data["main_activity_type"])
 
-    training_target_mappings.find do |mapping|
+    training_target_mappings(include_farmers: false).find do |mapping|
       normalize_text(mapping[:month]) == selected_month &&
         (selected_main_activity_type.blank? || normalize_text(mapping[:main_activity_type]) == selected_main_activity_type) &&
         normalize_text(mapping[:ics]) == selected_ics &&

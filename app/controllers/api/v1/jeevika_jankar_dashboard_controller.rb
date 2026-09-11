@@ -338,7 +338,8 @@ module Api
             :target, :week_1, :week_2, :week_3, :week_4, :week_1_achieved, :week_2_achieved, :week_3_achieved, :week_4_achieved,
             :completed, :pending, :completion_date)
           if jj_selected_week != "all"
-            item = item.merge(selected_week: jj_selected_week, week_plan: row[jj_selected_week.to_sym], week_achieved: row["#{jj_selected_week}_achieved".to_sym])
+            item = item.merge(selected_week: jj_selected_week, week_plan: row[jj_selected_week.to_sym], week_achieved: row["#{jj_selected_week}_achieved".to_sym],
+              week_pending: [row[jj_selected_week.to_sym].to_f - row["#{jj_selected_week}_achieved".to_sym].to_f, 0].max)
           end
           item
         end
@@ -453,7 +454,7 @@ module Api
       def admin_dashboard_cache_filters
         # The widget selects a value from the same summary; it does not change
         # any calculation. All cards with identical filters share a cache fill.
-        request.query_parameters.to_h.except("widget").sort.to_h
+        request.query_parameters.to_h.except("widget", "_").sort.to_h
       end
 
       def cache_table_version(model)

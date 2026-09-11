@@ -238,6 +238,11 @@
         </div>
         <div class="dashboard-actions">
           <%= form_with url: dashboard_path, method: :get, local: true, class: "weekly-plan-filter" do |form| %>
+            <% request.query_parameters.except("target_week", "page").each do |key, value| %>
+              <% Array(value).each do |item| %>
+                <%= hidden_field_tag(value.is_a?(Array) ? "#{key}[]" : key, item) %>
+              <% end %>
+            <% end %>
             <%= form.label :target_week, "Week" %>
             <%= form.select :target_week, options_for_select(target_week_options, selected_target_week), {}, onchange: "this.form.submit()" %>
           <% end %>
@@ -258,6 +263,7 @@
               <% else %>
                 <th><%= target_week_options.to_h.key(selected_target_week) %> Plan</th>
                 <th><%= target_week_options.to_h.key(selected_target_week) %> Achieved</th>
+                <th><%= target_week_options.to_h.key(selected_target_week) %> Pending</th>
               <% end %>
               <th>Overall Completed</th>
               <th>Overall Pending</th>
@@ -292,6 +298,7 @@
                   <% else %>
                     <td><%= quantity.call(row[selected_target_week.to_sym]) %></td>
                     <td><%= quantity.call(row["#{selected_target_week}_achieved".to_sym]) %></td>
+                    <td><%= quantity.call([row[selected_target_week.to_sym].to_f - row["#{selected_target_week}_achieved".to_sym].to_f, 0].max) %></td>
                   <% end %>
                   <td><%= quantity.call(row[:completed]) %></td>
                   <td><%= quantity.call(row[:pending]) %></td>
@@ -300,7 +307,7 @@
               <% end %>
             <% else %>
               <tr>
-                <td colspan="<%= selected_target_week == 'all' ? 12 : 10 %>">No weekly target plan has been assigned yet.</td>
+                <td colspan="<%= selected_target_week == 'all' ? 12 : 11 %>">No weekly target plan has been assigned yet.</td>
               </tr>
             <% end %>
           </tbody>

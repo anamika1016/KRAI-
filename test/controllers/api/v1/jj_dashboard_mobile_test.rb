@@ -61,6 +61,7 @@ class Api::V1::JjDashboardMobileTest < ActionDispatch::IntegrationTest
     assert_equal "week_2", row["selected_week"]
     assert_equal expected[:week_2], row["week_plan"]
     assert_equal expected[:week_2_achieved], row["week_achieved"]
+    assert_equal [expected[:week_2].to_f - expected[:week_2_achieved].to_f, 0].max, row["week_pending"]
     get "#{@base}/lists/weekly_target_plan/export", params: { month: "August" }, headers: @headers
     assert_response :success
     assert_equal XlsxExporter::MIME_TYPE, response.media_type

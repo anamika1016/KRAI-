@@ -8,7 +8,8 @@ module Api
       end
 
       def farmer_target_api(module_slug = self.class::MODULE_SLUG)
-        FarmerTargetApi.new(
+        @farmer_target_apis ||= {}
+        @farmer_target_apis[module_slug] ||= FarmerTargetApi.new(
           current_app_user: current_app_user,
           module_slug: module_slug,
           exclude_record_id: params[:id]

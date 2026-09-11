@@ -1073,13 +1073,15 @@ class ModulesController < ApplicationController
       farmer_training_participation_rows_from_sql(
         "yellow",
         month_name: selected_month,
-        fcoc_name: selected_fcoc
+        fcoc_name: selected_fcoc,
+        week_number: selected_week
       )
     elsif selected_status == "green" || selected_status == "1_plus_trainings" || selected_status == "more_than_1"
       farmer_training_participation_rows_from_sql(
         "green",
         month_name: selected_month,
-        fcoc_name: selected_fcoc
+        fcoc_name: selected_fcoc,
+        week_number: selected_week
       )
     elsif selected_status == "training_unique"
       record_rows = training_participation_farmer_rows_from_records(training_records)
@@ -3260,8 +3262,9 @@ class ModulesController < ApplicationController
     sub_activity_settings ||= jeevika_jankar_sub_activity_settings(activity_settings)
     activity_setting = jeevika_jankar_activity_setting_for(target, activity_settings, sub_activity_settings)
 
-    other_target_achievement = other_target_achievement_index&.dig(target.id.to_s) ||
-      approved_other_target_achievement_index[target.id.to_s]
+    # A missing key in the already-built index means no achievement. Rebuilding
+    # the entire index for every missing target repeats the same database work.
+    other_target_achievement = (other_target_achievement_index || approved_other_target_achievement_index)[target.id.to_s]
     return capped_target_achievement(target, other_target_achievement[:achievement]) if other_target_achievement.present?
 
     if activity_setting.blank? || training_main_activity_type?(activity_setting[:main_activity_type])
@@ -4886,13 +4889,18 @@ class ModulesController < ApplicationController
     farmer_ids = Array(farmer_ids).map(&:to_s).reject(&:blank?).uniq
     return scope if farmer_ids.blank?
 
+    # Use the GIN lookup for string IDs, retaining legacy numeric JSON IDs.
+    # The old text expansion matched both representations.
     scope.where(
-      "EXISTS (
-        SELECT 1
-        FROM jsonb_array_elements_text(data::jsonb -> 'selected_farmer_ids') AS selected_farmer(value)
-        WHERE selected_farmer.value IN (?)
-      )",
-      farmer_ids
+      <<~SQL.squish,
+        (data::jsonb -> 'selected_farmer_ids' ?| array[:farmer_ids]
+         OR (jsonb_path_exists(data::jsonb -> 'selected_farmer_ids', '$[*] ? (@.type() == "number")')
+             AND EXISTS (
+               SELECT 1 FROM jsonb_array_elements_text(data::jsonb -> 'selected_farmer_ids') AS selected(id)
+               WHERE selected.id IN (:farmer_ids)
+             )))
+      SQL
+      farmer_ids: farmer_ids
     )
   end
 
@@ -5763,9 +5771,33 @@ class ModulesController < ApplicationController
     end
   end
 
-  def farmer_training_participation_rows_from_sql(status, month_name:, fcoc_name:)
+  # Mirrors training_record_week_number in SQL so the participation list can filter
+  # training records to one week of the month: week = LEAST(((day - 1) / 7) + 1, 4),
+  # day taken from training_date (DD/MM/YYYY or YYYY-MM-DD), falling back to created_at.
+  def training_participation_week_filter_sql(week_number)
+    week = week_number.to_i
+    return "" unless (1..4).include?(week)
+
+    <<~SQL.squish
+      AND LEAST(
+        ((COALESCE(
+            CASE
+              WHEN btrim(mr.data::jsonb ->> 'training_date') ~ '^[0-9]{1,2}/[0-9]{1,2}/[0-9]{4}'
+                THEN split_part(btrim(mr.data::jsonb ->> 'training_date'), '/', 1)::int
+              WHEN btrim(mr.data::jsonb ->> 'training_date') ~ '^[0-9]{4}-[0-9]{1,2}-[0-9]{1,2}'
+                THEN split_part(split_part(btrim(mr.data::jsonb ->> 'training_date'), '-', 3), 'T', 1)::int
+              ELSE NULL
+            END,
+            EXTRACT(DAY FROM mr.created_at)::int
+          ) - 1) / 7) + 1
+      , 4) = #{week}
+    SQL
+  end
+
+  def farmer_training_participation_rows_from_sql(status, month_name:, fcoc_name:, week_number: nil)
     selected_month = month_name.presence || "August"
     fco_ids = training_fcoc_ids_from_param(fcoc_name)
+    week_filter = training_participation_week_filter_sql(week_number)
 
     if status.to_s == "green" || status.to_s == "1_plus_trainings" || status.to_s == "more_than_1"
       fco_filter_sql = "AND LOWER(BTRIM(a.fco_id)) IN (:fco_ids)"
@@ -5785,6 +5817,7 @@ class ModulesController < ApplicationController
             WHERE mr.module_slug = 'training-form'
               AND LOWER(TRIM(mr.data::jsonb ->> 'month')) = :month_name
               AND LOWER(COALESCE(mr.data::jsonb ->> 'main_activity', '')) LIKE '%farmers'' training%'
+              #{week_filter}
         ), august_training AS (
             SELECT sf.farmer_id, tr.training_id, tr.created_at,
                 tr.training_date, tr.sub_activity, tr.training_method,
@@ -5889,6 +5922,7 @@ class ModulesController < ApplicationController
             WHERE mr.module_slug = 'training-form'
               AND LOWER(TRIM(mr.data::jsonb ->> 'month')) = :month_name
               AND LOWER(COALESCE(mr.data::jsonb ->> 'main_activity', '')) LIKE '%farmers'' training%'
+              #{week_filter}
         ), august_training AS (
             SELECT sf.farmer_id, tr.training_id, tr.created_at,
                 tr.training_date, tr.sub_activity, tr.training_method,

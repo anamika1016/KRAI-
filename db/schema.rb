@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2026_09_11_111724) do
+ActiveRecord::Schema[8.1].define(version: 2026_09_11_170250) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "pg_catalog.plpgsql"
 
@@ -259,6 +259,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_09_11_111724) do
     t.text "data", null: false
     t.string "module_slug", null: false
     t.datetime "updated_at", null: false
+    t.index "(((data)::jsonb -> 'selected_farmer_ids'::text))", name: "index_training_forms_on_selected_farmer_ids", where: "((module_slug)::text = 'training-form'::text)", using: :gin
     t.index "(((data)::jsonb ->> 'bill_id'::text))", name: "index_module_records_bill_history_on_bill_id", where: "((module_slug)::text = 'jeevika-jankar-bill-approval-history'::text)"
     t.index "(((data)::jsonb ->> 'mobile_no'::text))", name: "index_module_records_new_users_on_mobile_no", where: "((module_slug)::text = 'new-user'::text)"
     t.index "(((data)::jsonb ->> 'select_vrp'::text))", name: "index_module_records_bills_on_select_vrp", where: "((module_slug)::text = 'jeevika-jankar-bill-process'::text)"
