@@ -2150,8 +2150,10 @@ body {
   display: none;
   min-width: 240px;
   max-width: 300px;
-  max-height: min(70vh, 440px);
+  max-height: 240px;
   overflow-y: auto;
+  scrollbar-width: thin;
+  scrollbar-color: #9db6bd transparent;
   padding: 8px 10px;
   border: 1px solid rgba(68, 121, 135, 0.22);
   border-radius: 8px;
@@ -2162,6 +2164,19 @@ body {
   line-height: 1.35;
   white-space: normal;
   word-break: break-word;
+}
+
+.dashboard-card-hover-popup::-webkit-scrollbar {
+  width: 8px;
+}
+
+.dashboard-card-hover-popup::-webkit-scrollbar-thumb {
+  background: #9db6bd;
+  border-radius: 8px;
+}
+
+.dashboard-card-hover-popup::-webkit-scrollbar-track {
+  background: transparent;
 }
 
 .dashboard-card-hover-popup span {
@@ -2179,7 +2194,7 @@ body {
 .red-popup-breakdown {
   min-width: 200px;
   max-width: 280px;
-  max-height: min(70vh, 440px);
+  max-height: 240px;
   padding: 6px 10px;
   font-size: 0.82rem;
 }
@@ -2243,6 +2258,13 @@ body {
   border-color: rgba(67, 137, 150, 0.35);
   color: #255a64;
   background: rgba(67, 137, 150, 0.08);
+}
+
+/* The Farmer Training Participation Status card holds hover popups (Pending / red
+   breakdown) that open upward; the panel's overflow:hidden was clipping them.
+   Allow this panel to overflow so the full popup data is visible. */
+.training-participation-status-card.training-status-panel {
+  overflow: visible;
 }
 
 .training-participation-boxes.compact .training-participation-box {
