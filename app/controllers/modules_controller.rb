@@ -1125,8 +1125,11 @@ class ModulesController < ApplicationController
     @training_participation_page_rows = @training_participation_rows.slice((@training_participation_page - 1) * @training_participation_per_page, @training_participation_per_page) || []
 
     if @mapped_farmer_details
-      @training_participation_total_pages = 1
-      @training_participation_page = 1
+      # Paginate the rendered rows so the browser does not build all 9k+ <tr> at once
+      # (that froze the page). Counts and exports still use the full result below.
+      @training_participation_total_count = @mapped_farmer_details.rows.size
+      @training_participation_total_pages = [(@training_participation_total_count.to_f / @training_participation_per_page).ceil, 1].max
+      @training_participation_page = [[@training_participation_page, @training_participation_total_pages].min, 1].max
     end
     if @mapped_farmer_details && request.format.csv?
       send_data(CSV.generate { |csv| csv << @mapped_farmer_details.columns; @mapped_farmer_details.rows.each { |row| csv << row } },
@@ -1137,6 +1140,12 @@ class ModulesController < ApplicationController
       send_xlsx(headers: @mapped_farmer_details.columns, rows: @mapped_farmer_details.rows,
         filename: "#{@training_participation_status}-farmers-#{selected_month.presence || 'August'}.xlsx", sheet_name: "Farmer Details")
       return
+    end
+
+    # HTML only: render just the current page's rows so the DOM stays small (no freeze).
+    if @mapped_farmer_details
+      page_rows = @mapped_farmer_details.rows.slice((@training_participation_page - 1) * @training_participation_per_page, @training_participation_per_page) || []
+      @mapped_farmer_details = ActiveRecord::Result.new(@mapped_farmer_details.columns, page_rows)
     end
 
     respond_to do |format|
@@ -6034,7 +6043,9 @@ class ModulesController < ApplicationController
         { farmer_id: row["id"].to_s, farmer_name: row["farmer_name"], father_name: row["father_name"],
           mobile_no: row["mobile_no"], tracenet_no: row["tracenet_no"], ics: row["ics_name"],
           village: row["village_name"], fcoc: row["fco"], cluster_incharge: row["cluster_incharge"],
-          vrp: row["vrp_name"], months: selected_month, status_label: row["status"] }
+          vrp: row["vrp_name"], months: selected_month, status_label: row["status"],
+          training_register_urls: row["training_register_urls"].to_s.split(",").map(&:strip).reject(&:blank?),
+          training_photo_urls: row["training_photo_urls"].to_s.split(",").map(&:strip).reject(&:blank?) }
       end
     end
 

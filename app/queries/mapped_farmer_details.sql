@@ -76,7 +76,17 @@ august_training_done AS (
                 ''
             ),
             ', '
-        ) AS main_activity_type
+        ) AS main_activity_type,
+
+        STRING_AGG(
+            DISTINCT NULLIF(BTRIM(mr.data::jsonb ->> 'training_register_upload'), ''),
+            ', '
+        ) AS training_register_urls,
+
+        STRING_AGG(
+            DISTINCT NULLIF(BTRIM(mr.data::jsonb ->> 'training_photo_upload_with_geo_tag'), ''),
+            ', '
+        ) AS training_photo_urls
 
     FROM public.module_records mr
 
@@ -148,6 +158,9 @@ SELECT
 
     am.main_activities,
     am.sub_activities,
+
+    td.training_register_urls,
+    td.training_photo_urls,
 
 
     CASE
