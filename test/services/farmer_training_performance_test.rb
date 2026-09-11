@@ -26,6 +26,6 @@ class FarmerTrainingPerformanceTest < ActiveSupport::TestCase
     c.define_singleton_method(:vrp_target_bill_completed_quantity) { |*_| 0 }
     target = TargetMapping.new(id: 123, target_quantity: 0)
     # No fallback index query should occur even when the supplied index is empty.
-    c.send(:vrp_target_completed_quantity, target, [], activity_settings: {}, sub_activity_settings: {}, other_target_achievement_index: {})
+    assert_equal 0, c.send(:vrp_target_completed_quantity, target, [], activity_settings: {}, sub_activity_settings: {}, other_target_achievement_index: {})
   end
 end

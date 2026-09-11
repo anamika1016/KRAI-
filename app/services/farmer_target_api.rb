@@ -51,14 +51,15 @@ class FarmerTargetApi
     end
   end
 
-  def form_options
+  def form_options(include_farmers: true)
     case @module_slug
     when "training-form"
+      mappings = training_target_mappings(include_farmers: include_farmers)
       {
         autofill: target_form_autofill,
         current_vrp: current_seed_target_vrp_option,
-        months: master_month_options(training_target_mappings.map { |m| m[:month] }),
-        target_mappings: training_target_mappings,
+        months: master_month_options(mappings.map { |mapping| mapping[:month] }),
+        target_mappings: mappings,
         training_methods: ["Input Demo INM", "Input Demo PM", "FFS", "OPG Training"]
       }
     when *OTHER_TARGET_SLUGS
@@ -74,6 +75,24 @@ class FarmerTargetApi
       }
     else
       {}
+    end
+  end
+
+  def training_months
+    master_month_options(training_target_mappings(include_farmers: false).map { |mapping| mapping[:month] })
+  end
+
+  # Filter mapping metadata first, then load farmer details only for that result.
+  def training_mappings_with_farmers(mappings)
+    return [] if mappings.empty?
+
+    targets = training_target_scope.where(id: mappings.map { |mapping| mapping[:target_mapping_id] }).to_a
+    preload_training_farmers_for_targets!(targets)
+    by_id = targets.index_by { |target| target.id.to_s }
+    mappings.map do |mapping|
+      target = by_id.fetch(mapping[:target_mapping_id].to_s)
+      ids = training_target_farmer_ids(target)
+      mapping.merge(completed_farmer_ids: completed_training_farmer_ids_for(target, ids), farmers: training_farmers_for_ids(ids))
     end
   end
 

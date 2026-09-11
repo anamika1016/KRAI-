@@ -46,8 +46,9 @@ module Api
       end
 
       def form_data
-        options = farmer_target_api.form_options
+        options = farmer_target_api.form_options(include_farmers: false)
         mappings = filter_form_mappings(Array(options[:target_mappings]))
+        mappings = farmer_target_api.training_mappings_with_farmers(mappings)
         farmers, available_farmers, completed_farmer_ids = farmer_lists_for(mappings)
 
         render json: {
@@ -74,7 +75,7 @@ module Api
       end
 
       def farmers
-        mappings = filter_form_mappings(Array(farmer_target_api.form_options[:target_mappings]))
+        mappings = filtered_training_mappings_with_farmers
         all_farmers, available_farmers, completed_farmer_ids = farmer_lists_for(mappings)
 
         render json: {
@@ -90,7 +91,7 @@ module Api
       end
 
       def months
-        values = farmer_target_api.form_options[:months]
+        values = farmer_target_api.training_months
 
         render json: {
           success: true,
@@ -101,7 +102,7 @@ module Api
       end
 
       def mapped_farmers
-        mappings = filter_form_mappings(Array(farmer_target_api.form_options[:target_mappings]))
+        mappings = filtered_training_mappings_with_farmers
         farmers, _available_farmers, completed_farmer_ids = farmer_lists_for(mappings)
         rows = farmers.map do |farmer|
           completed = completed_farmer_ids.include?(farmer[:id].to_s)
@@ -121,6 +122,11 @@ module Api
       end
 
       private
+
+      def filtered_training_mappings_with_farmers
+        mappings = filter_form_mappings(Array(farmer_target_api.form_options(include_farmers: false)[:target_mappings]))
+        farmer_target_api.training_mappings_with_farmers(mappings)
+      end
 
       def filter_form_mappings(mappings)
         mappings.select do |mapping|

@@ -3,6 +3,28 @@ require "minitest/autorun"
 require "ostruct"
 
 class DashboardLogicUnitTest < Minitest::Test
+  def test_other_target_lookup_keeps_aliases_order_and_scope_changes
+    c = controller
+    first = OpenStruct.new(id: 1, vrp_id: 7, month_name: " August ", vrp: OpenStruct.new(name: "JJ Name", user_name: "jj-login"))
+    second = OpenStruct.new(id: 2, vrp_id: 7, month_name: "August", vrp: first.vrp)
+    july = OpenStruct.new(id: 3, vrp_id: 7, month_name: "July", vrp: first.vrp)
+    c.instance_variable_set(:@other_target_candidate_targets, [first, second, july])
+    %w[7 jj-login].push("jj name").each do |identity|
+      assert_equal [first, second], c.send(:other_target_candidates_for_match, identity, "august")
+    end
+    assert_equal [july], c.send(:other_target_candidates_for_match, "7", "july")
+    c.instance_variable_set(:@other_target_candidate_targets, [second])
+    assert_equal [second], c.send(:other_target_candidates_for_match, "7", "august")
+  end
+
+  def test_blank_assignment_group_does_not_load_global_dashboard_targets
+    c = controller
+    c.define_singleton_method(:dashboard_target_mappings) { raise "unnecessary global target load" }
+    c.define_singleton_method(:dashboard_target_assignment_signature) { |_| ["signature"] }
+    target = OpenStruct.new(mapping_group_key: "", main_activity_name: "Training", activity_name: "Soil")
+    assert_equal ["signature", "training", "soil"], c.send(:dashboard_target_assignment_key, target)
+  end
+
   def test_widget_cache_reuses_summary_but_keeps_filters_and_users_isolated
     build = lambda do |query, user_id = "1", version = "v1"|
       c = Api::V1::JeevikaJankarDashboardController.new

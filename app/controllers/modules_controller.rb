@@ -4311,8 +4311,10 @@ class ModulesController < ApplicationController
 
   def dashboard_target_assignment_key(target, group_key_counts = nil)
     group_key = target.mapping_group_key.to_s.strip if target.respond_to?(:mapping_group_key)
-    group_key_counts ||= dashboard_target_mapping_group_key_counts(dashboard_target_mappings)
-    return [:mapping_group_key, group_key] if group_key.present? && group_key_counts[group_key].to_i > 1
+    if group_key.present?
+      group_key_counts ||= dashboard_target_mapping_group_key_counts(dashboard_target_mappings)
+      return [:mapping_group_key, group_key] if group_key_counts[group_key].to_i > 1
+    end
 
     dashboard_target_assignment_signature(target) + [
       normalize_dashboard_text(target.main_activity_name),
@@ -5560,7 +5562,7 @@ class ModulesController < ApplicationController
 
   def farmer_training_no_training_count_and_popups(month_name:, fcoc_name:)
     @farmer_training_no_training_count_and_popups_cache ||= {}
-    key = [month_name, fcoc_name]
+    key = [month_name, fcoc_name, selected_participation_sql_week]
     return @farmer_training_no_training_count_and_popups_cache[key] if @farmer_training_no_training_count_and_popups_cache.key?(key)
 
     @farmer_training_no_training_count_and_popups_cache[key] = compute_farmer_training_no_training_count_and_popups(month_name: month_name, fcoc_name: fcoc_name)
@@ -5610,6 +5612,7 @@ class ModulesController < ApplicationController
           ) AS sf(farmer_id)
           WHERE mr.module_slug = 'training-form'
             AND LOWER(TRIM(mr.data::jsonb ->> 'month')) = :month_name
+            #{training_participation_week_filter_sql(selected_participation_sql_week)}
             AND LOWER(COALESCE(mr.data::jsonb ->> 'main_activity', '')) LIKE '%farmers'' training%'
       )
       SELECT
@@ -5698,7 +5701,7 @@ class ModulesController < ApplicationController
 
   def farmer_training_yellow_farmer_count_and_popups(month_name:, fcoc_name:)
     @farmer_training_yellow_farmer_count_and_popups_cache ||= {}
-    key = [month_name, fcoc_name]
+    key = [month_name, fcoc_name, selected_participation_sql_week]
     return @farmer_training_yellow_farmer_count_and_popups_cache[key] if @farmer_training_yellow_farmer_count_and_popups_cache.key?(key)
 
     @farmer_training_yellow_farmer_count_and_popups_cache[key] = compute_farmer_training_yellow_farmer_count_and_popups(month_name: month_name, fcoc_name: fcoc_name)
@@ -5711,7 +5714,7 @@ class ModulesController < ApplicationController
 
   def farmer_training_green_farmer_count_and_popups(month_name:, fcoc_name:)
     @farmer_training_green_farmer_count_and_popups_cache ||= {}
-    key = [month_name, fcoc_name]
+    key = [month_name, fcoc_name, selected_participation_sql_week]
     return @farmer_training_green_farmer_count_and_popups_cache[key] if @farmer_training_green_farmer_count_and_popups_cache.key?(key)
 
     @farmer_training_green_farmer_count_and_popups_cache[key] = compute_farmer_training_green_farmer_count_and_popups(month_name: month_name, fcoc_name: fcoc_name)
@@ -5726,7 +5729,7 @@ class ModulesController < ApplicationController
     @farmer_training_attendance_counts_by_fco ||= {}
     fco_ids = training_fcoc_ids_from_param(fcoc_name).map(&:downcase)
     month = normalize_dashboard_text(month_name.presence || "August")
-    key = [month, fco_ids.sort]
+    key = [month, fco_ids.sort, selected_participation_sql_week]
     return @farmer_training_attendance_counts_by_fco[key] if @farmer_training_attendance_counts_by_fco.key?(key)
 
     sql = <<~SQL
@@ -5738,6 +5741,7 @@ class ModulesController < ApplicationController
         ) AS sf(farmer_id)
         WHERE mr.module_slug = 'training-form'
           AND LOWER(TRIM(mr.data::jsonb ->> 'month')) = :month_name
+          #{training_participation_week_filter_sql(selected_participation_sql_week)}
           AND LOWER(COALESCE(mr.data::jsonb ->> 'main_activity', '')) LIKE '%farmers'' training%'
         GROUP BY sf.farmer_id
       )
@@ -5774,6 +5778,11 @@ class ModulesController < ApplicationController
   # Mirrors training_record_week_number in SQL so the participation list can filter
   # training records to one week of the month: week = LEAST(((day - 1) / 7) + 1, 4),
   # day taken from training_date (DD/MM/YYYY or YYYY-MM-DD), falling back to created_at.
+  def selected_participation_sql_week
+    value = dashboard_filter_param(:week, :weekly_target_week).to_i
+    (1..4).include?(value) ? value : nil
+  end
+
   def training_participation_week_filter_sql(week_number)
     week = week_number.to_i
     return "" unless (1..4).include?(week)
@@ -5785,7 +5794,7 @@ class ModulesController < ApplicationController
               WHEN btrim(mr.data::jsonb ->> 'training_date') ~ '^[0-9]{1,2}/[0-9]{1,2}/[0-9]{4}'
                 THEN split_part(btrim(mr.data::jsonb ->> 'training_date'), '/', 1)::int
               WHEN btrim(mr.data::jsonb ->> 'training_date') ~ '^[0-9]{4}-[0-9]{1,2}-[0-9]{1,2}'
-                THEN split_part(split_part(btrim(mr.data::jsonb ->> 'training_date'), '-', 3), 'T', 1)::int
+                THEN substring(btrim(mr.data::jsonb ->> 'training_date') from '^[0-9]{4}-[0-9]{1,2}-([0-9]{1,2})')::int
               ELSE NULL
             END,
             EXTRACT(DAY FROM mr.created_at)::int
@@ -5797,7 +5806,7 @@ class ModulesController < ApplicationController
   def farmer_training_participation_rows_from_sql(status, month_name:, fcoc_name:, week_number: nil)
     selected_month = month_name.presence || "August"
     fco_ids = training_fcoc_ids_from_param(fcoc_name)
-    week_filter = training_participation_week_filter_sql(week_number)
+    week_filter = training_participation_week_filter_sql(week_number || selected_participation_sql_week)
 
     if status.to_s == "green" || status.to_s == "1_plus_trainings" || status.to_s == "more_than_1"
       fco_filter_sql = "AND LOWER(BTRIM(a.fco_id)) IN (:fco_ids)"
@@ -6108,6 +6117,8 @@ class ModulesController < ApplicationController
     else # "red", "total_red", "pending"
       Rails.root.join("app/queries/no_training_farmer_details.sql").read
     end
+
+    sql = sql.gsub("WHERE mr.module_slug = 'training-form'", "WHERE mr.module_slug = 'training-form' #{week_filter}")
 
     if %w[unique mapped red pending total_red].include?(status.to_s)
       farmer_scope = dashboard_visible_farmer_scope.where(fco_id: fco_ids)
@@ -10898,11 +10909,27 @@ class ModulesController < ApplicationController
     selected_subject = normalize_dashboard_text(data["training_subject"].presence || data["sub_activity"])
     return direct_ids if [selected_vrp, selected_month, selected_ics, selected_village, selected_topic, selected_subject].any?(&:blank?)
 
-    matched_ids = other_target_candidate_targets.select do |target|
+    matched_ids = other_target_candidates_for_match(selected_vrp, selected_month).select do |target|
       other_target_record_matches_target?(target, selected_vrp, selected_month, selected_ics, selected_village, selected_topic, selected_subject)
     end.map { |target| target.id.to_s }
 
     (direct_ids + matched_ids).uniq
+  end
+
+  def other_target_candidates_for_match(selected_vrp, selected_month)
+    targets = other_target_candidate_targets
+    unless @other_target_match_source.equal?(targets)
+      @other_target_match_source = targets
+      @other_target_match_index = Hash.new { |hash, key| hash[key] = [] }
+      targets.each do |target|
+        month = normalize_dashboard_text(target.month_name)
+        [target.vrp_id, target.vrp&.name, target.vrp&.user_name]
+          .map { |value| normalize_dashboard_text(value) }.reject(&:blank?).uniq.each do |identity|
+          @other_target_match_index[[identity, month]] << target
+        end
+      end
+    end
+    @other_target_match_index.fetch([selected_vrp, selected_month], [])
   end
 
   def other_target_candidate_targets

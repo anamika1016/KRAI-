@@ -48,6 +48,24 @@ class DashboardSqlProjectionTest < ActiveSupport::TestCase
       counts.slice(:total, :green, :yellow, :red, :target_map_total, :completed_target_map_total))
   end
 
+  test "weekly cards and lists use attendance in that week while all weeks retains monthly data" do
+    expected = { nil => [2, 1, 1], 1 => [3, 0, 1], 2 => [1, 0, 3], 3 => [0, 0, 4], 4 => [0, 0, 4] }
+    expected.each do |week, (yellow, green, red)|
+      c = ModulesController.new
+      c.params = ActionController::Parameters.new(weekly_target_week: week)
+      c.define_singleton_method(:current_app_user) { { "user_type" => "admin" } }
+      # The monthly yellow count counts distinct training records, preserving
+      # its existing treatment of duplicate farmer IDs within one record.
+      assert_equal yellow, c.send(:farmer_training_yellow_farmer_count_and_popups, month_name: "August", fcoc_name: "1004").first, "yellow W#{week}"
+      assert_equal green, c.send(:farmer_training_green_farmer_count_and_popups, month_name: "August", fcoc_name: "1004").first, "green W#{week}"
+      assert_equal red, c.send(:farmer_training_no_training_count_and_popups, month_name: "August", fcoc_name: "1004").first, "red W#{week}"
+      result = c.send(:farmer_training_participation_rows_from_sql, "green", month_name: "August", fcoc_name: "1004")
+      assert_equal green, result.size
+      result = c.send(:farmer_training_participation_rows_from_sql, "red", month_name: "August", fcoc_name: "1004")
+      assert_equal red, result.size
+    end
+  end
+
   private
 
   def rows(status)
