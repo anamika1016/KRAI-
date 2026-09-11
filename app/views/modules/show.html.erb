@@ -246,7 +246,11 @@
             </tr>
           </thead>
           <tbody>
-            <% farmer_rows = detail_items.flat_map { |item| Array(item["farmer_details"]).map { |farmer| farmer.merge("village" => item["village"], "main_activity" => item["main_activity"], "activity" => item["activity"]) } } %>
+            <% farmer_rows = detail_items.flat_map { |item|
+                 details = item["farmer_details"]
+                 details = details.values if details.is_a?(Hash)
+                 Array(details).select { |farmer| farmer.is_a?(Hash) }.map { |farmer| farmer.merge("village" => item["village"], "main_activity" => item["main_activity"], "activity" => item["activity"]) }
+               } %>
             <% if farmer_rows.any? %>
               <% farmer_rows.each do |farmer| %>
                 <tr>
