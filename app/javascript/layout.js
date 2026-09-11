@@ -5678,7 +5678,8 @@ function initDeferredLayoutPage() {
 
       if (totalTargetInput) totalTargetInput.value = String(totalTarget);
       if (totalAchievementInput) totalAchievementInput.value = String(totalAchievement);
-      if (grandTotalInput) grandTotalInput.value = grandTotal.toFixed(2);
+      // Total Payment is a fixed/manual amount (₹5000 default), not derived from the
+      // removed Rate/Amount columns, so it is no longer auto-overwritten here.
       syncPaymentRemarks();
     };
 
@@ -5804,12 +5805,13 @@ function initDeferredLayoutPage() {
                 ? `<input type="number" min="0" step="any" name="${inputPrefix}[achievement_count]" value="${escapeHtml(achievementCount)}" data-jeevika-achievement>`
                 : `<span data-jeevika-achievement-display>${escapeHtml(achievementCount)}</span>`}
             </td>
-            <td><span data-jeevika-pending-display>${escapeHtml(pendingCount)}</span></td>
-            <td><input type="number" min="0" step="0.01" name="${inputPrefix}[rate]" value="${escapeHtml(rate)}" data-jeevika-rate></td>
-            <td><input type="number" min="0" step="0.01" name="${inputPrefix}[amount]" value="${escapeHtml(savedItem.amount || "0.00")}" data-jeevika-amount readonly></td>
+            <td><span data-jeevika-pending-display>${escapeHtml(pendingCount)}</span>
+              <input type="hidden" name="${inputPrefix}[rate]" value="${escapeHtml(rate)}" data-jeevika-rate>
+              <input type="hidden" name="${inputPrefix}[amount]" value="${escapeHtml(savedItem.amount || "0.00")}" data-jeevika-amount>
+            </td>
           </tr>
           <tr class="jeevika-farmer-row">
-            <td colspan="9">
+            <td colspan="7">
               <details class="jeevika-farmer-details">
                 <summary data-jeevika-farmer-summary="${index}">Farmer List <span data-jeevika-farmer-achievement>${escapeHtml(achievementCount)}</span> / ${escapeHtml(assignedCount)}</summary>
                 ${farmerDetailsHtml(row.farmer_details || [])}
