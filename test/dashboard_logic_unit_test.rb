@@ -3,6 +3,35 @@ require "minitest/autorun"
 require "ostruct"
 
 class DashboardLogicUnitTest < Minitest::Test
+  def test_widget_cache_reuses_summary_but_keeps_filters_and_users_isolated
+    build = lambda do |query, user_id = "1", version = "v1"|
+      c = Api::V1::JeevikaJankarDashboardController.new
+      request = ActionDispatch::TestRequest.create
+      request.set_header("QUERY_STRING", query)
+      c.request = request
+      c.define_singleton_method(:current_api_user_payload) { { "id" => user_id, "user_type" => "admin" } }
+      c.define_singleton_method(:cache_table_version) { |_| version }
+      c.define_singleton_method(:cache_module_records_version) { |_| version }
+      c
+    end
+    first = build.call("month=July&widget=mapped_farmer")
+    second = build.call("widget=total_mapped_sub_activities&month=July")
+    key = first.send(:admin_dashboard_cache_key, "summary")
+    assert_equal key, second.send(:admin_dashboard_cache_key, "summary")
+    refute_equal key, build.call("month=August").send(:admin_dashboard_cache_key, "summary")
+    refute_equal key, build.call("month=July", "2").send(:admin_dashboard_cache_key, "summary")
+    refute_equal key, build.call("month=July", "1", "v2").send(:admin_dashboard_cache_key, "summary")
+    original_cache = Rails.cache
+    Rails.cache = ActiveSupport::Cache::MemoryStore.new
+    calls = 0
+    [first, second].each do |c|
+      assert_equal({ count: 42 }, c.send(:cache_admin_dashboard_payload, "summary") { calls += 1; { count: 42 } })
+    end
+    assert_equal 1, calls
+  ensure
+    Rails.cache = original_cache if original_cache
+  end
+
   def controller(params = {})
     instance = ModulesController.new
     instance.params = ActionController::Parameters.new(params)

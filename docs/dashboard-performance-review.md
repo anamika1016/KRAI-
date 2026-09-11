@@ -1,5 +1,12 @@
 # Dashboard and Jeevika payment review
 
+September 11 follow-up:
+
+- `vrp_dashboard_bills` previously loaded and normalized the entire legacy bill table once per JJ. It now builds a request-local label index once, preserving ID/name/username/mobile/combined-label matching and database row ordering. This removes repeated queries and ActiveRecord hydration as JJ count grows.
+- Admin cache and fill-lock keys exclude the `widget` query parameter, since it only selects a field from the common summary. Actual filters, user identity, table versions and TTL remain unchanged. Routes that already put the widget in the path already shared their summary key.
+- Validation: 12 database regression tests / 79 assertions and 6 database-free tests / 21 assertions passed. Coverage includes legacy bill matching/order, one bill query across multiple JJs, widget cache reuse, user/filter isolation, and version invalidation.
+- A read-only local August admin summary comparison returned identical complete payloads. One sequential before/after sample measured 1,063 ms / 140 SQL notifications and 898 ms / 139 notifications. The second run benefits from process/database warm-up; this is not a reliable production speedup estimate. Neither supplied slow fingerprint was among the five slowest local queries. Production SQL/execution plans and same-filter request measurements are still needed to diagnose those specific 4–11-second queries and verify production latency. No production deployment or training validation changes were made.
+
 The supplied production logs show login POST responses around 7–17 ms, but admin dashboard requests around 35–38 seconds, mostly ActiveRecord time. The reported Bill List request executed 1,167 queries and Payment List 578. These are production observations from the supplied log, not results from the modified code.
 
 Changes:

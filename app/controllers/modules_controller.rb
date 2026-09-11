@@ -2191,9 +2191,17 @@ class ModulesController < ApplicationController
     return [] unless model_ready?(:ModuleRecord)
 
     labels = vrp_bill_match_labels(vrp)
-    ModuleRecord.where(module_slug: "vrp-bill-add").order(created_at: :desc).select do |record|
-      labels.include?(normalize_dashboard_text(record.data["select_vrp"]))
+    # Progress is calculated for many JJs in one dashboard request. Load and
+    # normalize the bill rows once, retaining the original database ordering.
+    @vrp_dashboard_bills_by_label ||= begin
+      index = Hash.new { |hash, key| hash[key] = [] }
+      ModuleRecord.where(module_slug: "vrp-bill-add").order(created_at: :desc).each_with_index do |record, position|
+        index[normalize_dashboard_text(record.data["select_vrp"])] << [position, record]
+      end
+      index
     end
+    labels.flat_map { |label| @vrp_dashboard_bills_by_label.fetch(label, []) }
+      .sort_by(&:first).map(&:last)
   end
 
   def vrp_bill_match_labels(vrp)

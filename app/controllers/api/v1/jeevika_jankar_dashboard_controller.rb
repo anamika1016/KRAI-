@@ -418,7 +418,7 @@ module Api
       end
 
       def cache_admin_dashboard_payload(suffix)
-        fill_key = [suffix, current_api_user_payload, request.query_parameters.to_h.sort.to_h].to_json
+        fill_key = [suffix, current_api_user_payload, admin_dashboard_cache_filters].to_json
         DashboardCacheFill.synchronize(fill_key) do
           Rails.cache.fetch(admin_dashboard_cache_key(suffix), expires_in: 10.minutes, race_condition_ttl: 30.seconds) { yield }
         end
@@ -445,9 +445,15 @@ module Api
             add-village
           ])
         ]
-        filters = request.query_parameters.to_h.sort.to_h
+        filters = admin_dashboard_cache_filters
         user_key = current_api_user_payload.slice("id", "user_id", "username", "user_name", "user_type").sort.to_h
         ["api-v1-admin-dashboard-work-status-v5", suffix, user_key, filters, version_parts].to_json
+      end
+
+      def admin_dashboard_cache_filters
+        # The widget selects a value from the same summary; it does not change
+        # any calculation. All cards with identical filters share a cache fill.
+        request.query_parameters.to_h.except("widget").sort.to_h
       end
 
       def cache_table_version(model)

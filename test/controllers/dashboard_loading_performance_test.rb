@@ -1,6 +1,31 @@
 require "test_helper"
 
 class DashboardLoadingPerformanceTest < ActiveSupport::TestCase
+  test "progress bill lookup loads once and preserves all legacy labels and order" do
+    controller = ModulesController.new
+    first = Vrp.new(id: 81001, name: "Performance JJ", user_name: "perf-jj", mobile_no: "9876500001")
+    second = Vrp.new(id: 81002, name: "Other JJ", user_name: "other-jj", mobile_no: "9876500002")
+    labels = [first.id.to_s, " PERFORMANCE JJ ", first.user_name, first.mobile_no,
+      "Performance JJ - 9876500001", second.id.to_s, "unrelated", ""]
+    labels.each_with_index do |label, index|
+      ModuleRecord.create!(module_slug: "vrp-bill-add", data: { "select_vrp" => label }, created_at: index.minutes.ago)
+    end
+    original_rows = ModuleRecord.where(module_slug: "vrp-bill-add").order(created_at: :desc).to_a
+    queries = []
+    subscriber = ActiveSupport::Notifications.subscribe("sql.active_record") do |*args|
+      payload = args.last
+      queries << payload[:sql] if payload[:sql].include?('"module_records"') && payload[:name] != "SCHEMA"
+    end
+    [first, second, first].each do |vrp|
+      matches = controller.send(:vrp_bill_match_labels, vrp)
+      expected = original_rows.select { |record| matches.include?(controller.send(:normalize_dashboard_text, record.data["select_vrp"])) }
+      assert_equal expected.map(&:id), controller.send(:vrp_dashboard_bills, vrp).map(&:id)
+    end
+    assert_equal 1, queries.size, "Bill rows should be loaded once across all JJs"
+  ensure
+    ActiveSupport::Notifications.unsubscribe(subscriber) if subscriber
+  end
+
   test "SQL group totals preserve nulls, duplicate locations and visible scope" do
     rows = [
       { fco_id: "1004", ics_id: "A", village_id: "V", tracenet_no: "one" },
