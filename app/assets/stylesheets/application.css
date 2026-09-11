@@ -3784,18 +3784,57 @@ body {
 .module-form-grid select,
 .module-form-grid textarea {
   width: 100%;
-  min-height: 42px;
+  min-height: 44px;
   border: 1px solid var(--vrp-line);
-  border-radius: 8px;
-  background: #fff;
+  border-radius: 10px;
+  background: #fbfdfd;
   color: var(--vrp-text);
   font: inherit;
-  padding: 9px 11px;
+  padding: 10px 12px;
   outline: none;
+  transition: border-color 0.15s ease, box-shadow 0.15s ease, background 0.15s ease;
 }
 
 .module-form-grid textarea {
   resize: vertical;
+}
+
+/* Nicer interactive states for the module entry forms (UI only). */
+.module-form-grid input:hover,
+.module-form-grid select:hover,
+.module-form-grid textarea:hover {
+  border-color: #b6c6cc;
+  background: #ffffff;
+}
+
+.module-form-grid input:focus,
+.module-form-grid select:focus,
+.module-form-grid textarea:focus {
+  border-color: var(--vrp-accent);
+  background: #ffffff;
+  box-shadow: 0 0 0 3px rgba(93, 140, 146, 0.16);
+}
+
+.module-form-grid input::placeholder,
+.module-form-grid textarea::placeholder {
+  color: #9aa9b0;
+}
+
+.module-form-grid label {
+  letter-spacing: 0.01em;
+}
+
+.module-form-grid label span {
+  color: #4a5a62;
+  font-size: 0.8rem;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+}
+
+.module-form-grid label span em {
+  color: #c26060;
+  font-style: normal;
 }
 
 .approval-channel-card {

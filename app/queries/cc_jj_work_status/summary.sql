@@ -1,36 +1,4 @@
-WITH month_any_mapping AS (
-    SELECT
-        CASE LOWER(TRIM(t.fco_id)) WHEN 'sausar' THEN '1004' WHEN 'turekela' THEN '1006' ELSE TRIM(t.fco_id) END AS fco_id,
-        v.afl_id,
-        STRING_AGG(DISTINCT t.vrp_id::text, ', ') AS vrp_ids
-    FROM public.target_mappings t
-    CROSS JOIN LATERAL jsonb_array_elements_text(
-        t.afl_ids::jsonb
-    ) AS v(afl_id)
-    WHERE %{target_month_filter}
-    GROUP BY
-        CASE LOWER(TRIM(t.fco_id)) WHEN 'sausar' THEN '1004' WHEN 'turekela' THEN '1006' ELSE TRIM(t.fco_id) END,
-        v.afl_id
-),
-
-month_training_mapping AS (
-    SELECT
-        CASE LOWER(TRIM(t.fco_id)) WHEN 'sausar' THEN '1004' WHEN 'turekela' THEN '1006' ELSE TRIM(t.fco_id) END AS fco_id,
-        v.afl_id,
-        STRING_AGG(DISTINCT t.vrp_id::text, ', ') AS training_vrp_ids
-    FROM public.target_mappings t
-    CROSS JOIN LATERAL jsonb_array_elements_text(
-        t.afl_ids::jsonb
-    ) AS v(afl_id)
-    WHERE %{target_month_filter}
-      AND LOWER(COALESCE(t.main_activity_name, ''))
-          LIKE '%farmers'' training%'
-    GROUP BY
-        CASE LOWER(TRIM(t.fco_id)) WHEN 'sausar' THEN '1004' WHEN 'turekela' THEN '1006' ELSE TRIM(t.fco_id) END,
-        v.afl_id
-),
-
-vrp_details AS (
+WITH vrp_details AS (
     SELECT
         id::text AS vrp_id,
         name AS vrp_name,

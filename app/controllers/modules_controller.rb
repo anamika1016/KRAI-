@@ -9135,7 +9135,7 @@ class ModulesController < ApplicationController
   def module_records
     return [] unless ModuleRecord.table_exists?
 
-    records = ModuleRecord.where(module_slug: record_source_slug).to_a
+    records = bill_list_records_scope.to_a
     if record_source_slug == "jeevika-jankar-bill-process"
       records = if ["jeevika-jankar-payment-list", "jeevika-jankar-payment-list-detail"].include?(@slug) && jeevika_jankar_payment_module_access?(@slug)
         records.select { |record| jeevika_bill_final_approved?(record) }
@@ -9151,6 +9151,33 @@ class ModulesController < ApplicationController
     return records.sort_by { |record| jeevika_bill_list_sort_value(record) } if @slug == "jeevika-jankar-bill-list"
 
     records.sort_by { |record| module_record_sort_value(record) }
+  end
+
+  # The Jeevika Jankar Bill List renders a per-bill summary (activity names, totals)
+  # but never reads the farmer_details nested inside each bill_item — and that array
+  # is ~97% of a bill's JSON (77 KB avg). Strip it in SQL for the list so we don't
+  # parse megabytes of JSON per page load. Every displayed value stays identical;
+  # the detail/print view loads the full record separately, so it is unaffected.
+  def bill_list_records_scope
+    base = ModuleRecord.where(module_slug: record_source_slug)
+    return base unless @slug == "jeevika-jankar-bill-list"
+
+    base.select(<<~SQL.squish)
+      module_records.id, module_records.module_slug,
+      module_records.created_at, module_records.updated_at,
+      CASE
+        WHEN jsonb_typeof(module_records.data::jsonb -> 'bill_items') = 'array'
+        THEN jsonb_set(
+               module_records.data::jsonb, '{bill_items}',
+               COALESCE((
+                 SELECT jsonb_agg(elem - 'farmer_details' ORDER BY ord)
+                 FROM jsonb_array_elements(module_records.data::jsonb -> 'bill_items')
+                   WITH ORDINALITY AS t(elem, ord)
+               ), '[]'::jsonb)
+             )::text
+        ELSE module_records.data
+      END AS data
+    SQL
   end
 
   def training_edit_revision_for(record)

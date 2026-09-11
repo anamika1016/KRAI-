@@ -245,7 +245,7 @@ module ApplicationHelper
       "Activity Group Name" => "Main Activity Name",
       "Activity Name" => "Sub Activity Name",
       "VRP Activity" => "Sub Activity",
-      "External Input" => "Member",
+      "External Input" => "Internal Inspector Name",
       "VRP" => "Jeevika Jankar",
       "Select VRP" => "Select Jeevika Jankar",
       "VRP Name" => "Jeevika Jankar Name",
