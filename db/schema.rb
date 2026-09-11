@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2026_09_09_180000) do
+ActiveRecord::Schema[8.1].define(version: 2026_09_11_111724) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "pg_catalog.plpgsql"
 
@@ -271,6 +271,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_09_09_180000) do
     t.index "lower(btrim(((data)::jsonb ->> 'record_state'::text)))", name: "index_module_records_bills_on_normalized_record_state", where: "((module_slug)::text = 'jeevika-jankar-bill-process'::text)"
     t.index "lower(btrim(((data)::jsonb ->> 'status'::text)))", name: "index_module_records_bills_on_normalized_status", where: "((module_slug)::text = 'jeevika-jankar-bill-process'::text)"
     t.index "lower(btrim(((data)::jsonb ->> 'status'::text)))", name: "index_module_records_on_slug_normalized_status", where: "((module_slug)::text = ANY ((ARRAY['access-control'::character varying, 'new-user'::character varying, 'training-form'::character varying, 'seed-distribution-target'::character varying, 'papl360-target'::character varying])::text[]))"
+    t.index "lower(btrim(COALESCE(((data)::jsonb ->> 'main_activity'::text), ''::text)))", name: "index_training_forms_on_normalized_main_activity", where: "((module_slug)::text = 'training-form'::text)"
     t.index ["module_slug", "created_at"], name: "index_module_records_on_slug_and_created_at", order: { created_at: :desc }
     t.index ["module_slug", "updated_at", "id"], name: "index_module_records_on_slug_updated_at_id", order: { updated_at: :desc, id: :desc }
     t.index ["module_slug"], name: "index_module_records_on_module_slug"
@@ -410,11 +411,13 @@ ActiveRecord::Schema[8.1].define(version: 2026_09_09_180000) do
     t.integer "week_4_target"
     t.decimal "week_wise_opg_target", precision: 18, scale: 4
     t.index "lower(btrim((activity_name)::text))", name: "index_target_mappings_on_normalized_activity"
+    t.index "lower(btrim((activity_name)::text))", name: "index_targets_on_normalized_activity_name"
     t.index "lower(btrim((fco_id)::text))", name: "index_target_mappings_on_normalized_fco_id"
     t.index "lower(btrim((fco_name)::text))", name: "index_target_mappings_on_normalized_fco_name"
     t.index "lower(btrim((ics_id)::text))", name: "index_target_mappings_on_normalized_ics_id"
     t.index "lower(btrim((ics_name)::text))", name: "index_target_mappings_on_normalized_ics_name"
     t.index "lower(btrim((main_activity_name)::text))", name: "index_target_mappings_on_normalized_main_activity"
+    t.index "lower(btrim((main_activity_name)::text))", name: "index_targets_on_normalized_main_activity"
     t.index "lower(btrim((month_name)::text))", name: "index_target_mappings_on_normalized_month_name"
     t.index "lower(btrim((month_name)::text)), lower(btrim((fco_id)::text))", name: "index_targets_on_normalized_month_fco_id"
     t.index "lower(btrim((month_name)::text)), lower(btrim((fco_name)::text))", name: "index_targets_on_normalized_month_fco_name"

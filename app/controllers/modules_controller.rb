@@ -1097,6 +1097,25 @@ class ModulesController < ApplicationController
     @training_selected_sub_activity = selected_sub_activity
     @training_selected_fcoc = selected_fcoc
     @training_selected_method = selected_training_method
+    enrich_training_participation_list_rows!(@training_participation_rows, training_records, participation_targets)
+    @training_participation_search = params[:search].to_s.strip
+    if @mapped_farmer_details
+      columns = @mapped_farmer_details.columns | %w[training_register_urls training_photo_urls]
+      details = @mapped_farmer_details.to_a.each_with_index.map do |detail, index|
+        row = @training_participation_rows[index]
+        detail.merge("cluster_incharge" => row[:cluster_incharge],
+          "training_register_urls" => Array(row[:training_register_urls]).join(", "),
+          "training_photo_urls" => Array(row[:training_photo_urls]).join(", "))
+      end
+      if @training_participation_search.present?
+        matching = details.each_index.select { |index| training_participation_search_match?(details[index].values) }
+        details = matching.map { |index| details[index] }
+        @training_participation_rows = matching.map { |index| @training_participation_rows[index] }
+      end
+      @mapped_farmer_details = ActiveRecord::Result.new(columns, details.map { |detail| columns.map { |column| detail[column] } })
+    elsif @training_participation_search.present?
+      @training_participation_rows = @training_participation_rows.select { |row| training_participation_search_match?(row.values) }
+    end
     @training_participation_total_count = @training_participation_rows.size
     @training_participation_page = [params[:page].to_i, 1].max
     per_page_value = params[:per_page].present? ? params[:per_page].to_i : 20
@@ -6045,6 +6064,49 @@ class ModulesController < ApplicationController
     []
   end
 
+  # Enrich display fields only. SQL remains authoritative for list membership,
+  # attendance counts and statuses. Index once instead of querying per farmer.
+  def enrich_training_participation_list_rows!(rows, records, targets)
+    rows_by_farmer = Array(rows).group_by { |row| row[:farmer_id].to_s }
+    coordinators = Hash.new { |hash, id| hash[id] = [] }
+    vrp_ids = Array(records).flat_map { |record| record.data.values_at("jeevika_jankar_id", "vrp_id", "select_vrp") }
+      .map(&:to_s).select { |id| id.match?(/\A\d+\z/) }.uniq
+    vrp_coordinators = vrp_ids.empty? ? {} : Vrp.where(id: vrp_ids).pluck(:id, :cluster_incharge).to_h.transform_keys(&:to_s)
+    Array(targets).each do |target|
+      name = target.vrp&.cluster_incharge.to_s.strip
+      next if name.blank?
+
+      Array(target.afl_ids).each { |id| coordinators[id.to_s] |= [name] if rows_by_farmer.key?(id.to_s) }
+    end
+    Array(records).each do |record|
+      ids = training_record_selected_farmer_ids(record).select { |id| rows_by_farmer.key?(id.to_s) }
+      next if ids.empty?
+
+      name = record.data["cluster_incharge"].presence || record.data["cluster_coordinator"]
+      name ||= record.data.values_at("jeevika_jankar_id", "vrp_id", "select_vrp")
+        .filter_map { |id| vrp_coordinators[id.to_s].presence }.first
+      registers = module_upload_public_urls(record.data["training_register_upload"])
+      photos = module_upload_public_urls(record.data["training_photo_upload_with_geo_tag"])
+      ids.each do |id|
+        coordinators[id.to_s] |= [name.to_s.strip] if name.present?
+        rows_by_farmer[id.to_s].each do |row|
+          row[:training_register_urls] = Array(row[:training_register_urls]) | registers
+          row[:training_photo_urls] = Array(row[:training_photo_urls]) | photos
+        end
+      end
+    end
+    Array(rows).each do |row|
+      names = coordinators[row[:farmer_id].to_s]
+      existing = row[:cluster_incharge].to_s.strip
+      names = [existing] | names if existing.present? && existing != "-"
+      row[:cluster_incharge] = names.presence&.join(", ") || "-"
+    end
+  end
+
+  def training_participation_search_match?(values)
+    Array(values).flatten.join(" ").downcase.include?(@training_participation_search.downcase)
+  end
+
   def training_participation_dashboard_status_cards(counts, month_name:, fcoc_name:, week_number: nil)
     %w[red yellow green].map do |status|
       path_params = { status: status, ics: dashboard_filter_param(:ics, :ics_name) }.compact_blank
@@ -9667,7 +9729,7 @@ class ModulesController < ApplicationController
   def jeevika_month_financial_year(month_name)
     return nil if month_name.blank?
 
-    @jeevika_month_financial_year ||= month_master_rows.each_with_object({}) do |record, map|
+    @jeevika_month_financial_year ||= active_month_master_rows.each_with_object({}) do |record, map|
       month = normalize_dashboard_text(record.data["month_name"])
       year = record.data["financial_year"].presence
       map[month] ||= year if month.present? && year

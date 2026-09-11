@@ -1,12 +1,13 @@
 <% content_for :title, "#{@training_participation_title} Farmer Training List" %>
-<% filter_params = {
+<% filter_params = request.query_parameters.symbolize_keys.except(:status, :page, :format).merge({
   training_month: @training_selected_month.presence,
   training_sub_activity: @training_selected_sub_activity.presence,
   training_fcoc: @training_selected_fcoc.presence,
   training_method: @training_selected_method.presence,
+  search: @training_participation_search.presence,
   week: @training_selected_week.presence
-}.compact_blank %>
-<% dashboard_back_params = filter_params.except(:week) %>
+}).compact_blank %>
+<% dashboard_back_params = filter_params.except(:week, :search, :per_page) %>
 <% dashboard_back_params[:weekly_target_week] = @training_selected_week if @training_selected_week.present? %>
 <% status_counts = @training_participation_totals || { unique: 0, training_unique: 0, completed_map: 0, green: 0, yellow: 0, red: 0, pending: 0, total: 0 } %>
 <% rendered_rows = @training_participation_page_rows || @training_participation_rows %>
@@ -76,20 +77,34 @@
       <%= link_to "Export Excel", farmer_training_participation_path(filter_params.merge(status: @training_participation_status, format: :xlsx)), class: "list-btn export" %>
     </div>
 
-    <div class="list-controls">
+    <%= form_with url: farmer_training_participation_path, method: :get, class: "list-controls" do %>
+      <% request.query_parameters.except("search", "page", "format").each do |key, value| %>
+        <% Array(value).each do |item| %>
+          <%= hidden_field_tag(value.is_a?(Array) ? "#{key}[]" : key, item) %>
+        <% end %>
+      <% end %>
       <div class="list-search">
-        <span>⌕</span>
-        <input type="search" placeholder="Search records" data-report-search aria-label="Search records">
+        <span aria-hidden="true">⌕</span>
+        <%= search_field_tag :search, @training_participation_search, placeholder: "Search all records", aria: { label: "Search all records" } %>
       </div>
-    </div>
+      <%= submit_tag "Search", class: "list-btn active" %>
+      <%= link_to "Clear", farmer_training_participation_path(request.query_parameters.except("search", "page")), class: "list-btn" if @training_participation_search.present? %>
+    <% end %>
 
     <% if @mapped_farmer_details %>
       <div class="table-shell">
         <table class="module-table compact-table" data-report-search-table>
-          <thead><tr><% @mapped_farmer_details.columns.each do |column| %><th><%= { "vrp" => "JJ", "vrp_name" => "JJ Name", "vrp_id" => "JJ ID" }[column] || column.humanize %></th><% end %></tr></thead>
+          <thead><tr><% @mapped_farmer_details.columns.each do |column| %><th><%= { "vrp" => "JJ", "vrp_name" => "JJ Name", "vrp_id" => "JJ ID", "cluster_incharge" => "ClusterCoordinator", "training_register_urls" => "Training Register Upload", "training_photo_urls" => "Training Photo Upload with Geo Tag" }[column] || column.humanize %></th><% end %></tr></thead>
           <tbody>
             <% @mapped_farmer_details.rows.each do |values| %>
-              <tr><% values.each do |value| %><td><%= value.presence || "-" %></td><% end %></tr>
+              <tr><% values.each_with_index do |value, index| %><td>
+                <% column = @mapped_farmer_details.columns[index] %>
+                <% if %w[training_register_urls training_photo_urls].include?(column) %>
+                  <%= render "training_participation_uploads", urls: value.to_s.split(", ").reject(&:blank?), label: column == "training_register_urls" ? "training register" : "training photo" %>
+                <% else %>
+                  <%= value.presence || "-" %>
+                <% end %>
+              </td><% end %></tr>
             <% end %>
           </tbody>
         </table>
@@ -143,24 +158,10 @@
                 <td><%= row[:training_dates].presence || "-" %></td>
                 <td><%= row[:last_training_date].presence || "-" %></td>
                 <td class="upload-report-column" data-export-value="<%= Array(row[:training_register_urls]).join(', ') %>">
-                  <% if Array(row[:training_register_urls]).any? %>
-                    <% Array(row[:training_register_urls]).each_with_index do |url, index| %>
-                      <%= link_to "View #{index + 1}", url, target: "_blank", rel: "noopener", class: "grid-view-link" %>
-                    <% end %>
-                  <% else %>
-                    -
-                  <% end %>
+                  <%= render "training_participation_uploads", urls: row[:training_register_urls], label: "training register" %>
                 </td>
                 <td class="upload-report-column" data-export-value="<%= Array(row[:training_photo_urls]).join(', ') %>">
-                  <% if Array(row[:training_photo_urls]).any? %>
-                    <% Array(row[:training_photo_urls]).each_with_index do |url, index| %>
-                      <%= link_to url, target: "_blank", rel: "noopener", class: "upload-thumbnail-link", title: "Open photo #{index + 1}" do %>
-                        <%= image_tag url, alt: "Training photo #{index + 1}", class: "upload-thumbnail", loading: "lazy" %>
-                      <% end %>
-                    <% end %>
-                  <% else %>
-                    -
-                  <% end %>
+                  <%= render "training_participation_uploads", urls: row[:training_photo_urls], label: "training photo" %>
                 </td>
               </tr>
             <% end %>
