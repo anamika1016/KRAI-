@@ -91,7 +91,7 @@ module Api
           return render json: { success: false, message: "Admin login required." }, status: :forbidden
         end
 
-        response = cached_admin_dashboard_participation_payload
+        response = mobile_participation_payload("admin")
 
         render json: response, status: :ok
       end
@@ -400,6 +400,50 @@ module Api
           end
           admin_dashboard_list_payload(list_type)
         end
+      end
+
+      # Reuse the current web card and drill-down calculations without rendering HTML.
+      def mobile_participation_calculator
+        ModulesController.new.tap do |web|
+          web.request = request
+          web.instance_variable_set(:@current_app_user, current_api_user_payload)
+        end
+      end
+
+      def mobile_participation_payload(dashboard_type)
+        web = mobile_participation_calculator
+        month = filter_param(:participation_month, :training_month, :month)
+        month = Date.current.prev_month.strftime("%B") unless %i[participation_month training_month month].any? { |key| params.key?(key) }
+        fco = filter_param(:participation_fcoc, :training_fcoc, :fcoc, :fco)
+        week = params[:week].presence || params[:weekly_target_week]
+        week = (1..4).include?(week.to_i) ? week.to_i : nil
+        args = { month_name: month, fcoc_name: fco }
+        mapped, mapped_popups = web.send(:farmer_training_mapped_farmer_count_and_popups, **args)
+        red, red_popups, breakdown = web.send(:farmer_training_no_training_count_and_popups, **args)
+        yellow, yellow_popups = web.send(:farmer_training_yellow_farmer_count_and_popups, **args)
+        green, green_popups = web.send(:farmer_training_green_farmer_count_and_popups, **args)
+        status = params[:status].to_s.presence || "unique"
+        status = { "mapped" => "unique", "pending" => "red", "only_1_training" => "yellow",
+          "one_plus_trainings" => "green" }.fetch(status, status)
+        supported = %w[summary unique red yellow green no_activity no_training_mapping training_mapped_no_entry]
+        # Preserve legacy total/training list requests.
+        return cached_admin_dashboard_participation_payload unless supported.include?(status)
+
+        rows = status == "summary" ? [] : web.send(:farmer_training_participation_rows_from_sql,
+          status, **args, week_number: week)
+        cards = [
+          { key: "mapped_farmer", title: "Mapped Farmer", status: "unique", value: mapped, popups: mapped_popups },
+          { key: "no_training", title: "Pending", status: "red", value: red, popups: red_popups },
+          { key: "only_1_training", title: "Only 1 Training", status: "yellow", value: yellow, popups: yellow_popups },
+          { key: "one_plus_trainings", title: "1+ Trainings", status: "green", value: green, popups: green_popups }
+        ]
+        {
+          success: true, dashboard_type: dashboard_type, title: "Farmer Training Participation Status",
+          status: status, selected_month: month, selected_fcoc: fco, selected_week: week,
+          cards: cards, red_fco_details: breakdown,
+          totals: { total_unique_farmers_distinct: mapped, red: red, yellow: yellow, green: green, pending: red },
+          count: rows.size, farmers: rows, generated_at: Time.current.iso8601
+        }
       end
 
       def cached_admin_dashboard_participation_payload
