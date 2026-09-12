@@ -933,8 +933,7 @@ module Api
         if selected_main_activity.present?
           normalized_main = web.send(:normalize_dashboard_text, selected_main_activity)
           main_matches = targets.select { |target| web.send(:normalize_dashboard_text, target.main_activity_name) == normalized_main }
-          targets = main_matches.presence || targets if selected_sub_activity.present?
-          targets = main_matches if main_matches.present? || selected_sub_activity.blank?
+          targets = main_matches
         elsif legacy_activity.present?
           targets.select! { |target| target.main_activity_name == legacy_activity || target.activity_name == legacy_activity }
         end

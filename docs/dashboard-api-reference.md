@@ -1,5 +1,7 @@
 # Mobile Dashboard API URLs
 
+See [React Native report handoff](react-native-dashboard-reports-api.md) for CC/JJ Work Status endpoints, current Demonstration Method Count/Farmer fields, and exact filter limitations.
+
 Base URL: `https://krai.ploughmanagro.com/api/v1`  
 Header on every request: `Authorization: Bearer <token>`
 
@@ -118,7 +120,7 @@ Admin and office-user dashboard responses include `demonstration_method`, an FCO
 
 List rows additionally include `vrp_id` and `VRP Name`. The existing Demonstration Method section displays metric boxes; View List opens `/dashboard/demonstration-method` and Export Excel downloads the same VRP rows.
 
-The report follows dashboard filters and login visibility. The default dashboard month is the previous calendar month (August in September); use `month=August` explicitly to reproduce the supplied August query. OPG targets are summed across target rows per FCO/VRP, while each matching training-form entry is counted once per FCO/VRP. Training month and method whitespace are normalized. As in the supplied SQL, summary creator IDs are trimmed while the View List joins creator IDs exactly. VRPs with targets and no matching entries remain in the result with zero counts.
+The report follows dashboard filters and login visibility. The default dashboard month is the previous calendar month (August in September); use `month=August` explicitly to reproduce the supplied August query. OPG targets use village-wise maximums before summing (FCO/village for summary, FCO/VRP/village for list), while each matching training-form entry is counted once per FCO/VRP. Training month and method whitespace are normalized. Creator IDs are trimmed in both summary and View List. VRPs with targets and no matching entries remain in the result with zero counts.
 
 ### CC and JJ Work Status
 

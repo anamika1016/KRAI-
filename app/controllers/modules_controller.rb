@@ -3499,8 +3499,10 @@ class ModulesController < ApplicationController
       dashboard_group_card("Jeevika Jankar Billing", billing_items, style: "billing")
     ]
     fco_names = %w[Sausar Turekela]
+    gender_month = params[:month].presence || params[:training_month].presence || "August"
     gender_items = fco_names.flat_map do |fco_name|
-      fco_vrps = active_vrps.select { |vrp| training_fcoc_text_matches?(vrp.fcoc, fco_name) }
+      # Same JJ set as the FCO-wise JJ Requirement "Active" box, split by gender.
+      fco_vrps = dashboard_fco_active_vrp_records(fco_name, gender_month, vrps)
       [
         { title: "#{fco_name} Male", value: fco_vrps.count { |vrp| normalize_dashboard_text(vrp.gender) == "male" }, path: vrps_path(gender: "male", fcoc: fco_name, active_status: "active") },
         { title: "#{fco_name} Female", value: fco_vrps.count { |vrp| normalize_dashboard_text(vrp.gender) == "female" }, path: vrps_path(gender: "female", fcoc: fco_name, active_status: "active") }
@@ -4061,6 +4063,52 @@ class ModulesController < ApplicationController
     else
       0
     end
+  end
+
+  # The exact JJ set that the "FCO-wise JJ Requirement" Active count is built from:
+  # distinct vrp_id having a target mapping in this FCO + month. Gender Count splits
+  # this same set so the two always agree. Falls back to the fcoc/active-flag set
+  # (same fallback the count uses) when no target mappings exist.
+  def dashboard_fco_active_vrp_records(fco_name_or_id, month_name = "August", vrps = nil)
+    return [] if fco_name_or_id.blank?
+
+    selected_month = month_name.presence || "August"
+    normalized = normalize_dashboard_text(fco_name_or_id)
+    fco_conditions = if normalized.include?("1004") || normalized.include?("sausar")
+                       "(LOWER(TRIM(t.fco_id)) IN ('1004', 'sausar') OR LOWER(TRIM(t.fco_name)) LIKE '%sausar%')"
+                     elsif normalized.include?("1006") || normalized.include?("turekela")
+                       "(LOWER(TRIM(t.fco_id)) IN ('1006', 'turekela') OR LOWER(TRIM(t.fco_name)) LIKE '%turekela%')"
+                     else
+                       "(LOWER(TRIM(t.fco_id)) = :norm OR LOWER(TRIM(t.fco_name)) = :norm)"
+                     end
+
+    sql = <<~SQL.squish
+      SELECT DISTINCT t.vrp_id
+      FROM public.target_mappings t
+      WHERE #{fco_conditions}
+        AND LOWER(TRIM(t.month_name)) = :month_name
+        AND t.vrp_id IS NOT NULL AND TRIM(t.vrp_id::text) != ''
+    SQL
+    ids = ActiveRecord::Base.connection.exec_query(
+      ActiveRecord::Base.send(:sanitize_sql_array, [sql, { norm: normalized, month_name: selected_month.strip.downcase }])
+    ).rows.flatten.compact
+
+    if ids.present?
+      by_id = Array(vrps).index_by(&:id)
+      missing = ids.map(&:to_i) - by_id.keys
+      by_id.merge!(Vrp.where(id: missing).index_by(&:id)) if missing.any? && model_ready?(:Vrp)
+      return ids.filter_map { |id| by_id[id.to_i] }
+    end
+
+    Array(vrps).select do |vrp|
+      training_fcoc_text_matches?(vrp.fcoc, fco_name_or_id) &&
+        (vrp.respond_to?(:is_active) ? (vrp.is_active == true || vrp.is_active == 1) : true) &&
+        !(vrp.respond_to?(:is_deleted) && (vrp.is_deleted == true || vrp.is_deleted == 1)) &&
+        dashboard_vrp_active_for_requirement?(vrp)
+    end
+  rescue StandardError => e
+    Rails.logger.warn("dashboard_fco_active_vrp_records failed: #{e.message}")
+    []
   end
 
   def dashboard_jj_requirement_items(fco_name, vrps, targets = nil)
