@@ -5956,8 +5956,8 @@ class ModulesController < ApplicationController
           status_label: "1+ Trainings",
           training_dates: row["training_date"].to_s.presence || "-",
           last_training_date: row["training_date"].to_s.presence || "-",
-          training_register_urls: row["training_register_urls"].to_s.split(",").map(&:strip).reject(&:blank?),
-          training_photo_urls: row["training_photo_urls"].to_s.split(",").map(&:strip).reject(&:blank?)
+          training_register_urls: module_upload_public_urls(row["training_register_urls"]),
+          training_photo_urls: module_upload_public_urls(row["training_photo_urls"])
         }
       end
     end
@@ -6061,8 +6061,8 @@ class ModulesController < ApplicationController
           status_label: "Only 1 Training",
           training_dates: row["training_date"].to_s.presence || "-",
           last_training_date: row["training_date"].to_s.presence || "-",
-          training_register_urls: row["training_register_urls"].to_s.split(",").map(&:strip).reject(&:blank?),
-          training_photo_urls: row["training_photo_urls"].to_s.split(",").map(&:strip).reject(&:blank?)
+          training_register_urls: module_upload_public_urls(row["training_register_urls"]),
+          training_photo_urls: module_upload_public_urls(row["training_photo_urls"])
         }
       end
     end
@@ -6179,8 +6179,8 @@ class ModulesController < ApplicationController
           mobile_no: row["mobile_no"], tracenet_no: row["tracenet_no"], ics: row["ics_name"],
           village: row["village_name"], fcoc: row["fco"], cluster_incharge: row["cluster_incharge"],
           vrp: row["vrp_name"], months: selected_month, status_label: row["status"],
-          training_register_urls: row["training_register_urls"].to_s.split(",").map(&:strip).reject(&:blank?),
-          training_photo_urls: row["training_photo_urls"].to_s.split(",").map(&:strip).reject(&:blank?) }
+          training_register_urls: module_upload_public_urls(row["training_register_urls"]),
+          training_photo_urls: module_upload_public_urls(row["training_photo_urls"]) }
       end
     end
 
@@ -8117,11 +8117,7 @@ class ModulesController < ApplicationController
   end
 
   def module_upload_paths(value)
-    case value
-    when Array then value.flat_map { |item| module_upload_paths(item) }
-    when Hash then value.values.flat_map { |item| module_upload_paths(item) }
-    else [value.to_s.strip]
-    end
+    ModuleUploadPaths.call(value)
   end
 
   def dashboard_filter_export_rows

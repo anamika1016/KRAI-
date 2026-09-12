@@ -8,7 +8,6 @@
     </div>
   </div>
   <section class="module-card">
-    <p>JJ and cluster-incharge names use the selected month’s target mapping, or the saved farmer-to-JJ assignment when no monthly mapping exists. Status counts remain month-specific.</p>
     <p>Total: <%= @work_status_rows.size %></p>
     <%= render "demonstration_method_table", headers: CcJjWorkStatusReport::HEADERS, rows: @work_status_rows %>
   </section>

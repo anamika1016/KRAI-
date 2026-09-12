@@ -100,7 +100,7 @@
               <tr><% values.each_with_index do |value, index| %><td>
                 <% column = @mapped_farmer_details.columns[index] %>
                 <% if %w[training_register_urls training_photo_urls].include?(column) %>
-                  <%= render "training_participation_uploads", urls: value.to_s.split(", ").reject(&:blank?), label: column == "training_register_urls" ? "training register" : "training photo" %>
+                  <%= render "training_participation_uploads", urls: value, label: column == "training_register_urls" ? "training register" : "training photo" %>
                 <% else %>
                   <%= value.presence || "-" %>
                 <% end %>
