@@ -83,21 +83,7 @@ module Api
           return render json: { success: false, message: "Admin login required." }, status: :forbidden
         end
 
-        dashboard = exact_admin_dashboard_data
-        options = dashboard[:filter_options]
-        render json: {
-          success: true,
-          dashboard_type: "admin",
-          filters: dashboard_filter_groups(
-            main_activities: options[:main_activities],
-            sub_activities: options[:sub_activities],
-            fcos: options[:fcos],
-            ics_names: options[:ics],
-            months: options[:months]
-          ),
-          applied_filters: dashboard[:filters],
-          generated_at: Time.current.iso8601
-        }
+        render json: mobile_dashboard_filters_payload("admin")
       end
 
       def farmer_training_participation
@@ -226,6 +212,47 @@ module Api
           "sausar_female" => { heading: "Sausar Female", path: [ :mobile_widget_values, "Sausar Female" ] },
           "turekela_male" => { heading: "Turekela Male", path: [ :mobile_widget_values, "Turekela Male" ] },
           "turekela_female" => { heading: "Turekela Female", path: [ :mobile_widget_values, "Turekela Female" ] }
+        }
+      end
+
+      # Mobile-only cascade. Load visible mappings, without calculating dashboard reports.
+      def mobile_dashboard_filters_payload(dashboard_type)
+        calculator = ModulesController.new
+        calculator.request = request
+        calculator.instance_variable_set(:@current_app_user, current_api_user_payload)
+        targets = calculator.send(:dashboard_target_mappings).to_a
+        mobile_dashboard_filter_options(targets, calculator).merge(
+          success: true, dashboard_type: dashboard_type, generated_at: Time.current.iso8601
+        )
+      end
+
+      def mobile_dashboard_filter_options(targets, calculator)
+        values = ->(rows, &block) { rows.filter_map { |row| block.call(row).to_s.strip.presence }.uniq.sort }
+        matches = ->(actual, selected) {
+          calculator.send(:normalize_dashboard_text, actual) == calculator.send(:normalize_dashboard_text, selected)
+        }
+        months = values.call(targets, &:month_name).sort_by { |month| [calculator.send(:dashboard_month_index, month), month] }
+        month = params.key?(:month) ? filter_param(:month) : Date.current.prev_month.strftime("%B")
+        rows = month.present? ? targets.select { |row| matches.call(row.month_name, month) } : targets
+        mains = values.call(rows, &:main_activity_name)
+        main = params.key?(:main_activity) ? filter_param(:main_activity) : default_farmer_activity_filter(calculator, mains)
+        rows = rows.select { |row| matches.call(row.main_activity_name, main) } if main.present?
+        subs = values.call(rows, &:activity_name)
+        sub = filter_param(:sub_activity)
+        sub = nil unless subs.any? { |value| matches.call(value, sub) }
+        rows = rows.select { |row| matches.call(row.activity_name, sub) } if sub.present?
+        fcos = values.call(rows) { |row| row.vrp&.fcoc }
+        fco = filter_param(:fcoc, :fco)
+        fco = nil unless fcos.any? { |value| matches.call(value, fco) }
+        rows = rows.select { |row| matches.call(row.vrp&.fcoc, fco) } if fco.present?
+        ics_names = values.call(rows) { |row| row.ics_name.presence || row.ics_id }
+        ics = filter_param(:ics, :ics_name)
+        ics = nil unless ics_names.any? { |value| matches.call(value, ics) }
+        {
+          filters: dashboard_filter_groups(main_activities: mains, sub_activities: subs,
+            fcos: fcos, ics_names: ics_names, months: months),
+          applied_filters: { month: month, main_activity: main, sub_activity: sub, fco: fco, ics: ics },
+          filter_order: %w[month main_activity sub_activity fco ics]
         }
       end
 
@@ -448,7 +475,7 @@ module Api
         ]
         filters = admin_dashboard_cache_filters
         user_key = current_api_user_payload.slice("id", "user_id", "username", "user_name", "user_type").sort.to_h
-        ["api-v1-admin-dashboard-work-status-v5", suffix, user_key, filters, version_parts].to_json
+        ["api-v1-admin-dashboard-work-status-v6", suffix, user_key, filters, version_parts].to_json
       end
 
       def admin_dashboard_cache_filters
@@ -510,7 +537,7 @@ module Api
         options = {}
         options[:main_activities] = targets.map(&:main_activity_name).compact_blank.uniq.sort
         options[:activities] = options[:main_activities]
-        selected_main_activity = filter_param(:main_activity) || default_farmer_activity_filter(web, options[:main_activities])
+        selected_main_activity = params.key?(:main_activity) ? filter_param(:main_activity) : default_farmer_activity_filter(web, options[:main_activities])
         selected_sub_activity = filter_param(:sub_activity)
         legacy_activity = filter_param(:activity)
         if selected_main_activity.present?
@@ -900,7 +927,7 @@ module Api
           end
         end
 
-        selected_main_activity = filter_param(:main_activity) || default_farmer_activity_filter(web, targets.map(&:main_activity_name).compact_blank.uniq.sort)
+        selected_main_activity = params.key?(:main_activity) ? filter_param(:main_activity) : default_farmer_activity_filter(web, targets.map(&:main_activity_name).compact_blank.uniq.sort)
         selected_sub_activity = filter_param(:sub_activity)
         legacy_activity = filter_param(:activity)
         if selected_main_activity.present?

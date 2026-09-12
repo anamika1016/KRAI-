@@ -21,6 +21,8 @@ Header on every request: `Authorization: Bearer <token>`
 
 Example: `https://krai.ploughmanagro.com/api/v1/admin-dashboard/widgets/total_ics_count`
 
+For cascading mobile dropdowns and React Native integration, see [dashboard auto-filter API](react-native-dashboard-filters-api.md).
+
 ## Admin filter API
 
 `GET https://krai.ploughmanagro.com/api/v1/admin-dashboard/filters`

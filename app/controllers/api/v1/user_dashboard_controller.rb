@@ -52,21 +52,7 @@ module Api
       def filters
         return render_vrp_error if current_api_user.is_a?(Vrp)
 
-        dashboard = cached_user_dashboard_response
-        options = dashboard[:filter_options] || {}
-        render json: {
-          success: true,
-          dashboard_type: "user",
-          filters: dashboard_filter_groups(
-            main_activities: options[:main_activities] || options["main_activities"],
-            sub_activities: options[:sub_activities] || options["sub_activities"],
-            fcos: options[:fcos] || options["fcos"],
-            ics_names: options[:ics_names] || options["ics_names"],
-            months: options[:months] || options["months"]
-          ),
-          applied_filters: dashboard[:filters] || dashboard["filters"],
-          generated_at: Time.current.iso8601
-        }
+        render json: mobile_dashboard_filters_payload("user")
       end
 
       private
@@ -248,7 +234,7 @@ module Api
         ]
         filters = request.query_parameters.to_h.sort.to_h
         user_key = current_api_user_payload.slice("id", "user_id", "username", "user_name", "user_type").sort.to_h
-        ["api-v1-user-dashboard-work-status-v5", user_key, filters, version_parts].to_json
+        ["api-v1-user-dashboard-work-status-v6", user_key, filters, version_parts].to_json
       end
 
       def cache_table_version(model)
@@ -288,13 +274,12 @@ module Api
         vrps, targets = search_scope(vrps, targets)
         @calculation_stage = "dashboard_activity_filters"
         options = { main_activities: values(targets, :main_activity_name) }
-        selected_main_activity = filter_param(:main_activity) || default_farmer_activity_filter(calculator, options[:main_activities])
+        selected_main_activity = params.key?(:main_activity) ? filter_param(:main_activity) : default_farmer_activity_filter(calculator, options[:main_activities])
         selected_sub_activity = filter_param(:sub_activity)
         legacy_activity = filter_param(:activity)
         if selected_main_activity.present?
           normalized_main = calculator.send(:normalize_dashboard_text, selected_main_activity)
           main_matches = targets.select { |target| calculator.send(:normalize_dashboard_text, target.main_activity_name) == normalized_main }
-          main_matches = targets if main_matches.blank? && selected_sub_activity.present?
           targets = main_matches
         elsif legacy_activity.present?
           targets = targets.select { |target| same?(target.main_activity_name, legacy_activity) || same?(target.activity_name, legacy_activity) }
