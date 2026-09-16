@@ -7905,12 +7905,18 @@ body {
   text-decoration: none;
 }
 
-/* On the card only the heading shows; the detail (kept in the DOM) opens in the popup.
-   Specificity + !important beat the base `.dashboard-grid.premium .metric-card-group >
-   .metric-card-group-items { display: grid !important }`. */
+.dashboard-grid.premium.dashboard-training-secondary-summaries {
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+}
+@media (max-width: 1200px) {
+  .dashboard-grid.premium.dashboard-training-secondary-summaries {
+    grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  }
+}
 .dashboard-grid.premium.dashboard-training-secondary-summaries .metric-card-group > .metric-card-group-items,
 .dashboard-grid.premium.dashboard-training-secondary-summaries .cc-jj-work-status .cc-jj-status-groups,
-.dashboard-grid.premium.dashboard-training-secondary-summaries .cc-jj-work-status > .table-action {
+.dashboard-grid.premium.dashboard-training-secondary-summaries .cc-jj-work-status > .table-action,
+.dashboard-grid.premium.dashboard-training-secondary-summaries .cc-target-status .cc-jj-status-groups {
   display: none !important;
 }
 /* Heading-only cards: a clean, rounded colored tile with no empty body. */
@@ -7976,6 +7982,18 @@ body {
 .cc-jj-status-fco-groups .cc-jj-status-group .metric-card-group-items {
   grid-template-columns: repeat(2, minmax(0, 1fr));
 }
+/* CC TARGET STATUS: 4 groups (Target | Red | Yellow | Green) per FCO row */
+.cc-target-fco-groups {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 8px;
+}
+.cc-jj-status-target .metric-card-group-item {
+  border-color: #3b82f6;
+  background: rgba(59, 130, 246, 0.1);
+}
+.cc-jj-status-target .metric-card-group-item strong {
+  color: #2563eb;
+}
 .cc-jj-status-group > strong {
   display: block;
   margin-bottom: 6px;
@@ -7989,10 +8007,19 @@ body {
 .cc-jj-status-red .metric-card-group-item strong {
   color: #c0392b;
 }
+.cc-jj-status-yellow .metric-card-group-item {
+  border-color: #d99400;
+  background: rgba(217, 148, 0, 0.1);
+}
+.cc-jj-status-yellow .metric-card-group-item strong {
+  color: #b07800;
+}
+.cc-jj-status-green .metric-card-group-item,
 .cc-jj-status-completed .metric-card-group-item {
   border-color: #1a8a34;
   background: rgba(26, 138, 52, 0.1);
 }
+.cc-jj-status-green .metric-card-group-item strong,
 .cc-jj-status-completed .metric-card-group-item strong {
   color: #1a8a34;
 }
@@ -8583,3 +8610,35 @@ body {
 .jeevika-bill-table > tbody > tr:not(.jeevika-farmer-row) > td:nth-child(9) {
   display: none;
 }
+
+/* Keep each method's target and achievement together, with explicit labels. */
+.demonstration-metric-pair {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+  margin-top: 14px;
+  width: 100%;
+}
+.demonstration-metric-pair > div {
+  padding: 10px;
+  border: 1px solid rgba(31, 77, 58, .14);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, .75);
+}
+.demonstration-metric-pair > div > span {
+  display: block;
+  font-size: 11px;
+  font-weight: 600;
+  color: #455b53;
+}
+.demonstration-metric-pair > div > strong {
+  display: block;
+  margin-top: 6px;
+  font-size: 24px;
+  line-height: 1.2;
+}
+.demonstration-metric-pair .demonstration-metric-achievement { background: #effaf3; }
+.demonstration-method-table { overflow-x: auto; }
+.demonstration-method-table .demonstration-metric-pair { min-width: 185px; margin: 0; }
+.demonstration-method-table .demonstration-metric-pair strong { font-size: 20px; }
+.demonstration-method-table th { white-space: nowrap; }

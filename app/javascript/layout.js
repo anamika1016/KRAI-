@@ -1702,18 +1702,45 @@ function initDeferredLayoutPage() {
     refreshClusterIncharges();
   });
 
-  document.querySelectorAll("[data-max-size-mb]").forEach((input) => {
-    input.addEventListener("change", () => {
-      const maxSizeMb = Number(input.dataset.maxSizeMb || 0);
-      const files = Array.from(input.files || []);
-      if (!maxSizeMb || files.length === 0) return;
+  document.addEventListener("change", (event) => {
+    const input = event.target;
+    if (!input || !(input instanceof HTMLInputElement) || input.type !== "file") return;
 
+    const maxSizeMb = Number(input.dataset.maxSizeMb || 0);
+    const maxFiles = Number(input.dataset.maxFiles || 0);
+    const files = Array.from(input.files || []);
+    if (files.length === 0) return;
+
+    if (maxFiles > 0 && files.length > maxFiles) {
+      window.alert(`Maximum ${maxFiles} photos allowed. 5 photo se jada upload n kar paayen.`);
+      input.value = "";
+      return;
+    }
+
+    if (maxSizeMb > 0) {
       const oversizedFiles = files.filter((file) => file.size > maxSizeMb * 1024 * 1024);
       if (oversizedFiles.length > 0) {
         window.alert(`Each photo must be ${maxSizeMb} MB or smaller. Please reselect the photos.`);
         input.value = "";
       }
-    });
+    }
+  });
+
+  document.addEventListener("submit", (event) => {
+    const form = event.target;
+    if (!form || !(form instanceof HTMLFormElement)) return;
+
+    const fileInputs = form.querySelectorAll("input[type='file'][data-max-files]");
+    for (const input of fileInputs) {
+      const maxFiles = Number(input.dataset.maxFiles || 0);
+      const files = Array.from(input.files || []);
+      if (maxFiles > 0 && files.length > maxFiles) {
+        event.preventDefault();
+        window.alert(`Maximum ${maxFiles} photos allowed. 5 photo se jada upload n kar paayen.`);
+        input.value = "";
+        return false;
+      }
+    }
   });
 
   const uploadGalleryModal = document.querySelector("[data-upload-gallery-modal]");
@@ -2312,13 +2339,6 @@ function initDeferredLayoutPage() {
 	      totalFarmerCountInput.value = total ? String(total) : "";
 	    };
 
-    const syncIcsFarmerCountSplit = () => {
-      if (!icsSelect?.value || !maleCountInput || !femaleCountInput) return;
-
-      const count = selectedFarmerBoxes().length;
-      maleCountInput.value = "0";
-      femaleCountInput.value = String(count);
-    };
 
 	    const updateFarmerCount = () => {
 	      const count = selectedFarmerBoxes().length;
@@ -2336,7 +2356,6 @@ function initDeferredLayoutPage() {
 	        farmerSelectAllButton.disabled = boxes.length === 0;
 	        farmerSelectAllButton.textContent = boxes.length > 0 && count === boxes.length ? "Clear all" : "Select all";
 	      }
-      syncIcsFarmerCountSplit();
 	      syncTotalFarmerCount();
 	      validateTrainingCountSplit(false);
 	    };
@@ -3433,8 +3452,46 @@ function initDeferredLayoutPage() {
       }
       return message;
     };
+
+    const ccTargetInput = shell.querySelector("[data-cc-target-input]");
+    let ccTargetWarning = shell.querySelector("[data-cc-target-validation-message]");
+    if (!ccTargetWarning && ccTargetInput) {
+      ccTargetWarning = document.createElement("p");
+      ccTargetWarning.setAttribute("data-cc-target-validation-message", "");
+      ccTargetWarning.setAttribute("role", "alert");
+      ccTargetWarning.hidden = true;
+      ccTargetWarning.style.cssText = "color:#c0392b;font-size:0.85rem;font-weight:600;margin:4px 0 0;";
+      ccTargetInput.closest("label")?.insertAdjacentElement("afterend", ccTargetWarning);
+    }
+
+    const validateCcTarget = () => {
+      if (!ccTargetInput || ccTargetInput.disabled) return "";
+      const opgInput = trainingTargetInputs().find((input) => input.dataset.trainingActivityName === "OPG Training");
+      const ccVal = ccTargetInput.value.trim();
+      if (!ccVal) { ccTargetInput.setCustomValidity(""); if (ccTargetWarning) ccTargetWarning.hidden = true; return ""; }
+      const cc = Number(ccVal);
+      const opg = Number(opgInput?.value || 0);
+      if (opgInput?.value.trim() && cc > opg) {
+        const msg = `CC Target (${cc}) OPG Training (${opg}) se zyada nahi ho sakta.`;
+        ccTargetInput.setCustomValidity(msg);
+        if (ccTargetWarning) { ccTargetWarning.textContent = msg; ccTargetWarning.hidden = false; }
+        return msg;
+      }
+      ccTargetInput.setCustomValidity("");
+      if (ccTargetWarning) ccTargetWarning.hidden = true;
+      return "";
+    };
+    ccTargetInput?.addEventListener("input", () => validateCcTarget());
+    trainingTargetInputs().forEach((input) => {
+      if (input.dataset.trainingActivityName === "OPG Training") {
+        input.addEventListener("input", () => validateCcTarget());
+      }
+    });
+
     trainingTargetInputs().forEach((input) => input.addEventListener("input", () => validateOpgBreakdown(true)));
     form?.addEventListener("submit", (event) => {
+      const ccMsg = validateCcTarget();
+      if (ccMsg) { event.preventDefault(); ccTargetInput?.reportValidity(); return; }
       const message = validateOpgBreakdown(true);
       if (!message) return;
       event.preventDefault();
@@ -3642,7 +3699,8 @@ function initDeferredLayoutPage() {
         subActivityField.removeAttribute("hidden");
       }
       if (subActivitySelect) {
-        subActivitySelect.required = true;
+        subActivitySelect.dataset.chipRequired = "true";
+        subActivitySelect.required = false;
         // Keep enabled unless options are empty — refreshTargetSubActivities manages that.
       }
 
@@ -6271,6 +6329,10 @@ function initDeferredLayoutPage() {
       "Next Farmer Training Date": "अगली किसान प्रशिक्षण तारीख",
       "Training Register Upload": "प्रशिक्षण रजिस्टर अपलोड",
       "Training Photo Upload with Geo Tag": "जियो टैग के साथ प्रशिक्षण फोटो अपलोड",
+      "Photo Front View": "फोटो - फ्रंट व्यू",
+      "Photo Back View": "फोटो - बैक व्यू",
+      "Photo Close-up View": "फोटो - क्लोज़-अप व्यू",
+      "Photo Long Shot": "फोटो - लॉन्ग शॉट",
       "State": "राज्य",
       "State Name": "राज्य नाम",
       "State Code": "राज्य कोड",
@@ -6797,12 +6859,19 @@ function initDeferredLayoutPage() {
         const { width, height } = canvas.getBoundingClientRect();
         if (!width || !height) return;
 
-        canvas.width = Math.floor(width);
-        canvas.height = Math.floor(height);
-        context.clearRect(0, 0, canvas.width, canvas.height);
-        input.value = "";
-        signatureDrawn = false;
-        if (acceptButton) acceptButton.disabled = true;
+        const nextWidth = Math.floor(width);
+        const nextHeight = Math.floor(height);
+        if (canvas.width === nextWidth && canvas.height === nextHeight) return;
+        const saved = document.createElement("canvas");
+        saved.width = canvas.width;
+        saved.height = canvas.height;
+        saved.getContext("2d").drawImage(canvas, 0, 0);
+        canvas.width = nextWidth;
+        canvas.height = nextHeight;
+        if (signatureDrawn) {
+          context.drawImage(saved, 0, 0, nextWidth, nextHeight);
+          input.value = canvas.toDataURL("image/png");
+        }
         applyPenStyle();
       };
 
@@ -6905,6 +6974,7 @@ function initDeferredLayoutPage() {
 const bootLayoutPage = () => {
   if (document.querySelector(".login-page")) {
     initPasswordToggles();
+    if (document.querySelector("[data-agreement-signature-shell]")) initDeferredLayoutPage();
     return;
   }
 

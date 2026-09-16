@@ -1938,7 +1938,7 @@
                       <% value ||= Array(record.data["module_names"]).join(", ").presence if field == "Module Name" %>
                       <% value ||= Array(record.data["sub_module_names"].presence || record.data["sub_module_name"]).join(", ").presence if field == "Sub Module Name" %>
                     <% end %>
-                    <% upload_field = field == "Training Register Upload" || field == "Training Photo Upload with Geo Tag" || field == "Field Photo" || field.downcase.include?("upload") || field.downcase.include?("file") %>
+                    <% upload_field = field == "Training Register Upload" || field == "Training Photo Upload with Geo Tag" || ["Photo Front View", "Photo Back View", "Photo Close-up View", "Photo Long Shot"].include?(field) || field == "Field Photo" || field.downcase.include?("upload") || field.downcase.include?("file") %>
                     <% value = value.join(", ") if value.is_a?(Array) && !upload_field %>
                     <% value ||= "-" %>
                     <% if field == "Status" %>
@@ -1979,7 +1979,7 @@
                       end %>
                       <td data-export-value="<%= file_urls.join(", ") %>">
                         <% if file_urls.any? %>
-                          <% if ["Training Photo Upload with Geo Tag", "Field Photo"].include?(field) %>
+                          <% if ["Training Photo Upload with Geo Tag", "Field Photo", "Photo Front View", "Photo Back View", "Photo Close-up View", "Photo Long Shot"].include?(field) %>
                             <button type="button"
                               class="grid-view-link eye-link module-gallery-trigger"
                               data-upload-gallery
@@ -2140,8 +2140,8 @@
             <label>
               <span>
                 <%= field_label %>
-                <% if @slug == "training-form" && field == "Training Photo Upload with Geo Tag" %>
-                  <small class="field-hint inline-upload-hint">Select multiple photos · max 5 MB each</small>
+                <% if @slug == "training-form" && ["Photo Front View", "Photo Back View", "Photo Close-up View", "Photo Long Shot"].include?(field) %>
+                  <small class="field-hint inline-upload-hint">Max 5 MB · image</small>
                 <% end %>
               </span>
               <% if add_farmer_form && field == "Mapped Village" %>
@@ -2160,17 +2160,20 @@
                   <option <%= "selected" if field_value == "Active" %>>Active</option>
                   <option <%= "selected" if field_value == "Inactive" %>>Inactive</option>
                 </select>
-              <% elsif field.downcase.include?("upload") || field.downcase.include?("file") || field == "Field Photo" %>
-                <% upload_accept = field == "Excel Upload" ? "accept=\".csv,.xlsx,.xls\"" : nil %>
-                <% multiple_photo_upload = @slug == "training-form" && field == "Training Photo Upload with Geo Tag" %>
-                <% multiple_attachment_upload = @slug == "other-target" && ["Attachment Upload", "Field Photo"].include?(field) %>
-                <% upload_accept = "accept=\"image/*\" data-max-size-mb=\"5\"" if multiple_photo_upload %>
-                <% upload_accept = "accept=\"image/*\" data-max-size-mb=\"5\"" if field == "Field Photo" %>
-                <input name="module_record[<%= field_key %>]<%= "[]" if multiple_photo_upload || multiple_attachment_upload %>" type="file" <%= "multiple" if multiple_photo_upload || multiple_attachment_upload %> <%= upload_accept&.html_safe %> <%= "required" if form_required && field_value.blank? && !other_target_form %>>
-                <% if @slug == "training-form" && field == "Training Photo Upload with Geo Tag" %>
+              <% elsif @slug == "training-form" && ["Photo Front View", "Photo Back View", "Photo Close-up View", "Photo Long Shot"].include?(field) %>
+                <input name="module_record[<%= field_key %>]" type="file" accept="image/*" data-max-size-mb="5" <%= "required" if form_required && field_value.blank? %>>
+                <% if field == "Photo Front View" %>
                   <input type="hidden" name="module_record[geo_latitude]" data-training-geo-latitude value="<%= @record&.data&.[]("geo_latitude") %>">
                   <input type="hidden" name="module_record[geo_longitude]" data-training-geo-longitude value="<%= @record&.data&.[]("geo_longitude") %>">
                 <% end %>
+                <% if field_value.present? %>
+                  <small class="field-hint">Current: <%= field_value %></small>
+                <% end %>
+              <% elsif field.downcase.start_with?("photo") && field.downcase.include?("upload") || field.downcase.include?("upload") || field.downcase.include?("file") || field == "Field Photo" %>
+                <% upload_accept = field == "Excel Upload" ? "accept=\".csv,.xlsx,.xls\"" : nil %>
+                <% multiple_attachment_upload = @slug == "other-target" && ["Attachment Upload", "Field Photo"].include?(field) %>
+                <% upload_accept = "accept=\"image/*\" data-max-size-mb=\"5\"" if field == "Field Photo" %>
+                <input name="module_record[<%= field_key %>]<%= "[]" if multiple_attachment_upload %>" type="file" <%= "multiple" if multiple_attachment_upload %> <%= upload_accept&.html_safe %> <%= "required" if form_required && field_value.blank? && !other_target_form %>>
                 <% if field_value.present? %>
                   <small class="field-hint">Current: <%= field_value %></small>
                 <% end %>
@@ -2248,7 +2251,7 @@
                 <input name="module_record[<%= field_key %>]" type="password" placeholder="Enter <%= field %>" value="<%= field_value %>" <%= required_attr %>>
               <% elsif field.downcase.include?("date") %>
                 <input name="module_record[<%= field_key %>]" type="date" value="<%= field_value %>" <%= required_attr %>>
-              <% elsif @slug == "training-form" && ["Farmer Count", "Male Count", "Female Count", "Total Farmer Count"].include?(field) %>
+              <% elsif @slug == "training-form" && ["Farmer Count", "Male Count", "Female Count", "Total Farmer Count", "Other Farmer Count"].include?(field) %>
                 <% training_count_attr =
                   case field
                   when "Farmer Count"
@@ -2256,7 +2259,7 @@
                   when "Total Farmer Count"
                     "data-training-total-farmer-count-input readonly"
                   end %>
-                <input name="module_record[<%= field_key %>]" type="number" min="0" step="1" placeholder="Enter <%= field_label %>" value="<%= field_value %>" <%= required_attr %> <%= training_count_attr&.html_safe %>>
+                <input name="module_record[<%= field_key %>]" type="number" min="0" step="1" placeholder="Enter <%= field_label %>" value="<%= field_value %>" <%= required_attr if field != "Other Farmer Count" %> <%= training_count_attr&.html_safe %>>
               <% elsif other_target_form && field == "Farmer Count" %>
                 <input name="module_record[<%= field_key %>]" type="number" min="0" step="1" placeholder="Selected Farmer Count" value="<%= field_value %>" data-seed-farmer-count-input readonly required>
               <% elsif other_target_form && field == "Contact Number" %>
@@ -2271,7 +2274,7 @@
                 <input name="module_record[<%= field_key %>]" type="text" placeholder="Enter <%= field_label %>" value="<%= field_value %>" <%= "readonly" if @slug == "training-form" && ["FCO Name", "Trainee Department", "Trainer Name", "Trainer Contact"].include?(field) && current_app_user&.dig("record_type").to_s == "Vrp" %> <%= "data-user-management-role-input" if @slug == "role-management" && field == "User Management Role" %> <%= required_attr %>>
               <% end %>
             </label>
-            <% if @slug == "training-form" && field == "Training Photo Upload with Geo Tag" %>
+            <% if @slug == "training-form" && field == "Photo Front View" %>
               <div class="training-farmer-panel" data-training-farmer-panel data-selected-farmer-ids="<%= json_escape((selected_training_farmer_ids || []).to_json) %>">
                 <div class="target-mapping-toolbar">
                   <strong>Target Farmers</strong>

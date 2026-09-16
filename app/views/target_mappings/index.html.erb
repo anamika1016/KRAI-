@@ -57,7 +57,7 @@
                 <span class="location-select-all"><input type="checkbox" data-chip-select-all-for="target-village"> Select all</span>
               </span>
               <input type="hidden" name="target_mapping[village_id]" value="" data-target-village-hidden>
-              <select data-target-village data-selected-values="<%= html_escape(Array(@edit_payload[:village_ids]).to_json) %>" multiple required disabled data-chip-multiselect data-chip-select-all-key="target-village" data-placeholder="Select Village">
+              <select data-target-village data-selected-values="<%= html_escape(Array(@edit_payload[:village_ids]).to_json) %>" multiple data-chip-required="true" disabled data-chip-multiselect data-chip-select-all-key="target-village" data-placeholder="Select Village">
                 <option value="">Select Village</option>
               </select>
             </div>
@@ -92,7 +92,7 @@
                 <span>Main Activity <em>*</em></span>
                 <span class="location-select-all"><input type="checkbox" data-chip-select-all-for="target-main-activity"> Select all</span>
               </span>
-              <select name="target_mapping[main_activity_names][]" data-target-main-activity data-selected-values="<%= html_escape(Array(@edit_payload[:main_activity_names]).to_json) %>" multiple required data-chip-multiselect data-chip-select-all-key="target-main-activity" data-placeholder="Select Main Activity">
+              <select name="target_mapping[main_activity_names][]" data-target-main-activity data-selected-values="<%= html_escape(Array(@edit_payload[:main_activity_names]).to_json) %>" multiple data-chip-required="true" data-chip-multiselect data-chip-select-all-key="target-main-activity" data-placeholder="Select Main Activity">
                 <option value="">Select Main Activity</option>
                 <% @main_activity_options.each do |option| %>
                   <option value="<%= option %>" <%= "selected" if Array(@edit_payload[:main_activity_names]).map(&:to_s).include?(option.to_s) %>><%= option %></option>
@@ -105,7 +105,7 @@
                 <span>Sub Activity <em>*</em></span>
                 <span class="location-select-all"><input type="checkbox" data-chip-select-all-for="target-sub-activity"> Select all</span>
               </span>
-              <select name="target_mapping[activity_names][]" data-target-sub-activity data-selected-values="<%= html_escape(Array(@edit_payload[:activity_names]).to_json) %>" multiple required data-chip-multiselect data-chip-select-all-key="target-sub-activity" data-placeholder="Select Sub Activity">
+              <select name="target_mapping[activity_names][]" data-target-sub-activity data-selected-values="<%= html_escape(Array(@edit_payload[:activity_names]).to_json) %>" multiple data-chip-required="true" data-chip-multiselect data-chip-select-all-key="target-sub-activity" data-placeholder="Select Sub Activity">
                 <option value="">Select Sub Activity</option>
                 <% @sub_activity_options.each do |option| %>
                   <option value="<%= option %>" <%= "selected" if Array(@edit_payload[:activity_names]).map(&:to_s).include?(option.to_s) %>><%= option %></option>
@@ -151,6 +151,16 @@
                          data-training-activity-name="<%= label %>">
                 </label>
               <% end %>
+              <label>
+                <span>CC Target</span>
+                <input type="number"
+                       name="target_mapping[cc_target]"
+                       min="0"
+                       step="1"
+                       placeholder="Enter CC target"
+                       value="<%= @edit_payload[:cc_target] || @edit_target&.cc_target %>"
+                       data-cc-target-input>
+              </label>
             </div>
           </div>
 
@@ -361,6 +371,7 @@
             <% else %>
               <tr>
                 <th>Jeevika Jankar</th>
+                <th>Cluster Coordinator</th>
                 <th>FCO</th>
                 <th>ICS</th>
                 <th>Village</th>
@@ -373,6 +384,7 @@
                 <th class="target-training-column">Input Demo INM</th>
                 <th class="target-training-column">Input Demo PM</th>
                 <th class="target-training-column">FFS Exposure</th>
+                <th class="target-training-column">CC Target</th>
                 <th class="target-count-column">Farmer Target</th>
                 <th class="target-count-column">Week 1</th>
                 <th class="target-count-column">Week 2</th>
@@ -409,6 +421,7 @@
                   <% target = row[:target] %>
                   <tr>
                     <td><%= target.vrp&.name %></td>
+                    <td><%= target.vrp&.cluster_incharge.presence || "-" %></td>
                   <td><%= target.fco_name.presence || target.fco_id %></td>
                   <td><%= target.ics_name.presence || target.ics_id %></td>
                   <td><%= target.village_name.presence || target.village_id %></td>
@@ -433,6 +446,7 @@
                   <td><%= number_with_precision(target.input_demo_inm_target, precision: 4, strip_insignificant_zeros: true) if target.input_demo_inm_target.present? %></td>
                   <td><%= number_with_precision(target.input_demo_pm_target, precision: 4, strip_insignificant_zeros: true) if target.input_demo_pm_target.present? %></td>
                   <td><%= number_with_precision(target.ffs_target, precision: 4, strip_insignificant_zeros: true) if target.ffs_target.present? %></td>
+                  <td><%= number_with_precision(target.cc_target, precision: 4, strip_insignificant_zeros: true) if target.cc_target.present? %></td>
                   <td class="target-count-cell"><%= number_with_precision(row[:target_quantity], precision: 4, strip_insignificant_zeros: true) %></td>
                   <% week_targets = Array(row[:weekly_values]).presence || target.weekly_target_values %>
                   <td class="target-count-cell"><%= week_targets[0] %></td>
@@ -479,7 +493,7 @@
               <% end %>
             <% else %>
               <tr>
-	                <td colspan="<%= @target_summary_mode.present? ? 4 : (show_mapping_actions ? 20 : 19) %>">No target mapping saved yet.</td>
+	                <td colspan="<%= @target_summary_mode.present? ? 4 : (show_mapping_actions ? 21 : 20) %>">No target mapping saved yet.</td>
               </tr>
             <% end %>
           </tbody>

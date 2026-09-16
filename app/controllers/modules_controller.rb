@@ -135,9 +135,13 @@ class ModulesController < ApplicationController
         "Male Count",
         "Female Count",
         "Total Farmer Count",
+        "Other Farmer Count",
         "Next Farmer Training Date",
         "Training Register Upload",
-        "Training Photo Upload with Geo Tag"
+        "Photo Front View",
+        "Photo Back View",
+        "Photo Close-up View",
+        "Photo Long Shot"
       ]
     },
     "training-form-list" => {
@@ -160,12 +164,16 @@ class ModulesController < ApplicationController
         "Training Method",
         "Farmer Count",
         "Total Farmer Count",
+        "Other Farmer Count",
         "Selected Farmers",
         "Male Count",
         "Female Count",
         "Next Farmer Training Date",
         "Training Register Upload",
-        "Training Photo Upload with Geo Tag"
+        "Photo Front View",
+        "Photo Back View",
+        "Photo Close-up View",
+        "Photo Long Shot"
       ]
     },
     "seed-distribution-target" => {
@@ -595,6 +603,19 @@ class ModulesController < ApplicationController
     "all-user" => "new-user"
   }.freeze
 
+  def cc_target_status_list
+    @cc_target_status_report = CcTargetStatusReport.new(calculator: self)
+    @cc_target_rows = @cc_target_status_report.rows
+    respond_to do |format|
+      format.html { render :cc_target_status_list }
+      format.xlsx do
+        headers = ["month", "fco_id", "fpo_name", "cluster_incharge", "jj_names", "target", "achievement", "status"]
+        rows = @cc_target_rows.map { |row| [row["month"], row["fco_id"], row["fpo_name"], row["cluster_incharge"], Array(row["jj_names"]).join(", "), row["target"], row["achievement"], row["status"]] }
+        send_xlsx(headers: headers, rows: rows, filename: "cc-target-status.xlsx", sheet_name: "CC Target Status")
+      end
+    end
+  end
+
   def dashboard
     if vrp_login_user?
       prepare_vrp_dashboard
@@ -770,6 +791,7 @@ class ModulesController < ApplicationController
       return
     end
     @cc_jj_work_status_report = CcJjWorkStatusReport.new(calculator: self)
+    @cc_target_status_report = CcTargetStatusReport.new(calculator: self)
     if params[:work_status_list] == "true"
       @work_status_rows = @cc_jj_work_status_report.rows
       respond_to do |format|
@@ -2110,10 +2132,13 @@ class ModulesController < ApplicationController
     pending_target_total = target_totals[:pending]
     month_caption = selected_month.presence || "selected month"
 
+    cc_target_total = filtered_targets.select { |t| t.activity_name.blank? || t.activity_name == "OPG Training" || t.cc_target.to_i > 0 }.map { |t| t.cc_target.to_i > 0 ? t.cc_target.to_i : t.opg_training_target.to_i }.sum
+
     @dashboard_cards = [
       dashboard_card("Mapped Villages", village_count, "Villages assigned in #{month_caption}", vrp_dashboard_list_path("mapped_villages", training_month: selected_month)),
       dashboard_card("Main Activities", main_activity_count, "Main activities mapped in #{month_caption}", vrp_dashboard_list_path("main_activities", training_month: selected_month)),
       dashboard_card("Sub Activities", sub_activity_count, "Sub activities mapped in #{month_caption}", vrp_dashboard_list_path("sub_activities", training_month: selected_month)),
+      dashboard_card("CC Target", dashboard_quantity(cc_target_total), "CC target assigned in #{month_caption}", vrp_dashboard_list_path("assigned_target", training_month: selected_month)),
       dashboard_card("Assigned Target", dashboard_quantity(assigned_target_total), "Target quantity assigned in #{month_caption}", vrp_dashboard_list_path("assigned_target", training_month: selected_month)),
       dashboard_card("Assigned Farmers", @vrp_target_rows.flat_map { |row| Array(row[:assigned_farmer_ids]) }.map(&:to_s).reject(&:blank?).uniq.size, "Unique farmers assigned in #{month_caption}", vrp_dashboard_list_path("mapped_farmers", training_month: selected_month)),
       dashboard_card("Achieved Target", dashboard_quantity(achieved_target_total), "Target completed in #{month_caption}", vrp_dashboard_list_path("achieved_target", training_month: selected_month)),
@@ -2128,6 +2153,7 @@ class ModulesController < ApplicationController
       assigned_target_total: assigned_target_total,
       achieved_target_total: achieved_target_total,
       pending_target_total: pending_target_total,
+      cc_target_total: cc_target_total,
       selected_month: selected_month
     )
     @vrp_farmer_followup = empty_vrp_farmer_followup
@@ -2549,7 +2575,7 @@ class ModulesController < ApplicationController
     }
   end
 
-  def vrp_dashboard_summary_cards(rows, village_count:, main_activity_count:, sub_activity_count:, mapped_village_farmer_count:, assigned_target_total:, achieved_target_total:, pending_target_total:, selected_month:)
+  def vrp_dashboard_summary_cards(rows, village_count:, main_activity_count:, sub_activity_count:, mapped_village_farmer_count:, assigned_target_total:, achieved_target_total:, pending_target_total:, cc_target_total: 0, selected_month:)
     status_sets = vrp_dashboard_farmer_status_sets(rows)
     mapped_farmer_count = status_sets[:mapped].size
     month_params = { training_month: selected_month }.compact_blank
@@ -2558,6 +2584,7 @@ class ModulesController < ApplicationController
       dashboard_card("Total Mapped Villages", village_count, "Filtered mapped villages", vrp_dashboard_list_path("mapped_villages", month_params)),
       dashboard_card("Mapped Farmer", mapped_village_farmer_count, "AFL farmers in filtered mapped villages", vrp_dashboard_list_path("mapped_village_farmers", month_params)),
       dashboard_card("Targeted Farmers", mapped_farmer_count, "Unique targeted farmers", vrp_dashboard_list_path("mapped_farmers", month_params)),
+      dashboard_card("Total CC Target", cc_target_total, "CC target in filtered mapped villages", vrp_dashboard_list_path("assigned_target", month_params)),
       dashboard_card("Total Mapped Main Activities", main_activity_count, "Filtered main activities", vrp_dashboard_list_path("main_activities", month_params)),
       dashboard_card("Total Mapped Sub-Activities", sub_activity_count, "Filtered sub-activities", vrp_dashboard_list_path("sub_activities", month_params))
     ]
@@ -3725,14 +3752,36 @@ class ModulesController < ApplicationController
     report = @demonstration_method_report || DemonstrationMethodReport.new(
       targets: @filtered_targets || dashboard_target_mappings,
       month: params.key?(:month) ? dashboard_filter_param(:month) : Date.current.prev_month.strftime("%B"))
-    # Display titles only; the underlying metric/data keys ("OPG Target", "FFS") are unchanged.
-    demonstration_method_card_titles = { "OPG Target" => "OPG Training Target", "FFS" => "FFS Exposure" }
-    DemonstrationMethodReport::METRICS.map do |metric|
-      dashboard_summary_card(demonstration_method_card_titles.fetch(metric, metric),
-        dashboard_quantity(report.summary.sum { |row| row[metric] }), "Training method entries",
-        demonstration_method_list_path(request.query_parameters),
-        demonstration_method_list_path(request.query_parameters.merge(format: :xlsx)))
-    end
+
+    summary_rows = report.summary
+    opg_val = dashboard_quantity(summary_rows.sum { |r| r["OPG Target"].to_f })
+
+    gen_target = summary_rows.sum { |r| r["General Training/Meeting Target"].to_f }.to_i
+    gen_done   = summary_rows.sum { |r| r["General Training/Meeting Done"].to_f }.to_i
+    gen_val    = "#{gen_target} / #{gen_done}"
+
+    inm_target = summary_rows.sum { |r| r["Input Demo INM Target"].to_f }.to_i
+    inm_done   = summary_rows.sum { |r| r["Input Demo INM Done"].to_f }.to_i
+    inm_val    = "#{inm_target} / #{inm_done}"
+
+    pm_target  = summary_rows.sum { |r| r["Input Demo PM Target"].to_f }.to_i
+    pm_done    = summary_rows.sum { |r| r["Input Demo PM Done"].to_f }.to_i
+    pm_val     = "#{pm_target} / #{pm_done}"
+
+    ffs_target = summary_rows.sum { |r| r["FFS Target"].to_f }.to_i
+    ffs_done   = summary_rows.sum { |r| r["FFS Done"].to_f }.to_i
+    ffs_val    = "#{ffs_target} / #{ffs_done}"
+
+    card_list_path = demonstration_method_list_path(request.query_parameters)
+    card_xlsx_path = demonstration_method_list_path(request.query_parameters.merge(format: :xlsx))
+
+    [
+      dashboard_summary_card("OPG Training Target", opg_val, "Training method entries", card_list_path, card_xlsx_path),
+      dashboard_summary_card("General Training/Meeting", gen_val, "Training method entries", card_list_path, card_xlsx_path),
+      dashboard_summary_card("Input Demo INM", inm_val, "Training method entries", card_list_path, card_xlsx_path),
+      dashboard_summary_card("Input Demo PM", pm_val, "Training method entries", card_list_path, card_xlsx_path),
+      dashboard_summary_card("FFS Exposure", ffs_val, "Training method entries", card_list_path, card_xlsx_path)
+    ]
   end
 
   def dashboard_opg_achievement_count
@@ -12356,6 +12405,17 @@ class ModulesController < ApplicationController
     data["selected_farmer_names"] = training_farmer_names(selected_farmer_ids)
     data["farmer_count"] = selected_farmer_ids.size.to_s
     data["total_farmer_count"] = training_total_farmer_count(data).to_s if training_total_farmer_count(data)
+
+    photos = [
+      data["photo_front_view"],
+      data["photo_back_view"],
+      data["photo_close_up_view"],
+      data["photo_close-up_view"],
+      data["photo_long_shot"],
+      data["training_photo_upload_with_geo_tag"]
+    ].flatten.compact_blank.uniq
+
+    data["training_photo_upload_with_geo_tag"] = photos if photos.present?
     data.delete("status")
     data
   end
@@ -12948,11 +13008,18 @@ class ModulesController < ApplicationController
       "male_count" => "Male Count",
       "female_count" => "Female Count",
       "next_farmer_training_date" => "Next Farmer Training Date",
-      "training_register_upload" => "Training Register Upload",
-      "training_photo_upload_with_geo_tag" => "Training Photo Upload with Geo Tag"
+      "training_register_upload" => "Training Register Upload"
     }
 
     errors = missing_required_data_errors(data, required_fields)
+    has_photo = data["photo_front_view"].present? ||
+                data["photo_back_view"].present? ||
+                data["photo_close_up_view"].present? ||
+                data["photo_close-up_view"].present? ||
+                data["photo_long_shot"].present? ||
+                data["training_photo_upload_with_geo_tag"].present?
+
+    errors << "Training Photo Upload with Geo Tag required hai." unless has_photo
     selected_farmer_ids = Array(data["selected_farmer_ids"]).map(&:to_s).reject(&:blank?).uniq
 
     farmer_count = whole_number_value(data["farmer_count"].presence || "0")

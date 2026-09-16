@@ -108,7 +108,7 @@
           <% demonstration_method_cards.each do |card| %>
             <div class="training-participation-box total dashboard-summary-box">
               <span><%= card[:title] %></span>
-              <strong><%= card[:value] %></strong>
+              <%= render "demonstration_metric", value: card[:value] %>
               <div class="dashboard-summary-actions">
                 <%= link_to "View List", card[:path], class: "table-action", data: { dashboard_card: true } %>
               </div>
@@ -496,13 +496,13 @@
     <section class="module-card training-participation-status-card dashboard-status-panel dashboard-summary-panel demonstration-method-panel" id="demonstration_method_boxes">
       <div class="module-card-header training-participation-status-header">
         <h2>Demonstration Method</h2>
-        <%= link_to "viwe list", demonstration_method_list_path(request.query_parameters), class: "table-action demonstration-common-list" %>
+        <%= link_to "View List", demonstration_method_list_path(request.query_parameters), class: "table-action demonstration-common-list" %>
       </div>
       <div class="training-participation-boxes dashboard-summary-boxes demonstration-method-boxes">
         <% demonstration_method_cards.each do |card| %>
           <div class="training-participation-box total dashboard-summary-box">
             <span><%= card[:title] %></span>
-            <strong><%= card[:value] %></strong>
+            <%= render "demonstration_metric", value: card[:value] %>
 
           </div>
         <% end %>
@@ -556,6 +556,43 @@
           <% end %>
         </div>
         <%= link_to "View List", cc_jj_work_status_list_path(request.query_parameters), class: "table-action" %>
+      </article>
+
+      <article class="metric-card metric-card-group metric-card-group-registration cc-target-status">
+        <span class="metric-card-group-title">CC TARGET STATUS</span>
+        <button type="button" class="metric-card-popup-trigger" data-card-popup-trigger title="Open in popup" aria-label="Open CC Target Status details"><svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M14 4h6v6M20 4l-9 9"/><path d="M10 4H5a1 1 0 0 0-1 1v14a1 1 0 0 0 1 1h14a1 1 0 0 0 1-1v-5"/></svg></button>
+        <div class="cc-jj-status-groups">
+          <% cc_target_summary_by_fco = @cc_target_status_report.summary.group_by { |row| row["fco_id"] } %>
+          <% { "1004" => "Sausar", "1006" => "Turekela" }.each do |fco_id, fco_name| %>
+            <% fco_rows    = cc_target_summary_by_fco[fco_id] || [] %>
+            <% total_target = fco_rows.sum { |r| r["total_target"] } %>
+            <div class="cc-jj-status-fco-row">
+              <strong class="cc-jj-status-fco-name"><%= fco_name %></strong>
+              <div class="cc-jj-status-fco-groups cc-target-fco-groups">
+                <div class="cc-jj-status-group cc-jj-status-target">
+                  <strong>Target</strong>
+                  <div class="metric-card-group-items">
+                    <%= link_to cc_target_status_list_path(request.query_parameters), class: "metric-card-group-item" do %>
+                      <span>Total</span><strong><%= total_target %></strong>
+                    <% end %>
+                  </div>
+                </div>
+                <% ["Red", "Yellow", "Green"].each do |status| %>
+                  <% row = fco_rows.find { |r| r["status"].to_s.casecmp(status).zero? } %>
+                  <div class="cc-jj-status-group cc-jj-status-<%= status.downcase %>">
+                    <strong><%= status %></strong>
+                    <div class="metric-card-group-items">
+                      <%= link_to cc_target_status_list_path(request.query_parameters), class: "metric-card-group-item" do %>
+                        <span>CC</span><strong><%= row ? row["cc_count"] : 0 %></strong>
+                      <% end %>
+                    </div>
+                  </div>
+                <% end %>
+              </div>
+            </div>
+          <% end %>
+        </div>
+        <%= link_to "View List", cc_target_status_list_path(request.query_parameters), class: "table-action" %>
       </article>
 
       <dialog class="metric-card-popup" data-card-popup>

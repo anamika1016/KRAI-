@@ -20,6 +20,7 @@
 
         <div class="side-subnav">
           <% section[:links].each do |link| %>
+            <% next if %w[seed-distribution-target seed-distribution-target-list papl360-target papl360-target-list add-farmer-form].include?(link[2].to_s) %>
             <%= link_to link.first, sidebar_link_path(link), class: "side-sub-link #{'active' if sidebar_link_active?(link)}", data: { turbo_prefetch: false } %>
           <% end %>
         </div>

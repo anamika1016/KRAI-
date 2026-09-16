@@ -129,6 +129,7 @@ Rails.application.routes.draw do
   root "sessions#new"
   get "dashboard", to: "modules#dashboard", as: :dashboard
   get "dashboard/cc-jj-work-status", to: "modules#dashboard", defaults: { work_status_list: "true" }, as: :cc_jj_work_status_list
+  get "dashboard/cc-target-status", to: "modules#cc_target_status_list", as: :cc_target_status_list
   get "dashboard/demonstration-method", to: "modules#dashboard", defaults: { demonstration_list: "true" }, as: :demonstration_method_list
   get "dashboard/demonstration-method/farmers", to: "modules#demonstration_method_farmers", as: :demonstration_method_farmers
   get "dashboard/vrp-list/:list_type", to: "modules#vrp_dashboard_list", as: :vrp_dashboard_list

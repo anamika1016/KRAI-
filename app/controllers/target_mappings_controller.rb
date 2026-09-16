@@ -142,6 +142,7 @@ class TargetMappingsController < ApplicationController
       :target_quantity,
       :target_type,
       :new_farmer_target_quantity,
+      :cc_target,
       main_activity_names: [],
       activity_names: [],
       afl_ids: [],
@@ -322,9 +323,20 @@ class TargetMappingsController < ApplicationController
 
     opg = integer_plan_value(targets["opg_training"])
     breakdown = OPG_BREAKDOWN_KEYS.sum { |key| integer_plan_value(targets[key]).to_i }
-    return if breakdown == opg
+    unless breakdown == opg
+      return "General Training/Meeting, Input Demo INM, Input Demo PM aur FFS ka total (#{breakdown}) OPG Training (#{opg}) ke equal hona chahiye; usse zyada nahi ho sakta."
+    end
 
-    "General Training/Meeting, Input Demo INM, Input Demo PM aur FFS ka total (#{breakdown}) OPG Training (#{opg}) ke equal hona chahiye; usse zyada nahi ho sakta."
+    cc_target_val = target_mapping_params[:cc_target]
+    if cc_target_val.present?
+      cc_target_int = integer_plan_value(cc_target_val)
+      return "CC Target must be a non-negative whole number." if cc_target_int.nil?
+      if cc_target_int > opg
+        return "CC Target (#{cc_target_int}) OPG Training (#{opg}) se zyada nahi ho sakta."
+      end
+    end
+
+    nil
   end
 
   def selected_main_activity_names
@@ -1349,6 +1361,7 @@ class TargetMappingsController < ApplicationController
       training_targets: TRAINING_TARGET_FIELDS.keys.index_with do |key|
         target_number_value(primary_target.public_send("#{key}_target"))
       end,
+      cc_target: target_number_value(primary_target.cc_target),
       afl_ids: grouped_targets.flat_map { |row| Array(row.afl_ids).map(&:to_s) }.reject(&:blank?).uniq
     }
   end
@@ -1381,6 +1394,7 @@ class TargetMappingsController < ApplicationController
 
     [
       "Jeevika Jankar",
+      "Cluster Coordinator",
       "FCO",
       "ICS",
       "Village",
@@ -1393,6 +1407,7 @@ class TargetMappingsController < ApplicationController
       "Input Demo INM",
       "Input Demo PM",
       "FFS",
+      "CC Target",
       "Farmer Target",
       "Week 1",
       "Week 2",
@@ -1415,6 +1430,7 @@ class TargetMappingsController < ApplicationController
       week_targets = Array(row[:weekly_values]).presence || target.weekly_target_values
       [
         target.vrp&.name,
+        target.vrp&.cluster_incharge.presence || "-",
         target.fco_name.presence || target.fco_id,
         target.ics_name.presence || target.ics_id,
         target.village_name.presence || target.village_id,
@@ -1427,6 +1443,7 @@ class TargetMappingsController < ApplicationController
         target_number_value(target.input_demo_inm_target),
         target_number_value(target.input_demo_pm_target),
         target_number_value(target.ffs_target),
+        target_number_value(target.cc_target),
         target_number_value(row[:target_quantity]),
         week_targets[0],
         week_targets[1],

@@ -1,11 +1,11 @@
 require "test_helper"
 
 class TargetMappingOpgValidationTest < ActiveSupport::TestCase
-  def error_for(training_targets)
+  def error_for(training_targets, cc_target = nil)
     controller = TargetMappingsController.new
     controller.define_singleton_method(:training_target_mode?) { true }
     controller.define_singleton_method(:target_mapping_params) do
-      ActionController::Parameters.new(training_targets: training_targets).permit!
+      ActionController::Parameters.new(training_targets: training_targets, cc_target: cc_target).permit!
     end
     controller.send(:training_target_opg_error)
   end
@@ -59,4 +59,17 @@ class TargetMappingOpgValidationTest < ActiveSupport::TestCase
     assert_nil error_for("opg_training" => "20", "week_wise_opg" => "20", "input_demo_inm" => "0", "input_demo_pm" => "0", "ffs" => "0")
   end
 
+  test "blocks when CC Target exceeds OPG Training" do
+    targets = { "opg_training" => "4", "week_wise_opg" => "4", "input_demo_inm" => "0", "input_demo_pm" => "0", "ffs" => "0" }
+    err = error_for(targets, "5")
+    assert err
+    assert_includes err, "CC Target (5) OPG Training (4) se zyada nahi ho sakta."
+  end
+
+  test "allows when CC Target is equal to or less than OPG Training" do
+    targets = { "opg_training" => "4", "week_wise_opg" => "4", "input_demo_inm" => "0", "input_demo_pm" => "0", "ffs" => "0" }
+    assert_nil error_for(targets, "4")
+    assert_nil error_for(targets, "2")
+    assert_nil error_for(targets, "0")
+  end
 end
