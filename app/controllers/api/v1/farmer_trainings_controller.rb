@@ -20,7 +20,7 @@ module Api
           return render json: { success: false, message: "Farmer Training Form record not found." }, status: :not_found
         end
 
-        paths = Array(record.data["training_photo_upload_with_geo_tag"]).compact_blank
+        paths = FarmerTargetApi::TRAINING_PHOTO_FIELDS.flat_map { |field| Array(record.data[field]) }.compact_blank.uniq
         photos = paths.map.with_index do |path, index|
           {
             id: index + 1,

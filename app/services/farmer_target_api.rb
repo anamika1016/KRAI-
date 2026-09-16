@@ -3,6 +3,7 @@
 # Farmer Target module APIs for React Native.
 # Stores ModuleRecord rows with the same slugs as the web UI (ModulesController untouched).
 class FarmerTargetApi
+  TRAINING_PHOTO_FIELDS = %w[training_photo_upload_with_geo_tag photo_front_view photo_back_view photo_close_up_view photo_long_shot].freeze
   MAX_TRAINING_PHOTO_SIZE = 5.megabytes
   TRAINING_PHOTO_CONTENT_TYPES = %w[image/jpeg image/png image/webp image/heic image/heif].freeze
   OTHER_TARGET_SLUGS = %w[seed-distribution-target papl360-target other-target].freeze
@@ -60,7 +61,7 @@ class FarmerTargetApi
         current_vrp: current_seed_target_vrp_option,
         months: master_month_options(mappings.map { |mapping| mapping[:month] }),
         target_mappings: mappings,
-        training_methods: ["Input Demo INM", "Input Demo PM", "FFS", "OPG Training"]
+        training_methods: ["General Training/Meeting", "Input Demo INM", "Input Demo PM", "FFS"]
       }
     when *OTHER_TARGET_SLUGS
       {
@@ -105,7 +106,7 @@ class FarmerTargetApi
       data: record.data
     }
     if record.module_slug == "training-form"
-      payload[:photo_count] = Array(record.data["training_photo_upload_with_geo_tag"]).compact_blank.size
+      payload[:photo_count] = TRAINING_PHOTO_FIELDS.flat_map { |field| Array(record.data[field]) }.compact_blank.uniq.size
     end
     payload
   end
@@ -398,11 +399,12 @@ class FarmerTargetApi
 
   def stamp_target_record_creator!(data)
     user = current_app_user
-    data["created_by_record_type"] = data["created_by_record_type"].presence || user["record_type"].to_s
-    data["created_by_id"] = data["created_by_id"].presence || user["id"].to_s
-    data["created_by_username"] = data["created_by_username"].presence || user["username"].presence || user["user_name"].to_s
-    data["created_by_name"] = data["created_by_name"].presence || user["name"].to_s
-    data["created_by_email"] = data["created_by_email"].presence || user["email"].to_s
+    %w[approval_status approval_state deleted is_deleted discarded].each { |key| data.delete(key) }
+    data["created_by_record_type"] = user["record_type"].to_s
+    data["created_by_id"] = user["id"].to_s
+    data["created_by_username"] = user["username"].presence || user["user_name"].to_s
+    data["created_by_name"] = user["name"].to_s
+    data["created_by_email"] = user["email"].to_s
   end
 
   def normalize_training_form_data(data)
@@ -461,7 +463,7 @@ class FarmerTargetApi
       data["department"] = mapping[:department]
       data["fcoc_name"] = mapping[:department]
       data["main_activity_type"] = mapping[:main_activity_type]
-      data["target"] = mapping[:target].to_s if data["target"].blank?
+      data["target"] = mapping[:target].to_s
       data["main_activity"] = mapping[:training_topic]
       data["sub_activity"] = mapping[:training_subject]
       data["training_topic"] = mapping[:training_topic]
@@ -524,11 +526,12 @@ class FarmerTargetApi
       "male_count" => "Male Count",
       "female_count" => "Female Count",
       "next_farmer_training_date" => "Next Farmer Training Date",
-      "training_register_upload" => "Training Register Upload",
-      "training_photo_upload_with_geo_tag" => "Training Photo Upload with Geo Tag"
+      "training_register_upload" => "Training Register Upload"
     }
 
     errors = missing_required_data_errors(data, required_fields)
+    errors << "Training Photo required hai." unless TRAINING_PHOTO_FIELDS.any? { |field| data[field].present? }
+    errors << "Mapped Training activity target select karein." unless training_target_match(data)
     selected_farmer_ids = Array(data["selected_farmer_ids"]).map(&:to_s).reject(&:blank?).uniq
     farmer_count = whole_number_value(data["farmer_count"].presence || "0")
     male_count = whole_number_value(data["male_count"])
@@ -808,8 +811,12 @@ class FarmerTargetApi
     return @training_target_scope if defined?(@training_target_scope)
 
     scope = TargetMapping.includes(:vrp)
-    scope = scope.where(vrp_id: current_vrp_record.id) if vrp_login_user? && current_vrp_record.present?
-    scope = scope.where(vrp_id: cluster_visible_vrp_ids) if mapped_vrp_scope_active?
+    if vrp_login_user?
+      scope = scope.where(vrp_id: current_vrp_record&.id)
+    elsif !admin_user?
+      visible_ids = Vrp.all.select { |vrp| vrp_registered_by_current_user?(vrp) || vrp_office_visible?(vrp) || cluster_visible_vrp_ids.include?(vrp.id) }.map(&:id)
+      scope = scope.where(vrp_id: visible_ids)
+    end
     @training_target_scope = scope
   end
 
@@ -822,7 +829,6 @@ class FarmerTargetApi
 
     visible_targets_by_id = training_target_scope.to_a.index_by { |target| target.id.to_s }
     @target_mapping_by_id.merge!(visible_targets_by_id)
-    @target_mapping_by_id[id] = TargetMapping.includes(:vrp).find_by(id: id) unless @target_mapping_by_id.key?(id)
     @target_mapping_by_id[id]
   end
 
@@ -1195,14 +1201,17 @@ class FarmerTargetApi
     string = value.to_s.strip
     return nil if string.blank?
 
-    BigDecimal(string)
+    number = BigDecimal(string)
+    number.finite? ? number : nil
   rescue ArgumentError
     nil
   end
 
   def numeric_string(value)
-    number = value.to_s.gsub(",", "").to_f
-    number == number.to_i ? number.to_i.to_s : number.to_s
+    number = decimal_value(value)
+    return value unless number&.finite?
+
+    number == number.to_i ? number.to_i.to_s : number.to_s("F")
   end
 
   def store_uploaded_module_file(upload)
@@ -1227,7 +1236,7 @@ class FarmerTargetApi
     return [] unless @module_slug == "training-form"
 
     raw = raw_attrs.respond_to?(:to_unsafe_h) ? raw_attrs.to_unsafe_h : Hash(raw_attrs)
-    uploads = Array(raw["training_photo_upload_with_geo_tag"] || raw[:training_photo_upload_with_geo_tag]).compact_blank
+    uploads = TRAINING_PHOTO_FIELDS.flat_map { |field| Array(raw[field] || raw[field.to_sym]) }.compact_blank
     uploads.each_with_object([]) do |upload, errors|
       next unless upload.respond_to?(:original_filename)
 

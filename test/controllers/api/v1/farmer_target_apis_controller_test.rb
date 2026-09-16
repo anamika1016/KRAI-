@@ -160,10 +160,106 @@ class Api::V1::FarmerTargetApisControllerTest < ActionDispatch::IntegrationTest
     post login_path, params: { login: "api_farmer_admin", password: "secret" }
     get "/modules/training-form-list"
     assert_response :success
-    assert_includes response.body, "Internal Trainer Name 1"
-    assert_includes response.body, "Internal Trainer Name 2"
+    assert_includes response.body, "Cluster Coordinator Name"
+    assert_includes response.body, "Agronomist Name"
     assert_includes response.body, "Internal Trainer One"
     assert_includes response.body, "Internal Trainer Two"
+  end
+
+  test "other targets authenticate, validate, create, list and show using mapped target" do
+    get "/api/v1/other-targets", as: :json
+    assert_response :unauthorized
+    vrp = create_vrp
+    ModuleRecord.create!(module_slug: "add-activity-group", data: { main_activity_name: "Seed", main_activity_type: "Other" })
+    mapping = TargetMapping.create!(vrp: vrp, fco_id: "demo", ics_id: "1", village_id: "1", village_name: "Village", ics_name: "ICS",
+      month_name: "September", main_activity_name: "Seed", activity_name: "Distribution", target_quantity: 5)
+    get "/api/v1/other-targets/form-options", headers: auth_headers
+    assert_response :success
+    assert response.parsed_body.dig("options", "target_mappings").any? { |row| row["target_mapping_id"] == mapping.id.to_s }
+    attrs = { jeevika_jankar_id: vrp.id, month: "September", ics: "ICS", village: "Village",
+      main_activity: "Seed", sub_activity: "Distribution", achievement: "bad", target: 999, created_by_id: "forged" }
+    post "/api/v1/other-targets", params: { other_target: attrs }, headers: auth_headers, as: :json
+    assert_response :unprocessable_entity
+    attrs[:achievement] = 6
+    post "/api/v1/other-targets", params: { other_target: attrs }, headers: auth_headers, as: :json
+    assert_response :unprocessable_entity
+    attrs[:achievement] = 3
+    post "/api/v1/other-targets", params: { other_target: attrs }, headers: auth_headers, as: :json
+    assert_response :created
+    record = response.parsed_body["other_target"]
+    assert_equal "5", record.dig("data", "target")
+    assert_equal @user.id.to_s, record.dig("data", "created_by_id")
+    get "/api/v1/other-targets/#{record['id']}", headers: auth_headers
+    assert_response :success
+    get "/api/v1/other-targets", headers: auth_headers
+    assert_response :success
+    assert response.parsed_body["other_targets"].any? { |row| row["id"] == record["id"] }
+  end
+
+  test "demonstration JSON has separate numeric targets and achievements and monthly scope" do
+    get "/api/v1/demonstration-methods/summary"
+    assert_response :unauthorized
+    vrp = create_vrp
+    2.times do
+      TargetMapping.create!(vrp: vrp, fco_id: "demo", fco_name: "Demo", ics_id: "1", village_id: "1",
+        month_name: "September", main_activity_name: "Training", activity_name: "Demo", target_quantity: 0,
+        opg_training_target: 8, week_wise_opg_target: 3, input_demo_inm_target: 2)
+    end
+    ModuleRecord.create!(module_slug: "training-form", data: { created_by_id: vrp.id.to_s, month: "September", training_method: "General Training/Meeting" })
+    ModuleRecord.create!(module_slug: "training-form", data: { created_by_id: vrp.id.to_s, month: "August", training_method: "FFS" })
+    get "/api/v1/demonstration-methods/summary", params: { month: "September", fco_id: "demo" }, headers: auth_headers
+    assert_response :success
+    assert_equal 8, response.parsed_body["opg_target"]
+    assert_equal({ "target" => 5, "achievement" => 1 }, response.parsed_body["total"])
+    get "/api/v1/demonstration-methods", params: { month: "September", vrp_id: vrp.id, per_page: 1 }, headers: auth_headers
+    assert_response :success
+    assert_equal 1, response.parsed_body["count"]
+    assert_equal({ "target" => 3, "achievement" => 1 }, response.parsed_body.dig("records", 0, "methods", "general_training_meeting"))
+    get "/api/v1/demonstration-methods", params: { month: "invalid" }, headers: auth_headers
+    assert_response :unprocessable_entity
+  end
+
+  test "training API keeps manual male and female counts and sums total" do
+    vrp = create_vrp
+    farmer = Afl.create!(farmer_name: "Mapped farmer")
+    ModuleRecord.create!(module_slug: "add-activity-group", data: { main_activity_name: "Training", main_activity_type: "Training" })
+    TargetMapping.create!(vrp: vrp, fco_id: "demo", ics_id: "1", village_id: "1", village_name: "Village", ics_name: "ICS",
+      month_name: "September", main_activity_name: "Training", activity_name: "Demo", target_quantity: 1, afl_ids: [farmer.id.to_s])
+    attrs = { month: "September", ics_block: "ICS", gram_name: "Village", fco_name: "Demo",
+      training_date: "2026-09-16", training_location: "Village", main_activity: "Training", sub_activity: "Demo",
+      training_method: "General Training/Meeting", training_description: "Meeting", male_count: 2, female_count: 3,
+      selected_farmer_ids: [farmer.id.to_s], next_farmer_training_date: "2026-09-20",
+      training_register_upload: "/uploads/module_records/register.jpg", photo_front_view: "/uploads/module_records/front.jpg" }
+    post "/api/v1/farmer-trainings", params: { farmer_training: attrs }, headers: auth_headers, as: :json
+    assert_response :created
+    data = response.parsed_body.dig("farmer_training", "data")
+    assert_equal 2, data["male_count"]
+    assert_equal 3, data["female_count"]
+    assert_equal "5", data["total_farmer_count"]
+    assert_equal "1", data["farmer_count"]
+    get "/api/v1/farmer-trainings/form-options", headers: auth_headers
+    assert_includes response.parsed_body.dig("options", "training_methods"), "General Training/Meeting"
+  end
+
+  test "JJ token cannot access other JJ target forms or demonstration rows" do
+    own = create_vrp(name: "Own JJ")
+    other = create_vrp(name: "Other JJ")
+    ModuleRecord.create!(module_slug: "add-activity-group", data: { main_activity_name: "Seed", main_activity_type: "Other" })
+    [own, other].each do |vrp|
+      TargetMapping.create!(vrp: vrp, fco_id: "demo", ics_id: "1", village_id: "1", village_name: "Village", ics_name: "ICS",
+        month_name: "September", main_activity_name: "Seed", activity_name: "Distribution", target_quantity: 5)
+    end
+    other_record = ModuleRecord.create!(module_slug: "other-target", data: { jeevika_jankar_id: other.id.to_s })
+    headers = { "Authorization" => "Bearer #{ApiAuthToken.encode(own)}" }
+    get "/api/v1/other-targets/#{other_record.id}", headers: headers
+    assert_response :not_found
+    get "/api/v1/other-targets/form-options", headers: headers
+    assert_equal [own.id.to_s], response.parsed_body.dig("options", "target_mappings").map { |row| row["vrp_id"] }.uniq
+    get "/api/v1/demonstration-methods", params: { month: "September" }, headers: headers
+    assert_response :success
+    assert_equal [own.id], response.parsed_body["records"].map { |row| row["vrp_id"] }
+    get "/api/v1/demonstration-methods/summary", params: { month: "September", vrp_id: other.id }, headers: headers
+    assert_equal [], response.parsed_body["fcos"]
   end
 
   private

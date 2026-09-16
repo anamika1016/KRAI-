@@ -100,6 +100,11 @@ Rails.application.routes.draw do
       get "farmer-trainings/:id/photos", to: "farmer_trainings#photos"
       resources :farmer_trainings, path: "farmer-trainings", only: [ :index, :create, :show ]
 
+      get "other-targets/form-options", to: "other_targets#form_options"
+      resources :other_targets, path: "other-targets", only: [:index, :create, :show]
+      get "demonstration-methods/summary", to: "demonstration_methods#summary"
+      get "demonstration-methods", to: "demonstration_methods#index"
+
       get "seed-distribution-targets/form-options", to: "seed_distribution_targets#form_options"
       resources :seed_distribution_targets, path: "seed-distribution-targets", only: [ :index, :create, :show ]
 
