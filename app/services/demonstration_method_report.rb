@@ -11,7 +11,11 @@ class DemonstrationMethodReport
   METRICS = ["OPG Target", "General Training/Meeting", "Input Demo INM", "Input Demo PM", "FFS"].freeze
 
   def initialize(targets:, month: "August")
-    @target_ids = Array(targets).map(&:id).uniq
+    @target_ids = if targets.is_a?(ActiveRecord::Relation) && !targets.loaded?
+      targets.pluck(:id).uniq
+    else
+      Array(targets).map(&:id).uniq
+    end
     @month = month.to_s.strip.downcase
   end
 

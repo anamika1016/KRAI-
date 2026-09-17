@@ -137,11 +137,11 @@ class ModulesController < ApplicationController
         "Total Farmer Count",
         "Other Farmer Count",
         "Next Farmer Training Date",
-        "Training Register Upload",
         "Photo Front View",
+        "Photo Long Shot",
         "Photo Back View",
         "Photo Close-up View",
-        "Photo Long Shot"
+        "Training Register Upload"
       ]
     },
     "training-form-list" => {
@@ -169,11 +169,11 @@ class ModulesController < ApplicationController
         "Male Count",
         "Female Count",
         "Next Farmer Training Date",
-        "Training Register Upload",
         "Photo Front View",
+        "Photo Long Shot",
         "Photo Back View",
         "Photo Close-up View",
-        "Photo Long Shot"
+        "Training Register Upload"
       ]
     },
     "seed-distribution-target" => {
@@ -9359,7 +9359,7 @@ class ModulesController < ApplicationController
   end
 
   def preserve_training_uploads(previous_data, next_data)
-    %w[training_register_upload training_photo_upload_with_geo_tag].each do |key|
+    %w[training_register_upload training_photo_upload_with_geo_tag photo_front_view photo_back_view photo_close_up_view photo_long_shot].each do |key|
       next if next_data[key].blank?
 
       next_data[key] = (Array(previous_data[key]) + Array(next_data[key])).compact_blank.uniq

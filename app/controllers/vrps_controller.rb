@@ -493,7 +493,10 @@ class VrpsController < ApplicationController
   end
 
   def find_visible_vrp(id)
-    visible_vrps.to_a.find { |vrp| vrp.id == id.to_i }
+    scope = visible_vrps
+    return scope.find_by(id: id.to_i) if scope.is_a?(ActiveRecord::Relation) && !scope.loaded?
+
+    scope.to_a.find { |vrp| vrp.id == id.to_i }
   end
 
   def find_manageable_vrp(id)

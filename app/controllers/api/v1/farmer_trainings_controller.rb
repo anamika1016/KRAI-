@@ -1,3 +1,5 @@
+require "set"
+
 module Api
   module V1
     class FarmerTrainingsController < FarmerTargetBaseController
@@ -104,8 +106,9 @@ module Api
       def mapped_farmers
         mappings = filtered_training_mappings_with_farmers
         farmers, _available_farmers, completed_farmer_ids = farmer_lists_for(mappings)
+        completed_farmer_id_set = completed_farmer_ids.to_set
         rows = farmers.map do |farmer|
-          completed = completed_farmer_ids.include?(farmer[:id].to_s)
+          completed = completed_farmer_id_set.include?(farmer[:id].to_s)
           farmer.merge(is_completed: completed, is_available: !completed)
         end
 
@@ -145,7 +148,8 @@ module Api
         farmers = mappings
           .flat_map { |mapping| Array(mapping[:farmers]) }
           .uniq { |farmer| farmer[:id].to_s }
-        available_farmers = farmers.reject { |farmer| completed_farmer_ids.include?(farmer[:id].to_s) }
+        completed_farmer_id_set = completed_farmer_ids.to_set
+        available_farmers = farmers.reject { |farmer| completed_farmer_id_set.include?(farmer[:id].to_s) }
         [farmers, available_farmers, completed_farmer_ids]
       end
 

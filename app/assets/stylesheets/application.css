@@ -8642,3 +8642,159 @@ body {
 .demonstration-method-table .demonstration-metric-pair { min-width: 185px; margin: 0; }
 .demonstration-method-table .demonstration-metric-pair strong { font-size: 20px; }
 .demonstration-method-table th { white-space: nowrap; }
+
+/* Training entry form: presentation scoped to the existing training form hook. */
+#module-form[data-training-target-form] {
+  border: 1px solid var(--vrp-line);
+  border-radius: 18px;
+  padding: 0;
+  overflow: hidden;
+  background: var(--vrp-panel);
+  box-shadow: 0 8px 28px rgba(23, 33, 38, 0.06);
+}
+#module-form[data-training-target-form] > .module-card-header {
+  padding: 28px 32px;
+  margin: 0;
+  border-bottom: 1px solid var(--vrp-line);
+  border-top: 4px solid var(--vrp-primary);
+  background: var(--vrp-panel-soft);
+  flex-wrap: wrap;
+  gap: 18px;
+}
+#module-form[data-training-target-form] .training-form-eyebrow {
+  color: var(--vrp-primary);
+  font-size: 0.72rem;
+  font-weight: 800;
+  letter-spacing: 0.12em;
+}
+#module-form[data-training-target-form] .training-form-intro h2 {
+  margin: 8px 0;
+  font-size: clamp(1.25rem, 2vw, 1.65rem);
+  color: var(--vrp-text);
+  letter-spacing: -0.025em;
+}
+#module-form[data-training-target-form] .training-form-intro p,
+#module-form[data-training-target-form] .training-section-heading p {
+  margin: 4px 0 0;
+  color: var(--vrp-muted);
+  font-size: 0.86rem;
+  line-height: 1.6;
+}
+#module-form[data-training-target-form] > .module-entry-form { padding: 8px 32px 28px; gap: 28px; }
+#module-form[data-training-target-form] .module-form-grid { gap: 20px 24px; grid-template-columns: repeat(3, minmax(0, 1fr)); }
+@media (max-width: 1024px) {
+  #module-form[data-training-target-form] .module-form-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+@media (max-width: 680px) {
+  #module-form[data-training-target-form] .module-form-grid { grid-template-columns: 1fr; }
+}
+#module-form[data-training-target-form] .training-section-heading {
+  grid-column: 1 / -1;
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  padding-top: 24px;
+  margin-top: 8px;
+  border-top: 1px solid var(--vrp-line);
+}
+#module-form[data-training-target-form] .training-section-heading:first-child { border-top: 0; margin-top: 0; }
+#module-form[data-training-target-form] .training-section-number {
+  display: grid;
+  place-items: center;
+  flex: 0 0 36px;
+  height: 36px;
+  border: 1px solid var(--vrp-line);
+  border-radius: 10px;
+  background: var(--vrp-panel-soft);
+  color: var(--vrp-primary);
+  font-size: 0.8rem;
+  font-weight: 800;
+}
+#module-form[data-training-target-form] .training-section-heading h3 {
+  margin: 0;
+  color: var(--vrp-text);
+  font-size: 1rem;
+  line-height: 1.5;
+}
+#module-form[data-training-target-form] .training-field { min-width: 0; align-content: start; gap: 9px; }
+#module-form[data-training-target-form] .training-field > span {
+  color: var(--vrp-text);
+  font-size: 0.84rem;
+  font-weight: 600;
+  text-transform: none;
+  letter-spacing: 0;
+}
+#module-form[data-training-target-form] .training-field :is(input, select, textarea),
+#module-form[data-training-target-form] [data-training-farmer-search] {
+  background: var(--vrp-panel);
+  border: 1px solid var(--vrp-line);
+  border-radius: 9px;
+  min-height: 46px;
+  min-width: 0;
+  max-width: 100%;
+  color: var(--vrp-text);
+  font-size: 0.9rem;
+  font-weight: 400;
+}
+#module-form[data-training-target-form] .training-field input[readonly] { background: var(--vrp-panel-soft); color: var(--vrp-muted); }
+#module-form[data-training-target-form] :is(input, select, textarea, button, a):focus-visible {
+  outline: 2px solid var(--vrp-primary);
+  outline-offset: 3px;
+}
+#module-form[data-training-target-form] .training-field--training_description { grid-column: 1 / -1; }
+#module-form[data-training-target-form] .training-field textarea { min-height: 110px; }
+#module-form[data-training-target-form] .training-field:has(input[type="file"]) {
+  padding: 16px;
+  border: 1px dashed var(--vrp-line);
+  border-radius: 12px;
+  background: var(--vrp-panel-soft);
+}
+#module-form[data-training-target-form] .training-field input[type="file"] { padding: 8px; font-size: 0.8rem; }
+#module-form[data-training-target-form] input[type="file"]::file-selector-button {
+  border: 1px solid var(--vrp-line);
+  border-radius: 6px;
+  padding: 8px 12px;
+  margin-right: 10px;
+  background: var(--vrp-panel-soft);
+  color: var(--vrp-text);
+  font: inherit;
+  font-weight: 600;
+  cursor: pointer;
+}
+#module-form[data-training-target-form] .field-hint { color: var(--vrp-muted); font-weight: 400; line-height: 1.5; }
+#module-form[data-training-target-form] .training-farmer-panel {
+  grid-column: 1 / -1;
+  padding: 20px;
+  border: 1px solid var(--vrp-line);
+  border-radius: 12px;
+  background: var(--vrp-panel-soft);
+  min-width: 0;
+}
+#module-form[data-training-target-form] .target-mapping-toolbar { flex-wrap: wrap; gap: 12px; color: var(--vrp-text); }
+#module-form[data-training-target-form] [data-training-farmer-count] {
+  margin-left: auto;
+  padding: 6px 10px;
+  border: 1px solid var(--vrp-line);
+  border-radius: 20px;
+  color: var(--vrp-text);
+  background: var(--vrp-panel);
+  font-size: 0.78rem;
+}
+#module-form[data-training-target-form] .farmer-search-toolbar { margin: 16px 0; }
+#module-form[data-training-target-form] .vrp-ics-farmer-list { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; color: var(--vrp-muted); }
+#module-form[data-training-target-form] .vrp-ics-farmer-item { background: var(--vrp-panel); border-color: var(--vrp-line); border-radius: 9px; padding: 12px; }
+#module-form[data-training-target-form] .vrp-ics-farmer-item:has(input:checked) { border-color: var(--vrp-primary); box-shadow: inset 3px 0 var(--vrp-primary); }
+#module-form[data-training-target-form] .vrp-ics-farmer-item input[type="checkbox"] { width: 18px; min-height: 18px; height: 18px; padding: 0; accent-color: var(--vrp-primary); }
+#module-form[data-training-target-form] .vrp-ics-farmer-item span { text-transform: none; letter-spacing: 0; }
+#module-form[data-training-target-form] .vrp-ics-farmer-item small { color: var(--vrp-muted); overflow-wrap: anywhere; }
+#module-form[data-training-target-form] .module-form-actions { padding-top: 22px; }
+#module-form[data-training-target-form] .module-form-actions .btn { min-width: 120px; min-height: 44px; border-radius: 9px; }
+@media (max-width: 680px) {
+  #module-form[data-training-target-form] > .module-card-header { padding: 22px 18px; }
+  #module-form[data-training-target-form] > .module-entry-form { padding: 0 18px 20px; }
+  #module-form[data-training-target-form] .module-form-grid,
+  #module-form[data-training-target-form] .vrp-ics-farmer-list { grid-template-columns: minmax(0, 1fr); }
+  #module-form[data-training-target-form] .training-farmer-panel { padding: 14px; }
+  #module-form[data-training-target-form] [data-training-farmer-count] { margin-left: 0; }
+  #module-form[data-training-target-form] .module-form-actions .btn { flex: 1; min-width: 0; }
+}

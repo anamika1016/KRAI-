@@ -1,3 +1,5 @@
+require "set"
+
 class VrpIcsMappingsController < ApplicationController
   def index
     @approved_vrps = approved_vrps
@@ -178,7 +180,7 @@ class VrpIcsMappingsController < ApplicationController
   def farmers_for(fco_id, ics_id, village_id, edit_id = nil)
     return [] if fco_id.blank? || ics_id.blank? || village_id.blank?
 
-    blocked_ids = already_mapped_farmer_ids(visible_mappings.find_by(id: edit_id))
+    blocked_ids = already_mapped_farmer_ids(visible_mappings.find_by(id: edit_id)).to_set
 
     Afl.where(fco_id: fco_id, ics_id: ics_id, village_id: village_id)
       .select(:id, :farmer_name, :father_name, :tracenet_no, :mobile_no, :khasara_no)

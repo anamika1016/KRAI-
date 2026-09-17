@@ -2057,7 +2057,9 @@
     <% seed_target_form = @slug == "seed-distribution-target" %>
     <section class="module-card" id="module-form" <% if ["role-management", "role-name", "user-management-role", "person-type"].include?(@slug) %>data-user-role-form data-role-map="<%= json_escape(role_management_mappings.to_json) %>"<% end %> <% if @slug == "parent-office-add" %>data-parent-office-form data-parent-office-map="<%= json_escape(parent_office_mappings.to_json) %>"<% end %> <% if has_location_fields %>data-location-form data-location-map="<%= json_escape(location_hierarchy_mappings.to_json) %>"<% end %> <% if @slug == "training-form" %>data-training-target-form data-training-target-map="<%= json_escape(training_target_mappings.to_json) %>" data-training-activity-map="<%= json_escape(training_activity_setup_mappings.to_json) %>" data-training-month-options="<%= json_escape(training_target_month_options.to_json) %>" data-training-farmers-url="<%= training_target_farmers_module_path(@slug) %>"<% end %> <% if other_target_form %>data-seed-target-form data-seed-target-map="<%= json_escape(seed_distribution_target_mappings.to_json) %>" data-seed-month-options="<%= json_escape(seed_distribution_target_month_options.to_json) %>" data-seed-current-vrp-option="<%= json_escape(current_seed_target_vrp_option.to_json) %>" data-seed-farmers-url="<%= seed_target_farmers_module_path(@slug) %>"<% end %> <% if add_farmer_form %>data-add-farmer-form data-add-farmer-map="<%= json_escape(add_farmer_form_mappings.to_json) %>"<% end %>>
       <div class="module-card-header">
-        <h2><%= @slug == "new-user" ? "Registration" : (@record.present? ? "Edit Record" : "Fields") %></h2>
+        <% unless @slug == "training-form" %>
+          <h2><%= @slug == "new-user" ? "Registration" : (@record.present? ? "Edit Record" : "Fields") %></h2>
+        <% end %>
         <% if @slug == "training-form" && @record.present? %>
           <% training_form_revision = training_edit_revision_for(@record) %>
           <% if training_form_revision && TrainingEditApproval.can_decide?(training_form_revision, current_app_user) %>
@@ -2137,12 +2139,24 @@
             <% form_required = (@slug == "training-form" && !optional_training_fields.include?(field)) || other_target_form || add_farmer_form %>
             <% required_attr = form_required ? "required" : nil %>
             <% field_label = other_target_form && field == "Department" ? "FCO Name" : resource_person_label(field) %>
-            <label>
+            <% if @slug == "training-form" %>
+              <% training_section = {
+                "Month" => ["01", "Location & reporting period", "Choose the month and location for this session."],
+                "Trainer Name" => ["02", "Trainer & resource persons", "Contact details and staff involved in the training."],
+                "Training Date" => ["03", "Training details", "Record the activity, method and session description."],
+                "Farmer Count" => ["04", "Farmer participation", "Participant counts and the next training date."],
+                "Photo Front View" => ["05", "Photos & documentation", "Training major work indicator photos · Up to 5 per field · Max 5 MB per image."]
+              }[field] %>
+              <% if training_section %>
+                <div class="training-section-heading">
+                  <span class="training-section-number" aria-hidden="true"><%= training_section[0] %></span>
+                  <div><h3><%= training_section[1] %></h3><p><%= training_section[2] %></p></div>
+                </div>
+              <% end %>
+            <% end %>
+            <label class="<%= "training-field training-field--#{field_key}" if @slug == "training-form" %>">
               <span>
                 <%= field_label %>
-                <% if @slug == "training-form" && ["Photo Front View", "Photo Back View", "Photo Close-up View", "Photo Long Shot"].include?(field) %>
-                  <small class="field-hint inline-upload-hint">Max 5 MB · image</small>
-                <% end %>
               </span>
               <% if add_farmer_form && field == "Mapped Village" %>
                 <select name="module_record[target_mapping_id]" data-add-farmer-village data-selected-value="<%= ERB::Util.html_escape(@record&.data&.[]("target_mapping_id").to_s) %>" required>
@@ -2161,21 +2175,22 @@
                   <option <%= "selected" if field_value == "Inactive" %>>Inactive</option>
                 </select>
               <% elsif @slug == "training-form" && ["Photo Front View", "Photo Back View", "Photo Close-up View", "Photo Long Shot"].include?(field) %>
-                <input name="module_record[<%= field_key %>]" type="file" accept="image/*" data-max-size-mb="5" <%= "required" if form_required && field_value.blank? %>>
+                <input name="module_record[<%= field_key %>][]" type="file" accept="image/*" multiple data-max-size-mb="5" data-max-files="5" onchange="if(this.files.length>5){alert('Aap zyada se zyada 5 photo upload kar sakte hain.'); this.value='';}" <%= "required" if form_required && field_value.blank? %>>
                 <% if field == "Photo Front View" %>
                   <input type="hidden" name="module_record[geo_latitude]" data-training-geo-latitude value="<%= @record&.data&.[]("geo_latitude") %>">
                   <input type="hidden" name="module_record[geo_longitude]" data-training-geo-longitude value="<%= @record&.data&.[]("geo_longitude") %>">
                 <% end %>
-                <% if field_value.present? %>
-                  <small class="field-hint">Current: <%= field_value %></small>
+                <% if Array(field_value).reject(&:blank?).any? %>
+                  <small class="field-hint">Current: <%= Array(field_value).reject(&:blank?).size %> photo(s)</small>
                 <% end %>
               <% elsif field.downcase.start_with?("photo") && field.downcase.include?("upload") || field.downcase.include?("upload") || field.downcase.include?("file") || field == "Field Photo" %>
                 <% upload_accept = field == "Excel Upload" ? "accept=\".csv,.xlsx,.xls\"" : nil %>
-                <% multiple_attachment_upload = @slug == "other-target" && ["Attachment Upload", "Field Photo"].include?(field) %>
-                <% upload_accept = "accept=\"image/*\" data-max-size-mb=\"5\"" if field == "Field Photo" %>
-                <input name="module_record[<%= field_key %>]<%= "[]" if multiple_attachment_upload %>" type="file" <%= "multiple" if multiple_attachment_upload %> <%= upload_accept&.html_safe %> <%= "required" if form_required && field_value.blank? && !other_target_form %>>
-                <% if field_value.present? %>
-                  <small class="field-hint">Current: <%= field_value %></small>
+                <% training_register_multi = @slug == "training-form" && field == "Training Register Upload" %>
+                <% multiple_attachment_upload = (@slug == "other-target" && ["Attachment Upload", "Field Photo"].include?(field)) || training_register_multi %>
+                <% upload_accept = "accept=\"image/*\" data-max-size-mb=\"5\"" if field == "Field Photo" || training_register_multi %>
+                <input name="module_record[<%= field_key %>]<%= "[]" if multiple_attachment_upload %>" type="file" <%= "multiple" if multiple_attachment_upload %> <%= "data-max-files=\"5\" onchange=\"if(this.files.length>5){alert('Aap zyada se zyada 5 photo upload kar sakte hain.'); this.value='';}\"".html_safe if training_register_multi %> <%= upload_accept&.html_safe %> <%= "required" if form_required && field_value.blank? && !other_target_form %>>
+                <% if Array(field_value).reject(&:blank?).any? %>
+                  <small class="field-hint">Current: <%= Array(field_value).reject(&:blank?).size %> file(s)</small>
                 <% end %>
               <% elsif @slug == "training-topic-mapping" && field == "Department" %>
                 <input name="module_record[<%= field_key %>]" type="text" placeholder="Enter <%= resource_person_label(field) %>" value="<%= field_value %>">
@@ -2274,7 +2289,11 @@
                 <input name="module_record[<%= field_key %>]" type="text" placeholder="Enter <%= field_label %>" value="<%= field_value %>" <%= "readonly" if @slug == "training-form" && ["FCO Name", "Trainee Department", "Trainer Name", "Trainer Contact"].include?(field) && current_app_user&.dig("record_type").to_s == "Vrp" %> <%= "data-user-management-role-input" if @slug == "role-management" && field == "User Management Role" %> <%= required_attr %>>
               <% end %>
             </label>
-            <% if @slug == "training-form" && field == "Photo Front View" %>
+            <% if @slug == "training-form" && field == "Training Register Upload" %>
+              <div class="training-section-heading">
+                <span class="training-section-number" aria-hidden="true">06</span>
+                <div><h3>Select target farmers</h3><p>Search the mapped farmers and select participants for this session.</p></div>
+              </div>
               <div class="training-farmer-panel" data-training-farmer-panel data-selected-farmer-ids="<%= json_escape((selected_training_farmer_ids || []).to_json) %>">
                 <div class="target-mapping-toolbar">
                   <strong>Target Farmers</strong>

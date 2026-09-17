@@ -51,6 +51,24 @@ class DemonstrationMethodReportTest < ActiveSupport::TestCase
     assert_equal "0 / 2", report.rows.find { |row| row["vrp_id"] == @vrp.id }["FFS"]
   end
 
+  test "relation input preserves report results without instantiating targets" do
+    scope = TargetMapping.where(id: @targets.map(&:id)).order(:id).limit(2)
+    expected = DemonstrationMethodReport.new(targets: scope.to_a)
+    scope = TargetMapping.where(id: @targets.map(&:id)).order(:id).limit(2)
+    instantiated = 0
+    subscriber = ActiveSupport::Notifications.subscribe("instantiation.active_record") do |*args|
+      payload = args.last
+      instantiated += payload[:record_count] if payload[:class_name] == "TargetMapping"
+    end
+    report = DemonstrationMethodReport.new(targets: scope)
+    assert_equal 0, instantiated
+    assert_not scope.loaded?
+    assert_equal expected.rows, report.rows
+    assert_equal expected.summary, report.summary
+  ensure
+    ActiveSupport::Notifications.unsubscribe(subscriber) if subscriber
+  end
+
   test "expanded farmer arrays preserve distinct record and farmer counts including empty arrays" do
     shared = { created_by_id: " #{@vrp.id} ", month: " AUGUST ", training_method: " FFS " }
     ModuleRecord.create!(module_slug: "training-form", data: shared.merge(selected_farmer_ids: ["11", "11", "12", nil, ""]))
