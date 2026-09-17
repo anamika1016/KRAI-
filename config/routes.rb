@@ -31,6 +31,7 @@ Rails.application.routes.draw do
       post "translate", to: "translations#create"
       get "translate/languages", to: "translations#languages"
       get "user-dashboard", to: "user_dashboard#show"
+      get "user-dashboard/configuration", to: "user_dashboard#configuration"
       get "user-dashboard/filters", to: "user_dashboard#filters"
       get "user-dashboard/widgets/:widget", to: "user_dashboard#widget"
       get "user-dashboard/lists/:list_type", to: "user_dashboard#list"

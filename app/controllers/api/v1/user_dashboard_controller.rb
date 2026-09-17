@@ -49,6 +49,8 @@ module Api
         end
 
         dashboard = cached_user_dashboard_response
+        return render json: dashboard, status: :internal_server_error unless dashboard[:success]
+
         value = config[:path].reduce(dashboard) { |data, key| data.respond_to?(:[]) ? data[key] || data[key.to_s] : nil }
         render json: { success: true, dashboard_type: "user", widget: params[:widget], heading: config[:heading], value: value, filters: dashboard[:filters], generated_at: Time.current.iso8601 }
       end
@@ -56,15 +58,55 @@ module Api
       def filters
         return render_vrp_error if current_api_user.is_a?(Vrp)
 
-        render json: mobile_dashboard_filters_payload("user")
+        calculator = dashboard_calculator
+        render json: mobile_dashboard_filter_options(calculator.send(:dashboard_target_mappings), calculator).merge(
+          success: true, dashboard_type: "user", generated_at: Time.current.iso8601
+        )
+      end
+
+      def configuration
+        return render_vrp_error if current_api_user.is_a?(Vrp)
+
+        render json: {
+          success: true, dashboard_type: "user", user: user_payload,
+          endpoint: "/api/v1/user-dashboard", filters_endpoint: "/api/v1/user-dashboard/filters",
+          widgets: user_dashboard_widget_catalog.map { |key, config|
+            { key: key, heading: config[:heading], endpoint: "/api/v1/user-dashboard/widgets/#{key}" }
+          },
+          lists: user_dashboard_list_catalog.map { |key, title|
+            { key: key, title: title, endpoint: "/api/v1/user-dashboard/lists/#{key}",
+              export_endpoint: "/api/v1/user-dashboard/lists/#{key}/export" }
+          }
+        }
       end
 
       private
 
-      def cached_user_dashboard_response
-        Rails.cache.fetch(user_dashboard_cache_key, expires_in: 10.minutes, race_condition_ttl: 30.seconds) do
-          build_user_dashboard_response
+      def report_widget_response(widget, config, dashboard_type)
+        calculator = dashboard_calculator
+        vrps, targets, = filtered_scope(calculator)
+        set_filtered_scope(calculator, vrps, targets, [])
+        rows = if widget == "cc_jj_work_status"
+          CcJjWorkStatusReport.new(calculator: calculator).summary
+        else
+          DemonstrationMethodReport.new(targets: targets,
+            month: params.key?(:month) ? filter_param(:month) : Date.current.prev_month.strftime("%B")).summary
         end
+        extra = widget == "cc_jj_work_status" ? { groups: MobileDashboardReportCards.cc_jj_groups(rows) } :
+          { cards: MobileDashboardReportCards.demonstration_cards(rows) }
+        value = widget == "cc_jj_work_status" ? MobileDashboardReportCards.cc_jj_rows(rows) : rows
+        { success: true, dashboard_type: dashboard_type, widget: widget, heading: config[:heading],
+          value: value, filters: applied_filters, **extra, generated_at: Time.current.iso8601 }
+      end
+
+      def cached_user_dashboard_response
+        key = user_dashboard_cache_key
+        cached = Rails.cache.read(key)
+        return cached if cached
+
+        response = build_user_dashboard_response
+        Rails.cache.write(key, response, expires_in: 1.minute) if response[:success]
+        response
       rescue StandardError => error
         Rails.logger.warn("User dashboard cache skipped: #{error.class}: #{error.message}")
         build_user_dashboard_response
@@ -102,6 +144,7 @@ module Api
 
         calculator = dashboard_calculator
         vrps, targets, options = filtered_scope(calculator)
+        set_filtered_scope(calculator, vrps, targets, [])
         if list_type == "cc_jj_work_status"
           return { title: user_dashboard_list_catalog.fetch(list_type), headers: CcJjWorkStatusReport::HEADERS,
             records: CcJjWorkStatusReport.new(calculator: calculator).rows }
@@ -121,7 +164,7 @@ module Api
         weekly_month = selected_month(:weekly_target_month, months, calculator)
         weekly_fcoc = filter_param(:weekly_target_fcoc) || calculator.send(:dashboard_default_visible_fcoc, options[:fcos])
         weekly_targets = calculator.send(:dashboard_targets_for_month, targets, weekly_month)
-        weekly_targets = weekly_targets.select { |target| same?(target.vrp&.fcoc, weekly_fcoc) } if weekly_fcoc.present?
+        weekly_targets = weekly_targets.select { |target| calculator.send(:training_target_matches_fcoc?, target, weekly_fcoc) } if weekly_fcoc.present?
         weekly_rows = calculator.send(:weekly_activity_target_farmer_status_rows,
           weekly_targets, month_name: weekly_month, fcoc_name: weekly_fcoc, week_number: selected_week)
         ics_month = filter_param(:ics_report_month) || participation_month
@@ -173,7 +216,7 @@ module Api
         weekly_targets = calculator.send(:dashboard_targets_for_month, targets, weekly_month)
         weekly_fcoc = filter_param(:weekly_target_fcoc) || calculator.send(:dashboard_default_visible_fcoc, options[:fcos])
         if weekly_fcoc.present?
-          weekly_targets = weekly_targets.select { |target| same?(target.vrp&.fcoc, weekly_fcoc) }
+          weekly_targets = weekly_targets.select { |target| calculator.send(:training_target_matches_fcoc?, target, weekly_fcoc) }
         end
         weekly_rows = calculator.send(:weekly_activity_target_farmer_status_rows,
           weekly_targets,
@@ -226,19 +269,20 @@ module Api
           cache_table_version(TargetMapping),
           cache_table_version(VrpIcsMapping),
           cache_table_version(Vrp),
+          cache_table_version(User),
           cache_table_version(Afl),
           cache_module_records_version(%w[
             training-form
             jeevika-jankar-bill-process
             approval-master
             vrp-approval-history
-            user-hierarchy
+            user-hierarchy-mapping
             new-user
           ])
         ]
         filters = admin_dashboard_cache_filters
-        user_key = current_api_user_payload.slice("id", "user_id", "username", "user_name", "user_type").sort.to_h
-        ["api-v1-user-dashboard-work-status-v6", user_key, filters, version_parts].to_json
+        user_key = current_api_user_payload.sort.to_h
+        ["api-v1-user-dashboard-office-v7", Date.current.to_s, user_key, filters, version_parts].to_json
       end
 
       def cache_table_version(model)
@@ -262,7 +306,7 @@ module Api
       end
 
       def dashboard_calculator
-        ModulesController.new.tap do |controller|
+        OfficeDashboardCalculator.new.tap do |controller|
           controller.request = request
           controller.instance_variable_set(:@current_app_user, current_api_user_payload)
         end
@@ -378,11 +422,9 @@ module Api
         ids = id_lookup(vrps)
         filters_active = %i[search activity main_activity sub_activity fcoc fco cluster_incharge ics ics_name month post post_wise_name vrp_id].any? { |key| filter_param(key).present? }
         scope = ModuleRecord.where(module_slug: "jeevika-jankar-bill-process")
-        if filters_active || calculator.send(:module_cluster_incharge_login?)
-          return [] if ids.blank?
+        return [] if ids.blank?
 
-          scope = scope.where("data::jsonb ->> 'select_vrp' IN (?)", ids.keys)
-        end
+        scope = scope.where("COALESCE(NULLIF(data::jsonb ->> 'select_vrp', ''), NULLIF(data::jsonb ->> 'vrp_id', ''), data::jsonb ->> 'jeevika_jankar_id') IN (?)", ids.keys)
         selected_bill_month = filter_param(:month)
         if selected_bill_month.present?
           scope = scope.where("LOWER(BTRIM(data::jsonb ->> 'bill_month')) = ?", selected_bill_month.to_s.strip.downcase)
@@ -414,13 +456,14 @@ module Api
       end
 
       def set_filtered_scope(calculator, vrps, targets, bills)
-        calculator.instance_variable_set(:@filtered_vrps, vrps)
-        calculator.instance_variable_set(:@filtered_targets, targets)
-        calculator.instance_variable_set(:@filtered_bills, bills)
+        calculator.apply_dashboard_scope(vrps: vrps, targets: targets, bills: bills)
       end
 
       def selected_month(key, months, calculator, targets = nil)
-        filter_param(key) || calculator.send(:default_vrp_dashboard_month, months, targets)
+        return filter_param(key) if params.key?(key)
+        return filter_param(:month) if params.key?(:month)
+
+        Date.current.prev_month.strftime("%B")
       end
 
       def card_payload(calculator, vrps, targets, bills)
