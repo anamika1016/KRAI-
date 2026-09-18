@@ -24,7 +24,7 @@ class TargetMappingsController < ApplicationController
     @target_mapping_rows = @target_summary_mode.present? ? target_mapping_summary_rows(@target_mappings) : grouped_target_mapping_rows(@target_mappings)
     @target_mapping_display_rows = @target_mapping_rows
     @target_farmers_by_id = {}
-    @edit_target = visible_target_mappings.find_by(id: params[:edit_id]) if params[:edit_id].present? && @admin_mapping_actions
+    @edit_target = visible_target_mappings.find_by(id: params[:edit_id]) if params[:edit_id].present? && (@admin_mapping_actions || @remove_mapping_actions)
     @edit_payload = edit_payload(@edit_target)
     @sub_activity_options = target_sub_activity_options(@edit_target&.main_activity_name)
 
@@ -604,7 +604,7 @@ class TargetMappingsController < ApplicationController
       edit_target: edit_target
     )
     already_mapped_ids = visible_target_mappings.pluck(:afl_ids).flat_map { |ids| normalized_afl_ids(ids) }.uniq
-    selected_ids = normalized_afl_ids(edit_target&.afl_ids)
+    selected_ids = editable_targets_for_payload(edit_target).flat_map { |target| normalized_afl_ids(target.afl_ids) }.uniq
 
     parsed_fco_id, parsed_fco_name = parse_location_value(fco_id)
     parsed_ics_id, parsed_ics_name = parse_location_value(ics_id)
@@ -1176,7 +1176,7 @@ class TargetMappingsController < ApplicationController
 
         {
           main_activity: main_activity,
-          main_activity_type: first_present_data(record, "main_activity_type").presence || "Training"
+          main_activity_type: first_present_data(record, "main_activity_type").to_s.strip
         }
       end
       .uniq { |row| row[:main_activity].to_s.downcase }

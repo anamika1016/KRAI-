@@ -3502,9 +3502,8 @@ function initDeferredLayoutPage() {
       const ids = Array.from(shell.querySelectorAll("[data-edit-saved-target-farmer-id]"))
         .map((input) => String(input.value || ""))
         .filter(Boolean);
-      if (ids.length) return [...new Set(ids)];
-
-      return Array(editTarget.afl_ids || []).map((id) => String(id)).filter(Boolean);
+      const payloadIds = Array.isArray(editTarget.afl_ids) ? editTarget.afl_ids : [];
+      return [...new Set([...ids, ...payloadIds].map((id) => String(id)).filter(Boolean))];
     };
     let editTarget = {};
     let targetSubActivityRows = [];
@@ -3817,8 +3816,10 @@ function initDeferredLayoutPage() {
     const farmerIdsForRow = (rowKey) => {
       const mainActivity = String(rowKey || "");
       const savedFarmerIds = savedEditFarmerIds();
-      const editRowMatches = editTarget.id &&
-        normalizeOption(mainActivity) === normalizeOption(editTarget.main_activity_names?.[0]);
+      const editRowMatches = editTarget.id && (
+        mainActivity === "__common__" ||
+        normalizeOption(mainActivity) === normalizeOption(editTarget.main_activity_names?.[0])
+      );
 
       if (editRowMatches && savedFarmerIds.length && !weeklyPlanFarmerIdsDirty.has(rowKey)) {
         weeklyPlanFarmerIds[rowKey] = new Set(savedFarmerIds);
@@ -3834,8 +3835,9 @@ function initDeferredLayoutPage() {
       if (!savedFarmerIds.length || !rows.length) return;
 
       const matchingRow = rows.find((row) => (
+        row.mainActivity === "__common__" ||
         normalizeOption(row.mainActivity) === normalizeOption(editTarget.main_activity_names?.[0])
-      ));
+      )) || rows[0];
       if (!matchingRow) return;
 
       weeklyPlanFarmerIds[weeklyRowKey(matchingRow)] = new Set(savedFarmerIds);

@@ -20,7 +20,7 @@
           <% if @edit_target %>
             <input type="hidden" name="target_mapping[id]" value="<%= @edit_target.id %>">
             <div hidden data-edit-saved-target-farmers>
-              <% Array(@edit_target.afl_ids).map(&:to_s).reject(&:blank?).uniq.each do |farmer_id| %>
+              <% Array(@edit_payload[:afl_ids]).each do |farmer_id| %>
                 <input type="hidden" value="<%= farmer_id %>" data-edit-saved-target-farmer-id>
               <% end %>
             </div>
@@ -335,6 +335,47 @@
             window.requestAnimationFrame(syncVillageTargetFallback);
           })();
         </script>
+        <script>
+          (() => {
+            const shell = document.currentScript.closest("[data-target-mapping]");
+            if (!shell || shell.dataset.mainActivityTypeFilterBound === "true") return;
+            shell.dataset.mainActivityTypeFilterBound = "true";
+
+            const typeLookup = {};
+            try {
+              JSON.parse(shell.dataset.mainActivityTypeMap || "[]").forEach((row) => {
+                if (row && row.main_activity) {
+                  typeLookup[String(row.main_activity).trim().toLowerCase()] = String(row.main_activity_type || "").trim().toLowerCase();
+                }
+              });
+            } catch (error) {}
+
+            // Target Type = farmer -> only Training main activities; Villages -> only Other.
+            const filterMainActivities = () => {
+              const mainSelect = shell.querySelector("[data-target-main-activity]");
+              if (!mainSelect) return;
+              const targetType = (shell.querySelector("[data-target-type]")?.value || "").trim().toLowerCase();
+              const wantTraining = targetType === "farmer";
+              let deselected = false;
+              Array.from(mainSelect.options).forEach((option) => {
+                if (option.value === "") return;
+                const type = typeLookup[option.value.trim().toLowerCase()] || "";
+                // farmer -> only "Training"; villages -> only "Other". Blank/unknown type hides in both.
+                const show = wantTraining ? (type === "training") : (type === "other");
+                option.hidden = !show;
+                if (!show && option.selected) { option.selected = false; deselected = true; }
+              });
+              mainSelect.dispatchEvent(new Event("chip:refresh"));
+              if (deselected) mainSelect.dispatchEvent(new Event("change", { bubbles: true }));
+            };
+
+            shell.addEventListener("change", (event) => {
+              if (event.target.closest("[data-target-type]")) filterMainActivities();
+            });
+            document.addEventListener("turbo:load", filterMainActivities);
+            window.requestAnimationFrame(filterMainActivities);
+          })();
+        </script>
       <% end %>
     </section>
     <% end %>
@@ -483,6 +524,7 @@
 	                          <%= link_to "Edit", target_mappings_path(edit_id: target.id), class: "table-action" %>
 	                          <%= button_to "Delete", target_mapping_path(target), method: :delete, class: "table-action danger", form: { data: { turbo: false } }, onclick: "return confirm('Delete this target mapping?')" %>
 	                        <% elsif @remove_mapping_actions %>
+	                          <%= link_to "Edit", target_mappings_path(edit_id: target.id), class: "table-action" %>
 	                          <%= button_to "Remove", target_mapping_path(target), method: :delete, class: "table-action danger", form: { data: { turbo: false } }, onclick: "return confirm('Remove this target mapping?')" %>
 	                        <% end %>
 	                      </div>
