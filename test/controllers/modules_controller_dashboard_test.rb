@@ -138,6 +138,14 @@ class ModulesControllerDashboardTest < ActiveSupport::TestCase
       "training_photo_upload_with_geo_tag" => "photo.jpg"
     }
 
+    ["0", "2"].each do |male_count|
+      invalid = data.merge("male_count" => male_count)
+      assert_includes controller.send(:training_form_error_messages, invalid),
+        "Male Count + Female Count Farmer Count ke equal hona chahiye."
+    end
+    refute_includes controller.send(:training_form_error_messages, data),
+      "Male Count + Female Count Farmer Count ke equal hona chahiye."
+
     messages = controller.send(:training_form_error_messages, data)
 
     refute messages.any? { |message| message.include?("Cluster Coordinator Name") }
@@ -265,6 +273,19 @@ class ModulesControllerDashboardTest < ActiveSupport::TestCase
     controller = ModulesController.new
     controller.define_singleton_method(:current_app_user) { { "id" => "803", "role" => "FCOC", "fcoc" => "FCO-C Sausar" } }
     assert_equal [own.id], controller.send(:dashboard_visible_vrp_ids)
+  end
+
+  test "demonstration_method_cards includes CC TARGET STATUS card" do
+    controller = ModulesController.new
+    controller.define_singleton_method(:params) { ActionController::Parameters.new }
+    controller.define_singleton_method(:request) { ActionDispatch::TestRequest.create }
+    controller.define_singleton_method(:demonstration_method_list_path) { |_params = {}| "/demonstration_method_list" }
+    controller.define_singleton_method(:cc_target_status_list_path) { |_params = {}| "/cc_target_status_list" }
+    cards = controller.send(:demonstration_method_cards)
+    titles = cards.map { |c| c[:title] }
+
+    assert_includes titles, "CC TARGET STATUS"
+    assert_equal "CC TARGET STATUS", titles.last
   end
 
   private

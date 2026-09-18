@@ -2388,6 +2388,12 @@ function initDeferredLayoutPage() {
 	        message = "Female Count 0 se kam nahi ho sakta.";
 	      }
 
+          if (!invalidInput && (!Number.isInteger(maleCountValue) || !Number.isInteger(femaleCountValue) ||
+              maleCountValue + femaleCountValue !== Number(farmerCountInput?.value || 0))) {
+            invalidInput = femaleCountInput;
+            message = "Male Count + Female Count Farmer Count ke equal hona chahiye.";
+          }
+
 	      if (!invalidInput) return true;
 
 	      invalidInput?.setCustomValidity(message);

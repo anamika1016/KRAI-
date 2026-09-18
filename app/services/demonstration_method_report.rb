@@ -5,10 +5,10 @@ class DemonstrationMethodReport
   HEADERS = [
     "fco_id", "fco_name", "Cluster Coordinator", "vrp_id", "VRP Name",
     "OPG Target / Done", "General Training/Meeting", "Input Demo INM",
-    "Input Demo PM", "FFS", "Status"
+    "Input Demo PM", "FFS", "CC TARGET STATUS", "Status"
   ].freeze
 
-  METRICS = ["OPG Target", "General Training/Meeting", "Input Demo INM", "Input Demo PM", "FFS"].freeze
+  METRICS = ["OPG Target", "General Training/Meeting", "Input Demo INM", "Input Demo PM", "FFS", "CC TARGET STATUS"].freeze
 
   def initialize(targets:, month: "August")
     @target_ids = if targets.is_a?(ActiveRecord::Relation) && !targets.loaded?
@@ -39,7 +39,8 @@ class DemonstrationMethodReport
             MAX(COALESCE(t.week_wise_opg_target, 0)) AS general_training_target,
             MAX(COALESCE(t.input_demo_inm_target, 0)) AS input_demo_inm_target,
             MAX(COALESCE(t.input_demo_pm_target, 0)) AS input_demo_pm_target,
-            MAX(COALESCE(t.ffs_target, 0)) AS ffs_target
+            MAX(COALESCE(t.ffs_target, 0)) AS ffs_target,
+            MAX(COALESCE(t.cc_target, 0)) AS cc_target
           FROM scoped_targets t
           GROUP BY t.fco_id, t.fco_name, t.vrp_id, t.village_id
         ), vrp_target AS (
@@ -49,7 +50,8 @@ class DemonstrationMethodReport
             SUM(general_training_target) AS general_training_target,
             SUM(input_demo_inm_target) AS input_demo_inm_target,
             SUM(input_demo_pm_target) AS input_demo_pm_target,
-            SUM(ffs_target) AS ffs_target
+            SUM(ffs_target) AS ffs_target,
+            SUM(cc_target) AS cc_target
           FROM village_target
           GROUP BY fco_id, fco_name, vrp_id
         ), entry_data AS (
@@ -58,7 +60,8 @@ class DemonstrationMethodReport
             COUNT(*) FILTER (WHERE LOWER(TRIM(mr.data::jsonb ->> 'training_method')) = 'general training/meeting') AS general_training_done,
             COUNT(*) FILTER (WHERE LOWER(TRIM(mr.data::jsonb ->> 'training_method')) = 'input demo inm') AS input_demo_inm_done,
             COUNT(*) FILTER (WHERE LOWER(TRIM(mr.data::jsonb ->> 'training_method')) = 'input demo pm') AS input_demo_pm_done,
-            COUNT(*) FILTER (WHERE LOWER(TRIM(mr.data::jsonb ->> 'training_method')) = 'ffs') AS ffs_done
+            COUNT(*) FILTER (WHERE LOWER(TRIM(mr.data::jsonb ->> 'training_method')) = 'ffs') AS ffs_done,
+            COUNT(*) AS total_training_done
           FROM module_records mr
           WHERE mr.module_slug = 'training-form' AND #{month_filter}
           GROUP BY TRIM(mr.data::jsonb ->> 'created_by_id')
@@ -75,7 +78,9 @@ class DemonstrationMethodReport
           vt.input_demo_pm_target AS pm_target,
           COALESCE(ed.input_demo_pm_done, 0) AS pm_done,
           vt.ffs_target AS ffs_target,
-          COALESCE(ed.ffs_done, 0) AS ffs_done
+          COALESCE(ed.ffs_done, 0) AS ffs_done,
+          vt.cc_target AS cc_target,
+          COALESCE(ed.total_training_done, 0) AS cc_done
         FROM vrp_target vt
         LEFT JOIN vrps v ON v.id::text = vt.vrp_id::text
         LEFT JOIN entry_data ed ON ed.vrp_id = vt.vrp_id::text
@@ -91,6 +96,8 @@ class DemonstrationMethodReport
         pm_d  = r["pm_done"].to_i
         ffs_t = r["ffs_target"].to_i
         ffs_d = r["ffs_done"].to_i
+        cc_t  = r["cc_target"].to_i
+        cc_d  = r["cc_done"].to_i
 
         tot_t = gen_t + inm_t + pm_t + ffs_t
         tot_d = gen_d + inm_d + pm_d + ffs_d
@@ -114,6 +121,7 @@ class DemonstrationMethodReport
           "Input Demo INM"          => "#{inm_t} / #{inm_d}",
           "Input Demo PM"           => "#{pm_t} / #{pm_d}",
           "FFS"                     => "#{ffs_t} / #{ffs_d}",
+          "CC TARGET STATUS"        => "#{cc_t} / #{cc_d}",
           "Status"                  => status
         }
       end
@@ -135,7 +143,8 @@ class DemonstrationMethodReport
             MAX(COALESCE(t.week_wise_opg_target, 0)) AS general_training_target,
             MAX(COALESCE(t.input_demo_inm_target, 0)) AS input_demo_inm_target,
             MAX(COALESCE(t.input_demo_pm_target, 0)) AS input_demo_pm_target,
-            MAX(COALESCE(t.ffs_target, 0)) AS ffs_target
+            MAX(COALESCE(t.ffs_target, 0)) AS ffs_target,
+            MAX(COALESCE(t.cc_target, 0)) AS cc_target
           FROM scoped_targets t
           GROUP BY t.fco_id, t.fco_name, t.village_id
         ), fco_target AS (
@@ -144,7 +153,8 @@ class DemonstrationMethodReport
             SUM(general_training_target) AS general_training_target,
             SUM(input_demo_inm_target) AS input_demo_inm_target,
             SUM(input_demo_pm_target) AS input_demo_pm_target,
-            SUM(ffs_target) AS ffs_target
+            SUM(ffs_target) AS ffs_target,
+            SUM(cc_target) AS cc_target
           FROM village_target GROUP BY fco_id, fco_name
         ), vrp_fco AS (
           SELECT DISTINCT t.fco_id, t.fco_name, t.vrp_id
@@ -162,7 +172,8 @@ class DemonstrationMethodReport
             COUNT(*) FILTER (WHERE te.training_method = 'general training/meeting') AS general_training_meeting,
             COUNT(*) FILTER (WHERE te.training_method = 'input demo inm') AS input_demo_inm,
             COUNT(*) FILTER (WHERE te.training_method = 'input demo pm') AS input_demo_pm,
-            COUNT(*) FILTER (WHERE te.training_method = 'ffs') AS ffs
+            COUNT(*) FILTER (WHERE te.training_method = 'ffs') AS ffs,
+            COUNT(*) AS total_done
           FROM training_entries te
           INNER JOIN vrp_fco vf
             ON vf.vrp_id::text = te.vrp_id
@@ -181,7 +192,10 @@ class DemonstrationMethodReport
           COALESCE(ed.input_demo_pm, 0) AS "Input Demo PM Done",
           ft.ffs_target AS "FFS Target",
           COALESCE(ed.ffs, 0) AS "FFS",
-          COALESCE(ed.ffs, 0) AS "FFS Done"
+          COALESCE(ed.ffs, 0) AS "FFS Done",
+          ft.cc_target AS "CC TARGET STATUS Target",
+          COALESCE(ed.total_done, 0) AS "CC TARGET STATUS",
+          COALESCE(ed.total_done, 0) AS "CC TARGET STATUS Done"
         FROM fco_target ft
         LEFT JOIN entry_data ed ON ed.fco_id::text = ft.fco_id::text
         ORDER BY ft.fco_id

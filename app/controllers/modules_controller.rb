@@ -3772,15 +3772,25 @@ class ModulesController < ApplicationController
     ffs_done   = summary_rows.sum { |r| r["FFS Done"].to_f }.to_i
     ffs_val    = "#{ffs_target} / #{ffs_done}"
 
+    cc_report = @cc_target_status_report || CcTargetStatusReport.new(calculator: self)
+    cc_rows   = cc_report.rows
+    cc_target = cc_rows.sum { |row| row["target"].to_i }
+    cc_done   = cc_rows.sum { |row| row["achievement"].to_i }
+    cc_val    = "#{cc_target} / #{cc_done}"
+
     card_list_path = demonstration_method_list_path(request.query_parameters)
     card_xlsx_path = demonstration_method_list_path(request.query_parameters.merge(format: :xlsx))
+
+    cc_list_path = cc_target_status_list_path(request.query_parameters.merge(month: @dashboard_month_filter_value))
+    cc_xlsx_path = cc_target_status_list_path(request.query_parameters.merge(month: @dashboard_month_filter_value, format: :xlsx))
 
     [
       dashboard_summary_card("OPG Training Target", opg_val, "Training method entries", card_list_path, card_xlsx_path),
       dashboard_summary_card("General Training/Meeting", gen_val, "Training method entries", card_list_path, card_xlsx_path),
       dashboard_summary_card("Input Demo INM", inm_val, "Training method entries", card_list_path, card_xlsx_path),
       dashboard_summary_card("Input Demo PM", pm_val, "Training method entries", card_list_path, card_xlsx_path),
-      dashboard_summary_card("FFS Exposure", ffs_val, "Training method entries", card_list_path, card_xlsx_path)
+      dashboard_summary_card("FFS Exposure", ffs_val, "Training method entries", card_list_path, card_xlsx_path),
+      dashboard_summary_card("CC TARGET STATUS", cc_val, "CC Target Status entries", cc_list_path, cc_xlsx_path)
     ]
   end
 
@@ -13032,6 +13042,10 @@ class ModulesController < ApplicationController
     errors << "Male Count valid whole number hona chahiye." if male_count.nil?
     errors << "Female Count valid whole number hona chahiye." if female_count.nil?
     errors << "Total Farmer Count valid whole number hona chahiye." if total_farmer_count.nil?
+
+    if farmer_count && male_count && female_count && male_count + female_count != farmer_count
+      errors << "Male Count + Female Count Farmer Count ke equal hona chahiye."
+    end
 
     if farmer_count && selected_farmer_ids.any? && farmer_count != selected_farmer_ids.size
       errors << "Farmer Count selected farmers ke count ke equal hona chahiye."

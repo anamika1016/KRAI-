@@ -17,7 +17,7 @@
         <tr><% headers.each do |header| %><td>
           <% if header == "Target Farmer Count" && row["vrp_id"].present? && row[header].to_i > 0 %>
             <%= link_to row[header], demonstration_method_farmers_path(vrp_id: row["vrp_id"], fco_id: row["fco_id"], training_month: farmer_list_month), class: "table-action", data: { dashboard_card: true } %>
-          <% elsif ["OPG Target / Done", "General Training/Meeting", "Input Demo INM", "Input Demo PM", "FFS"].include?(header) %>
+          <% elsif ["OPG Target / Done", "General Training/Meeting", "Input Demo INM", "Input Demo PM", "FFS", "CC TARGET STATUS"].include?(header) %>
             <%= render "demonstration_metric", value: row[header] %>
           <% elsif header == "Status" %>
             <% badge_style = { "Red" => "color:#c0392b;background:rgba(214,69,69,0.12);", "Yellow" => "color:#b07800;background:rgba(217,148,0,0.12);", "Green" => "color:#1a8a34;background:rgba(26,138,52,0.12);" }.fetch(row["Status"].to_s, "") %>

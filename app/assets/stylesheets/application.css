@@ -8798,3 +8798,67 @@ body {
   #module-form[data-training-target-form] [data-training-farmer-count] { margin-left: 0; }
   #module-form[data-training-target-form] .module-form-actions .btn { flex: 1; min-width: 0; }
 }
+
+/* Target Mapping: aligned fields and clear planning sections. */
+.target-mapping-card .target-form-intro {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 16px;
+  padding: 24px 28px;
+  border-bottom: 1px solid var(--vrp-line);
+  background: var(--vrp-panel-soft);
+  border-radius: 12px 12px 0 0;
+}
+.target-mapping-card .target-form-intro h2 { margin: 0; font-size: 1.2rem; color: var(--vrp-text); }
+.target-mapping-card .target-form-intro p,
+.target-mapping-card .target-section-heading p { margin: 6px 0 0; color: var(--vrp-muted); font-size: .85rem; line-height: 1.5; font-weight: 400; }
+.target-mapping-card .target-required-note { color: var(--vrp-muted); font-size: .78rem; }
+.target-mapping-card > .module-entry-form { padding: 24px 28px; gap: 24px; }
+.target-mapping-card .module-form-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 20px 24px; align-items: start; }
+.target-mapping-card .target-section-heading { grid-column: 1 / -1; }
+.target-mapping-card .target-section-heading h3 { margin: 0; color: var(--vrp-text); font-size: .98rem; font-weight: 700; }
+.target-mapping-card .target-section-divider { border-top: 1px solid var(--vrp-line); padding-top: 24px; margin-top: 4px; }
+.target-mapping-card .module-form-grid > label,
+.target-mapping-card .target-village-field { min-width: 0; align-content: start; gap: 8px; color: var(--vrp-text); }
+.target-mapping-card .module-form-grid > label > span,
+.target-mapping-card .location-multi-label { min-height: 22px; font-size: .8rem; font-weight: 600; text-transform: none; letter-spacing: 0; color: var(--vrp-text); }
+.target-mapping-card .module-form-grid :is(input:not([type="checkbox"]):not([type="hidden"]), select:not([multiple])) { height: 44px; min-height: 44px; border-radius: 8px; background: var(--vrp-panel); font-weight: 500; }
+.target-mapping-card .module-form-grid input[readonly] { background: var(--vrp-panel-soft); color: var(--vrp-primary); font-weight: 700; }
+.target-mapping-card .location-select-all { font-size: .75rem; color: var(--vrp-muted); }
+.target-mapping-card .location-select-all input { width: 14px; height: 14px; min-height: 14px; padding: 0; accent-color: var(--vrp-primary); }
+.target-mapping-card .chip-multi-control { min-height: 44px; border-radius: 8px; border-color: var(--vrp-line); background: var(--vrp-panel); }
+.target-mapping-card .chip-multi-values { min-height: 42px; box-sizing: border-box; }
+.target-mapping-card .chip-token { background: var(--vrp-panel-soft); color: var(--vrp-text); border-color: var(--vrp-line); text-align: left; line-height: 1.45; font-size: .78rem; font-weight: 500; max-width: 100%; overflow-wrap: anywhere; }
+.target-mapping-card :is(input, select, button, a, .chip-multi-control):focus-visible { outline: 2px solid var(--vrp-primary); outline-offset: 3px; }
+.target-mapping-card .target-training-fields,
+.target-mapping-card .target-weekly-summary { margin: 0; padding: 20px; border: 1px solid var(--vrp-line); border-radius: 12px; background: var(--vrp-panel-soft); gap: 18px; }
+.target-mapping-card [data-opg-validation-message] { margin: 0; padding: 10px 12px; border-radius: 8px; font-size: .82rem; }
+.target-mapping-card .target-mapping-toolbar { flex-wrap: wrap; }
+.target-mapping-card [data-target-weekly-selected-total] { padding: 7px 12px; border-radius: 20px; background: var(--vrp-panel); font-size: .78rem; font-weight: 700; }
+.target-mapping-card .target-weekly-table-shell { overflow-x: auto; border: 1px solid var(--vrp-line); border-radius: 8px; background: var(--vrp-panel); }
+.target-mapping-card .target-weekly-table { width: 100%; min-width: 880px; }
+.target-mapping-card .target-weekly-table th { padding: 14px 10px; font-size: .72rem; }
+.target-mapping-card .target-weekly-table td { padding: 16px 10px; }
+.target-mapping-card .target-weekly-table :is(th, td):first-child { text-align: left; }
+.target-mapping-card .target-weekly-activity { justify-items: start; text-align: left; gap: 8px; line-height: 1.5; }
+.target-mapping-card .target-weekly-activity strong { padding: 0; background: none; color: var(--vrp-text); border-radius: 0; }
+.target-mapping-card .target-weekly-subactivity { justify-content: start; }
+.target-mapping-card .target-weekly-activity span { padding: 0; background: none; font-size: .8rem; }
+.target-mapping-card .target-weekly-cell-center { min-height: 44px; }
+.target-mapping-card .target-weekly-input { width: 68px; min-height: 40px; background: var(--vrp-panel); border-radius: 8px; }
+.target-mapping-card .module-form-actions { margin: 0; padding-top: 20px; gap: 12px; }
+.target-mapping-card .module-form-actions :is(a, button) { min-height: 44px; padding: 11px 22px; border-radius: 8px; }
+@media (max-width: 1100px) {
+  .target-mapping-card .module-form-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+@media (max-width: 640px) {
+  .target-mapping-card .target-form-intro { padding: 20px 16px; }
+  .target-mapping-card > .module-entry-form { padding: 20px 16px; }
+  .target-mapping-card .module-form-grid { grid-template-columns: minmax(0, 1fr); gap: 18px; }
+  .target-mapping-card .target-training-fields,
+  .target-mapping-card .target-weekly-summary { padding: 14px; }
+  .target-mapping-card .module-form-actions { flex-wrap: wrap; }
+  .target-mapping-card .module-form-actions :is(a, button) { flex: 1; text-align: center; }
+}
