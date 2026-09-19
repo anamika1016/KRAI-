@@ -140,6 +140,10 @@
             <strong><%= @dashboard_other_activity_totals[:mapped_farmer] %></strong>
           </div>
           <div class="training-participation-box total dashboard-summary-box">
+            <span>Achievement Farmer</span>
+            <strong><%= @dashboard_other_activity_totals[:achievement_farmer] %></strong>
+          </div>
+          <div class="training-participation-box total dashboard-summary-box">
             <span>Pending Farmer</span>
             <strong><%= @dashboard_other_activity_totals[:pending_farmer] %></strong>
           </div>
@@ -470,11 +474,18 @@
     </div>
   <% end %>
 
+  <% main_activity_filter_value = params[:main_activity].presence || @dashboard_main_activity_filter_value.presence %>
+  <% normalized_main_activity_filter = main_activity_filter_value.to_s.downcase.strip %>
+  <% farmer_activity_mode = @dashboard_farmer_activity_mode ||
+       normalized_main_activity_filter.include?("training") ||
+       normalized_main_activity_filter.include?("farmer activity") %>
+
   <% demonstration_method_titles = ["OPG Training Target", "OPG Training Achievement", "General Training/Meeting", "Input Demo INM", "FFS", "Input Demo PM", "Exposure", "FFS Exposure", "CC TARGET STATUS"] %>
   <% all_dashboard_summary_cards = Array(@dashboard_summary_cards) %>
   <% demonstration_method_cards = Array(@demonstration_method_cards).presence || all_dashboard_summary_cards.select { |card| demonstration_method_titles.include?(card[:title].to_s) } %>
   <% dashboard_summary_cards = all_dashboard_summary_cards.reject { |card| demonstration_method_titles.include?(card[:title].to_s) } %>
-  <% if dashboard_summary_cards.any? && !@vrp_dashboard %>
+  <%# Dashboard Summary is training-specific, so it stays hidden for Other activities. %>
+  <% if dashboard_summary_cards.any? && !@vrp_dashboard && farmer_activity_mode %>
     <section class="module-card training-participation-status-card dashboard-status-panel dashboard-summary-panel" id="dashboard_summary_boxes">
       <div class="module-card-header training-participation-status-header">
         <div>
@@ -505,12 +516,6 @@
     </section>
   <% end %>
 
-  <% main_activity_filter_value = params[:main_activity].presence || @dashboard_main_activity_filter_value.presence %>
-  <% normalized_main_activity_filter = main_activity_filter_value.to_s.downcase.strip %>
-  <% farmer_activity_mode = @dashboard_farmer_activity_mode ||
-       normalized_main_activity_filter.include?("training") ||
-       normalized_main_activity_filter.include?("farmer activity") %>
-
   <% if farmer_activity_mode %>
     <%# ── TRAINING DASHBOARD ───────────────────────────────────────────── %>
     <%= render "farmer_training_dashboard" %>
@@ -518,7 +523,7 @@
     <section class="module-card dashboard-summary-panel">
       <div class="module-card-header"><h2><%= main_activity_filter_value.presence || "Activity" %> — <%= @dashboard_month_filter_value.presence || "All Months" %></h2></div>
       <div class="training-participation-boxes dashboard-summary-boxes">
-        <% { main_major_work_indicator: "Main Major Work Indicator", mapped_farmer: "Mapped Farmer", pending_farmer: "Pending Farmer", achieved: "Achieved (%)" }.each do |key, label| %>
+        <% { main_major_work_indicator: "Main Major Work Indicator", mapped_farmer: "Mapped Farmer", achievement_farmer: "Achievement Farmer", pending_farmer: "Pending Farmer", achieved: "Achieved (%)" }.each do |key, label| %>
           <div class="training-participation-box total dashboard-summary-box"><span><%= label %></span><strong><%= key == :achieved ? "#{@dashboard_other_activity_totals[key].to_f.round(2)}%" : @dashboard_other_activity_totals[key] %></strong></div>
         <% end %>
       </div>
@@ -561,6 +566,10 @@
           <div class="training-participation-box total dashboard-summary-box">
             <span>Mapped Farmer</span>
             <strong><%= @dashboard_other_activity_totals[:mapped_farmer] %></strong>
+          </div>
+          <div class="training-participation-box total dashboard-summary-box">
+            <span>Achievement Farmer</span>
+            <strong><%= @dashboard_other_activity_totals[:achievement_farmer] %></strong>
           </div>
           <div class="training-participation-box total dashboard-summary-box">
             <span>Pending Farmer</span>

@@ -2044,31 +2044,47 @@ class ModulesController < ApplicationController
   def dashboard_other_activity_totals(targets)
     rows = dashboard_other_activity_rows(targets)
     activities = rows.filter_map { |row| row["main_activity_name"].presence }.uniq
-    mapped_farmer = rows.sum { |row| row["mapped_farmer"].to_i }
     achievement_farmer = rows.sum { |row| row["achievement_farmer"].to_i }
+    mapped_farmer_by_activity = rows.each_with_object(Hash.new(0)) do |row, memo|
+      activity = row["main_activity_name"].presence
+      memo[activity] += row["mapped_farmer"].to_i if activity
+    end
+    # A farmer mapped to two Other activities counts once on the card but twice
+    # in the per-activity totals, so the card and the ratio use different bases.
+    mapped_farmer = rows.first&.[]("distinct_mapped_farmer").to_i
+    mapped_farmer_sum = mapped_farmer_by_activity.values.sum
 
     {
       main_major_work_indicator: activities.size,
       mapped_farmer: mapped_farmer,
       achievement_farmer: achievement_farmer,
       pending_farmer: rows.sum { |row| row["pending_farmer"].to_i },
-      achieved: mapped_farmer.positive? ? (achievement_farmer * 100.0 / mapped_farmer).round(2) : 0,
-      main_major_work_indicator_popups: activities
+      achieved: mapped_farmer_sum.positive? ? (achievement_farmer * 100.0 / mapped_farmer_sum).round(2) : 0,
+      main_major_work_indicator_popups: activities.map { |activity| "#{activity} = #{mapped_farmer_by_activity[activity]}" }
     }
   end
 
   # Main Major Work Indicator - Other: use the reporting query directly so
   # mapping, achievement and pending farmers are calculated consistently.
   def dashboard_other_activity_rows(targets)
-    candidate_targets = Array(targets).presence || dashboard_target_mappings
-    other_targets = candidate_targets.reject do |target|
+    # Never widen an empty scope to every mapping: an empty scope means the
+    # filters matched nothing, so this panel must stay empty too.
+    other_targets = Array(targets).reject do |target|
       target.main_activity_name.to_s.strip.casecmp("Farmers' Training").zero?
     end
-    # The dashboard commonly opens in Farmers' Training mode. The Other panel
-    # must still load its own visible activities in that case.
+    # The dashboard commonly opens in Farmers' Training mode, which empties this
+    # panel's scope. Rebuild it from the full list, but keep every non-activity
+    # filter: @filtered_vrps already carries the FCO/cluster/post/VRP selections,
+    # so only the target-level month and ICS filters need reapplying here.
     if other_targets.empty?
-      other_targets = dashboard_target_mappings.reject do |target|
-        target.main_activity_name.to_s.strip.casecmp("Farmers' Training").zero?
+      visible_vrp_ids = @filtered_vrps ? Array(@filtered_vrps).map(&:id).to_set : nil
+      selected_month = normalize_dashboard_text(@dashboard_month_filter_value)
+      selected_ics = dashboard_filter_param(:ics)
+      other_targets = dashboard_target_mappings.select do |target|
+        !target.main_activity_name.to_s.strip.casecmp("Farmers' Training").zero? &&
+          (visible_vrp_ids.nil? || (target.vrp_id.present? && visible_vrp_ids.include?(target.vrp_id))) &&
+          (selected_month.blank? || normalize_dashboard_text(target.month_name) == selected_month) &&
+          (selected_ics.blank? || (target.ics_name.presence || target.ics_id).to_s == selected_ics)
       end
     end
 
@@ -2119,7 +2135,8 @@ class ModulesController < ApplicationController
       SELECT md.fco_id, md.fco_name, md.main_activity_name, md.total_mapping,
         md.mapped_farmer, COALESCE(ad.achievement_farmer, 0) AS achievement_farmer,
         GREATEST(md.mapped_farmer - COALESCE(ad.achievement_farmer, 0), 0) AS pending_farmer,
-        ROUND(COALESCE(ad.achievement_farmer, 0) * 100.0 / NULLIF(md.mapped_farmer, 0), 2) AS achievement_percentage
+        ROUND(COALESCE(ad.achievement_farmer, 0) * 100.0 / NULLIF(md.mapped_farmer, 0), 2) AS achievement_percentage,
+        (SELECT COUNT(DISTINCT farmer_id) FROM mapping_detail) AS distinct_mapped_farmer
       FROM mapping_data md
       LEFT JOIN achievement_data ad ON (
         ad.fco_key = LOWER(TRIM(md.fco_name)) OR
