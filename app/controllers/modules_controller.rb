@@ -3844,10 +3844,11 @@ class ModulesController < ApplicationController
     ffs_done   = summary_rows.sum { |r| r["FFS Done"].to_f }.to_i
     ffs_val    = "#{ffs_target} / #{ffs_done}"
 
-    # Match the Demonstration Method SQL: CC target is village-deduplicated;
-    # achievement is the total completed General/INM/PM/FFS training entries.
-    cc_target = summary_rows.sum { |row| row["CC Target"].to_i }
-    cc_done = cc_target.positive? ? gen_done + inm_done + pm_done + ffs_done : 0
+    # Use exactly the same JJ-level CC calculation as the Demonstration Method
+    # View List, then aggregate it for the active FCO/month dashboard filters.
+    cc_metrics = report.rows.map { |row| row["CC TARGET STATUS"].to_s.split("/").map(&:to_i) }
+    cc_target = cc_metrics.sum { |target, _achievement| target }
+    cc_done = cc_metrics.sum { |_target, achievement| achievement }
     cc_val = "#{cc_target} / #{cc_done}"
 
     card_list_path = demonstration_method_list_path(request.query_parameters)
