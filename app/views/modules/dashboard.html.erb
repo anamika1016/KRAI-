@@ -145,7 +145,7 @@
           </div>
           <div class="training-participation-box total dashboard-summary-box">
             <span>Achieved</span>
-            <strong><%= quantity.call(@dashboard_other_activity_totals[:achieved]) %>%</strong>
+            <strong><%= @dashboard_other_activity_totals[:achieved].to_f.round(2) %>%</strong>
           </div>
         </div>
       </section>
@@ -519,7 +519,7 @@
       <div class="module-card-header"><h2><%= main_activity_filter_value.presence || "Activity" %> — <%= @dashboard_month_filter_value.presence || "All Months" %></h2></div>
       <div class="training-participation-boxes dashboard-summary-boxes">
         <% { main_major_work_indicator: "Main Major Work Indicator", mapped_farmer: "Mapped Farmer", pending_farmer: "Pending Farmer", achieved: "Achieved (%)" }.each do |key, label| %>
-          <div class="training-participation-box total dashboard-summary-box"><span><%= label %></span><strong><%= key == :achieved ? "#{quantity.call(@dashboard_other_activity_totals[key])}%" : @dashboard_other_activity_totals[key] %></strong></div>
+          <div class="training-participation-box total dashboard-summary-box"><span><%= label %></span><strong><%= key == :achieved ? "#{@dashboard_other_activity_totals[key].to_f.round(2)}%" : @dashboard_other_activity_totals[key] %></strong></div>
         <% end %>
       </div>
     </section>
@@ -568,7 +568,7 @@
           </div>
           <div class="training-participation-box total dashboard-summary-box">
             <span>Achieved</span>
-            <strong><%= quantity.call(@dashboard_other_activity_totals[:achieved]) %>%</strong>
+            <strong><%= @dashboard_other_activity_totals[:achieved].to_f.round(2) %>%</strong>
           </div>
         </div>
       </section>
