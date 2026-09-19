@@ -13,6 +13,19 @@ class JeevikaVisibilityTest < ActiveSupport::TestCase
     refute controller.send(:jeevika_completed_payment_item_visible?, {})
   end
 
+  test "completed payment remains visible to the bill's assigned JJ when a saved payment ID is stale" do
+    controller = ModulesController.new
+    controller.params = ActionController::Parameters.new
+    controller.define_singleton_method(:admin_dashboard_user?) { false }
+    controller.define_singleton_method(:cached_vrp_lookup) { |id| Vrp.new(id: id) }
+    controller.define_singleton_method(:scoped_jeevika_vrp_visible?) { |vrp| vrp&.id == 12 }
+    controller.define_singleton_method(:jeevika_payment_bill_record_for_item) do |_item|
+      ModuleRecord.new(data: { "select_vrp" => "12" })
+    end
+
+    assert controller.send(:jeevika_completed_payment_item_visible?, { "jeevika_jankar_id" => "old-jj-id", "bill_id" => "1" })
+  end
+
   test "bill summaries batch multiple JJ records in one calculation per month" do
     controller = ModulesController.new
     controller.params = ActionController::Parameters.new

@@ -10153,11 +10153,12 @@ class ModulesController < ApplicationController
   def jeevika_completed_payment_item_visible?(item)
     return true if admin_dashboard_user?
 
-    vrp_id = item["jeevika_jankar_id"].presence
-    if vrp_id.blank?
-      bill_record = jeevika_payment_bill_record_for_item(item)
-      vrp_id = bill_record&.data&.[]("select_vrp")
-    end
+    # The bill retains the authoritative JJ assignment. Older payment items
+    # can contain a stale saved JJ ID, which must not hide the payment from
+    # the JJ currently assigned to that bill (or expose it to the stale one).
+    bill_vrp_id = jeevika_payment_bill_record_for_item(item)&.data&.[]("select_vrp")
+    vrp_id = bill_vrp_id.presence || item["jeevika_jankar_id"].presence
+
     scoped_jeevika_vrp_visible?(cached_vrp_lookup(vrp_id))
 
   end
