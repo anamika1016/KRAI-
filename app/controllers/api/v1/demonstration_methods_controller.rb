@@ -15,7 +15,7 @@ module Api
           metrics = METHODS.to_h do |key, label|
             [key, { target: row["#{label} Target"].to_i, achievement: row["#{label} Done"].to_i }]
           end
-          { fco_id: row["fco_id"], fco_name: row["fco_name"], opg_target: row["OPG Target"].to_i,
+          { fco_id: row["fco_id"], fco_name: row["fco_name"], opg_target: row["OPG Target"].to_i, cc_target: row["CC Target"].to_i,
             total: sum_metrics(metrics.values), methods: metrics }
         end
         totals = METHODS.keys.to_h do |key|
@@ -28,13 +28,12 @@ module Api
       def index
         rows = report.rows.map do |row|
           methods = METHODS.to_h { |key, label| [key, split_metric(row[label])] }
-          { fco_id: row["fco_id"], fco_name: row["fco_name"], vrp_id: row["vrp_id"],
-            vrp_name: row["VRP Name"], cluster_coordinator: row["Cluster Coordinator"],
-            total: split_metric(row["OPG Target / Done"]), methods: methods, status: row["Status"] }
+          { fco_id: row["fco_id"], fco_name: row["fco_name"], opg_target: row["OPG Target"].to_i,
+            cc_target: row["CC Target"].to_i, total: split_metric(row["Total Target / Done"]), methods: methods }
         end
         if params[:q].present?
           query = params[:q].to_s.strip.downcase
-          rows.select! { |row| row.values_at(:fco_name, :vrp_name, :cluster_coordinator, :vrp_id).any? { |value| value.to_s.downcase.include?(query) } }
+          rows.select! { |row| row.values_at(:fco_name, :fco_id).any? { |value| value.to_s.downcase.include?(query) } }
         end
         page = [params[:page].to_i, 1].max
         per_page = params[:per_page].present? ? params[:per_page].to_i.clamp(1, 100) : 25

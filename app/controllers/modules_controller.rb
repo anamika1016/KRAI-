@@ -1578,6 +1578,14 @@ class ModulesController < ApplicationController
       return
     end
 
+    upload_errors = training_register_upload_errors
+    if upload_errors.any?
+      @records = module_records_required_for_show? ? module_records : []
+      flash.now[:alert] = upload_errors.to_sentence
+      render :show, status: :unprocessable_entity
+      return
+    end
+
     record = ModuleRecord.new(
       module_slug: record_source_slug,
       data: normalized_module_data
@@ -1661,6 +1669,15 @@ class ModulesController < ApplicationController
 
     if record_source_slug == "approval-master" && approval_channel_params?
       update_approval_channel(record)
+      return
+    end
+
+    upload_errors = training_register_upload_errors
+    if upload_errors.any?
+      @record = record
+      @records = module_records_required_for_show? ? module_records : []
+      flash.now[:alert] = upload_errors.to_sentence
+      render :show, status: :unprocessable_entity
       return
     end
 
@@ -11881,6 +11898,17 @@ class ModulesController < ApplicationController
 
   def module_record_params
     params.require(:module_record).permit!
+  end
+
+  def training_register_upload_errors
+    return [] unless record_source_slug == "training-form"
+
+    Array(module_record_params[:training_register_upload]).compact_blank.filter_map do |upload|
+      next unless upload.respond_to?(:original_filename)
+      next if File.extname(upload.original_filename.to_s).casecmp?(".pdf") && upload.content_type.to_s == "application/pdf"
+
+      "Evidence/Documentation PDF must be a PDF file."
+    end.uniq
   end
 
   def normalized_module_data(base_data: nil)

@@ -2188,6 +2188,7 @@
                 <% training_register_multi = @slug == "training-form" && field == "Training Register Upload" %>
                 <% multiple_attachment_upload = (@slug == "other-target" && ["Attachment Upload", "Field Photo"].include?(field)) || training_register_multi %>
                 <% upload_accept = "accept=\"image/*\" data-max-size-mb=\"5\"" if field == "Field Photo" %>
+                <% upload_accept = "accept=\"application/pdf,.pdf\"" if training_register_multi %>
                 <input name="module_record[<%= field_key %>]<%= "[]" if multiple_attachment_upload %>" type="file" <%= "multiple" if multiple_attachment_upload %> <%= upload_accept&.html_safe %> <%= "required" if form_required && field_value.blank? && !other_target_form %>>
                 <% if Array(field_value).reject(&:blank?).any? %>
                   <small class="field-hint">Current: <%= Array(field_value).reject(&:blank?).size %> file(s)</small>

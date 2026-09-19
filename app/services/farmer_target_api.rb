@@ -4,6 +4,7 @@
 # Stores ModuleRecord rows with the same slugs as the web UI (ModulesController untouched).
 class FarmerTargetApi
   TRAINING_PHOTO_FIELDS = %w[training_photo_upload_with_geo_tag photo_front_view photo_back_view photo_close_up_view photo_long_shot].freeze
+  TRAINING_REGISTER_FIELD = "training_register_upload"
   MAX_TRAINING_PHOTO_SIZE = 5.megabytes
   TRAINING_PHOTO_CONTENT_TYPES = %w[image/jpeg image/png image/webp image/heic image/heif].freeze
   OTHER_TARGET_SLUGS = %w[seed-distribution-target papl360-target other-target].freeze
@@ -36,7 +37,7 @@ class FarmerTargetApi
   end
 
   def create(raw_attrs)
-    upload_errors = training_photo_upload_errors(raw_attrs)
+    upload_errors = training_photo_upload_errors(raw_attrs) + training_register_upload_errors(raw_attrs)
     return { success: false, errors: upload_errors } if upload_errors.any?
 
     data = normalize_incoming(raw_attrs)
@@ -1250,6 +1251,19 @@ class FarmerTargetApi
       if upload.respond_to?(:size) && upload.size.to_i > MAX_TRAINING_PHOTO_SIZE
         errors << "Each training photo must be 5 MB or smaller."
       end
+    end.uniq
+  end
+
+  def training_register_upload_errors(raw_attrs)
+    return [] unless @module_slug == "training-form"
+
+    raw = raw_attrs.respond_to?(:to_unsafe_h) ? raw_attrs.to_unsafe_h : Hash(raw_attrs)
+    uploads = Array(raw[TRAINING_REGISTER_FIELD] || raw[TRAINING_REGISTER_FIELD.to_sym]).compact_blank
+    uploads.filter_map do |upload|
+      next unless upload.respond_to?(:original_filename)
+      next if File.extname(upload.original_filename.to_s).casecmp?(".pdf") && upload.content_type.to_s == "application/pdf"
+
+      "Evidence/Documentation PDF must be a PDF file."
     end.uniq
   end
 
