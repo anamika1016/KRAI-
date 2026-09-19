@@ -241,7 +241,7 @@ module ApplicationHelper
       "Activity Name" => "Sub Activity Name",
       "VRP Activity" => "Sub Activity",
       "External Input" => "Internal Inspector Name",
-      "Training Register Upload" => "Evidence/Documentation Photo",
+      "Training Register Upload" => "Evidence/Documentation PDF",
       "Photo Front View" => "Opening/Introduction Photo — Trainer",
       "Photo Back View" => "Farmer Interaction Photo",
       "Photo Close-up View" => "Wide Group Photo",

@@ -650,12 +650,38 @@ body {
 .dashboard-page > .dashboard-training-primary-summaries { order: 1; }
 .dashboard-page > .training-status-panel { order: 2; }
 .dashboard-page > #demonstration_method_boxes { order: 3; }
+.dashboard-page > #other_major_work_indicator_boxes {
+  order: 4;
+  position: relative;
+  overflow: visible !important;
+}
+
+.dashboard-page > #other_major_work_indicator_boxes:hover,
+.dashboard-page > #other_major_work_indicator_boxes:focus-within {
+  z-index: 150 !important;
+}
+
+.dashboard-summary-panel {
+  overflow: visible;
+}
+
+.dashboard-summary-box {
+  position: relative;
+}
+
+.dashboard-summary-box:hover {
+  z-index: 200 !important;
+}
+
+.dashboard-card-hover-popup {
+  z-index: 99999 !important;
+}
 .dashboard-page > #dashboard_activity_overview {
   display: none;
 }
-.dashboard-page > #dashboard_weekly_target_boxes { order: 4; }
-.dashboard-page > #dashboard_ics_farmer_report { order: 5; }
-.dashboard-page > .dashboard-training-secondary-summaries { order: 6; }
+.dashboard-page > #dashboard_weekly_target_boxes { order: 5; }
+.dashboard-page > #dashboard_ics_farmer_report { order: 6; }
+.dashboard-page > .dashboard-training-secondary-summaries { order: 7; }
 
 .vrp-compact-summary-grid {
   display: grid;

@@ -115,6 +115,42 @@
       </section>
     <% end %>
 
+    <% if @dashboard_other_activity_totals.present? %>
+      <section class="module-card training-participation-status-card dashboard-status-panel dashboard-summary-panel demonstration-method-panel" id="other_major_work_indicator_boxes" style="margin-top: 20px;">
+        <div class="module-card-header training-participation-status-header">
+          <div>
+            <h2>Main Major Work Indicator - Other</h2>
+          </div>
+        </div>
+
+        <div class="training-participation-boxes dashboard-summary-boxes demonstration-method-boxes">
+          <div class="training-participation-box total dashboard-summary-box">
+            <span>Target</span>
+            <strong><%= @dashboard_other_activity_totals[:target] %></strong>
+            <% if Array(@dashboard_other_activity_totals[:target_popups]).any? %>
+              <span class="dashboard-card-hover-popup" role="tooltip">
+                <% Array(@dashboard_other_activity_totals[:target_popups]).each do |item| %>
+                  <span><%= item %></span>
+                <% end %>
+              </span>
+            <% end %>
+          </div>
+          <div class="training-participation-box total dashboard-summary-box">
+            <span>Mapped Farmer</span>
+            <strong><%= @dashboard_other_activity_totals[:mapped_farmer] %></strong>
+          </div>
+          <div class="training-participation-box total dashboard-summary-box">
+            <span>Achievement</span>
+            <strong><%= @dashboard_other_activity_totals[:completed] %></strong>
+          </div>
+          <div class="training-participation-box total dashboard-summary-box">
+            <span>Pending</span>
+            <strong><%= @dashboard_other_activity_totals[:pending] %></strong>
+          </div>
+        </div>
+      </section>
+    <% end %>
+
     <section class="module-card vrp-work-overview">
       <div class="vrp-work-overview-header">
         <div>
@@ -504,9 +540,40 @@
         <% end %>
       </div>
     </section>
-  <% end %>
 
-  <% if farmer_activity_mode %>
+    <% if @dashboard_other_activity_totals.present? %>
+      <section class="module-card training-participation-status-card dashboard-status-panel dashboard-summary-panel demonstration-method-panel" id="other_major_work_indicator_boxes" style="margin-top: 20px;">
+        <div class="module-card-header training-participation-status-header">
+          <h2>Main Major Work Indicator - Other</h2>
+        </div>
+        <div class="training-participation-boxes dashboard-summary-boxes demonstration-method-boxes">
+          <div class="training-participation-box total dashboard-summary-box">
+            <span>Target</span>
+            <strong><%= @dashboard_other_activity_totals[:target] %></strong>
+            <% if Array(@dashboard_other_activity_totals[:target_popups]).any? %>
+              <span class="dashboard-card-hover-popup" role="tooltip">
+                <% Array(@dashboard_other_activity_totals[:target_popups]).each do |item| %>
+                  <span><%= item %></span>
+                <% end %>
+              </span>
+            <% end %>
+          </div>
+          <div class="training-participation-box total dashboard-summary-box">
+            <span>Mapped Farmer</span>
+            <strong><%= @dashboard_other_activity_totals[:mapped_farmer] %></strong>
+          </div>
+          <div class="training-participation-box total dashboard-summary-box">
+            <span>Achievement</span>
+            <strong><%= @dashboard_other_activity_totals[:completed] %></strong>
+          </div>
+          <div class="training-participation-box total dashboard-summary-box">
+            <span>Pending</span>
+            <strong><%= @dashboard_other_activity_totals[:pending] %></strong>
+          </div>
+        </div>
+      </section>
+    <% end %>
+
     <div class="dashboard-grid premium dashboard-training-secondary-summaries">
       <% Array(@dashboard_cards).sort_by { |card| ["FCO-wise JJ Requirement", "Jeevika Jankar Billing", "Gender Count"].index(card[:title]) || 99 }.each do |card| %>
         <% next if card.blank? %>

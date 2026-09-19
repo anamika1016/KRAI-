@@ -288,6 +288,33 @@ class ModulesControllerDashboardTest < ActiveSupport::TestCase
     assert_equal "CC TARGET STATUS", titles.last
   end
 
+  test "dashboard_other_activity_totals calculates dynamic metrics and hover popups for other activities" do
+    controller = ModulesController.new
+    controller.define_singleton_method(:params) { ActionController::Parameters.new }
+    controller.define_singleton_method(:normalize_dashboard_text) { |val| val.to_s.strip.downcase }
+    controller.define_singleton_method(:preload_training_farmers_for_targets!) { |_targets| true }
+    controller.define_singleton_method(:vrp_dashboard_target_progress_rows) do |_activity_targets, _|
+      [{ assigned_farmer_ids: ["101", "102"], completed_farmer_ids: ["101"] }]
+    end
+    controller.define_singleton_method(:vrp_dashboard_target_totals) { |_rows| { assigned: 0.0, achieved: 0.0 } }
+    controller.define_singleton_method(:dashboard_quantity) { |val| val.to_f == val.to_i ? val.to_i : val }
+
+    other_target = Target.new(
+      id: 99,
+      main_activity_name: "Seed Distribution",
+      activity_name: "Wheat Distribution",
+      month_name: "September"
+    )
+
+    totals = controller.send(:dashboard_other_activity_totals, [other_target])
+
+    assert_equal 2, totals[:target]
+    assert_equal 2, totals[:mapped_farmer]
+    assert_equal 1, totals[:completed]
+    assert_equal 1, totals[:pending]
+    assert_equal ["Seed Distribution: 2"], totals[:target_popups]
+  end
+
   private
 
   def create_vrp(attributes = {})
