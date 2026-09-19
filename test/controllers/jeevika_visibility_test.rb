@@ -1,27 +1,19 @@
 require "test_helper"
 
 class JeevikaVisibilityTest < ActiveSupport::TestCase
-  test "completed payment visibility uses JJ assignment even when user approved the bill" do
+  test "completed payment visibility is controlled by completed-payment menu access" do
     controller = ModulesController.new
     controller.params = ActionController::Parameters.new
     controller.define_singleton_method(:admin_dashboard_user?) { false }
-    controller.define_singleton_method(:cached_vrp_lookup) { |id| Vrp.new(id: id) }
-    controller.define_singleton_method(:scoped_jeevika_vrp_visible?) { |vrp| vrp&.id == 12 }
-    controller.define_singleton_method(:jeevika_jankar_bill_record_visible?) { |_| true }
     assert controller.send(:jeevika_completed_payment_item_visible?, { "jeevika_jankar_id" => "12", "bill_id" => "1" })
-    refute controller.send(:jeevika_completed_payment_item_visible?, { "jeevika_jankar_id" => "13", "bill_id" => "2" })
+    assert controller.send(:jeevika_completed_payment_item_visible?, { "jeevika_jankar_id" => "13", "bill_id" => "2" })
     refute controller.send(:jeevika_completed_payment_item_visible?, {})
   end
 
-  test "completed payment remains visible to the bill's assigned JJ when a saved payment ID is stale" do
+  test "completed payment does not depend on a saved JJ ID matching the current assignment" do
     controller = ModulesController.new
     controller.params = ActionController::Parameters.new
     controller.define_singleton_method(:admin_dashboard_user?) { false }
-    controller.define_singleton_method(:cached_vrp_lookup) { |id| Vrp.new(id: id) }
-    controller.define_singleton_method(:scoped_jeevika_vrp_visible?) { |vrp| vrp&.id == 12 }
-    controller.define_singleton_method(:jeevika_payment_bill_record_for_item) do |_item|
-      ModuleRecord.new(data: { "select_vrp" => "12" })
-    end
 
     assert controller.send(:jeevika_completed_payment_item_visible?, { "jeevika_jankar_id" => "old-jj-id", "bill_id" => "1" })
   end

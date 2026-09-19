@@ -10151,16 +10151,12 @@ class ModulesController < ApplicationController
   end
 
   def jeevika_completed_payment_item_visible?(item)
-    return true if admin_dashboard_user?
-
-    # The bill retains the authoritative JJ assignment. Older payment items
-    # can contain a stale saved JJ ID, which must not hide the payment from
-    # the JJ currently assigned to that bill (or expose it to the stale one).
-    bill_vrp_id = jeevika_payment_bill_record_for_item(item)&.data&.[]("select_vrp")
-    vrp_id = bill_vrp_id.presence || item["jeevika_jankar_id"].presence
-
-    scoped_jeevika_vrp_visible?(cached_vrp_lookup(vrp_id))
-
+    # Payment List Detail and Completed Payment List are both payment-office
+    # menus. Access is already checked at the menu/controller level, so every
+    # item saved from the detail list must remain visible in the completed list.
+    # Applying a JJ registration/assignment scope here made valid paid rows
+    # disappear for the same user who can see and submit the payment detail.
+    item.present?
   end
 
   def jeevika_payment_bill_record_for_item(item)

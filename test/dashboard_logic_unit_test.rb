@@ -85,14 +85,11 @@ class DashboardLogicUnitTest < Minitest::Test
     assert_equal({ target: 0, completed: 0, pending: 0 }, c.send(:dashboard_other_activity_totals, []))
   end
 
-  def test_completed_payments_do_not_use_approver_visibility
+  def test_completed_payments_are_not_limited_by_jj_assignment
     c = controller
     c.define_singleton_method(:admin_dashboard_user?) { false }
-    c.define_singleton_method(:cached_vrp_lookup) { |id| OpenStruct.new(id: id) if id.present? }
-    c.define_singleton_method(:scoped_jeevika_vrp_visible?) { |vrp| vrp&.id == "12" }
-    c.define_singleton_method(:jeevika_jankar_bill_record_visible?) { |_| raise "Approval access is unrelated to completed payments" }
     assert c.send(:jeevika_completed_payment_item_visible?, { "jeevika_jankar_id" => "12" })
-    refute c.send(:jeevika_completed_payment_item_visible?, { "jeevika_jankar_id" => "13" })
+    assert c.send(:jeevika_completed_payment_item_visible?, { "jeevika_jankar_id" => "13" })
     refute c.send(:jeevika_completed_payment_item_visible?, {})
   end
 
