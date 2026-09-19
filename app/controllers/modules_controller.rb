@@ -2042,97 +2042,95 @@ class ModulesController < ApplicationController
   end
 
   def dashboard_other_activity_totals(targets)
-    all_candidate_targets = Array(targets).presence || dashboard_target_mappings
-    other_targets = all_candidate_targets.uniq { |target| target.id }.select do |target|
-      main_act = target.main_activity_name.to_s.strip.downcase
-      !main_act.include?("training") || (params[:main_activity].present? && !params[:main_activity].to_s.strip.downcase.include?("training"))
-    end
-
-    if other_targets.empty?
-      other_targets = dashboard_target_mappings.uniq { |target| target.id }.reject do |target|
-        main_act = target.main_activity_name.to_s.strip.downcase
-        main_act == "farmers' training" || main_act.include?("training")
-      end
-    end
-
-    preload_training_farmers_for_targets!(other_targets) if other_targets.any?
-
-    totals = { assigned: 0.0, achieved: 0.0, pending: 0.0 }
-    all_assigned_farmer_ids = []
-
-    activity_target_counts = Hash.new(0.0)
-    activity_mapped_farmer_counts = Hash.new(0)
-    activity_completed_counts = Hash.new(0.0)
-    activity_pending_counts = Hash.new(0.0)
-
-    other_targets.group_by do |target|
-      act_label = target.main_activity_name.presence || target.activity_name.presence || "Other Activity"
-      [target.month_name, act_label, target.activity_name].map { |value| normalize_dashboard_text(value) }
-    end.each_value do |activity_targets|
-      first_target = activity_targets.first
-      act_name = first_target&.main_activity_name.presence || first_target&.activity_name.presence || "Other Activity"
-
-      rows = vrp_dashboard_target_progress_rows(activity_targets, [])
-      farmer_rows, quantity_rows = rows.partition { |row| Array(row[:assigned_farmer_ids]).any? }
-      assigned_ids = farmer_rows.flat_map { |row| Array(row[:assigned_farmer_ids]).map(&:to_s) }.uniq
-      all_assigned_farmer_ids.concat(assigned_ids)
-      completed_ids = farmer_rows.flat_map { |row| Array(row[:completed_farmer_ids]).map(&:to_s) }.uniq & assigned_ids
-      numeric_completion = farmer_rows.group_by { |row| Array(row[:assigned_farmer_ids]).map(&:to_s).uniq.sort }.sum do |_ids, duplicates|
-        duplicates.map { |row| [row[:completed].to_f - Array(row[:completed_farmer_ids]).map(&:to_s).uniq.size, 0].max }.max.to_f
-      end
-      quantities = vrp_dashboard_target_totals(quantity_rows)
-      assigned = assigned_ids.size + quantities[:assigned]
-      completed = [completed_ids.size + numeric_completion, assigned].min + quantities[:achieved]
-      pending = [assigned - completed, 0].max
-
-      totals[:assigned] += assigned
-      totals[:achieved] += completed
-      totals[:pending] += pending
-
-      activity_target_counts[act_name] += assigned
-      activity_mapped_farmer_counts[act_name] += assigned_ids.size
-      activity_completed_counts[act_name] += completed
-      activity_pending_counts[act_name] += pending
-    end
-
-    defined_other_activities = (respond_to?(:main_activity_type_map) ? Array(main_activity_type_map) : []).reject do |row|
-      act_type = row[:main_activity_type].to_s.strip.downcase
-      act_name = row[:main_activity].to_s.strip.downcase
-      act_type == "training" || act_name == "farmers' training" || act_name.include?("training")
-    end.map { |row| row[:main_activity] }.compact_blank.uniq
-
-    other_targets.each do |target|
-      act_name = target.main_activity_name.presence || target.activity_name.presence
-      if act_name.present? && !act_name.to_s.downcase.include?("training")
-        defined_other_activities << act_name
-      end
-    end
-    defined_other_activities = defined_other_activities.uniq
-    defined_other_activities = ["Other Activity"] if defined_other_activities.empty? && totals[:assigned].zero?
-
-    target_popups = defined_other_activities.map do |name|
-      "#{name}: #{dashboard_quantity(activity_target_counts[name])}"
-    end
-    mapped_farmer_popups = defined_other_activities.map do |name|
-      "#{name}: #{dashboard_quantity(activity_mapped_farmer_counts[name])}"
-    end
-    completed_popups = defined_other_activities.map do |name|
-      "#{name}: #{dashboard_quantity(activity_completed_counts[name])}"
-    end
-    pending_popups = defined_other_activities.map do |name|
-      "#{name}: #{dashboard_quantity(activity_pending_counts[name])}"
-    end
+    rows = dashboard_other_activity_rows(targets)
+    activities = rows.filter_map { |row| row["main_activity_name"].presence }.uniq
+    mapped_farmer = rows.sum { |row| row["mapped_farmer"].to_i }
+    achievement_farmer = rows.sum { |row| row["achievement_farmer"].to_i }
 
     {
-      target: dashboard_quantity(totals[:assigned]),
-      mapped_farmer: dashboard_quantity(all_assigned_farmer_ids.uniq.size),
-      completed: dashboard_quantity(totals[:achieved]),
-      pending: dashboard_quantity(totals[:pending]),
-      target_popups: target_popups,
-      mapped_farmer_popups: mapped_farmer_popups,
-      completed_popups: completed_popups,
-      pending_popups: pending_popups
+      main_major_work_indicator: activities.size,
+      mapped_farmer: mapped_farmer,
+      achievement_farmer: achievement_farmer,
+      pending_farmer: rows.sum { |row| row["pending_farmer"].to_i },
+      achieved: mapped_farmer.positive? ? (achievement_farmer * 100.0 / mapped_farmer).round(2) : 0,
+      main_major_work_indicator_popups: activities
     }
+  end
+
+  # Main Major Work Indicator - Other: use the reporting query directly so
+  # mapping, achievement and pending farmers are calculated consistently.
+  def dashboard_other_activity_rows(targets)
+    candidate_targets = Array(targets).presence || dashboard_target_mappings
+    other_targets = candidate_targets.reject do |target|
+      target.main_activity_name.to_s.strip.casecmp("Farmers' Training").zero?
+    end
+    # The dashboard commonly opens in Farmers' Training mode. The Other panel
+    # must still load its own visible activities in that case.
+    if other_targets.empty?
+      other_targets = dashboard_target_mappings.reject do |target|
+        target.main_activity_name.to_s.strip.casecmp("Farmers' Training").zero?
+      end
+    end
+
+    target_ids = other_targets.filter_map(&:id).uniq
+    return [] if target_ids.empty? || !model_ready?(:TargetMapping) || !model_ready?(:ModuleRecord)
+
+    sql = <<~SQL
+      WITH mapping_detail AS (
+        SELECT DISTINCT TRIM(t.fco_id) AS fco_id, TRIM(t.fco_name) AS fco_name,
+          TRIM(t.main_activity_name) AS main_activity_name, f.farmer_id
+        FROM target_mappings t
+        CROSS JOIN LATERAL (
+          SELECT TRIM(value) AS farmer_id
+          FROM jsonb_array_elements_text(COALESCE(NULLIF(TRIM(t.afl_ids), '')::jsonb, '[]'::jsonb))
+        ) f
+        WHERE t.id IN (:target_ids) AND t.main_activity_name IS NOT NULL
+          AND TRIM(t.main_activity_name) <> ''
+          AND LOWER(TRIM(t.main_activity_name)) <> 'farmers'' training'
+      ), mapping_data AS (
+        SELECT TRIM(t.fco_id) AS fco_id, TRIM(t.fco_name) AS fco_name,
+          TRIM(t.main_activity_name) AS main_activity_name,
+          COUNT(DISTINCT t.mapping_group_key) AS total_mapping,
+          COUNT(DISTINCT md.farmer_id) AS mapped_farmer
+        FROM target_mappings t
+        LEFT JOIN mapping_detail md ON md.fco_id = TRIM(t.fco_id)
+          AND LOWER(TRIM(md.main_activity_name)) = LOWER(TRIM(t.main_activity_name))
+        WHERE t.id IN (:target_ids) AND t.main_activity_name IS NOT NULL
+          AND TRIM(t.main_activity_name) <> ''
+          AND LOWER(TRIM(t.main_activity_name)) <> 'farmers'' training'
+        GROUP BY TRIM(t.fco_id), TRIM(t.fco_name), TRIM(t.main_activity_name)
+      ), achievement_detail AS (
+        SELECT DISTINCT LOWER(TRIM((m.data::jsonb)->>'fco_name')) AS fco_key,
+          TRIM((m.data::jsonb)->>'main_activity') AS main_activity_name, f.farmer_id
+        FROM module_records m
+        CROSS JOIN LATERAL (
+          SELECT TRIM(value) AS farmer_id
+          FROM jsonb_array_elements_text(COALESCE((m.data::jsonb)->'selected_farmer_ids', '[]'::jsonb))
+        ) f
+        WHERE LOWER(TRIM((m.data::jsonb)->>'month')) IN (
+          SELECT DISTINCT LOWER(TRIM(month_name)) FROM target_mappings WHERE id IN (:target_ids)
+        ) AND (m.data::jsonb)->>'main_activity' IS NOT NULL
+          AND TRIM((m.data::jsonb)->>'main_activity') <> ''
+          AND LOWER(TRIM((m.data::jsonb)->>'main_activity')) <> 'farmers'' training'
+      ), achievement_data AS (
+        SELECT fco_key, main_activity_name, COUNT(DISTINCT farmer_id) AS achievement_farmer
+        FROM achievement_detail GROUP BY fco_key, main_activity_name
+      )
+      SELECT md.fco_id, md.fco_name, md.main_activity_name, md.total_mapping,
+        md.mapped_farmer, COALESCE(ad.achievement_farmer, 0) AS achievement_farmer,
+        GREATEST(md.mapped_farmer - COALESCE(ad.achievement_farmer, 0), 0) AS pending_farmer,
+        ROUND(COALESCE(ad.achievement_farmer, 0) * 100.0 / NULLIF(md.mapped_farmer, 0), 2) AS achievement_percentage
+      FROM mapping_data md
+      LEFT JOIN achievement_data ad ON (
+        ad.fco_key = LOWER(TRIM(md.fco_name)) OR
+        ad.fco_key = LOWER('FCO-C ' || TRIM(md.fco_name))
+      ) AND LOWER(TRIM(ad.main_activity_name)) = LOWER(TRIM(md.main_activity_name))
+      ORDER BY md.fco_name, md.main_activity_name
+    SQL
+
+    ActiveRecord::Base.connection.exec_query(
+      ActiveRecord::Base.send(:sanitize_sql_array, [sql, { target_ids: target_ids }])
+    ).to_a
   end
 
   def prepare_vrp_dashboard

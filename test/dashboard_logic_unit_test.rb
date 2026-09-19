@@ -74,15 +74,17 @@ class DashboardLogicUnitTest < Minitest::Test
     assert_equal ["August Training", "July Training"], c.send(:dashboard_filter_sub_activity_options, targets)
   end
 
-  def test_other_activity_totals_use_quantity_and_cap_completion
+  def test_other_activity_totals_use_reporting_query_totals
     c = controller
-    c.define_singleton_method(:preload_training_farmers_for_targets!) { |_| }
-    c.define_singleton_method(:vrp_dashboard_target_progress_rows) do |*_|
-      [{ target: 40, completed: 30 }, { target: 20, completed: 20 }]
+    c.define_singleton_method(:dashboard_other_activity_rows) do |targets|
+      targets.empty? ? [] : [{ "main_activity_name" => "Other", "mapped_farmer" => 60, "achievement_farmer" => 50, "pending_farmer" => 10 }]
     end
     targets = [OpenStruct.new(id: 1, fco_id: "1004", target_quantity: 40), OpenStruct.new(id: 2, fco_id: "1006", target_quantity: 20)]
-    assert_equal({ target: 60, completed: 50, pending: 10 }, c.send(:dashboard_other_activity_totals, targets))
-    assert_equal({ target: 0, completed: 0, pending: 0 }, c.send(:dashboard_other_activity_totals, []))
+    assert_equal 60, c.send(:dashboard_other_activity_totals, targets)[:mapped_farmer]
+    assert_equal 50, c.send(:dashboard_other_activity_totals, targets)[:achievement_farmer]
+    assert_equal 10, c.send(:dashboard_other_activity_totals, targets)[:pending_farmer]
+    assert_equal 83.33, c.send(:dashboard_other_activity_totals, targets)[:achieved]
+    assert_equal 0, c.send(:dashboard_other_activity_totals, [])[:main_major_work_indicator]
   end
 
   def test_completed_payments_are_not_limited_by_jj_assignment

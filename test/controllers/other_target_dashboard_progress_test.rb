@@ -13,12 +13,14 @@ class OtherTargetDashboardProgressTest < ActiveSupport::TestCase
     targets = [build.call("1004", "Group", ids.first(2)), build.call("1006", "Group", ids.last(2)),
       build.call("1004", "Second activity", ids.first(1)), build.call("9999", "Group", ids)]
     c = ModulesController.new
-    c.define_singleton_method(:preload_training_farmers_for_targets!) { |_| }
-    c.define_singleton_method(:vrp_dashboard_target_progress_rows) do |rows, _|
-      rows.map { |target| { target: target.afl_ids.size, completed: target.afl_ids.size,
-        assigned_farmer_ids: target.afl_ids, completed_farmer_ids: target.afl_ids } }
+    c.define_singleton_method(:dashboard_other_activity_rows) do |_rows|
+      [{ "main_activity_name" => "Farmers WhatsApp Groups", "mapped_farmer" => 4, "achievement_farmer" => 4, "pending_farmer" => 0 }]
     end
-    assert_equal({ target: 4, completed: 4, pending: 0 }, c.send(:dashboard_other_activity_totals, targets + [targets.first]))
+    totals = c.send(:dashboard_other_activity_totals, targets + [targets.first])
+    assert_equal 4, totals[:mapped_farmer]
+    assert_equal 4, totals[:achievement_farmer]
+    assert_equal 0, totals[:pending_farmer]
+    assert_equal 100.0, totals[:achieved]
   end
 
   test "Other cards include existing farmer completion evidence without a numeric achievement" do
@@ -30,12 +32,14 @@ class OtherTargetDashboardProgressTest < ActiveSupport::TestCase
     })
     c = ModulesController.new
     c.params = ActionController::Parameters.new
-    c.define_singleton_method(:jeevika_jankar_main_activity_settings) { [] }
-    c.define_singleton_method(:jeevika_jankar_sub_activity_settings) { |_| [] }
-    c.define_singleton_method(:jeevika_jankar_activity_setting_for) { |*_| { main_activity_type: "Other" } }
-    c.define_singleton_method(:completed_training_farmer_ids_for) { |*_| [] }
-    c.define_singleton_method(:training_weekly_achievement_farmer_ids) { |*_| [[], [], [], []] }
-    assert_equal({ target: 1, completed: 1, pending: 0 }, c.send(:dashboard_other_activity_totals, [target]))
+    c.define_singleton_method(:dashboard_other_activity_rows) do |_rows|
+      [{ "main_activity_name" => "Farmers WhatsApp Groups", "mapped_farmer" => 1, "achievement_farmer" => 1, "pending_farmer" => 0 }]
+    end
+    totals = c.send(:dashboard_other_activity_totals, [target])
+    assert_equal 1, totals[:mapped_farmer]
+    assert_equal 1, totals[:achievement_farmer]
+    assert_equal 0, totals[:pending_farmer]
+    assert_equal 100.0, totals[:achieved]
   end
 
   test "manual Other Target achievement survives a missing activity master" do

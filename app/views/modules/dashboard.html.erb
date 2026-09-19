@@ -125,11 +125,11 @@
 
         <div class="training-participation-boxes dashboard-summary-boxes demonstration-method-boxes">
           <div class="training-participation-box total dashboard-summary-box">
-            <span>Target</span>
-            <strong><%= @dashboard_other_activity_totals[:target] %></strong>
-            <% if Array(@dashboard_other_activity_totals[:target_popups]).any? %>
+            <span>Main Major Work Indicator</span>
+            <strong><%= @dashboard_other_activity_totals[:main_major_work_indicator] %></strong>
+            <% if Array(@dashboard_other_activity_totals[:main_major_work_indicator_popups]).any? %>
               <span class="dashboard-card-hover-popup" role="tooltip">
-                <% Array(@dashboard_other_activity_totals[:target_popups]).each do |item| %>
+                <% Array(@dashboard_other_activity_totals[:main_major_work_indicator_popups]).each do |item| %>
                   <span><%= item %></span>
                 <% end %>
               </span>
@@ -140,12 +140,12 @@
             <strong><%= @dashboard_other_activity_totals[:mapped_farmer] %></strong>
           </div>
           <div class="training-participation-box total dashboard-summary-box">
-            <span>Achievement</span>
-            <strong><%= @dashboard_other_activity_totals[:completed] %></strong>
+            <span>Pending Farmer</span>
+            <strong><%= @dashboard_other_activity_totals[:pending_farmer] %></strong>
           </div>
           <div class="training-participation-box total dashboard-summary-box">
-            <span>Pending</span>
-            <strong><%= @dashboard_other_activity_totals[:pending] %></strong>
+            <span>Achieved</span>
+            <strong><%= quantity.call(@dashboard_other_activity_totals[:achieved]) %>%</strong>
           </div>
         </div>
       </section>
@@ -518,8 +518,8 @@
     <section class="module-card dashboard-summary-panel">
       <div class="module-card-header"><h2><%= main_activity_filter_value.presence || "Activity" %> — <%= @dashboard_month_filter_value.presence || "All Months" %></h2></div>
       <div class="training-participation-boxes dashboard-summary-boxes">
-        <% { target: "Total Target", completed: "Completed", pending: "Pending" }.each do |key, label| %>
-          <div class="training-participation-box total dashboard-summary-box"><span><%= label %></span><strong><%= @dashboard_other_activity_totals[key] %></strong></div>
+        <% { main_major_work_indicator: "Main Major Work Indicator", mapped_farmer: "Mapped Farmer", pending_farmer: "Pending Farmer", achieved: "Achieved (%)" }.each do |key, label| %>
+          <div class="training-participation-box total dashboard-summary-box"><span><%= label %></span><strong><%= key == :achieved ? "#{quantity.call(@dashboard_other_activity_totals[key])}%" : @dashboard_other_activity_totals[key] %></strong></div>
         <% end %>
       </div>
     </section>
@@ -548,11 +548,11 @@
         </div>
         <div class="training-participation-boxes dashboard-summary-boxes demonstration-method-boxes">
           <div class="training-participation-box total dashboard-summary-box">
-            <span>Target</span>
-            <strong><%= @dashboard_other_activity_totals[:target] %></strong>
-            <% if Array(@dashboard_other_activity_totals[:target_popups]).any? %>
+            <span>Main Major Work Indicator</span>
+            <strong><%= @dashboard_other_activity_totals[:main_major_work_indicator] %></strong>
+            <% if Array(@dashboard_other_activity_totals[:main_major_work_indicator_popups]).any? %>
               <span class="dashboard-card-hover-popup" role="tooltip">
-                <% Array(@dashboard_other_activity_totals[:target_popups]).each do |item| %>
+                <% Array(@dashboard_other_activity_totals[:main_major_work_indicator_popups]).each do |item| %>
                   <span><%= item %></span>
                 <% end %>
               </span>
@@ -563,12 +563,12 @@
             <strong><%= @dashboard_other_activity_totals[:mapped_farmer] %></strong>
           </div>
           <div class="training-participation-box total dashboard-summary-box">
-            <span>Achievement</span>
-            <strong><%= @dashboard_other_activity_totals[:completed] %></strong>
+            <span>Pending Farmer</span>
+            <strong><%= @dashboard_other_activity_totals[:pending_farmer] %></strong>
           </div>
           <div class="training-participation-box total dashboard-summary-box">
-            <span>Pending</span>
-            <strong><%= @dashboard_other_activity_totals[:pending] %></strong>
+            <span>Achieved</span>
+            <strong><%= quantity.call(@dashboard_other_activity_totals[:achieved]) %>%</strong>
           </div>
         </div>
       </section>
