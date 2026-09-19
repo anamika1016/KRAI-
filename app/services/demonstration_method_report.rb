@@ -34,7 +34,7 @@ class DemonstrationMethodReport
           #{scope.to_sql}
         ), village_target AS (
           SELECT
-            t.fco_id, t.fco_name, t.vrp_id, t.village_id,
+            t.fco_id, t.fco_name, t.village_id,
             MAX(COALESCE(t.opg_training_target, 0)) AS opg_training_target,
             MAX(COALESCE(t.week_wise_opg_target, 0)) AS general_training_target,
             MAX(COALESCE(t.input_demo_inm_target, 0)) AS input_demo_inm_target,
@@ -42,29 +42,42 @@ class DemonstrationMethodReport
             MAX(COALESCE(t.ffs_target, 0)) AS ffs_target,
             MAX(COALESCE(t.cc_target, 0)) AS cc_target
           FROM scoped_targets t
-          GROUP BY t.fco_id, t.fco_name, t.vrp_id, t.village_id
+          GROUP BY t.fco_id, t.fco_name, t.village_id
         ), vrp_target AS (
           SELECT
-            fco_id, fco_name, vrp_id,
-            SUM(opg_training_target) AS opg_training_target,
-            SUM(general_training_target) AS general_training_target,
-            SUM(input_demo_inm_target) AS input_demo_inm_target,
-            SUM(input_demo_pm_target) AS input_demo_pm_target,
-            SUM(ffs_target) AS ffs_target,
-            SUM(cc_target) AS cc_target
-          FROM village_target
-          GROUP BY fco_id, fco_name, vrp_id
+            vf.fco_id, vf.fco_name, vf.vrp_id,
+            SUM(vt.opg_training_target) AS opg_training_target,
+            SUM(vt.general_training_target) AS general_training_target,
+            SUM(vt.input_demo_inm_target) AS input_demo_inm_target,
+            SUM(vt.input_demo_pm_target) AS input_demo_pm_target,
+            SUM(vt.ffs_target) AS ffs_target
+          FROM village_target vt
+          INNER JOIN (
+            SELECT DISTINCT fco_id, fco_name, village_id, vrp_id
+            FROM scoped_targets
+          ) vf ON vf.fco_id::text = vt.fco_id::text
+              AND vf.fco_name IS NOT DISTINCT FROM vt.fco_name
+              AND vf.village_id::text = vt.village_id::text
+          GROUP BY vf.fco_id, vf.fco_name, vf.vrp_id
+        ), fco_cc_target AS (
+          SELECT fco_id, fco_name, SUM(cc_target) AS cc_target
+          FROM village_target GROUP BY fco_id, fco_name
         ), entry_data AS (
           SELECT
             TRIM(mr.data::jsonb ->> 'created_by_id') AS vrp_id,
             COUNT(*) FILTER (WHERE LOWER(TRIM(mr.data::jsonb ->> 'training_method')) = 'general training/meeting') AS general_training_done,
             COUNT(*) FILTER (WHERE LOWER(TRIM(mr.data::jsonb ->> 'training_method')) = 'input demo inm') AS input_demo_inm_done,
             COUNT(*) FILTER (WHERE LOWER(TRIM(mr.data::jsonb ->> 'training_method')) = 'input demo pm') AS input_demo_pm_done,
-            COUNT(*) FILTER (WHERE LOWER(TRIM(mr.data::jsonb ->> 'training_method')) = 'ffs') AS ffs_done,
-            COUNT(*) AS cc_done
+            COUNT(*) FILTER (WHERE LOWER(TRIM(mr.data::jsonb ->> 'training_method')) = 'ffs') AS ffs_done
           FROM module_records mr
           WHERE mr.module_slug = 'training-form' AND #{month_filter}
           GROUP BY TRIM(mr.data::jsonb ->> 'created_by_id')
+        ), fco_cc_done AS (
+          SELECT vt.fco_id,
+            SUM(COALESCE(ed.general_training_done, 0) + COALESCE(ed.input_demo_inm_done, 0) + COALESCE(ed.input_demo_pm_done, 0) + COALESCE(ed.ffs_done, 0)) AS cc_done
+          FROM vrp_target vt
+          LEFT JOIN entry_data ed ON ed.vrp_id = vt.vrp_id::text
+          GROUP BY vt.fco_id
         )
         SELECT
           vt.fco_id, vt.fco_name,
@@ -79,11 +92,13 @@ class DemonstrationMethodReport
           COALESCE(ed.input_demo_pm_done, 0) AS pm_done,
           vt.ffs_target AS ffs_target,
           COALESCE(ed.ffs_done, 0) AS ffs_done,
-          vt.cc_target AS cc_target,
-          COALESCE(ed.cc_done, 0) AS cc_done
+          COALESCE(fct.cc_target, 0) AS cc_target,
+          COALESCE(fcd.cc_done, 0) AS cc_done
         FROM vrp_target vt
         LEFT JOIN vrps v ON v.id::text = vt.vrp_id::text
         LEFT JOIN entry_data ed ON ed.vrp_id = vt.vrp_id::text
+        LEFT JOIN fco_cc_target fct ON fct.fco_id::text = vt.fco_id::text
+        LEFT JOIN fco_cc_done fcd ON fcd.fco_id::text = vt.fco_id::text
         ORDER BY vt.fco_id, "Cluster Coordinator", vt.vrp_id
       SQL
 
@@ -143,7 +158,8 @@ class DemonstrationMethodReport
             MAX(COALESCE(t.week_wise_opg_target, 0)) AS general_training_target,
             MAX(COALESCE(t.input_demo_inm_target, 0)) AS input_demo_inm_target,
             MAX(COALESCE(t.input_demo_pm_target, 0)) AS input_demo_pm_target,
-            MAX(COALESCE(t.ffs_target, 0)) AS ffs_target
+            MAX(COALESCE(t.ffs_target, 0)) AS ffs_target,
+            MAX(COALESCE(t.cc_target, 0)) AS cc_target
           FROM scoped_targets t
           GROUP BY t.fco_id, t.fco_name, t.village_id
         ), fco_target AS (
@@ -152,7 +168,8 @@ class DemonstrationMethodReport
             SUM(general_training_target) AS general_training_target,
             SUM(input_demo_inm_target) AS input_demo_inm_target,
             SUM(input_demo_pm_target) AS input_demo_pm_target,
-            SUM(ffs_target) AS ffs_target
+            SUM(ffs_target) AS ffs_target,
+            SUM(cc_target) AS cc_target
           FROM village_target GROUP BY fco_id, fco_name
         ), vrp_fco AS (
           SELECT DISTINCT t.fco_id, t.fco_name, t.vrp_id
@@ -178,6 +195,7 @@ class DemonstrationMethodReport
         )
         SELECT ft.fco_id, ft.fco_name,
           ft.opg_training_target AS "OPG Target",
+          ft.cc_target AS "CC Target",
           ft.general_training_target AS "General Training/Meeting Target",
           COALESCE(ed.general_training_meeting, 0) AS "General Training/Meeting",
           COALESCE(ed.general_training_meeting, 0) AS "General Training/Meeting Done",
