@@ -5,7 +5,7 @@
   </div>
 </div>
 <% header_label = ->(h) {
-  base = { "fco_id" => "FCO ID", "fco_name" => "FCO Name" }[h] || h.to_s.gsub(/\bvrp\b/i, "JJ")
+  base = { "vrp_name" => "JJ Name", "vrp_id" => "JJ ID", "VRP Name" => "JJ Name", "fco_id" => "FCO ID", "fco_name" => "FCO Name", "OPG Target / Done" => "Total Training" }[h] || h.to_s.gsub(/\bvrp\b/i, "JJ")
   base.gsub(/\bFFS\b/, "FFS Exposure")
 } %>
 <% farmer_list_month = @dashboard_month_filter_value.presence || request.query_parameters[:training_month].presence || request.query_parameters[:month].presence %>
@@ -15,7 +15,9 @@
     <tbody>
       <% rows.each do |row| %>
         <tr><% headers.each do |header| %><td>
-          <% if ["Total Target / Done", "General Training/Meeting", "Input Demo INM", "Input Demo PM", "FFS"].include?(header) %>
+          <% if header == "Target Farmer Count" && row["vrp_id"].present? && row[header].to_i > 0 %>
+            <%= link_to row[header], demonstration_method_farmers_path(vrp_id: row["vrp_id"], fco_id: row["fco_id"], training_month: farmer_list_month), class: "table-action", data: { dashboard_card: true } %>
+          <% elsif ["OPG Target / Done", "General Training/Meeting", "Input Demo INM", "Input Demo PM", "FFS", "CC TARGET STATUS"].include?(header) %>
             <%= render "demonstration_metric", value: row[header] %>
           <% elsif header == "Status" %>
             <% badge_style = { "Red" => "color:#c0392b;background:rgba(214,69,69,0.12);", "Yellow" => "color:#b07800;background:rgba(217,148,0,0.12);", "Green" => "color:#1a8a34;background:rgba(26,138,52,0.12);" }.fetch(row["Status"].to_s, "") %>

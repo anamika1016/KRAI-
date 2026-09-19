@@ -275,16 +275,17 @@ class ModulesControllerDashboardTest < ActiveSupport::TestCase
     assert_equal [own.id], controller.send(:dashboard_visible_vrp_ids)
   end
 
-  test "demonstration_method_cards includes CC Target from the demonstration report" do
+  test "demonstration_method_cards includes CC TARGET STATUS card" do
     controller = ModulesController.new
     controller.define_singleton_method(:params) { ActionController::Parameters.new }
     controller.define_singleton_method(:request) { ActionDispatch::TestRequest.create }
     controller.define_singleton_method(:demonstration_method_list_path) { |_params = {}| "/demonstration_method_list" }
+    controller.define_singleton_method(:cc_target_status_list_path) { |_params = {}| "/cc_target_status_list" }
     cards = controller.send(:demonstration_method_cards)
     titles = cards.map { |c| c[:title] }
 
-    assert_includes titles, "CC Target"
-    assert_equal "CC Target", titles.last
+    assert_includes titles, "CC TARGET STATUS"
+    assert_equal "CC TARGET STATUS", titles.last
   end
 
   test "dashboard_other_activity_totals calculates dynamic metrics and hover popups for other activities" do

@@ -3844,12 +3844,17 @@ class ModulesController < ApplicationController
     ffs_done   = summary_rows.sum { |r| r["FFS Done"].to_f }.to_i
     ffs_val    = "#{ffs_target} / #{ffs_done}"
 
-    # CC Target is sourced from the same Demonstration Method query as every
-    # other card; it is intentionally not combined with CC Target Status data.
-    cc_val = dashboard_quantity(summary_rows.sum { |row| row["CC Target"].to_f })
+    cc_report = @cc_target_status_report || CcTargetStatusReport.new(calculator: self)
+    cc_rows   = cc_report.rows
+    cc_target = cc_rows.sum { |row| row["target"].to_i }
+    cc_done   = cc_rows.sum { |row| row["achievement"].to_i }
+    cc_val    = "#{cc_target} / #{cc_done}"
 
     card_list_path = demonstration_method_list_path(request.query_parameters)
     card_xlsx_path = demonstration_method_list_path(request.query_parameters.merge(format: :xlsx))
+
+    cc_list_path = cc_target_status_list_path(request.query_parameters.merge(month: @dashboard_month_filter_value))
+    cc_xlsx_path = cc_target_status_list_path(request.query_parameters.merge(month: @dashboard_month_filter_value, format: :xlsx))
 
     [
       dashboard_summary_card("OPG Training Target", opg_val, "Training method entries", card_list_path, card_xlsx_path),
@@ -3857,7 +3862,7 @@ class ModulesController < ApplicationController
       dashboard_summary_card("Input Demo INM", inm_val, "Training method entries", card_list_path, card_xlsx_path),
       dashboard_summary_card("Input Demo PM", pm_val, "Training method entries", card_list_path, card_xlsx_path),
       dashboard_summary_card("FFS Exposure", ffs_val, "Training method entries", card_list_path, card_xlsx_path),
-      dashboard_summary_card("CC Target", cc_val, "Demonstration Method targets", card_list_path, card_xlsx_path)
+      dashboard_summary_card("CC TARGET STATUS", cc_val, "CC Target Status entries", cc_list_path, cc_xlsx_path)
     ]
   end
 
