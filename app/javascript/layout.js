@@ -1711,6 +1711,15 @@ function initDeferredLayoutPage() {
     const files = Array.from(input.files || []);
     if (files.length === 0) return;
 
+    if (input.dataset.pdfOnly === "true") {
+      const nonPdfFiles = files.filter((file) => !file.name.toLowerCase().endsWith(".pdf") || file.type !== "application/pdf");
+      if (nonPdfFiles.length > 0) {
+        window.alert("Evidence/Documentation PDF mein sirf PDF file upload karein.");
+        input.value = "";
+        return;
+      }
+    }
+
     if (maxFiles > 0 && files.length > maxFiles) {
       window.alert(`Maximum ${maxFiles} photos allowed. 5 photo se jada upload n kar paayen.`);
       input.value = "";

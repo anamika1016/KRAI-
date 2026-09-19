@@ -20,7 +20,10 @@ class DemonstrationMethodReport
   def summary
     @summary ||= begin
       connection = TargetMapping.connection
-      scope = TargetMapping.where(id: @target_ids)
+      # This report deliberately follows the supplied query: its population is
+      # all target mappings for the selected month, not the dashboard's
+      # activity/VRP-filtered target collection.
+      scope = TargetMapping.all
       scope = scope.where("LOWER(TRIM(month_name)) = ?", @month) unless @month.blank? || @month == "all"
       month_filter = @month.blank? || @month == "all" ? "TRUE" : "LOWER(TRIM(mr.data::jsonb ->> 'month')) = #{connection.quote(@month)}"
       connection.select_all(<<~SQL).to_a
