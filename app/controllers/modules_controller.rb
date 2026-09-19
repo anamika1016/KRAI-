@@ -783,8 +783,8 @@ class ModulesController < ApplicationController
         format.html { render :demonstration_method_list }
         format.json { render json: { success: true, records: @demonstration_method_rows, count: @demonstration_method_rows.size } }
         format.xlsx do
-          send_xlsx(headers: DemonstrationMethodReport::HEADERS,
-            rows: @demonstration_method_rows.map { |row| DemonstrationMethodReport::HEADERS.map { |key| row[key] } },
+          send_xlsx(headers: DemonstrationMethodReport::EXPORT_HEADERS,
+            rows: @demonstration_method_rows.map { |row| DemonstrationMethodReport::EXPORT_HEADERS.map { |key| row[key] } },
             filename: "demonstration-method.xlsx", sheet_name: "Demonstration Method")
         end
       end

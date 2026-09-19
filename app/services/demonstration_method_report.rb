@@ -10,6 +10,19 @@ class DemonstrationMethodReport
 
   METRICS = ["OPG Target", "General Training/Meeting", "Input Demo INM", "Input Demo PM", "FFS", "CC TARGET STATUS"].freeze
 
+  # Excel export: each metric split into separate Target and Achievement columns
+  # (instead of the combined "target / done" cell shown in the on-screen list).
+  EXPORT_HEADERS = [
+    "fco_id", "fco_name", "Cluster Coordinator", "vrp_id", "VRP Name",
+    "OPG Target", "OPG Achievement",
+    "General Training/Meeting Target", "General Training/Meeting Achievement",
+    "Input Demo INM Target", "Input Demo INM Achievement",
+    "Input Demo PM Target", "Input Demo PM Achievement",
+    "FFS Target", "FFS Achievement",
+    "CC Target", "CC Achievement",
+    "Status"
+  ].freeze
+
   def initialize(targets:, month: "August")
     @target_ids = if targets.is_a?(ActiveRecord::Relation) && !targets.loaded?
       targets.pluck(:id).uniq
@@ -125,7 +138,20 @@ class DemonstrationMethodReport
           "Input Demo PM"           => "#{pm_t} / #{pm_d}",
           "FFS"                     => "#{ffs_t} / #{ffs_d}",
           "CC TARGET STATUS"        => "#{cc_t} / #{cc_d}",
-          "Status"                  => status
+          "Status"                  => status,
+          # Split numeric values used by the Excel export (EXPORT_HEADERS).
+          "OPG Target"              => tot_t,
+          "OPG Achievement"         => tot_d,
+          "General Training/Meeting Target"      => gen_t,
+          "General Training/Meeting Achievement" => gen_d,
+          "Input Demo INM Target"       => inm_t,
+          "Input Demo INM Achievement"  => inm_d,
+          "Input Demo PM Target"        => pm_t,
+          "Input Demo PM Achievement"   => pm_d,
+          "FFS Target"                  => ffs_t,
+          "FFS Achievement"             => ffs_d,
+          "CC Target"                   => cc_t,
+          "CC Achievement"              => cc_d
         }
       end
     end
