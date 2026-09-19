@@ -24,10 +24,16 @@ class DemonstrationMethodReport
   ].freeze
 
   def initialize(targets:, month: "August")
-    @target_ids = if targets.is_a?(ActiveRecord::Relation) && !targets.loaded?
-      targets.pluck(:id).uniq
+    if targets.is_a?(ActiveRecord::Relation) && !targets.loaded?
+      @target_ids = targets.pluck(:id).uniq
+      @fco_ids = nil
     else
-      Array(targets).map(&:id).uniq
+      list = Array(targets)
+      @target_ids = list.map(&:id).uniq
+      # Targets are already in memory — read their FCO ids here instead of
+      # firing another WHERE id IN (...) query with a huge id list later.
+      @fco_ids = list.filter_map { |t| t.fco_id if t.respond_to?(:fco_id) }
+        .map(&:to_s).reject(&:blank?).uniq.presence
     end
     @month = month.to_s.strip.downcase
   end
@@ -76,6 +82,11 @@ class DemonstrationMethodReport
             COUNT(*) FILTER (WHERE LOWER(TRIM(mr.data::jsonb ->> 'training_method')) = 'ffs') AS ffs_done
           FROM module_records mr
           WHERE mr.module_slug = 'training-form' AND #{month_filter}
+            -- Only in-scope JJ records; the final LEFT JOIN discards the rest anyway,
+            -- so results are identical but the scan/group is far smaller.
+            AND TRIM(mr.data::jsonb ->> 'created_by_id') IN (
+              SELECT DISTINCT vt.vrp_id::text FROM vrp_target vt
+            )
           GROUP BY TRIM(mr.data::jsonb ->> 'created_by_id')
         )
         SELECT
@@ -228,7 +239,7 @@ class DemonstrationMethodReport
   def demonstration_target_scope
     return TargetMapping.all if @target_ids.blank?
 
-    fco_ids = TargetMapping.where(id: @target_ids).where.not(fco_id: nil).distinct.pluck(:fco_id)
-    fco_ids.any? ? TargetMapping.where(fco_id: fco_ids) : TargetMapping.where(id: @target_ids)
+    fco_ids = @fco_ids || TargetMapping.where(id: @target_ids).where.not(fco_id: nil).distinct.pluck(:fco_id)
+    fco_ids.present? ? TargetMapping.where(fco_id: fco_ids) : TargetMapping.where(id: @target_ids)
   end
 end
