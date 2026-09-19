@@ -3847,7 +3847,7 @@ class ModulesController < ApplicationController
     # Match the Demonstration Method SQL: CC target is village-deduplicated;
     # achievement is the total completed General/INM/PM/FFS training entries.
     cc_target = summary_rows.sum { |row| row["CC Target"].to_i }
-    cc_done = gen_done + inm_done + pm_done + ffs_done
+    cc_done = cc_target.positive? ? gen_done + inm_done + pm_done + ffs_done : 0
     cc_val = "#{cc_target} / #{cc_done}"
 
     card_list_path = demonstration_method_list_path(request.query_parameters)

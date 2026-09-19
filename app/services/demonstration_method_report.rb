@@ -97,6 +97,10 @@ class DemonstrationMethodReport
         ffs_d = r["ffs_done"].to_i
         cc_t  = r["cc_target"].to_i
         cc_d  = r["cc_done"].to_i
+        # A training session is not a CC achievement unless a CC target was
+        # assigned to this JJ. This prevents FCOs/JJs with a zero target from
+        # displaying unrelated training entries as CC achievement.
+        cc_d = 0 unless cc_t.positive?
 
         tot_t = gen_t + inm_t + pm_t + ffs_t
         tot_d = gen_d + inm_d + pm_d + ffs_d
