@@ -17,6 +17,7 @@
     <div class="module-hero-actions">
       <%= link_to "Back to Exam", jj_quiz_path(@quiz), class: "btn btn-secondary" %>
       <%= link_to "Export Results", export_results_jj_quiz_path(@quiz), class: "list-btn export" %>
+      <%= link_to "Download Answer Sheet", export_answers_jj_quiz_path(@quiz), class: "list-btn upload" %>
     </div>
   </div>
 
@@ -47,7 +48,7 @@
     <div class="jj-results-heading">
       <div>
         <h2>Candidate Attempts</h2>
-        <p>Review candidate status, score, answers, and timing in one place.</p>
+        <p>Review candidate status, score, selected answers, and timing in one place.</p>
       </div>
     </div>
 
@@ -61,7 +62,7 @@
             <th>Score</th>
             <th>Answers</th>
             <th>Timing</th>
-            <th>View</th>
+            <th>Actions</th>
           </tr>
         </thead>
         <tbody>
@@ -116,6 +117,40 @@
                       <dd><%= attempt.skipped_answers_count %></dd>
                     </div>
                   </dl>
+                  <%
+                    reviewed_answers = attempt.answers.sort_by { |answer| answer.question_position.to_i }
+                  %>
+                  <% if reviewed_answers.any? %>
+                    <details class="jj-answer-review">
+                      <summary>View Ticks</summary>
+                      <div class="jj-answer-review-list">
+                        <% reviewed_answers.each.with_index(1) do |answer, serial_number| %>
+                          <article class="jj-answer-review-item <%= answer.correct? ? "correct" : "wrong" %>">
+                            <div class="jj-answer-review-question">
+                              <span>Q<%= answer.question_position.presence || serial_number %></span>
+                              <p><%= answer.question_text %></p>
+                            </div>
+                            <dl>
+                              <div>
+                                <dt>Selected</dt>
+                                <dd><%= answer.selected_answer_label %></dd>
+                              </div>
+                              <div>
+                                <dt>Correct</dt>
+                                <dd><%= answer.correct_answer_label %></dd>
+                              </div>
+                              <div>
+                                <dt>Marks</dt>
+                                <dd><%= answer.marks_awarded.to_s("F") %> / <%= answer.question_marks %></dd>
+                              </div>
+                            </dl>
+                          </article>
+                        <% end %>
+                      </div>
+                    </details>
+                  <% else %>
+                    <span class="jj-answer-empty">No ticks yet</span>
+                  <% end %>
                 </td>
                 <td>
                   <div class="jj-time-stack">
@@ -124,7 +159,12 @@
                     <span><strong>Time</strong><%= attempt.time_taken_label %></span>
                   </div>
                 </td>
-                <td><%= link_to "Open", jj_exam_result_path(attempt.access_token), class: "table-action", target: "_blank", rel: "noopener" %></td>
+                <td>
+                  <div class="jj-action-cell jj-row-actions">
+                    <%= link_to "Open", jj_exam_result_path(attempt.access_token), class: "table-action", target: "_blank", rel: "noopener" %>
+                    <%= button_to "Delete Attempt", destroy_attempt_jj_quiz_path(@quiz, attempt_id: attempt.id), method: :delete, class: "table-action danger", form: { data: { turbo_confirm: "Delete this JJ attempt? This will delete the submitted answers and allow this JJ to take the exam again." } } %>
+                  </div>
+                </td>
               </tr>
             <% end %>
           <% else %>

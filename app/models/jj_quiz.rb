@@ -41,6 +41,26 @@ class JjQuiz < ApplicationRecord
     "Active"
   end
 
+  def exam_state_label
+    return "Not Ready" unless shareable_for_exam?
+    return "Scheduled" if starts_at.present? && starts_at > Time.current
+    return "Ended" if ends_at.present? && ends_at < Time.current
+
+    "Running"
+  end
+
+  def exam_state_css_class
+    exam_state_label.parameterize
+  end
+
+  def starts_at_label
+    starts_at&.strftime("%d/%m/%Y %I:%M %p").presence || "Anytime"
+  end
+
+  def ends_at_label
+    ends_at&.strftime("%d/%m/%Y %I:%M %p").presence || "No end"
+  end
+
   def published?
     status == "published"
   end

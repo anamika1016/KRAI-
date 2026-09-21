@@ -1,6 +1,6 @@
 class JjQuizzesController < ApplicationController
   before_action :require_admin_user!
-  before_action :set_quiz, only: %i[show edit update destroy publish archive import_questions results export_results]
+  before_action :set_quiz, only: %i[show edit update destroy publish archive import_questions results export_results export_answers destroy_attempt]
 
   def index
     @quizzes = JjQuiz.recent.includes(:questions, :attempts)
@@ -85,7 +85,7 @@ class JjQuizzesController < ApplicationController
   end
 
   def results
-    @attempts = @quiz.attempts.includes(:vrp, :answers).recent
+    @attempts = @quiz.attempts.includes(:vrp, answers: :question).recent
   end
 
   def export_results
@@ -96,6 +96,29 @@ class JjQuizzesController < ApplicationController
       filename: "jj-exam-results-#{@quiz.id}-#{Date.current}.xlsx",
       sheet_name: "JJ Exam Results"
     )
+  end
+
+  def export_answers
+    attempts = @quiz.attempts.includes(:vrp, answers: :question).recent
+    send_xlsx(
+      headers: answer_headers,
+      rows: attempts.flat_map { |attempt| answer_rows(attempt) },
+      filename: "jj-exam-answer-sheet-#{@quiz.id}-#{Date.current}.xlsx",
+      sheet_name: "JJ Answer Sheet"
+    )
+  end
+
+  def destroy_attempt
+    attempt = @quiz.attempts.includes(:vrp).find(params[:attempt_id])
+    jj_label = [attempt.vrp&.user_name, attempt.vrp&.name].compact_blank.join(" - ").presence || "this JJ"
+
+    if attempt.destroy
+      redirect_back fallback_location: results_jj_quiz_path(@quiz),
+        notice: "#{jj_label}'s attempt was reset. They can take this exam again."
+    else
+      redirect_back fallback_location: results_jj_quiz_path(@quiz),
+        alert: attempt.errors.full_messages.to_sentence.presence || "Attempt could not be reset."
+    end
   end
 
   private
@@ -143,6 +166,95 @@ class JjQuizzesController < ApplicationController
       attempt.started_at,
       attempt.submitted_at,
       attempt.time_taken_label
+    ]
+  end
+
+  def answer_headers
+    [
+      "Attempt ID",
+      "Exam",
+      "JJ Record ID",
+      "JJ User ID",
+      "JJ Name",
+      "Mobile",
+      "Attempt Status",
+      "Passed",
+      "Started At",
+      "Submitted At",
+      "Question No",
+      "Question",
+      "Option A",
+      "Option B",
+      "Option C",
+      "Option D",
+      "Selected Option",
+      "Selected Answer",
+      "Correct Option",
+      "Correct Answer",
+      "Is Correct",
+      "Marks Awarded",
+      "Question Marks"
+    ]
+  end
+
+  def answer_rows(attempt)
+    answers = attempt.answers.sort_by { |answer| answer.question_position.to_i }
+    return [empty_answer_row(attempt)] if answers.empty?
+
+    answers.map.with_index(1) do |answer, index|
+      [
+        attempt.id,
+        @quiz.title,
+        attempt.vrp_id,
+        attempt.vrp&.user_name,
+        attempt.vrp&.name,
+        attempt.vrp&.mobile_no,
+        attempt.status,
+        attempt.passed? ? "Yes" : "No",
+        attempt.started_at,
+        attempt.submitted_at,
+        answer.question_position.presence || index,
+        answer.question_text,
+        answer.option_text("A"),
+        answer.option_text("B"),
+        answer.option_text("C"),
+        answer.option_text("D"),
+        answer.selected_option.presence || "Skipped",
+        answer.selected_answer_label,
+        answer.correct_option,
+        answer.correct_answer_label,
+        answer.correct? ? "Yes" : "No",
+        answer.marks_awarded,
+        answer.question_marks
+      ]
+    end
+  end
+
+  def empty_answer_row(attempt)
+    [
+      attempt.id,
+      @quiz.title,
+      attempt.vrp_id,
+      attempt.vrp&.user_name,
+      attempt.vrp&.name,
+      attempt.vrp&.mobile_no,
+      attempt.status,
+      attempt.passed? ? "Yes" : "No",
+      attempt.started_at,
+      attempt.submitted_at,
+      "-",
+      "No answers submitted yet",
+      nil,
+      nil,
+      nil,
+      nil,
+      "-",
+      "-",
+      "-",
+      "-",
+      "-",
+      nil,
+      nil
     ]
   end
 end

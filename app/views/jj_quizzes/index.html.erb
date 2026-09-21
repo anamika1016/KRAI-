@@ -28,6 +28,7 @@
             <th>Questions</th>
             <th>Attempts</th>
             <th>Active Window</th>
+            <th>Exam State</th>
             <th>Actions</th>
           </tr>
         </thead>
@@ -44,19 +45,21 @@
                 <td><%= quiz.questions.size %></td>
                 <td><%= quiz.attempts.size %></td>
                 <td>
-                  <%= quiz.starts_at&.strftime("%d/%m/%Y %I:%M %p").presence || "Anytime" %>
+                  <%= quiz.starts_at_label %>
                   <br>
-                  <small>to <%= quiz.ends_at&.strftime("%d/%m/%Y %I:%M %p").presence || "No end" %></small>
+                  <small>to <%= quiz.ends_at_label %></small>
                 </td>
+                <td><span class="jj-window-pill <%= quiz.exam_state_css_class %>"><%= quiz.exam_state_label %></span></td>
                 <td class="jj-action-cell">
                   <%= link_to "Open", jj_quiz_path(quiz), class: "table-action" %>
                   <%= link_to "Results", results_jj_quiz_path(quiz), class: "table-action export" %>
+                  <%= button_to "Delete", jj_quiz_path(quiz), method: :delete, class: "table-action danger", form: { data: { turbo_confirm: "Delete this JJ exam? Existing attempts will block deletion." } } %>
                 </td>
               </tr>
             <% end %>
           <% else %>
             <tr>
-              <td colspan="7">No JJ exam created yet.</td>
+              <td colspan="8">No JJ exam created yet.</td>
             </tr>
           <% end %>
         </tbody>
