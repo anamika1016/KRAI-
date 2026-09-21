@@ -8887,6 +8887,7 @@ body {
   .target-mapping-card .target-weekly-summary { padding: 14px; }
   .target-mapping-card .module-form-actions { flex-wrap: wrap; }
   .target-mapping-card .module-form-actions :is(a, button) { flex: 1; text-align: center; }
+}
 
 /* Jeevika Jankar exam module */
 .jj-admin-page {
@@ -8926,7 +8927,40 @@ body {
 
 .jj-admin-actions {
   display: grid;
+  grid-template-columns: minmax(0, 0.9fr) minmax(360px, 1.1fr);
   gap: 1rem;
+  align-items: stretch;
+}
+
+.jj-admin-action-panel {
+  display: grid;
+  align-content: start;
+  gap: 0.85rem;
+  min-width: 0;
+  padding: 1rem;
+  border: 1px solid var(--vrp-line);
+  border-radius: 8px;
+  background: var(--vrp-panel-soft);
+}
+
+.jj-section-heading {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 1rem;
+  padding-bottom: 0.7rem;
+  border-bottom: 1px solid var(--vrp-line);
+}
+
+.jj-section-heading .vrp-eyebrow {
+  margin: 0 0 0.25rem;
+}
+
+.jj-section-heading h2 {
+  margin: 0;
+  color: var(--vrp-text);
+  font-size: 1.05rem;
+  line-height: 1.2;
 }
 
 .jj-action-row,
@@ -8943,15 +8977,25 @@ body {
   margin: 0;
 }
 
+.jj-admin-page .list-btn,
+.jj-admin-page .btn-secondary,
+.jj-exam-primary {
+  border-radius: 8px;
+}
+
+.jj-action-row form .list-btn,
+.jj-action-cell form .table-action {
+  width: 100%;
+}
+
 .jj-import-form {
   display: flex;
   flex-wrap: wrap;
   gap: 0.75rem;
-  align-items: end;
-  padding: 0.85rem;
-  border: 1px dashed rgba(35, 94, 108, 0.24);
-  border-radius: 8px;
-  background: #f6faf9;
+  align-items: flex-end;
+  padding: 0;
+  border: 0;
+  background: transparent;
 }
 
 .jj-import-form label,
@@ -8976,10 +9020,23 @@ body {
 
 .jj-import-form input[type="file"] {
   width: 100%;
-  padding: 0.72rem;
+  min-height: 44px;
+  padding: 0.48rem;
   border: 1px solid #cad8dc;
   border-radius: 8px;
   background: #ffffff;
+}
+
+.jj-import-form input[type="file"]::file-selector-button {
+  min-height: 32px;
+  margin-right: 0.65rem;
+  border: 1px solid var(--vrp-line);
+  border-radius: 8px;
+  background: var(--vrp-panel-soft);
+  color: var(--vrp-text);
+  font: inherit;
+  font-weight: 800;
+  cursor: pointer;
 }
 
 .jj-checkbox-line {
@@ -9482,6 +9539,7 @@ body {
 
 @media (max-width: 900px) {
   .jj-summary-grid,
+  .jj-admin-actions,
   .jj-exam-login-panel,
   .jj-qr-panel,
   .jj-result-panel {
@@ -10404,6 +10462,12 @@ body {
   .jj-result-counts,
   .jj-results-summary-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .jj-admin-link-actions .list-btn,
+  .jj-action-row .list-btn,
+  .jj-action-row form {
+    flex: 1 1 180px;
   }
 
   .jj-results-table {

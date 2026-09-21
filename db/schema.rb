@@ -10,7 +10,6 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-
 ActiveRecord::Schema[8.1].define(version: 2026_09_19_102909) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "pg_catalog.plpgsql"
@@ -87,8 +86,13 @@ ActiveRecord::Schema[8.1].define(version: 2026_09_19_102909) do
     t.string "village_name"
     t.index "((id)::text)", name: "index_afls_on_text_id"
     t.index "lower(btrim((COALESCE(fco_id, ''::character varying))::text))", name: "index_afls_on_normalized_coalesced_fco_id"
+    t.index "lower(btrim((fco)::text))", name: "index_afls_on_normalized_fco"
     t.index "lower(btrim((fco)::text))", name: "index_afls_on_normalized_fco_name"
     t.index "lower(btrim((fco_id)::text))", name: "index_afls_on_normalized_fco_id"
+    t.index "lower(btrim((ics_id)::text))", name: "index_afls_on_normalized_ics_id"
+    t.index "lower(btrim((ics_name)::text))", name: "index_afls_on_normalized_ics_name"
+    t.index "lower(btrim((village_id)::text))", name: "index_afls_on_normalized_village_id"
+    t.index "lower(btrim((village_name)::text))", name: "index_afls_on_normalized_village_name"
     t.index ["created_at"], name: "index_afls_on_created_at"
     t.index ["farm_id"], name: "index_afls_on_farm_id"
     t.index ["farmer_name"], name: "index_afls_on_farmer_name"
@@ -334,18 +338,23 @@ ActiveRecord::Schema[8.1].define(version: 2026_09_19_102909) do
     t.string "module_slug", null: false
     t.datetime "updated_at", null: false
     t.index "(((data)::jsonb -> 'selected_farmer_ids'::text))", name: "index_training_forms_on_selected_farmer_ids", where: "((module_slug)::text = 'training-form'::text)", using: :gin
+    t.index "(((data)::jsonb -> 'selected_farmer_ids'::text))", name: "index_training_forms_on_selected_farmer_ids_gin", where: "((module_slug)::text = 'training-form'::text)", using: :gin
+    t.index "(((data)::jsonb -> 'target_mapping_ids'::text))", name: "index_training_forms_on_target_mapping_ids_gin", where: "((module_slug)::text = 'training-form'::text)", using: :gin
     t.index "(((data)::jsonb ->> 'bill_id'::text))", name: "index_module_records_bill_history_on_bill_id", where: "((module_slug)::text = 'jeevika-jankar-bill-approval-history'::text)"
+    t.index "(((data)::jsonb ->> 'jeevika_jankar_id'::text))", name: "index_training_forms_on_jeevika_jankar_id", where: "((module_slug)::text = 'training-form'::text)"
     t.index "(((data)::jsonb ->> 'mobile_no'::text))", name: "index_module_records_new_users_on_mobile_no", where: "((module_slug)::text = 'new-user'::text)"
     t.index "(((data)::jsonb ->> 'select_vrp'::text))", name: "index_module_records_bills_on_select_vrp", where: "((module_slug)::text = 'jeevika-jankar-bill-process'::text)"
-    t.index "(((data)::jsonb ->> 'target_mapping_id'::text))", name: "index_module_records_other_targets_on_target_mapping_id", where: "((module_slug)::text = ANY ((ARRAY['seed-distribution-target'::character varying, 'papl360-target'::character varying])::text[]))"
+    t.index "(((data)::jsonb ->> 'target_mapping_id'::text))", name: "index_module_records_other_targets_on_target_mapping_id", where: "((module_slug)::text = ANY (ARRAY[('seed-distribution-target'::character varying)::text, ('papl360-target'::character varying)::text]))"
+    t.index "(((data)::jsonb ->> 'target_mapping_id'::text))", name: "index_training_forms_on_target_mapping_id", where: "((module_slug)::text = 'training-form'::text)"
     t.index "(((data)::jsonb ->> 'vrp_id'::text))", name: "index_module_records_vrp_history_on_vrp_id", where: "((module_slug)::text = 'vrp-approval-history'::text)"
+    t.index "(((data)::jsonb ->> 'vrp_id'::text))", name: "index_training_forms_on_vrp_id", where: "((module_slug)::text = 'training-form'::text)"
     t.index "lower(((data)::jsonb ->> 'email'::text))", name: "index_module_records_new_users_on_lower_email", where: "((module_slug)::text = 'new-user'::text)"
     t.index "lower(((data)::jsonb ->> 'user_name'::text))", name: "index_module_records_new_users_on_lower_user_name", where: "((module_slug)::text = 'new-user'::text)"
-    t.index "lower(btrim(((data)::jsonb ->> 'month'::text)))", name: "index_other_targets_on_normalized_month", where: "((module_slug)::text = ANY ((ARRAY['seed-distribution-target'::character varying, 'papl360-target'::character varying])::text[]))"
+    t.index "lower(btrim(((data)::jsonb ->> 'month'::text)))", name: "index_other_targets_on_normalized_month", where: "((module_slug)::text = ANY (ARRAY[('seed-distribution-target'::character varying)::text, ('papl360-target'::character varying)::text]))"
     t.index "lower(btrim(((data)::jsonb ->> 'month'::text)))", name: "index_training_forms_on_normalized_month", where: "((module_slug)::text = 'training-form'::text)"
     t.index "lower(btrim(((data)::jsonb ->> 'record_state'::text)))", name: "index_module_records_bills_on_normalized_record_state", where: "((module_slug)::text = 'jeevika-jankar-bill-process'::text)"
     t.index "lower(btrim(((data)::jsonb ->> 'status'::text)))", name: "index_module_records_bills_on_normalized_status", where: "((module_slug)::text = 'jeevika-jankar-bill-process'::text)"
-    t.index "lower(btrim(((data)::jsonb ->> 'status'::text)))", name: "index_module_records_on_slug_normalized_status", where: "((module_slug)::text = ANY ((ARRAY['access-control'::character varying, 'new-user'::character varying, 'training-form'::character varying, 'seed-distribution-target'::character varying, 'papl360-target'::character varying])::text[]))"
+    t.index "lower(btrim(((data)::jsonb ->> 'status'::text)))", name: "index_module_records_on_slug_normalized_status", where: "((module_slug)::text = ANY (ARRAY[('access-control'::character varying)::text, ('new-user'::character varying)::text, ('training-form'::character varying)::text, ('seed-distribution-target'::character varying)::text, ('papl360-target'::character varying)::text, ('other-target'::character varying)::text]))"
     t.index "lower(btrim(COALESCE(((data)::jsonb ->> 'main_activity'::text), ''::text)))", name: "index_training_forms_on_normalized_main_activity", where: "((module_slug)::text = 'training-form'::text)"
     t.index ["module_slug", "created_at"], name: "index_module_records_on_slug_and_created_at", order: { created_at: :desc }
     t.index ["module_slug", "updated_at", "id"], name: "index_module_records_on_slug_updated_at_id", order: { updated_at: :desc, id: :desc }

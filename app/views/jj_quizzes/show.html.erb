@@ -38,24 +38,40 @@
   </section>
 
   <section class="module-card jj-admin-actions">
-    <div class="jj-action-row">
-      <% unless @quiz.published? %>
-        <%= button_to "Publish Exam", publish_jj_quiz_path(@quiz), method: :patch, class: "list-btn upload" %>
-      <% end %>
-      <% unless @quiz.archived? %>
-        <%= button_to "Archive", archive_jj_quiz_path(@quiz), method: :patch, class: "list-btn deactive" %>
-      <% end %>
-      <%= link_to "Download Question Format", question_template_jj_quizzes_path, class: "list-btn export" %>
-      <%= link_to "Add Question Manually", new_jj_quiz_question_path(@quiz), class: "list-btn edit" %>
+    <div class="jj-admin-action-panel">
+      <div class="jj-section-heading">
+        <div>
+          <p class="vrp-eyebrow">Exam Controls</p>
+          <h2>Manage Exam</h2>
+        </div>
+      </div>
+      <div class="jj-action-row">
+        <% unless @quiz.published? %>
+          <%= button_to "Publish Exam", publish_jj_quiz_path(@quiz), method: :patch, class: "list-btn upload" %>
+        <% end %>
+        <% unless @quiz.archived? %>
+          <%= button_to "Archive", archive_jj_quiz_path(@quiz), method: :patch, class: "list-btn deactive" %>
+        <% end %>
+        <%= link_to "Download Question Format", question_template_jj_quizzes_path, class: "list-btn export" %>
+        <%= link_to "Add Question Manually", new_jj_quiz_question_path(@quiz), class: "list-btn edit" %>
+      </div>
     </div>
 
-    <%= form_with url: import_questions_jj_quiz_path(@quiz), multipart: true, local: true, data: { turbo: false }, html: { class: "jj-import-form" } do |form| %>
-      <label>
-        <span>Import Questions Excel/CSV</span>
-        <%= form.file_field :file, accept: ".xlsx,.csv", required: true %>
-      </label>
-      <button type="submit" class="list-btn upload">Import Questions</button>
-    <% end %>
+    <div class="jj-admin-action-panel">
+      <div class="jj-section-heading">
+        <div>
+          <p class="vrp-eyebrow">Question Bank</p>
+          <h2>Import Questions</h2>
+        </div>
+      </div>
+      <%= form_with url: import_questions_jj_quiz_path(@quiz), multipart: true, local: true, data: { turbo: false }, html: { class: "jj-import-form" } do |form| %>
+        <label>
+          <span>Excel/CSV File</span>
+          <%= form.file_field :file, accept: ".xlsx,.csv", required: true %>
+        </label>
+        <button type="submit" class="list-btn upload">Import Questions</button>
+      <% end %>
+    </div>
   </section>
 
   <section class="module-card jj-admin-qr-panel" id="share-exam">
