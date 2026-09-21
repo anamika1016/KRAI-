@@ -171,6 +171,13 @@ module ApplicationHelper
         ["Completed Payment List", :module, "jeevika-jankar-completed-payment-list"]
       ]
     },
+    {
+      title: "JJ Exam",
+      icon: "▨",
+      links: [
+        ["Exam Setup", :route, :jj_quizzes_path]
+      ]
+    },
   ].freeze
 
   def sidebar_sections
@@ -425,6 +432,9 @@ module ApplicationHelper
     end
     if ["Completed Payment List", "Jeevika Jankar Completed Payment List"].include?(name.to_s.strip)
       keys.concat(["completed-payment-list", "jeevika-jankar-completed-payment-list"])
+    end
+    if ["JJ Exam", "Jeevika Jankar Exam", "Exam Setup"].include?(name.to_s.strip)
+      keys.concat(["jj-exam", "exam-setup"])
     end
     keys.uniq
   end

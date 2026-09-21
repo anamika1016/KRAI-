@@ -151,6 +151,115 @@ const initPasswordToggles = () => {
   });
 };
 
+const showClipboardButtonStatus = (button, message) => {
+  const originalLabel = button.dataset.originalLabel || button.textContent.trim();
+  button.dataset.originalLabel = originalLabel;
+  button.textContent = message;
+  window.clearTimeout(button._clipboardStatusTimer);
+  button._clipboardStatusTimer = window.setTimeout(() => {
+    button.textContent = originalLabel;
+  }, 1800);
+};
+
+const writeTextToClipboard = async (text) => {
+  if (navigator.clipboard?.writeText) {
+    await navigator.clipboard.writeText(text);
+    return;
+  }
+
+  const textarea = document.createElement("textarea");
+  textarea.value = text;
+  textarea.setAttribute("readonly", "");
+  textarea.style.position = "fixed";
+  textarea.style.opacity = "0";
+  document.body.appendChild(textarea);
+  textarea.select();
+  document.execCommand("copy");
+  textarea.remove();
+};
+
+const svgToPngBlob = async (svg) => {
+  const clone = svg.cloneNode(true);
+  clone.setAttribute("xmlns", "http://www.w3.org/2000/svg");
+
+  const width = Number(clone.getAttribute("width") || svg.getBoundingClientRect().width || 240);
+  const height = Number(clone.getAttribute("height") || svg.getBoundingClientRect().height || width);
+  clone.setAttribute("width", width);
+  clone.setAttribute("height", height);
+
+  const svgText = new XMLSerializer().serializeToString(clone);
+  const url = URL.createObjectURL(new Blob([svgText], { type: "image/svg+xml;charset=utf-8" }));
+
+  try {
+    const image = new Image();
+    await new Promise((resolve, reject) => {
+      image.onload = resolve;
+      image.onerror = reject;
+      image.src = url;
+    });
+
+    const canvas = document.createElement("canvas");
+    canvas.width = width;
+    canvas.height = height;
+    const context = canvas.getContext("2d");
+    context.fillStyle = "#ffffff";
+    context.fillRect(0, 0, width, height);
+    context.drawImage(image, 0, 0, width, height);
+
+    return await new Promise((resolve, reject) => {
+      canvas.toBlob((blob) => {
+        if (blob) resolve(blob);
+        else reject(new Error("QR image could not be prepared."));
+      }, "image/png");
+    });
+  } finally {
+    URL.revokeObjectURL(url);
+  }
+};
+
+const initClipboardActions = () => {
+  document.querySelectorAll("[data-copy-to-clipboard]").forEach((button) => {
+    if (button.dataset.copyClipboardBound === "true") return;
+
+    button.dataset.copyClipboardBound = "true";
+    button.addEventListener("click", async () => {
+      try {
+        await writeTextToClipboard(button.dataset.copyToClipboard || "");
+        showClipboardButtonStatus(button, "Copied");
+      } catch (_error) {
+        showClipboardButtonStatus(button, "Copy Failed");
+      }
+    });
+  });
+
+  document.querySelectorAll("[data-copy-qr-image]").forEach((button) => {
+    if (button.dataset.copyQrBound === "true") return;
+
+    button.dataset.copyQrBound = "true";
+    button.addEventListener("click", async () => {
+      const qrSvg = button.closest(".jj-admin-qr-box")?.querySelector(".jj-qr-svg");
+      const fallbackText = button.dataset.copyQrFallback || "";
+
+      try {
+        if (!navigator.clipboard?.write || typeof ClipboardItem === "undefined") {
+          throw new Error("Image clipboard is not supported.");
+        }
+
+        const qrBlob = await svgToPngBlob(qrSvg);
+        await navigator.clipboard.write([new ClipboardItem({ "image/png": qrBlob })]);
+        showClipboardButtonStatus(button, "QR Copied");
+      } catch (_error) {
+        try {
+          await writeTextToClipboard(fallbackText);
+          showClipboardButtonStatus(button, "Link Copied");
+        } catch (_fallbackError) {
+          showClipboardButtonStatus(button, "Copy Failed");
+        }
+      }
+    });
+  });
+};
+
 const runDeferredLayoutInit = () => {
   if (!window.__layoutVisitId) return;
   initDeferredLayoutPage();
@@ -188,6 +297,8 @@ document.addEventListener("turbo:click", () => {
 });
 
 function initDeferredLayoutPage() {
+  initClipboardActions();
+
   // Card detail popup: a small trigger box opens that card's detail inside a modal dialog.
   const cardPopup = document.querySelector("[data-card-popup]");
   if (cardPopup && cardPopup.dataset.cardPopupBound !== "true") {
