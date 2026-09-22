@@ -1,4 +1,24 @@
 module ApplicationHelper
+  # Stored upload paths can outlive the file on disk (restored DB, or a deploy
+  # that wiped public/uploads). Split them so the form links what is really
+  # there and reports the rest, instead of rendering links that 404.
+  def partition_existing_uploads(urls)
+    Array(urls).partition do |url|
+      text = url.to_s
+      next true unless text.start_with?("/uploads/module_records/")
+
+      filename = text[%r{\A/uploads/module_records/([^/?#]+)\z}, 1]
+      next false if filename.blank?
+
+      # Mirror UploadsController's guard: anything that is not a plain filename
+      # can never be served, so report it as missing rather than linking it.
+      decoded = CGI.unescape(filename)
+      next false unless decoded == File.basename(decoded)
+
+      UploadsController::MODULE_RECORD_UPLOAD_ROOT.join(decoded).file?
+    end
+  end
+
   def bill_print_block_name(vrp)
     value = vrp&.vrp_profile&.block_id.to_s.strip
     return "-" if value.blank?
@@ -166,6 +186,7 @@ module ApplicationHelper
       links: [
         ["Bill Process", :module, "jeevika-jankar-bill-process"],
         ["Bill List", :module, "jeevika-jankar-bill-list"],
+        ["Observation List", :module, "jeevika-jankar-observation-list"],
         ["Payment List", :module, "jeevika-jankar-payment-list"],
         ["Payment List Detail", :module, "jeevika-jankar-payment-list-detail"],
         ["Completed Payment List", :module, "jeevika-jankar-completed-payment-list"]
@@ -424,6 +445,9 @@ module ApplicationHelper
     if ["Bill List", "Jeevika Jankar Bill List"].include?(name.to_s.strip)
       keys.concat(["bill-list", "jeevika-jankar-bill-list"])
     end
+    if ["Observation List", "Jeevika Jankar Observation List"].include?(name.to_s.strip)
+      keys.concat(["observation-list", "jeevika-jankar-observation-list"])
+    end
     if ["Payment List", "Jeevika Jankar Payment List"].include?(name.to_s.strip)
       keys.concat(["payment-list", "jeevika-jankar-payment-list"])
     end
@@ -500,6 +524,7 @@ module ApplicationHelper
         links: [
           ["Bill Process", :module, "jeevika-jankar-bill-process"],
           ["Bill List", :module, "jeevika-jankar-bill-list"],
+          ["Observation List", :module, "jeevika-jankar-observation-list"],
           ["Payment List", :module, "jeevika-jankar-payment-list"],
           ["Payment List Detail", :module, "jeevika-jankar-payment-list-detail"],
           ["Completed Payment List", :module, "jeevika-jankar-completed-payment-list"]

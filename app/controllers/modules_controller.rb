@@ -44,6 +44,31 @@ class ModulesController < ApplicationController
   JEEVIKA_JANKAR_BILL_FIXED_TOTAL = 5000.0
   JEEVIKA_JANKAR_PAYMENT_DETAIL_SLUG = "jeevika-jankar-payment-detail".freeze
   JEEVIKA_PAYMENT_TRANSACTION_TYPES = ["NEFT", "RTGS", "IMPS"].freeze
+  # Observation sheet captured on the Jeevika Jankar bill. Labels are stored in
+  # English so the existing language switcher can translate them like the rest
+  # of the UI; only the option key is persisted.
+  JEEVIKA_JANKAR_OBSERVATION_OPTIONS = [
+    { key: "good", label: "Good" },
+    { key: "needs_improvement", label: "Needs Improvement" },
+    { key: "no_progress", label: "No Progress" }
+  ].freeze
+  JEEVIKA_JANKAR_OBSERVATION_PARAMETERS = [
+    { key: "timing",
+      short_label: "Timing",
+      label: "Delivery target / training was started and completed at the scheduled time" },
+    { key: "farmer_behaviour",
+      short_label: "Farmer Behaviour",
+      label: "Behaviour with farmers was good and local, simple language was used in question-answer / discussion" },
+    { key: "subject_clarity",
+      short_label: "Subject Clarity",
+      label: "Subject information was explained clearly and correctly as per the given target / topic, and by asking questions / discussing with farmers it was ensured that they understood the main subject" },
+    { key: "iec_material",
+      short_label: "IEC Material",
+      label: "Required IEC material / poster / flip chart / other material was used effectively as per the given target / topic and, where necessary, farmers were explained through subject related Practical / Field Demonstration" },
+    { key: "technology",
+      short_label: "Technology",
+      label: "Status of JJ in operating technology (all APP / Web / Mobile / Scanner / Photo Capture) etc." }
+  ].freeze
   DASHBOARD_CARDS = [
     ["Total VRP", "0", "Registered field resources"],
     ["Active VRP", "0", "Currently active"],
@@ -455,6 +480,12 @@ class ModulesController < ApplicationController
       group: "Jeevika Jankar Bill",
       purpose: "Saved Jeevika Jankar bill aur invoice records dekhne ke liye.",
       fields: ["Jeevika Jankar Name", "Bill Month", "Total Target", "Total Achievement"]
+    },
+    "jeevika-jankar-observation-list" => {
+      title: "Jeevika Jankar Observation List",
+      group: "Jeevika Jankar Bill",
+      purpose: "Bill ke saath save hui observation rating Jeevika Jankar wise dekhne ke liye.",
+      fields: ["Jeevika Jankar Name", "Bill Month"]
     },
     "jeevika-jankar-payment-list" => {
       title: "Jeevika Jankar Payment List",
@@ -1554,6 +1585,7 @@ class ModulesController < ApplicationController
     prepare_vrp_bill_data if @slug == "vrp-bill-add"
     prepare_jeevika_jankar_bill_data if @slug == "jeevika-jankar-bill-process"
     prepare_jeevika_jankar_bill_list if @slug == "jeevika-jankar-bill-list"
+    prepare_jeevika_jankar_observation_list if @slug == "jeevika-jankar-observation-list"
   end
 
   def edit
@@ -1840,6 +1872,16 @@ class ModulesController < ApplicationController
 
     respond_to do |format|
       format.xlsx do
+        if @slug == "jeevika-jankar-observation-list"
+          prepare_jeevika_jankar_observation_list
+          headers, rows = jeevika_jankar_observation_export_rows
+          month_suffix = @observation_selected_month.presence&.parameterize&.underscore
+          send_xlsx(headers: headers,
+            rows: rows,
+            filename: ["jeevika_jankar_observation", month_suffix, Date.current].compact.join("_") + ".xlsx",
+            sheet_name: "Observation") and return
+        end
+
         if @slug == "lg-directory-list"
           prepare_lg_directory_data
           csv_data = lg_directory_csv(@lg_directory_rows)
@@ -9971,6 +10013,81 @@ class ModulesController < ApplicationController
     end
   end
 
+  # Observation sheet saved on each bill, flattened into one row per bill so a
+  # reviewer can scan what every Jeevika Jankar scored.
+  def prepare_jeevika_jankar_observation_list
+    @observation_master_months = month_master_month_options
+    # Open on the current month; an explicit blank param still means All Months.
+    selected_month = if params.key?(:bill_month)
+      params[:bill_month].to_s.strip
+    else
+      current_month = Date.current.strftime("%B")
+      Array(@observation_master_months).any? { |month| month.to_s.casecmp(current_month).zero? } ? current_month : ""
+    end
+
+    # Bills carry a workflow status ("Submitted...", "Final Approved"), never
+    # "Active", so active_module_record? would reject every real bill. Match the
+    # Bill List instead: visibility only, minus explicitly deleted rows.
+    records = ModuleRecord
+      .where(module_slug: "jeevika-jankar-bill-process")
+      .order(created_at: :desc)
+      .to_a
+      .reject { |record| module_record_soft_deleted?(record) }
+      .select { |record| jeevika_jankar_bill_record_visible?(record) }
+
+    option_labels = JEEVIKA_JANKAR_OBSERVATION_OPTIONS.to_h { |option| [option[:key], option[:label]] }
+
+    @observation_rows = records.filter_map do |record|
+      data = record.data || {}
+      observations = data["observations"]
+      next unless observations.is_a?(Hash) && observations.values.any?(&:present?)
+
+      bill_month = data["bill_month"].to_s
+      next if selected_month.present? && bill_month != selected_month
+
+      {
+        id: record.id,
+        jeevika_jankar_name: (data["select_vrp_name"].presence || data["jeevika_jankar_name"].presence ||
+          jeevika_bill_vrp(record)&.name).to_s,
+        bill_month: bill_month,
+        ratings: JEEVIKA_JANKAR_OBSERVATION_PARAMETERS.map do |parameter|
+          option_key = observations[parameter[:key]].to_s
+          { key: option_key, label: option_labels[option_key] }
+        end
+      }.then { |row| row.merge(jeevika_jankar_observation_score(row[:ratings])) }
+    end
+
+    @observation_selected_month = selected_month
+  end
+
+  # Overall red / yellow / green marker: Good scores 2, Needs Improvement 1,
+  # No Progress (or unrated) 0, expressed as a percentage of the maximum.
+  OBSERVATION_SCORE_POINTS = { "good" => 2, "needs_improvement" => 1, "no_progress" => 0 }.freeze
+
+  def jeevika_jankar_observation_score(ratings)
+    maximum = ratings.size * OBSERVATION_SCORE_POINTS.values.max
+    earned = ratings.sum { |rating| OBSERVATION_SCORE_POINTS.fetch(rating[:key], 0) }
+    percentage = maximum.positive? ? (earned * 100.0 / maximum).round : 0
+    grade = if percentage >= 80 then { key: "green", label: "Good" }
+    elsif percentage >= 50 then { key: "yellow", label: "Average" }
+    else { key: "red", label: "Poor" }
+    end
+
+    { score_earned: earned, score_maximum: maximum, score_percentage: percentage, grade: grade }
+  end
+
+  def jeevika_jankar_observation_export_rows
+    headers = ["Jeevika Jankar Name", "Bill Month"] +
+      JEEVIKA_JANKAR_OBSERVATION_PARAMETERS.each_with_index.map { |parameter, index| "#{index + 1}. #{parameter[:short_label]}" } +
+      ["Score", "Score %", "Overall"]
+    rows = Array(@observation_rows).map do |row|
+      [row[:jeevika_jankar_name].presence || "-", row[:bill_month].presence || "-"] +
+        row[:ratings].map { |rating| rating[:label].presence || "Not Rated" } +
+        ["#{row[:score_earned]}/#{row[:score_maximum]}", "#{row[:score_percentage]}%", row[:grade][:label]]
+    end
+    [headers, rows]
+  end
+
   def jeevika_bill_rows(records)
     preload_dashboard_vrp_identity_records!(Array(records).filter_map { |record| jeevika_bill_vrp(record) }.uniq(&:id))
     preload_jeevika_bill_process_totals(records)
@@ -13162,6 +13279,15 @@ class ModulesController < ApplicationController
       errors << "Total Payment ₹#{JEEVIKA_JANKAR_BILL_FIXED_TOTAL.to_i} se kam ya jyada hone par Remarks required hai."
     end
 
+    observations = data["observations"].is_a?(Hash) ? data["observations"] : {}
+    valid_option_keys = JEEVIKA_JANKAR_OBSERVATION_OPTIONS.map { |option| option[:key] }
+    missing_observations = JEEVIKA_JANKAR_OBSERVATION_PARAMETERS.each_with_index.filter_map do |parameter, index|
+      index + 1 unless valid_option_keys.include?(observations[parameter[:key]].to_s)
+    end
+    if missing_observations.any?
+      errors << "Observation Parameter #{missing_observations.join(", ")} ke liye rating select karein."
+    end
+
     duplicate = ModuleRecord
       .where(module_slug: "jeevika-jankar-bill-process")
       .detect do |record|
@@ -13517,34 +13643,60 @@ class ModulesController < ApplicationController
     return [] if @record.blank?
 
     known_ids = existing_mappings.map { |mapping| mapping[:target_mapping_id].to_s }.to_set
-    missing_ids = Array(@record.data["target_mapping_ids"].presence || @record.data["target_mapping_id"])
-      .map(&:to_s).reject(&:blank?).uniq.reject { |id| known_ids.include?(id) }
-    return [] if missing_ids.empty?
+    saved_ids = Array(@record.data["target_mapping_ids"].presence || @record.data["target_mapping_id"])
+      .map(&:to_s).reject(&:blank?).uniq
 
-    targets_by_id = TargetMapping.where(id: missing_ids).includes(:vrp).index_by { |target| target.id.to_s }
-
-    missing_ids.filter_map do |id|
-      target = targets_by_id[id]
-      mapping = {
-        target_mapping_id: id,
-        vrp_id: (target&.vrp_id.presence || @record.data["jeevika_jankar_id"]).to_s,
-        jeevika_jankar_name: target&.vrp&.name.presence || @record.data["jeevika_jankar_name"].to_s,
-        contact_number: target&.vrp&.mobile_no.to_s.gsub(/\D/, "").last(10),
-        month: (target&.month_name.presence || @record.data["month"]).to_s.strip,
-        ics: (target&.ics_name.presence || target&.ics_id.presence || @record.data["ics_block"]).to_s.strip,
-        village: (target&.village_name.presence || target&.village_id.presence || @record.data["gram_name"]).to_s.strip,
-        main_activity_type: "Training",
-        main_activity: (target&.main_activity_name.presence || @record.data["main_activity"]).to_s.strip,
-        sub_activity: (target&.activity_name.presence || @record.data["sub_activity"]).to_s.strip,
-        new_farmer_target: target.present? ? new_farmer_target_mapping?(target) : false,
-        farmer_ids: Array(target&.afl_ids).map(&:to_s).reject(&:blank?).uniq,
-        completed_farmer_ids: [],
-        farmers: []
-      }
-      next if mapping[:ics].blank? && mapping[:village].blank?
-
-      mapping
+    # Older records were saved without a target id, so fall back to locating the
+    # target by the values the record itself stored.
+    targets = if saved_ids.any?
+      TargetMapping.where(id: saved_ids).includes(:vrp).to_a
+    else
+      training_targets_matching_record_values
     end
+    targets = targets.reject { |target| known_ids.include?(target.id.to_s) }
+
+    mappings = targets.map { |target| record_training_target_mapping(target) }
+    # Nothing resolvable: still surface the saved values so the selects are not blank.
+    mappings = [record_training_target_mapping(nil)] if mappings.empty? && saved_ids.empty? && known_ids.exclude?("")
+
+    mappings.reject { |mapping| mapping[:ics].blank? && mapping[:village].blank? }
+  end
+
+  def training_targets_matching_record_values
+    return [] unless model_ready?(:TargetMapping)
+
+    ics = normalize_dashboard_text(@record.data["ics_block"])
+    village = normalize_dashboard_text(@record.data["gram_name"])
+    return [] if ics.blank? && village.blank?
+
+    month = normalize_dashboard_text(@record.data["month"])
+    vrp_id = @record.data["jeevika_jankar_id"].to_s
+
+    TargetMapping.includes(:vrp).to_a.select do |target|
+      (vrp_id.blank? || target.vrp_id.to_s == vrp_id) &&
+        (month.blank? || normalize_dashboard_text(target.month_name) == month) &&
+        (ics.blank? || normalize_dashboard_text(target.ics_name.presence || target.ics_id) == ics) &&
+        (village.blank? || normalize_dashboard_text(target.village_name.presence || target.village_id) == village)
+    end
+  end
+
+  def record_training_target_mapping(target)
+    {
+      target_mapping_id: target&.id.to_s,
+      vrp_id: (target&.vrp_id.presence || @record.data["jeevika_jankar_id"]).to_s,
+      jeevika_jankar_name: target&.vrp&.name.presence || @record.data["jeevika_jankar_name"].to_s,
+      contact_number: target&.vrp&.mobile_no.to_s.gsub(/\D/, "").last(10),
+      month: (target&.month_name.presence || @record.data["month"]).to_s.strip,
+      ics: (target&.ics_name.presence || target&.ics_id.presence || @record.data["ics_block"]).to_s.strip,
+      village: (target&.village_name.presence || target&.village_id.presence || @record.data["gram_name"]).to_s.strip,
+      main_activity_type: "Training",
+      main_activity: (target&.main_activity_name.presence || @record.data["main_activity"]).to_s.strip,
+      sub_activity: (target&.activity_name.presence || @record.data["sub_activity"]).to_s.strip,
+      new_farmer_target: target.present? ? new_farmer_target_mapping?(target) : false,
+      farmer_ids: Array(target&.afl_ids).map(&:to_s).reject(&:blank?).uniq,
+      completed_farmer_ids: [],
+      farmers: []
+    }
   end
 
   def seed_distribution_target_mappings
@@ -14566,10 +14718,14 @@ class ModulesController < ApplicationController
       .uniq
   end
 
-  def active_module_record?(record)
-    return false if truthy_module_flag?(record.data["deleted"]) ||
+  def module_record_soft_deleted?(record)
+    truthy_module_flag?(record.data["deleted"]) ||
       truthy_module_flag?(record.data["is_deleted"]) ||
       truthy_module_flag?(record.data["discarded"])
+  end
+
+  def active_module_record?(record)
+    return false if module_record_soft_deleted?(record)
 
     status = record.data["status"].to_s.strip
     return true if status.blank?
