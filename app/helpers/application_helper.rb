@@ -209,8 +209,17 @@ module ApplicationHelper
     return @sidebar_sections = SIDEBAR_SECTIONS if allowed_keys.nil?
 
     @sidebar_sections = SIDEBAR_SECTIONS.filter_map do |section|
-      allowed_links = section[:links].select { |link| allowed_keys.include?(sidebar_access_key(link)) }
+      allowed_links = section[:links].select do |link|
+        allowed_keys.include?(sidebar_access_key(link)) ||
+          (link[2] == :training_edit_approvals_path && training_approval_role?)
+      end
       section.merge(links: allowed_links) if allowed_links.any?
+    end
+  end
+
+  def training_approval_role?
+    TrainingStaffScope::ROLE_KEYS.any? do |key|
+      current_app_user&.dig(key).to_s.match?(/cluster|fco\s*-?\s*c|\Afco\z|source/i)
     end
   end
 

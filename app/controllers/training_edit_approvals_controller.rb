@@ -1,12 +1,14 @@
 class TrainingEditApprovalsController < ApplicationController
   def index
     @revisions = ModuleRecord.where(module_slug: TrainingEditApproval::SLUG).order(id: :desc).select do |revision|
+      TrainingEditApproval.assign_automatic_approver!(revision)
       TrainingEditApproval.visible?(revision, current_app_user)
     end
   end
 
   def show
     @revision = ModuleRecord.where(module_slug: TrainingEditApproval::SLUG).find(params[:id])
+    TrainingEditApproval.assign_automatic_approver!(@revision)
     head :forbidden unless TrainingEditApproval.visible?(@revision, current_app_user)
   end
 

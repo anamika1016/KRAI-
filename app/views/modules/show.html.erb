@@ -2045,6 +2045,7 @@
                     <div class="table-actions">
                       <input type="checkbox"
                         value="<%= edit_module_record_path(edit_slug, record) %>"
+                        data-module-row-paths="<%= group_records.map { |item| edit_module_record_path(edit_slug, item) }.to_json %>"
                         data-module-row-select>
                       <% if @slug == "training-form-list" %>
                         <%= link_to edit_module_record_path(edit_slug, record), class: "table-action icon-action", title: "View Training Form", aria: { label: "View Training Form" } do %>
@@ -2248,7 +2249,7 @@
         <div class="module-form-grid <%= "user-registration-grid" if @slug == "new-user" || (@slug == "all-user" && @record.present?) %>">
           <% @module[:fields].each do |field| %>
             <% field_key = field.parameterize(separator: "_") %>
-            <% raw_field_value = @record&.data&.[](field_key) %>
+            <% raw_field_value = @slug == "training-form" && @record.present? ? module_record_field_value(@record, field) : @record&.data&.[](field_key) %>
             <% field_value = raw_field_value.is_a?(Array) ? raw_field_value.join(", ") : raw_field_value.to_s %>
             <% field_value = module_record_field_value(@record, field).to_s if @record.present? && field_value.blank? %>
             <% if @slug == "training-form" && field_value.blank? %>
@@ -2337,7 +2338,7 @@
                   <small class="field-hint">Current: <%= existing_photos.size + missing_photos.size %> photo(s)</small>
                   <div class="module-existing-uploads">
                     <% if existing_photos.any? %>
-                      <%= render "training_participation_uploads", urls: existing_photos, label: field %>
+                      <%= render "training_participation_uploads", urls: existing_photos, label: field, preview: true %>
                     <% end %>
                     <% if missing_photos.any? %>
                       <small class="field-hint upload-missing"><%= missing_photos.size %> file(s) missing on server — please re-upload.</small>
@@ -2367,6 +2368,10 @@
                 <input name="module_record[<%= field_key %>]" type="text" placeholder="Enter <%= resource_person_label(field) %>" value="<%= field_value %>">
               <% elsif module_select_field?(field) %>
                 <% options = (module_field_options(field) + static_field_options(field)).compact_blank.uniq %>
+                <% if @slug == "training-form" && ["Cluster Coordinator Name", "Agronomist Name"].include?(field) %>
+                  <% field_value = field_value.to_s.gsub(/\s+/, " ").strip %>
+                  <% field_value = options.find { |option| option.to_s.casecmp?(field_value) } || field_value %>
+                <% end %>
                 <% options << field_value if field_value.present? && !options.include?(field_value) %>
                 <% role_dependency_attr =
                   case field
@@ -2465,7 +2470,7 @@
                 <span class="training-section-number" aria-hidden="true">06</span>
                 <div><h3>Select target farmers</h3><p>Search the mapped farmers and select participants for this session.</p></div>
               </div>
-              <div class="training-farmer-panel" data-training-farmer-panel data-selected-farmer-ids="<%= json_escape((selected_training_farmer_ids || []).to_json) %>">
+              <div class="training-farmer-panel" data-training-farmer-panel data-saved-farmers="<%= (@record.present? ? selected_farmer_rows_for(@record) : []).to_json %>" data-selected-farmer-ids="<%= json_escape((selected_training_farmer_ids || []).to_json) %>">
                 <div class="target-mapping-toolbar">
                   <strong>Target Farmers</strong>
                   <button type="button" class="list-btn active training-select-all-button" data-training-farmer-select-all-button>Select all</button>

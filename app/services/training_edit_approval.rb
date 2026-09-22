@@ -1,6 +1,6 @@
 require "base64"
 
-# Revisions remain separate from live training data until the complete channel approves.
+# Revisions remain separate from live training data until the responsible FCO-C approves.
 class TrainingEditApproval
   SLUG = "training-form-edit-request".freeze
   IMAGE_KEYS = %w[training_register_upload training_photo_upload_with_geo_tag].freeze
@@ -21,27 +21,25 @@ class TrainingEditApproval
       .compact_blank.map { |value| username(value) }.uniq
   end
 
-  def self.channel(actor)
-    # Approval Form may save either the account username or the display name.
-    # Treat all identity fields as aliases for the same CC user.
-    labels = [actor["username"], actor["user_name"], actor["name"], actor["mobile_no"]]
-      .compact_blank.map { |value| username(value) }
-    ModuleRecord.where(module_slug: "approval-master").select do |record|
-      data = record.data
-      data["module_name"] == "Training Form Edit" && data["status"].to_s.casecmp("Active").zero? &&
-        labels.include?(username(data["user_name"])) &&
-        (data["stakeholder_name"].blank? || data["stakeholder_name"].to_s.casecmp(actor["stakeholder"].to_s).zero?)
-    end.sort_by { |record| [record.data["approval_level"].to_s[/\d+/].to_i, record.id] }
-      .filter_map { |record| record.data["approver_approved_by"].presence }
+  def self.automatic_routing(data, actor)
+    office = TrainingStaffScope.office_for(data, actor)
+    candidates = TrainingStaffScope.staff(office, :fcoc)
+      .reject { |candidate| candidate["user_name"].blank? || identity(candidate) == identity(actor) }
+      .uniq { |candidate| username(candidate["user_name"]) }
+    return {} unless candidates.one?
+
+    approver = candidates.first
+    { "approvers" => [TrainingStaffScope.name(approver)],
+      "approver_identities" => [identity(approver)], "approval_office" => office }
   end
 
-  def self.assign_configured_channel!(revision)
+  def self.assign_automatic_approver!(revision)
     return revision unless revision.data["status"] == "Pending" && Array(revision.data["approvers"]).empty?
 
     revision.with_lock do
       data = revision.data.deep_dup
-      approvers = channel(data["requester"] || {})
-      revision.update!(data: data.merge("approvers" => approvers)) if approvers.any?
+      routing = automatic_routing(data["before"] || {}, data["requester"] || {})
+      revision.update!(data: data.merge(routing)) if routing.present?
     end
     revision.reload
   end
@@ -50,15 +48,17 @@ class TrainingEditApproval
     record.with_lock do
       pending = ModuleRecord.where(module_slug: SLUG).where("data::jsonb ->> 'record_id' = ? AND data::jsonb ->> 'status' = 'Pending'", record.id.to_s).exists?
       raise InvalidTransition, "This training form already has a pending edit request." if pending
+      routing = automatic_routing(record.data, actor)
+      raise InvalidTransition, "A single active FCO-C account must be assigned to this training's FCO office before submitting the edit." if routing.empty?
       IMAGE_KEYS.each { |key| proposed[key] = (Array(record.data[key]) + Array(proposed[key])).compact_blank.uniq }
       # Preserve creator/ownership fields; CC edits cannot reassign records.
       record.data.each { |key, value| proposed[key] = value if key.start_with?("created_by") || %w[vrp_id select_vrp jeevika_jankar_id].include?(key) }
       ModuleRecord.create!(module_slug: SLUG, data: {
         "record_id" => record.id, "before" => record.data.deep_dup, "proposed" => proposed,
-        "requester" => actor.slice("id", "record_type", "username", "user_name", "name", "stakeholder"),
+        "requester" => actor.slice("id", "record_type", "username", "user_name", "name", "stakeholder", *TrainingStaffScope::OFFICE_KEYS),
         "requester_identity" => identity(actor), "status" => "Pending", "step" => 0,
-        "approvers" => channel(actor), "history" => [], "evidence" => evidence(record.data, proposed)
-      })
+        "history" => [], "evidence" => evidence(record.data, proposed)
+      }.merge(routing))
     end
   end
 
@@ -75,6 +75,9 @@ class TrainingEditApproval
   def self.visible?(revision, actor)
     return true if actor["user_type"].to_s.casecmp("admin").zero? || revision.data["requester_identity"] == identity(actor)
 
+    if revision.data["approver_identities"].present?
+      return Array(revision.data["approver_identities"]).include?(identity(actor))
+    end
     aliases = actor_usernames(actor)
     Array(revision.data["approvers"]).any? { |label| aliases.include?(username(label)) }
   end
@@ -83,6 +86,9 @@ class TrainingEditApproval
     return false unless revision.data["status"] == "Pending" && Array(revision.data["approvers"]).any?
     return true if actor["user_type"].to_s.casecmp("admin").zero?
 
+    if revision.data["approver_identities"].present?
+      return revision.data["approver_identities"][revision.data["step"].to_i] == identity(actor)
+    end
     approver = revision.data["approvers"][revision.data["step"].to_i]
     actor_usernames(actor).include?(username(approver))
   end
@@ -93,7 +99,7 @@ class TrainingEditApproval
     return "Rejected" if status == "Rejected"
 
     approver = Array(revision.data["approvers"])[revision.data["step"].to_i]
-    approver.present? ? "Pending at #{approver}" : "Pending - approval channel not configured"
+    approver.present? ? "Pending at #{approver}" : "Pending - FCO-C assignment unavailable"
   end
 
   def self.decide!(revision:, actor:, decision:, remarks:)
@@ -102,8 +108,9 @@ class TrainingEditApproval
       data = revision.data.deep_dup
       if decision == "route"
         raise InvalidTransition, "Only admin can route an unassigned pending request." unless actor["user_type"].to_s.casecmp("admin").zero? && data["status"] == "Pending" && Array(data["approvers"]).empty?
-        data["approvers"] = channel(data["requester"])
-        raise InvalidTransition, "Configure a Training Form Edit approval channel for this requester first." if data["approvers"].empty?
+        routing = automatic_routing(data["before"] || {}, data["requester"] || {})
+        raise InvalidTransition, "Assign a single active FCO-C account to the training's FCO office first." if routing.empty?
+        data.merge!(routing)
       else
         raise InvalidTransition, "This request is not awaiting your approval." unless can_decide?(revision, actor)
         raise InvalidTransition, "Remarks are required." if remarks.blank?

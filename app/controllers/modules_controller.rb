@@ -9468,7 +9468,7 @@ class ModulesController < ApplicationController
         index[revision.data["record_id"].to_s] ||= revision
       end
     revision = @training_edit_revisions_by_record[record.id.to_s]
-    revision = TrainingEditApproval.assign_configured_channel!(revision) if revision
+    revision = TrainingEditApproval.assign_automatic_approver!(revision) if revision
     revision
   end
 
@@ -9892,6 +9892,8 @@ class ModulesController < ApplicationController
       end
     end
   end
+
+  helper_method :selected_farmer_rows_for
 
   def selected_farmer_rows_for(record)
     selected_ids = Array(record.data["selected_farmer_ids"]).map(&:to_s).reject(&:blank?).uniq
@@ -11935,6 +11937,17 @@ class ModulesController < ApplicationController
     return nil if field.blank?
     return village_master_gram_panchayat_name(record) if record.module_slug == "village-master" && field == "Gram Panchayat"
 
+    if record.module_slug == "training-form"
+      aliases = {
+        "ICS / Block" => %w[ics_block ics ics_name],
+        "Gram Name" => %w[gram_name village village_name],
+        "Main Activity" => %w[main_activities main_activity training_topic],
+        "Sub Activity" => %w[sub_activities sub_activity training_subject],
+        "Photo Close-up View" => ["photo_close_up_view", "photo_close-up_view"]
+      }[field]
+      return first_present_data(record, *aliases) if aliases
+    end
+
     @module_field_keys ||= {}
     keys = @module_field_keys[field] ||= [
       field.parameterize(separator: "_"),
@@ -13430,6 +13443,12 @@ class ModulesController < ApplicationController
   end
 
   def training_people_field_options(field)
+    if !vrp_login_user? && (@record.present? || !admin_dashboard_user?) && ["Cluster Coordinator Name", "Agronomist Name"].include?(field)
+      office = TrainingStaffScope.office_for(@record&.data || {}, current_app_user || {})
+      kind = field == "Cluster Coordinator Name" ? :cluster_coordinator : :agronomist
+      return TrainingStaffScope.options(office, kind)
+    end
+
     case field
     when "Cluster Coordinator Name"
       cluster_coordinator_options

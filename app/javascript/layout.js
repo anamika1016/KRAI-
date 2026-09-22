@@ -2138,6 +2138,7 @@ function initDeferredLayoutPage() {
 	    const geoLongitudeInput = formShell.querySelector("[data-training-geo-longitude]");
 	    if (!icsSelect || !villageSelect) return;
 	    const selectedFarmerIds = new Set(JSON.parse(farmerPanel?.dataset.selectedFarmerIds || "[]").map(String));
+    const savedFarmers = JSON.parse(farmerPanel?.dataset.savedFarmers || "[]");
     const farmersUrl = formShell.dataset.trainingFarmersUrl;
     const trainingFarmerCache = new Map();
     let activeFarmerLoadKey = "";
@@ -2171,10 +2172,17 @@ function initDeferredLayoutPage() {
         normalizeOption(label) === normalizeOption(selected);
     };
 
+    let initializingTraining = true;
     const fillTrainingSelect = (select, options, placeholder) => {
       const selected = select.multiple
         ? (() => { try { return JSON.parse(select.dataset.selectedValues || "[]"); } catch (_error) { return []; } })()
         : (select.dataset.selectedValue || select.value);
+      if (initializingTraining) {
+        options = options.slice();
+        (Array.isArray(selected) ? selected : [selected]).filter(Boolean).forEach((value) => {
+          if (!options.some((option) => normalizeOption(optionValue(option)) === normalizeOption(value))) options.push(value);
+        });
+      }
       select.innerHTML = "";
 
       const blank = document.createElement("option");
@@ -2456,7 +2464,7 @@ function initDeferredLayoutPage() {
 	      if (!totalFarmerCountInput) return;
 
 	      const total = numberValue(maleCountInput) + numberValue(femaleCountInput);
-	      totalFarmerCountInput.value = total ? String(total) : "";
+	      totalFarmerCountInput.value = String(total);
 	    };
 
 
@@ -2526,29 +2534,31 @@ function initDeferredLayoutPage() {
 	      if (farmerSearchEmpty) farmerSearchEmpty.hidden = true;
       const targetRows = selectedTrainingTargetRows();
       const loadKey = targetRowsKey(targetRows);
+      const retainedFarmers = savedFarmers.filter((farmer) => selectedFarmerIds.has(String(farmer.id)));
+      activeFarmerLoadKey = loadKey;
 
-	      if (monthSelect && !monthSelect.value) {
+	      if (monthSelect && !monthSelect.value && !retainedFarmers.length) {
 	        farmerList.textContent = "Select Month to load target farmers.";
 	        if (farmerSelectAll) farmerSelectAll.checked = false;
 	        updateFarmerCount();
 	        return;
 	      }
 
-	      if (!villageSelect.value) {
+	      if (!villageSelect.value && !retainedFarmers.length) {
 	        farmerList.textContent = "Select Village Name to load target farmers.";
 	        if (farmerSelectAll) farmerSelectAll.checked = false;
 	        updateFarmerCount();
 	        return;
 	      }
 
-      if (mainActivityTypeSelect && !mainActivityTypeSelect.value) {
+      if (mainActivityTypeSelect && !mainActivityTypeSelect.value && !retainedFarmers.length) {
         farmerList.textContent = "Select Main Activity Type to load target farmers.";
         if (farmerSelectAll) farmerSelectAll.checked = false;
         updateFarmerCount();
         return;
       }
 
-      if (!selectedMainActivityValues().length) {
+      if (!selectedMainActivityValues().length && !retainedFarmers.length) {
         farmerList.textContent = "Select Main Activity to load target farmers.";
         if (farmerSelectAll) farmerSelectAll.checked = false;
         updateFarmerCount();
@@ -2562,7 +2572,7 @@ function initDeferredLayoutPage() {
         farmerList.textContent = "Select Sub Activity to narrow the target farmers.";
       }
 
-      if (!targetRows.length) {
+      if (!targetRows.length && !retainedFarmers.length) {
         farmerList.textContent = "No target farmers found for selected activity.";
         if (farmerSelectAll) farmerSelectAll.checked = false;
         updateFarmerCount();
@@ -2575,13 +2585,15 @@ function initDeferredLayoutPage() {
       try {
         farmers = await mappedFarmers();
       } catch (_error) {
-        if (activeFarmerLoadKey === loadKey) {
+        if (!retainedFarmers.length && activeFarmerLoadKey === loadKey) {
           farmerList.textContent = "Target farmers load failed. Please try again.";
           updateFarmerCount();
+          return;
         }
-        return;
       }
       if (activeFarmerLoadKey !== loadKey) return;
+      const loadedIds = new Set(farmers.map((farmer) => String(farmer.id)));
+      farmers = farmers.concat(retainedFarmers.filter((farmer) => !loadedIds.has(String(farmer.id))));
 
       if (!farmers.length) {
         farmerList.textContent = "No target farmers found for selected activity.";
@@ -2655,12 +2667,22 @@ function initDeferredLayoutPage() {
 	    });
 
 	    if (monthSelect) fillTrainingSelect(monthSelect, mappedMonthOptions(), "Select Month");
+	    // On first paint the server has already rendered the saved ICS / Gram
+	    // options. If the mapping payload is empty (missing or unparseable
+	    // data-training-target-map) do not overwrite them with "No ... saved yet"
+	    // -- that turns a working form into a blank one. Cascade updates below
+	    // still clear the selects normally.
+	    const hasServerOptions = (select) => Array.from(select.options).some((option) => option.value);
+	    const fillUnlessServerAlreadyHas = (select, options, placeholder) => {
+	      if (!options.length && hasServerOptions(select)) return;
+
+	      fillTrainingSelect(select, options, placeholder);
+	      setOnlyTrainingOption(select, options);
+	    };
 	    const initialIcsOptions = mappedIcsOptions();
-	    fillTrainingSelect(icsSelect, initialIcsOptions, "Select ICS Name");
-	    setOnlyTrainingOption(icsSelect, initialIcsOptions);
+	    fillUnlessServerAlreadyHas(icsSelect, initialIcsOptions, "Select ICS Name");
 	    const initialVillageOptions = mappedVillageOptions();
-	    fillTrainingSelect(villageSelect, initialVillageOptions, "Select Village Name");
-	    setOnlyTrainingOption(villageSelect, initialVillageOptions);
+	    fillUnlessServerAlreadyHas(villageSelect, initialVillageOptions, "Select Village Name");
 	    const initialMainOptions = mappedMainActivityOptions();
 	    if (mainActivitySelect) fillTrainingSelect(mainActivitySelect, initialMainOptions, "Select Main Activity");
 	    if (!selectedMainActivityValues().length) autoSelectMappedMainActivities();
@@ -2668,6 +2690,7 @@ function initDeferredLayoutPage() {
 	    const initialSubOptions = mappedSubActivityOptions();
 	    if (subActivitySelect) fillTrainingSelect(subActivitySelect, initialSubOptions, "Select Sub Activity");
 	    if (selectedSubActivityValues().length) renderSubActivityChips(); else autoSelectMappedSubActivities();
+	    initializingTraining = false;
 	    renderTrainingFarmers();
 
 	    if (geoLatitudeInput && geoLongitudeInput && navigator.geolocation) {
