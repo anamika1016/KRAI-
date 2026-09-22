@@ -2180,8 +2180,13 @@
                   <input type="hidden" name="module_record[geo_latitude]" data-training-geo-latitude value="<%= @record&.data&.[]("geo_latitude") %>">
                   <input type="hidden" name="module_record[geo_longitude]" data-training-geo-longitude value="<%= @record&.data&.[]("geo_longitude") %>">
                 <% end %>
-                <% if Array(field_value).reject(&:blank?).any? %>
-                  <small class="field-hint">Current: <%= Array(field_value).reject(&:blank?).size %> photo(s)</small>
+                <%# field_value joins arrays into one string, so count and link the raw uploads. %>
+                <% existing_photos = ModuleUploadPaths.call(raw_field_value) %>
+                <% if existing_photos.any? %>
+                  <small class="field-hint">Current: <%= existing_photos.size %> photo(s)</small>
+                  <div class="module-existing-uploads">
+                    <%= render "training_participation_uploads", urls: existing_photos, label: field %>
+                  </div>
                 <% end %>
               <% elsif field.downcase.start_with?("photo") && field.downcase.include?("upload") || field.downcase.include?("upload") || field.downcase.include?("file") || field == "Field Photo" %>
                 <% upload_accept = field == "Excel Upload" ? "accept=\".csv,.xlsx,.xls\"" : nil %>
@@ -2190,8 +2195,12 @@
                 <% upload_accept = "accept=\"image/*\" data-max-size-mb=\"5\"" if field == "Field Photo" %>
                 <% upload_accept = "accept=\"application/pdf,.pdf\"" if training_register_multi %>
                 <input name="module_record[<%= field_key %>]<%= "[]" if multiple_attachment_upload %>" type="file" <%= "multiple" if multiple_attachment_upload %> <%= "data-pdf-only=\"true\"".html_safe if training_register_multi %> <%= upload_accept&.html_safe %> <%= "required" if form_required && field_value.blank? && !other_target_form %>>
-                <% if Array(field_value).reject(&:blank?).any? %>
-                  <small class="field-hint">Current: <%= Array(field_value).reject(&:blank?).size %> file(s)</small>
+                <% existing_files = ModuleUploadPaths.call(raw_field_value) %>
+                <% if existing_files.any? %>
+                  <small class="field-hint">Current: <%= existing_files.size %> file(s)</small>
+                  <div class="module-existing-uploads">
+                    <%= render "training_participation_uploads", urls: existing_files, label: field %>
+                  </div>
                 <% end %>
               <% elsif @slug == "training-topic-mapping" && field == "Department" %>
                 <input name="module_record[<%= field_key %>]" type="text" placeholder="Enter <%= resource_person_label(field) %>" value="<%= field_value %>">

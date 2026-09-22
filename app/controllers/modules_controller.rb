@@ -13136,9 +13136,7 @@ class ModulesController < ApplicationController
     errors << "Female Count valid whole number hona chahiye." if female_count.nil?
     errors << "Total Farmer Count valid whole number hona chahiye." if total_farmer_count.nil?
 
-    if farmer_count && male_count && female_count && male_count + female_count != farmer_count
-      errors << "Male Count + Female Count Farmer Count ke equal hona chahiye."
-    end
+    # Male + Female only drives Total Farmer Count; matching Farmer Count is not required.
 
     if farmer_count && selected_farmer_ids.any? && farmer_count != selected_farmer_ids.size
       errors << "Farmer Count selected farmers ke count ke equal hona chahiye."
@@ -13507,6 +13505,46 @@ class ModulesController < ApplicationController
       end
       .reject { |mapping| mapping[:ics].blank? && mapping[:village].blank? }
       .uniq
+      .then { |mappings| mappings + edited_record_training_target_mappings(mappings) }
+  end
+
+  # An edited record must always be able to show what it saved. Its target can
+  # drop out of the list above (activity setting changed, target deleted, or the
+  # row sits outside the current VRP scope), which would silently blank out the
+  # ICS / Gram selects and the farmer list. Re-add it from the target row, or
+  # from the record's own saved values when the target is gone for good.
+  def edited_record_training_target_mappings(existing_mappings)
+    return [] if @record.blank?
+
+    known_ids = existing_mappings.map { |mapping| mapping[:target_mapping_id].to_s }.to_set
+    missing_ids = Array(@record.data["target_mapping_ids"].presence || @record.data["target_mapping_id"])
+      .map(&:to_s).reject(&:blank?).uniq.reject { |id| known_ids.include?(id) }
+    return [] if missing_ids.empty?
+
+    targets_by_id = TargetMapping.where(id: missing_ids).includes(:vrp).index_by { |target| target.id.to_s }
+
+    missing_ids.filter_map do |id|
+      target = targets_by_id[id]
+      mapping = {
+        target_mapping_id: id,
+        vrp_id: (target&.vrp_id.presence || @record.data["jeevika_jankar_id"]).to_s,
+        jeevika_jankar_name: target&.vrp&.name.presence || @record.data["jeevika_jankar_name"].to_s,
+        contact_number: target&.vrp&.mobile_no.to_s.gsub(/\D/, "").last(10),
+        month: (target&.month_name.presence || @record.data["month"]).to_s.strip,
+        ics: (target&.ics_name.presence || target&.ics_id.presence || @record.data["ics_block"]).to_s.strip,
+        village: (target&.village_name.presence || target&.village_id.presence || @record.data["gram_name"]).to_s.strip,
+        main_activity_type: "Training",
+        main_activity: (target&.main_activity_name.presence || @record.data["main_activity"]).to_s.strip,
+        sub_activity: (target&.activity_name.presence || @record.data["sub_activity"]).to_s.strip,
+        new_farmer_target: target.present? ? new_farmer_target_mapping?(target) : false,
+        farmer_ids: Array(target&.afl_ids).map(&:to_s).reject(&:blank?).uniq,
+        completed_farmer_ids: [],
+        farmers: []
+      }
+      next if mapping[:ics].blank? && mapping[:village].blank?
+
+      mapping
+    end
   end
 
   def seed_distribution_target_mappings

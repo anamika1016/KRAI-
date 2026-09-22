@@ -544,9 +544,7 @@ class FarmerTargetApi
     errors << "Male Count valid whole number hona chahiye." if male_count.nil?
     errors << "Female Count valid whole number hona chahiye." if female_count.nil?
     errors << "Total Farmer Count valid whole number hona chahiye." if total_farmer_count.nil?
-    if farmer_count && male_count && female_count && male_count + female_count != farmer_count
-      errors << "Male Count + Female Count Farmer Count ke equal hona chahiye."
-    end
+    # Male + Female only drives Total Farmer Count; matching Farmer Count is not required.
 
     if farmer_count && selected_farmer_ids.any? && farmer_count != selected_farmer_ids.size
       errors << "Farmer Count selected farmers ke count ke equal hona chahiye."

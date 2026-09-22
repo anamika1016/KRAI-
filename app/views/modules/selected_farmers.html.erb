@@ -33,7 +33,6 @@
             <th>Tracenet No</th>
             <th>Mobile No</th>
             <th>Khasara No</th>
-            <th>Action</th>
           </tr>
         </thead>
         <tbody>
@@ -46,18 +45,11 @@
                 <td><%= farmer[:tracenet_no] %></td>
                 <td><%= farmer[:mobile_no] %></td>
                 <td><%= farmer[:khasara_no] %></td>
-                <td>
-                  <%= button_to "Remove",
-                    selected_farmer_module_record_path(@slug, @record, farmer_id: farmer[:id]),
-                    method: :delete,
-                    class: "table-action danger",
-                    form: { data: { turbo_confirm: "Remove this farmer from selected list?" } } %>
-                </td>
               </tr>
             <% end %>
           <% else %>
             <tr>
-              <td colspan="7">No selected farmers saved yet.</td>
+              <td colspan="6">No selected farmers saved yet.</td>
             </tr>
           <% end %>
         </tbody>

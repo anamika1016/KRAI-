@@ -2397,10 +2397,10 @@ function initDeferredLayoutPage() {
 	        message = "Female Count 0 se kam nahi ho sakta.";
 	      }
 
-          if (!invalidInput && (!Number.isInteger(maleCountValue) || !Number.isInteger(femaleCountValue) ||
-              maleCountValue + femaleCountValue !== Number(farmerCountInput?.value || 0))) {
+          // Male + Female only feeds Total Farmer Count; it need not match Farmer Count.
+          if (!invalidInput && (!Number.isInteger(maleCountValue) || !Number.isInteger(femaleCountValue))) {
             invalidInput = femaleCountInput;
-            message = "Male Count + Female Count Farmer Count ke equal hona chahiye.";
+            message = "Male Count aur Female Count poore number hone chahiye.";
           }
 
 	      if (!invalidInput) return true;

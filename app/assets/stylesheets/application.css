@@ -8888,3 +8888,11 @@ body {
   .target-mapping-card .module-form-actions { flex-wrap: wrap; }
   .target-mapping-card .module-form-actions :is(a, button) { flex: 1; text-align: center; }
 }
+
+/* Existing uploads shown under a file input while editing a module record. */
+.module-existing-uploads {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 6px;
+}
