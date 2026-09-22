@@ -16,12 +16,20 @@
         <summary>
           <span class="side-icon"><%= section[:icon] %></span>
           <span><%= section[:title] %></span>
+          <% if section[:links].any? { |link| training_sidebar_pending?(link) } %>
+            <span class="sidebar-pending-dot" role="img" aria-label="Training approvals pending" title="Training approvals pending"></span>
+          <% end %>
         </summary>
 
         <div class="side-subnav">
           <% section[:links].each do |link| %>
             <% next if %w[seed-distribution-target seed-distribution-target-list papl360-target papl360-target-list add-farmer-form].include?(link[2].to_s) %>
-            <%= link_to link.first, sidebar_link_path(link), class: "side-sub-link #{'active' if sidebar_link_active?(link)}", data: { turbo_prefetch: false } %>
+            <%= link_to sidebar_link_path(link), class: "side-sub-link #{'active' if sidebar_link_active?(link)}", data: { turbo_prefetch: false } do %>
+              <%= link.first %>
+              <% if training_sidebar_pending?(link) %>
+                <span class="sidebar-pending-dot" role="img" aria-label="Training approvals pending" title="Training approvals pending"></span>
+              <% end %>
+            <% end %>
           <% end %>
         </div>
       </details>

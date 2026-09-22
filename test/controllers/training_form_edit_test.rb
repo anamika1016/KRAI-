@@ -45,6 +45,13 @@ class TrainingFormEditTest < ActionDispatch::IntegrationTest
     end
   end
 
+  test "admin JSON deletion succeeds without redirect" do
+    assert_difference('ModuleRecord.count', -1) do
+      delete module_record_path("training-form", @record), headers: { "Accept" => "application/json" }
+    end
+    assert_response :no_content
+  end
+
   test "selected farmer view has no edit action" do
     get selected_farmers_module_record_path("training-form-list", @record)
     assert_response :success

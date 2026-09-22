@@ -8783,7 +8783,7 @@ body {
 #module-form[data-training-target-form] .training-field textarea { min-height: 110px; }
 #module-form[data-training-target-form] .training-field:has(input[type="file"]) {
   padding: 16px;
-  border: 1px dashed var(--vrp-line);
+  border: 0;
   border-radius: 12px;
   background: var(--vrp-panel-soft);
 }
@@ -11201,4 +11201,24 @@ body {
   .observation-header-actions { width: 100%; }
   .observation-month-filter select { min-width: 100%; }
   .bill-observation-shell .jeevika-observation-table td:nth-child(2) { max-width: none; }
+}
+
+/* Training evidence: keep preview and View control on separate lines. */
+.module-existing-uploads { display: flex; flex-wrap: wrap; gap: 12px; }
+.training-upload-preview { display: flex; flex-direction: column; align-items: flex-start; gap: 8px; }
+.training-upload-thumbnail { display: block; text-decoration: none; border: 0; }
+.training-upload-thumbnail img { display: block; width: 160px; height: 110px; object-fit: contain; border-radius: 6px; }
+.module-existing-uploads .grid-view-link { gap: 6px; text-decoration: none; line-height: 1.3; }
+.module-existing-uploads .grid-view-link svg { flex: 0 0 18px; }
+
+.sidebar-pending-dot {
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  min-width: 8px;
+  border-radius: 50%;
+  background: #dc2626;
+  margin-left: 6px;
+  vertical-align: middle;
+  flex-shrink: 0;
 }

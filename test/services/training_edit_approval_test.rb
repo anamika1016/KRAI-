@@ -1,10 +1,10 @@
 require "test_helper"
 
 class TrainingEditApprovalTest < ActiveSupport::TestCase
-  test "CC edits route to the owning FCO without an approval channel" do
+  test "CC edits route to the owning Agronomist without an approval channel" do
     record = ModuleRecord.create!(module_slug: "training-form", data: { "fco_name" => "FCO-C Sausar", "month" => "August", "training_location" => "Original", "selected_farmer_ids" => ["1"] })
     fco = User.create!(user_name: "sausar_fco", password: "secret", first_name: "Sausar", last_name: "Approver",
-      stakeholder_role: "FCO-C Sausar", office_name: "FCO-C Sausar")
+      stakeholder_role: "Agronomist", office_name: "FCO-C Sausar")
     approver = { "id" => fco.id, "record_type" => "User", "user_type" => "user", "username" => fco.user_name }
     cc = { "id" => "10", "record_type" => "User", "username" => "cc_user", "name" => "CC Display Name" }
     revision = TrainingEditApproval.submit!(record: record, proposed: record.data.merge("training_location" => "Changed", "selected_farmer_ids" => ["1", "2"]), actor: cc)
@@ -24,9 +24,9 @@ class TrainingEditApprovalTest < ActiveSupport::TestCase
 
   test "routing uses original office and account identity, not edited office or matching names" do
     fco = User.create!(user_name: "own_fco", password: "secret", first_name: "Same Name",
-      stakeholder_role: "FCO-C Sausar", office_name: "FCO-C Sausar")
+      stakeholder_role: "Agronomist", office_name: "FCO-C Sausar")
     other = User.create!(user_name: "other_fco", password: "secret", first_name: "Same Name",
-      stakeholder_role: "FCO-C Turekela", office_name: "FCO-C Turekela")
+      stakeholder_role: "Agronomist", office_name: "FCO-C Turekela")
     record = ModuleRecord.create!(module_slug: "training-form", data: { "fco_name" => "FCO-C Sausar" })
     revision = TrainingEditApproval.submit!(record: record, proposed: { "fco_name" => "FCO-C Turekela" },
       actor: { "id" => "99999", "record_type" => "User" })
@@ -37,11 +37,24 @@ class TrainingEditApprovalTest < ActiveSupport::TestCase
 
   test "unassigned old request automatically finds its FCO" do
     fco = User.create!(user_name: "legacy_fco", password: "secret", first_name: "Legacy",
-      role: "FCO-C Sausar", office_name: "FCO-C Sausar")
+      role: "Agronomist", office_name: "FCO-C Sausar")
     revision = ModuleRecord.create!(module_slug: TrainingEditApproval::SLUG, data: {
       "status" => "Pending", "before" => { "fco_name" => "FCO-C Sausar" }, "approvers" => [], "requester" => {} })
     TrainingEditApproval.assign_automatic_approver!(revision)
     assert_equal ["User:#{fco.id}"], revision.reload.data["approver_identities"]
+  end
+
+  test "pending FCO request is reassigned to Agronomist" do
+    user = User.create!(user_name: "replacement_agronomist", password: "secret", first_name: "Shailesh",
+      role: "Agronomist", office_name: "FCO-C Sausar")
+    revision = ModuleRecord.create!(module_slug: TrainingEditApproval::SLUG, data: {
+      "status" => "Pending", "step" => 0, "before" => { "fco_name" => "FCO-C Sausar" },
+      "requester" => {}, "approvers" => ["Hemant Shakkarpude"], "approver_identities" => ["User:99999"] })
+    TrainingEditApproval.assign_automatic_approver!(revision)
+    assert_equal ["Shailesh"], revision.reload.data["approvers"]
+    assert_equal "agronomist", revision.data["approval_role"]
+    refute TrainingEditApproval.can_decide?(revision, { "id" => 99999, "record_type" => "User" })
+    assert TrainingEditApproval.can_decide?(revision, { "id" => user.id, "record_type" => "User" })
   end
 
   test "missing FCO does not create an unrouted request" do

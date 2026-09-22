@@ -4,6 +4,9 @@ class TrainingEditApprovalsController < ApplicationController
       TrainingEditApproval.assign_automatic_approver!(revision)
       TrainingEditApproval.visible?(revision, current_app_user)
     end
+    @revisions.sort_by! do |revision|
+      [TrainingEditApproval.can_decide?(revision, current_app_user) ? 0 : (revision.data["status"] == "Pending" ? 1 : 2), -revision.id]
+    end
   end
 
   def show

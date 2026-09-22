@@ -1772,10 +1772,17 @@ class ModulesController < ApplicationController
     load_module!
     record = ModuleRecord.find(params[:id])
     unless module_record_visible_for_current_context?(record)
+      return render json: { error: "You are not allowed to delete this record." }, status: :forbidden if request.format.json?
       redirect_to module_path(@slug), alert: "You are not allowed to delete this record.", status: :see_other
       return
     end
-    record.destroy
+    unless record.destroy
+      return render json: { error: record.errors.full_messages.to_sentence }, status: :unprocessable_entity if request.format.json?
+      redirect_to module_path(@slug), alert: record.errors.full_messages.to_sentence, status: :see_other
+      return
+    end
+    return head :no_content if request.format.json?
+
     redirect_to module_path(@slug), notice: "#{@module[:title]} deleted successfully.", status: :see_other
   end
 
@@ -9426,7 +9433,10 @@ class ModulesController < ApplicationController
     end
     records = records.select { |record| target_record_visible?(record) } if target_record_source?
     if @slug == "training-form-list"
-      return records.sort_by { |record| [record.created_at || Time.at(0), record.id.to_i] }.reverse
+      pending_ids = helpers.pending_training_approvals.map { |revision| revision.data["record_id"].to_s }.to_set
+      return records.sort_by do |record|
+        [pending_ids.include?(record.id.to_s) ? 0 : 1, -(record.created_at || Time.at(0)).to_f, -record.id.to_i]
+      end
     end
     return records.sort_by { |record| jeevika_bill_list_sort_value(record) } if @slug == "jeevika-jankar-bill-list"
 

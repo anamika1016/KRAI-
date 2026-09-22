@@ -2001,7 +2001,7 @@
 
       <div class="table-shell">
         <% fast_open_list_table = ["training-form-list", "jeevika-jankar-bill-list", "jeevika-jankar-payment-list", "seed-distribution-target-list", "papl360-target-list", "other-target-list"].include?(@slug) %>
-        <table class="module-table user-list-table" id="<%= table_id %>" data-paginated-table data-page-size="15" <% if fast_open_list_table %>data-fast-open-table="true"<% end %>>
+        <table class="module-table user-list-table" id="<%= table_id %>" data-paginated-table data-page-size="15" <% if fast_open_list_table %>data-fast-open-table="true"<% end %> <%= 'data-preserve-order="true"'.html_safe if @slug == "training-form-list" %>>
           <thead>
             <tr>
               <th><input type="checkbox" data-module-select-all></th>

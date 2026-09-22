@@ -1,3 +1,44 @@
+// Delegation keeps Delete available after Turbo navigation and table updates.
+document.addEventListener("click", async (event) => {
+  const button = event.target.closest?.("[data-module-delete-selected]");
+  if (!button || button.dataset.deleting === "true") return;
+  event.preventDefault();
+  const scope = button.closest(".module-card") || document;
+  const paths = [...new Set(Array.from(scope.querySelectorAll("[data-module-row-select]:checked")).flatMap((checkbox) => {
+    let paths = [checkbox.value];
+    try {
+      const grouped = JSON.parse(checkbox.dataset.moduleRowPaths || "[]");
+      if (Array.isArray(grouped) && grouped.length) paths = grouped;
+    } catch (_error) { /* Older rows contain only the edit URL. */ }
+    return paths.map((path) => path.replace(/\/edit$/, ""));
+  }))];
+  if (!paths.length) return window.alert("Please select at least one record");
+  if (!window.confirm("Delete selected record(s)?")) return;
+  button.dataset.deleting = "true";
+  button.disabled = true;
+  const label = button.textContent;
+  button.textContent = "Deleting…";
+  try {
+    for (const path of paths) {
+      const response = await fetch(path, {
+        method: "DELETE",
+        headers: { "X-CSRF-Token": document.querySelector("meta[name='csrf-token']")?.content || "", "Accept": "application/json" }
+      });
+      if (!response.ok || response.redirected) {
+        const result = await response.json().catch(() => ({}));
+        throw new Error(result.error || "Delete failed. Please check your login and try again.");
+      }
+    }
+    window.location.reload();
+  } catch (error) {
+    window.alert(error.message || "Delete failed. Please try again.");
+  } finally {
+    delete button.dataset.deleting;
+    button.disabled = false;
+    button.textContent = label;
+  }
+});
+
 const closeOpenChipMultiControls = (event) => {
   const eventPath = typeof event.composedPath === "function" ? event.composedPath() : [];
   document.querySelectorAll(".chip-multi-control.open").forEach((control) => {
@@ -1083,17 +1124,6 @@ function initDeferredLayoutPage() {
       }
 
       window.location.href = selected[0].value;
-    });
-  }
-
-  const moduleDeleteButton = document.querySelector("[data-module-delete-selected]");
-  if (moduleDeleteButton) {
-    moduleDeleteButton.addEventListener("click", () => {
-      const paths = Array.from(document.querySelectorAll("[data-module-row-select]:checked"))
-        .flatMap((checkbox) => moduleRowPaths(checkbox))
-        .map((path) => path.replace(/\/edit$/, ""));
-
-      deleteSelected(paths, "Delete selected record(s)?");
     });
   }
 
@@ -2684,11 +2714,15 @@ function initDeferredLayoutPage() {
 	    const initialVillageOptions = mappedVillageOptions();
 	    fillUnlessServerAlreadyHas(villageSelect, initialVillageOptions, "Select Village Name");
 	    const initialMainOptions = mappedMainActivityOptions();
-	    if (mainActivitySelect) fillTrainingSelect(mainActivitySelect, initialMainOptions, "Select Main Activity");
+	    if (mainActivitySelect && !(initialMainOptions.length === 0 && hasServerOptions(mainActivitySelect))) {
+	      fillTrainingSelect(mainActivitySelect, initialMainOptions, "Select Main Activity");
+	    }
 	    if (!selectedMainActivityValues().length) autoSelectMappedMainActivities();
 	    else renderMainActivityChips();
 	    const initialSubOptions = mappedSubActivityOptions();
-	    if (subActivitySelect) fillTrainingSelect(subActivitySelect, initialSubOptions, "Select Sub Activity");
+	    if (subActivitySelect && !(initialSubOptions.length === 0 && hasServerOptions(subActivitySelect))) {
+	      fillTrainingSelect(subActivitySelect, initialSubOptions, "Select Sub Activity");
+	    }
 	    if (selectedSubActivityValues().length) renderSubActivityChips(); else autoSelectMappedSubActivities();
 	    initializingTraining = false;
 	    renderTrainingFarmers();

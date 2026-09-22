@@ -217,9 +217,17 @@ module ApplicationHelper
     end
   end
 
+  def pending_training_approvals
+    @pending_training_approvals ||= TrainingEditApproval.pending_for(current_app_user)
+  end
+
+  def training_sidebar_pending?(link)
+    ["training-form-list", "training_edit_approvals_path"].include?(link[2].to_s) && pending_training_approvals.any?
+  end
+
   def training_approval_role?
     TrainingStaffScope::ROLE_KEYS.any? do |key|
-      current_app_user&.dig(key).to_s.match?(/cluster|fco\s*-?\s*c|\Afco\z|source/i)
+      current_app_user&.dig(key).to_s.match?(/cluster|agronom|agricultural specialist/i)
     end
   end
 

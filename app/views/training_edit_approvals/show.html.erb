@@ -2,7 +2,7 @@
   <div class="dashboard-topbar"><h1>Training Form Edit Request #<%= @revision.id %></h1><%= link_to "Back to Approval List", training_edit_approvals_path %></div>
   <section class="module-card">
     <p>Status: <%= @revision.data["status"] %></p>
-    <p>FCO-C approver: <%= Array(@revision.data["approvers"]).join(" → ").presence || "FCO-C assignment unavailable" %></p>
+    <p>Agronomist approver: <%= Array(@revision.data["approvers"]).join(" → ").presence || "Agronomist assignment unavailable" %></p>
     <table class="module-table"><thead><tr><th>Field</th><th>Current / Original</th><th>Requested Change</th></tr></thead><tbody>
       <% (@revision.data["before"].keys | @revision.data["proposed"].keys).each do |key| %>
         <% before = @revision.data["before"][key]; proposed = @revision.data["proposed"][key] %>
@@ -21,8 +21,8 @@
         <%= form.button "Reject", name: "decision", value: "reject", class: "list-btn delete" %>
       <% end %>
     <% elsif admin_access_user? && @revision.data["status"] == "Pending" && Array(@revision.data["approvers"]).empty? %>
-      <p>Assign one active FCO-C account to this training’s FCO office, then retry routing.</p>
-      <%= button_to "Route to Responsible FCO-C", training_edit_approval_path(@revision), method: :patch, params: { decision: "route" } %>
+      <p>Assign one active Agronomist account to this training’s FCO office, then retry routing.</p>
+      <%= button_to "Route to Responsible Agronomist", training_edit_approval_path(@revision), method: :patch, params: { decision: "route" } %>
     <% end %>
     <% Array(@revision.data["history"]).each do |entry| %><p><%= entry["at"] %> · <%= entry["action"] %> · <%= entry["actor"] %> · <%= entry["remarks"] %></p><% end %>
   </section>

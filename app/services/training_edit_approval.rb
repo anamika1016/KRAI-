@@ -1,6 +1,6 @@
 require "base64"
 
-# Revisions remain separate from live training data until the responsible FCO-C approves.
+# Revisions remain separate from live training data until the responsible Agronomist approves.
 class TrainingEditApproval
   SLUG = "training-form-edit-request".freeze
   IMAGE_KEYS = %w[training_register_upload training_photo_upload_with_geo_tag].freeze
@@ -23,23 +23,24 @@ class TrainingEditApproval
 
   def self.automatic_routing(data, actor)
     office = TrainingStaffScope.office_for(data, actor)
-    candidates = TrainingStaffScope.staff(office, :fcoc)
+    candidates = TrainingStaffScope.staff(office, :agronomist)
       .reject { |candidate| candidate["user_name"].blank? || identity(candidate) == identity(actor) }
       .uniq { |candidate| username(candidate["user_name"]) }
     return {} unless candidates.one?
 
     approver = candidates.first
     { "approvers" => [TrainingStaffScope.name(approver)],
-      "approver_identities" => [identity(approver)], "approval_office" => office }
+      "approver_identities" => [identity(approver)], "approval_office" => office, "approval_role" => "agronomist" }
   end
 
   def self.assign_automatic_approver!(revision)
-    return revision unless revision.data["status"] == "Pending" && Array(revision.data["approvers"]).empty?
+    return revision unless revision.data["status"] == "Pending" && revision.data["approval_role"] != "agronomist"
 
     revision.with_lock do
       data = revision.data.deep_dup
       routing = automatic_routing(data["before"] || {}, data["requester"] || {})
-      revision.update!(data: data.merge(routing)) if routing.present?
+      routing = { "approvers" => [], "approver_identities" => [], "approval_role" => nil } if routing.empty?
+      revision.update!(data: data.merge(routing).merge("step" => 0))
     end
     revision.reload
   end
@@ -49,7 +50,7 @@ class TrainingEditApproval
       pending = ModuleRecord.where(module_slug: SLUG).where("data::jsonb ->> 'record_id' = ? AND data::jsonb ->> 'status' = 'Pending'", record.id.to_s).exists?
       raise InvalidTransition, "This training form already has a pending edit request." if pending
       routing = automatic_routing(record.data, actor)
-      raise InvalidTransition, "A single active FCO-C account must be assigned to this training's FCO office before submitting the edit." if routing.empty?
+      raise InvalidTransition, "A single active Agronomist account must be assigned to this training's FCO office before submitting the edit." if routing.empty?
       IMAGE_KEYS.each { |key| proposed[key] = (Array(record.data[key]) + Array(proposed[key])).compact_blank.uniq }
       # Preserve creator/ownership fields; CC edits cannot reassign records.
       record.data.each { |key, value| proposed[key] = value if key.start_with?("created_by") || %w[vrp_id select_vrp jeevika_jankar_id].include?(key) }
@@ -69,6 +70,15 @@ class TrainingEditApproval
       root = Rails.root.join("public/uploads/module_records")
       next unless root.directory? && path.file? && path.realpath.to_s.start_with?("#{root.realpath}/")
       { "url" => url, "filename" => path.basename.to_s, "base64" => Base64.strict_encode64(path.binread) }
+    end
+  end
+
+  def self.pending_for(actor)
+    return [] if actor.blank?
+
+    ModuleRecord.where(module_slug: SLUG).where("data::jsonb ->> 'status' = 'Pending'").order(id: :desc).select do |revision|
+      assign_automatic_approver!(revision)
+      can_decide?(revision, actor)
     end
   end
 
@@ -99,17 +109,18 @@ class TrainingEditApproval
     return "Rejected" if status == "Rejected"
 
     approver = Array(revision.data["approvers"])[revision.data["step"].to_i]
-    approver.present? ? "Pending at #{approver}" : "Pending - FCO-C assignment unavailable"
+    approver.present? ? "Pending at #{approver}" : "Pending - Agronomist assignment unavailable"
   end
 
   def self.decide!(revision:, actor:, decision:, remarks:)
+    assign_automatic_approver!(revision)
     raise InvalidTransition, "Invalid decision." unless %w[approve reject route].include?(decision)
     revision.with_lock do
       data = revision.data.deep_dup
       if decision == "route"
         raise InvalidTransition, "Only admin can route an unassigned pending request." unless actor["user_type"].to_s.casecmp("admin").zero? && data["status"] == "Pending" && Array(data["approvers"]).empty?
         routing = automatic_routing(data["before"] || {}, data["requester"] || {})
-        raise InvalidTransition, "Assign a single active FCO-C account to the training's FCO office first." if routing.empty?
+        raise InvalidTransition, "Assign a single active Agronomist account to the training's FCO office first." if routing.empty?
         data.merge!(routing)
       else
         raise InvalidTransition, "This request is not awaiting your approval." unless can_decide?(revision, actor)
