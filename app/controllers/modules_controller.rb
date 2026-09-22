@@ -13656,8 +13656,10 @@ class ModulesController < ApplicationController
     targets = targets.reject { |target| known_ids.include?(target.id.to_s) }
 
     mappings = targets.map { |target| record_training_target_mapping(target) }
-    # Nothing resolvable: still surface the saved values so the selects are not blank.
-    mappings = [record_training_target_mapping(nil)] if mappings.empty? && saved_ids.empty? && known_ids.exclude?("")
+    # Nothing resolvable — no saved id and no value match, or the saved target row
+    # is gone. Surface the record's own values so the selects are never blank.
+    already_listed = saved_ids.any? && saved_ids.all? { |id| known_ids.include?(id) }
+    mappings = [record_training_target_mapping(nil)] if mappings.empty? && !already_listed
 
     mappings.reject { |mapping| mapping[:ics].blank? && mapping[:village].blank? }
   end
