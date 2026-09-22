@@ -13609,9 +13609,13 @@ class ModulesController < ApplicationController
         activity_setting.present? && training_main_activity_type?(activity_setting[:main_activity_type])
       end
 
+    # farmer_ids is deliberately omitted: this list is serialised into a single
+    # data- attribute, and embedding every target's AFL list made that attribute
+    # multi-megabyte on large tenants, where the browser's JSON.parse gives up and
+    # the ICS / Gram selects silently render empty. The form loads farmers on
+    # demand from data-training-farmers-url instead.
     targets
       .map do |target|
-        farmer_ids = Array(target.afl_ids).map(&:to_s).reject(&:blank?).uniq
         {
           target_mapping_id: target.id.to_s,
           vrp_id: target.vrp_id.to_s,
@@ -13624,7 +13628,6 @@ class ModulesController < ApplicationController
           main_activity: target.main_activity_name.to_s.strip,
           sub_activity: target.activity_name.to_s.strip,
           new_farmer_target: new_farmer_target_mapping?(target),
-          farmer_ids: farmer_ids,
           completed_farmer_ids: [],
           farmers: []
         }
@@ -13695,7 +13698,6 @@ class ModulesController < ApplicationController
       main_activity: (target&.main_activity_name.presence || @record.data["main_activity"]).to_s.strip,
       sub_activity: (target&.activity_name.presence || @record.data["sub_activity"]).to_s.strip,
       new_farmer_target: target.present? ? new_farmer_target_mapping?(target) : false,
-      farmer_ids: Array(target&.afl_ids).map(&:to_s).reject(&:blank?).uniq,
       completed_farmer_ids: [],
       farmers: []
     }
