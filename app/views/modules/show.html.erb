@@ -2056,14 +2056,16 @@
                   </td>
                   <% if @slug == "training-form-list" %>
                     <td>
+                      <% approval_status = training_edit_revision&.data&.[]("status").to_s.downcase %>
+                      <span class="training-approval-badge training-approval-badge--<%= %w[pending approved rejected].include?(approval_status) ? approval_status : "none" %>">
+                        <%= training_edit_revision ? TrainingEditApproval.status_label(training_edit_revision) : "No pending edit" %>
+                      </span>
                       <% if training_edit_revision && TrainingEditApproval.can_decide?(training_edit_revision, current_app_user) %>
                         <%= form_with url: training_edit_approval_path(training_edit_revision), method: :patch, class: "table-actions" do |form| %>
                           <%= form.hidden_field :return_to, value: "training_form_list" %>
                           <%= form.select :decision, [["Approve", "approve"], ["Reject", "reject"]] %>
                           <%= form.submit "Update Status", class: "table-action" %>
                         <% end %>
-                      <% else %>
-                        <%= training_edit_revision ? TrainingEditApproval.status_label(training_edit_revision) : "No pending edit" %>
                       <% end %>
                     </td>
                   <% end %>

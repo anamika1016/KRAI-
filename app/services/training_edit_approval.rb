@@ -47,13 +47,28 @@ class TrainingEditApproval
 
   def self.submit!(record:, proposed:, actor:)
     record.with_lock do
-      pending = ModuleRecord.where(module_slug: SLUG).where("data::jsonb ->> 'record_id' = ? AND data::jsonb ->> 'status' = 'Pending'", record.id.to_s).exists?
-      raise InvalidTransition, "This training form already has a pending edit request." if pending
+      pending = ModuleRecord.where(module_slug: SLUG).where("data::jsonb ->> 'record_id' = ? AND data::jsonb ->> 'status' = 'Pending'", record.id.to_s).first
+      if pending && pending.data["requester_identity"] != identity(actor)
+        raise InvalidTransition, "Another user's edit is pending approval for this training form."
+      end
       routing = automatic_routing(record.data, actor)
       raise InvalidTransition, "A single active Agronomist account must be assigned to this training's FCO office before submitting the edit." if routing.empty?
       IMAGE_KEYS.each { |key| proposed[key] = (Array(record.data[key]) + Array(proposed[key])).compact_blank.uniq }
       # Preserve creator/ownership fields; CC edits cannot reassign records.
       record.data.each { |key, value| proposed[key] = value if key.start_with?("created_by") || %w[vrp_id select_vrp jeevika_jankar_id].include?(key) }
+      if pending
+        pending.with_lock do
+          raise InvalidTransition, "This request was already decided. Reload the training form before editing." unless pending.data["status"] == "Pending"
+          raise InvalidTransition, "The original record changed. Reload before submitting." unless pending.data["before"] == record.data
+          previous = pending.data.deep_dup
+          history = Array(previous["history"]) + [{ "action" => "resubmitted", "actor" => identity(actor), "at" => Time.current.iso8601 }]
+          pending.update!(data: previous.merge(routing).merge(
+            "proposed" => proposed, "step" => 0, "history" => history,
+            "evidence" => (Array(previous["evidence"]) + evidence(record.data, proposed)).uniq
+          ))
+        end
+        return pending
+      end
       ModuleRecord.create!(module_slug: SLUG, data: {
         "record_id" => record.id, "before" => record.data.deep_dup, "proposed" => proposed,
         "requester" => actor.slice("id", "record_type", "username", "user_name", "name", "stakeholder", *TrainingStaffScope::OFFICE_KEYS),
@@ -61,6 +76,16 @@ class TrainingEditApproval
         "history" => [], "evidence" => evidence(record.data, proposed)
       }.merge(routing))
     end
+  end
+
+  def self.edit_data(record, actor)
+    return record.data unless record.module_slug == "training-form"
+
+    revision = ModuleRecord.where(module_slug: SLUG)
+      .where("data::jsonb ->> 'record_id' = ? AND data::jsonb ->> 'status' = 'Pending'", record.id.to_s).first
+    return record.data unless revision && revision.data["requester_identity"] == identity(actor)
+
+    revision.data["proposed"].deep_dup
   end
 
   def self.evidence(*snapshots)
@@ -78,7 +103,7 @@ class TrainingEditApproval
 
     ModuleRecord.where(module_slug: SLUG).where("data::jsonb ->> 'status' = 'Pending'").order(id: :desc).select do |revision|
       assign_automatic_approver!(revision)
-      can_decide?(revision, actor)
+      visible?(revision, actor)
     end
   end
 

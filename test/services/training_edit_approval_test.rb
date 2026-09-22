@@ -57,6 +57,32 @@ class TrainingEditApprovalTest < ActiveSupport::TestCase
     assert TrainingEditApproval.can_decide?(revision, { "id" => user.id, "record_type" => "User" })
   end
 
+  test "requester can revise pending changes without publishing or duplicating the request" do
+    User.create!(user_name: "pending_editor_agronomist", password: "secret", first_name: "Approver",
+      role: "Agronomist", office_name: "FCO-C Sausar")
+    actor = { "id" => "99991", "record_type" => "User" }
+    record = ModuleRecord.create!(module_slug: "training-form", data: {
+      "fco_name" => "FCO-C Sausar", "training_location" => "Original" })
+    revision = TrainingEditApproval.submit!(record: record, proposed: record.data.merge("training_location" => "First edit"), actor: actor)
+    assert_equal "First edit", TrainingEditApproval.edit_data(record, actor)["training_location"]
+    assert_includes TrainingEditApproval.pending_for(actor).map(&:id), revision.id
+    assert_no_difference('ModuleRecord.where(module_slug: TrainingEditApproval::SLUG).count') do
+      updated = TrainingEditApproval.submit!(record: record, proposed: record.data.merge("training_location" => "Second edit"), actor: actor)
+      assert_equal revision.id, updated.id
+    end
+    assert_equal "Original", record.reload.data["training_location"]
+    assert_equal "Second edit", revision.reload.data["proposed"]["training_location"]
+    assert_equal "Pending", revision.data["status"]
+    assert_equal "resubmitted", revision.data["history"].last["action"]
+    other = { "id" => "99992", "record_type" => "User" }
+    assert_equal "Original", TrainingEditApproval.edit_data(record, other)["training_location"]
+    assert_raises(TrainingEditApproval::InvalidTransition) do
+      TrainingEditApproval.submit!(record: record, proposed: record.data, actor: other)
+    end
+    revision.update!(data: revision.data.merge("status" => "Approved"))
+    assert_empty TrainingEditApproval.pending_for(actor)
+  end
+
   test "missing FCO does not create an unrouted request" do
     record = ModuleRecord.create!(module_slug: "training-form", data: { "fco_name" => "Unassigned Office" })
     assert_no_difference('ModuleRecord.where(module_slug: TrainingEditApproval::SLUG).count') do

@@ -1595,6 +1595,7 @@ class ModulesController < ApplicationController
       redirect_to module_path(module_redirect_slug), alert: "You are not allowed to view this record."
       return
     end
+    @record.data = TrainingEditApproval.edit_data(@record, current_app_user) if record_source_slug == "training-form"
     @records = module_records
     prepare_approval_channel_form(@record) if record_source_slug == "approval-master"
     prepare_vrp_bill_data if @slug == "vrp-bill-add"
@@ -1718,7 +1719,7 @@ class ModulesController < ApplicationController
     # Dynamic farmer controls may omit a saved farmer after target mappings
     # change. Build an edit from the saved payload so details are retained.
     next_data = if record_source_slug == "training-form"
-      normalized_module_data(base_data: record.data)
+      normalized_module_data(base_data: TrainingEditApproval.edit_data(record, current_app_user))
     else
       record.data.merge(normalized_module_data)
     end
