@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2026_09_12_100000) do
+ActiveRecord::Schema[8.1].define(version: 2026_09_19_102909) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "pg_catalog.plpgsql"
 
@@ -86,8 +86,13 @@ ActiveRecord::Schema[8.1].define(version: 2026_09_12_100000) do
     t.string "village_name"
     t.index "((id)::text)", name: "index_afls_on_text_id"
     t.index "lower(btrim((COALESCE(fco_id, ''::character varying))::text))", name: "index_afls_on_normalized_coalesced_fco_id"
+    t.index "lower(btrim((fco)::text))", name: "index_afls_on_normalized_fco"
     t.index "lower(btrim((fco)::text))", name: "index_afls_on_normalized_fco_name"
     t.index "lower(btrim((fco_id)::text))", name: "index_afls_on_normalized_fco_id"
+    t.index "lower(btrim((ics_id)::text))", name: "index_afls_on_normalized_ics_id"
+    t.index "lower(btrim((ics_name)::text))", name: "index_afls_on_normalized_ics_name"
+    t.index "lower(btrim((village_id)::text))", name: "index_afls_on_normalized_village_id"
+    t.index "lower(btrim((village_name)::text))", name: "index_afls_on_normalized_village_name"
     t.index ["created_at"], name: "index_afls_on_created_at"
     t.index ["farm_id"], name: "index_afls_on_farm_id"
     t.index ["farmer_name"], name: "index_afls_on_farmer_name"
@@ -254,24 +259,102 @@ ActiveRecord::Schema[8.1].define(version: 2026_09_12_100000) do
     t.index ["farmer_name"], name: "index_ics_exit_declarations_on_farmer_name"
   end
 
+  create_table "jj_quiz_answers", force: :cascade do |t|
+    t.boolean "correct", default: false, null: false
+    t.string "correct_option", null: false
+    t.datetime "created_at", null: false
+    t.bigint "jj_quiz_attempt_id", null: false
+    t.bigint "jj_quiz_question_id", null: false
+    t.decimal "marks_awarded", precision: 8, scale: 2, default: "0.0", null: false
+    t.jsonb "question_snapshot", default: {}, null: false
+    t.string "selected_option"
+    t.datetime "updated_at", null: false
+    t.index ["jj_quiz_attempt_id", "jj_quiz_question_id"], name: "idx_jj_answers_on_attempt_and_question", unique: true
+    t.index ["jj_quiz_attempt_id"], name: "index_jj_quiz_answers_on_jj_quiz_attempt_id"
+    t.index ["jj_quiz_question_id"], name: "index_jj_quiz_answers_on_jj_quiz_question_id"
+  end
+
+  create_table "jj_quiz_attempts", force: :cascade do |t|
+    t.string "access_token", null: false
+    t.datetime "created_at", null: false
+    t.datetime "expires_at"
+    t.bigint "jj_quiz_id", null: false
+    t.string "login_ip"
+    t.boolean "passed", default: false, null: false
+    t.decimal "percentage", precision: 7, scale: 2, default: "0.0", null: false
+    t.decimal "score", precision: 10, scale: 2, default: "0.0", null: false
+    t.datetime "started_at"
+    t.string "status", default: "qr_issued", null: false
+    t.datetime "submitted_at"
+    t.decimal "total_marks", precision: 10, scale: 2, default: "0.0", null: false
+    t.datetime "updated_at", null: false
+    t.string "user_agent"
+    t.bigint "vrp_id", null: false
+    t.index ["access_token"], name: "index_jj_quiz_attempts_on_access_token", unique: true
+    t.index ["jj_quiz_id", "vrp_id"], name: "index_jj_quiz_attempts_on_jj_quiz_id_and_vrp_id"
+    t.index ["jj_quiz_id"], name: "index_jj_quiz_attempts_on_jj_quiz_id"
+    t.index ["status"], name: "index_jj_quiz_attempts_on_status"
+    t.index ["vrp_id"], name: "index_jj_quiz_attempts_on_vrp_id"
+  end
+
+  create_table "jj_quiz_questions", force: :cascade do |t|
+    t.string "correct_option", null: false
+    t.datetime "created_at", null: false
+    t.bigint "jj_quiz_id", null: false
+    t.decimal "marks", precision: 8, scale: 2, default: "1.0", null: false
+    t.string "option_a", null: false
+    t.string "option_b", null: false
+    t.string "option_c"
+    t.string "option_d"
+    t.integer "position", default: 1, null: false
+    t.text "question_text", null: false
+    t.string "status", default: "active", null: false
+    t.datetime "updated_at", null: false
+    t.index ["jj_quiz_id", "position"], name: "index_jj_quiz_questions_on_jj_quiz_id_and_position"
+    t.index ["jj_quiz_id"], name: "index_jj_quiz_questions_on_jj_quiz_id"
+    t.index ["status"], name: "index_jj_quiz_questions_on_status"
+  end
+
+  create_table "jj_quizzes", force: :cascade do |t|
+    t.boolean "allow_retake", default: false, null: false
+    t.datetime "created_at", null: false
+    t.bigint "created_by_id"
+    t.string "created_by_type"
+    t.text "description"
+    t.integer "duration_minutes", default: 30, null: false
+    t.datetime "ends_at"
+    t.decimal "passing_marks", precision: 8, scale: 2
+    t.datetime "starts_at"
+    t.string "status", default: "draft", null: false
+    t.string "title", null: false
+    t.datetime "updated_at", null: false
+    t.index ["created_by_type", "created_by_id"], name: "index_jj_quizzes_on_created_by_type_and_created_by_id"
+    t.index ["status"], name: "index_jj_quizzes_on_status"
+  end
+
   create_table "module_records", force: :cascade do |t|
     t.datetime "created_at", null: false
     t.text "data", null: false
     t.string "module_slug", null: false
     t.datetime "updated_at", null: false
     t.index "(((data)::jsonb -> 'selected_farmer_ids'::text))", name: "index_training_forms_on_selected_farmer_ids", where: "((module_slug)::text = 'training-form'::text)", using: :gin
+    t.index "(((data)::jsonb -> 'selected_farmer_ids'::text))", name: "index_training_forms_on_selected_farmer_ids_gin", where: "((module_slug)::text = 'training-form'::text)", using: :gin
+    t.index "(((data)::jsonb -> 'target_mapping_ids'::text))", name: "index_training_forms_on_target_mapping_ids_gin", where: "((module_slug)::text = 'training-form'::text)", using: :gin
     t.index "(((data)::jsonb ->> 'bill_id'::text))", name: "index_module_records_bill_history_on_bill_id", where: "((module_slug)::text = 'jeevika-jankar-bill-approval-history'::text)"
+    t.index "(((data)::jsonb ->> 'jeevika_jankar_id'::text))", name: "index_training_forms_on_jeevika_jankar_id", where: "((module_slug)::text = 'training-form'::text)"
     t.index "(((data)::jsonb ->> 'mobile_no'::text))", name: "index_module_records_new_users_on_mobile_no", where: "((module_slug)::text = 'new-user'::text)"
     t.index "(((data)::jsonb ->> 'select_vrp'::text))", name: "index_module_records_bills_on_select_vrp", where: "((module_slug)::text = 'jeevika-jankar-bill-process'::text)"
-    t.index "(((data)::jsonb ->> 'target_mapping_id'::text))", name: "index_module_records_other_targets_on_target_mapping_id", where: "((module_slug)::text = ANY ((ARRAY['seed-distribution-target'::character varying, 'papl360-target'::character varying])::text[]))"
+    t.index "(((data)::jsonb ->> 'target_mapping_id'::text))", name: "index_module_records_other_targets_on_target_mapping_id", where: "((module_slug)::text = ANY (ARRAY[('seed-distribution-target'::character varying)::text, ('papl360-target'::character varying)::text]))"
+    t.index "(((data)::jsonb ->> 'target_mapping_id'::text))", name: "index_training_forms_on_target_mapping_id", where: "((module_slug)::text = 'training-form'::text)"
     t.index "(((data)::jsonb ->> 'vrp_id'::text))", name: "index_module_records_vrp_history_on_vrp_id", where: "((module_slug)::text = 'vrp-approval-history'::text)"
+    t.index "(((data)::jsonb ->> 'vrp_id'::text))", name: "index_training_forms_on_vrp_id", where: "((module_slug)::text = 'training-form'::text)"
     t.index "lower(((data)::jsonb ->> 'email'::text))", name: "index_module_records_new_users_on_lower_email", where: "((module_slug)::text = 'new-user'::text)"
     t.index "lower(((data)::jsonb ->> 'user_name'::text))", name: "index_module_records_new_users_on_lower_user_name", where: "((module_slug)::text = 'new-user'::text)"
-    t.index "lower(btrim(((data)::jsonb ->> 'month'::text)))", name: "index_other_targets_on_normalized_month", where: "((module_slug)::text = ANY ((ARRAY['seed-distribution-target'::character varying, 'papl360-target'::character varying])::text[]))"
+    t.index "lower(btrim(((data)::jsonb ->> 'month'::text)))", name: "index_other_targets_on_normalized_month", where: "((module_slug)::text = ANY (ARRAY[('seed-distribution-target'::character varying)::text, ('papl360-target'::character varying)::text]))"
     t.index "lower(btrim(((data)::jsonb ->> 'month'::text)))", name: "index_training_forms_on_normalized_month", where: "((module_slug)::text = 'training-form'::text)"
     t.index "lower(btrim(((data)::jsonb ->> 'record_state'::text)))", name: "index_module_records_bills_on_normalized_record_state", where: "((module_slug)::text = 'jeevika-jankar-bill-process'::text)"
     t.index "lower(btrim(((data)::jsonb ->> 'status'::text)))", name: "index_module_records_bills_on_normalized_status", where: "((module_slug)::text = 'jeevika-jankar-bill-process'::text)"
-    t.index "lower(btrim(((data)::jsonb ->> 'status'::text)))", name: "index_module_records_on_slug_normalized_status", where: "((module_slug)::text = ANY ((ARRAY['access-control'::character varying, 'new-user'::character varying, 'training-form'::character varying, 'seed-distribution-target'::character varying, 'papl360-target'::character varying])::text[]))"
+    t.index "lower(btrim(((data)::jsonb ->> 'status'::text)))", name: "index_module_records_on_slug_normalized_status", where: "((module_slug)::text = ANY (ARRAY[('access-control'::character varying)::text, ('new-user'::character varying)::text, ('training-form'::character varying)::text, ('seed-distribution-target'::character varying)::text, ('papl360-target'::character varying)::text, ('other-target'::character varying)::text]))"
     t.index "lower(btrim(COALESCE(((data)::jsonb ->> 'main_activity'::text), ''::text)))", name: "index_training_forms_on_normalized_main_activity", where: "((module_slug)::text = 'training-form'::text)"
     t.index ["module_slug", "created_at"], name: "index_module_records_on_slug_and_created_at", order: { created_at: :desc }
     t.index ["module_slug", "updated_at", "id"], name: "index_module_records_on_slug_updated_at_id", order: { updated_at: :desc, id: :desc }
@@ -598,6 +681,11 @@ ActiveRecord::Schema[8.1].define(version: 2026_09_12_100000) do
   add_foreign_key "farm_crop_area_details", "farmer_farm_information"
   add_foreign_key "farmer_farm_map_uploads", "farmer_farm_information"
   add_foreign_key "ics_exit_declarations", "farmer_farm_information"
+  add_foreign_key "jj_quiz_answers", "jj_quiz_attempts"
+  add_foreign_key "jj_quiz_answers", "jj_quiz_questions"
+  add_foreign_key "jj_quiz_attempts", "jj_quizzes"
+  add_foreign_key "jj_quiz_attempts", "vrps"
+  add_foreign_key "jj_quiz_questions", "jj_quizzes"
   add_foreign_key "on_farm_input_records", "farmer_farm_information"
   add_foreign_key "post_harvest_handling_storage_records", "farmer_farm_information"
   add_foreign_key "production_harvest_details", "farmer_farm_information"

@@ -1,0 +1,70 @@
+<% content_for :title, "JJ Exam Setup" %>
+
+<section class="module-page jj-admin-page">
+  <div class="module-hero">
+    <div>
+      <p class="vrp-eyebrow">Jeevika Jankar Exam</p>
+      <h1>Exam Setup</h1>
+      <p>Create timed quizzes, import questions, share candidate links, and review JJ-wise results.</p>
+    </div>
+    <div class="module-hero-actions">
+      <%= link_to "New Exam", new_jj_quiz_path, class: "list-btn upload" %>
+    </div>
+  </div>
+
+  <section class="module-card">
+    <div class="vrp-list-toolbar compact">
+      <%= link_to "Download Question Format", question_template_jj_quizzes_path, class: "list-btn export" %>
+      <%= link_to "Create Exam", new_jj_quiz_path, class: "list-btn upload" %>
+    </div>
+
+    <div class="table-shell">
+      <table class="module-table jj-quiz-table" data-paginated-table data-page-size="12">
+        <thead>
+          <tr>
+            <th>Exam</th>
+            <th>Status</th>
+            <th>Duration</th>
+            <th>Questions</th>
+            <th>Attempts</th>
+            <th>Active Window</th>
+            <th>Exam State</th>
+            <th>Actions</th>
+          </tr>
+        </thead>
+        <tbody>
+          <% if @quizzes.any? %>
+            <% @quizzes.each do |quiz| %>
+              <tr>
+                <td>
+                  <strong><%= quiz.title %></strong>
+                  <small><%= truncate(quiz.description.to_s, length: 80).presence || "-" %></small>
+                </td>
+                <td><span class="status-pill <%= quiz.published? ? "active" : "inactive" %>"><%= quiz.status.titleize %></span></td>
+                <td><%= quiz.duration_minutes %> min</td>
+                <td><%= quiz.questions.size %></td>
+                <td><%= quiz.attempts.size %></td>
+                <td>
+                  <%= quiz.starts_at_label %>
+                  <br>
+                  <small>to <%= quiz.ends_at_label %></small>
+                </td>
+                <td><span class="jj-window-pill <%= quiz.exam_state_css_class %>"><%= quiz.exam_state_label %></span></td>
+                <td class="jj-action-cell">
+                  <%= link_to "Open", jj_quiz_path(quiz), class: "table-action" %>
+                  <%= link_to "Results", results_jj_quiz_path(quiz), class: "table-action export" %>
+                  <%= button_to "Delete", jj_quiz_path(quiz), method: :delete, class: "table-action danger", form: { data: { turbo_confirm: "Delete this JJ exam? Existing attempts will block deletion." } } %>
+                </td>
+              </tr>
+            <% end %>
+          <% else %>
+            <tr>
+              <td colspan="8">No JJ exam created yet.</td>
+            </tr>
+          <% end %>
+        </tbody>
+      </table>
+    </div>
+    <div class="table-pagination" data-pagination-for="jj_quiz_table"></div>
+  </section>
+</section>

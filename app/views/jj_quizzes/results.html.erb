@@ -1,0 +1,178 @@
+<% content_for :title, "JJ Exam Results" %>
+<%
+  result_attempts = @attempts.to_a
+  submitted_attempts = result_attempts.select(&:submitted?)
+  passed_attempts_count = submitted_attempts.count(&:passed?)
+  review_attempts_count = submitted_attempts.size - passed_attempts_count
+  average_percentage = submitted_attempts.any? ? submitted_attempts.sum { |attempt| attempt.percentage.to_f } / submitted_attempts.size : 0
+%>
+
+<section class="module-page jj-admin-page">
+  <div class="module-hero">
+    <div>
+      <p class="vrp-eyebrow">Jeevika Jankar Exam</p>
+      <h1>Results</h1>
+      <p><%= @quiz.title %></p>
+    </div>
+    <div class="module-hero-actions">
+      <%= link_to "Back to Exam", jj_quiz_path(@quiz), class: "btn btn-secondary" %>
+      <%= link_to "Export Results", export_results_jj_quiz_path(@quiz), class: "list-btn export" %>
+      <%= link_to "Download Answer Sheet", export_answers_jj_quiz_path(@quiz), class: "list-btn upload" %>
+    </div>
+  </div>
+
+  <section class="jj-results-summary-grid" aria-label="Results summary">
+    <article class="jj-results-summary-card">
+      <span>Total Attempts</span>
+      <strong><%= result_attempts.size %></strong>
+    </article>
+    <article class="jj-results-summary-card">
+      <span>Submitted</span>
+      <strong><%= submitted_attempts.size %></strong>
+    </article>
+    <article class="jj-results-summary-card">
+      <span>Passed</span>
+      <strong><%= passed_attempts_count %></strong>
+    </article>
+    <article class="jj-results-summary-card">
+      <span>Needs Review</span>
+      <strong><%= review_attempts_count %></strong>
+    </article>
+    <article class="jj-results-summary-card">
+      <span>Average Score</span>
+      <strong><%= format("%.2f%%", average_percentage) %></strong>
+    </article>
+  </section>
+
+  <section class="module-card jj-results-card">
+    <div class="jj-results-heading">
+      <div>
+        <h2>Candidate Attempts</h2>
+        <p>Review candidate status, score, selected answers, and timing in one place.</p>
+      </div>
+    </div>
+
+    <div class="table-shell jj-results-table-shell">
+      <table class="module-table jj-results-table" id="jj_results_table" data-paginated-table data-page-size="20">
+        <thead>
+          <tr>
+            <th>Candidate</th>
+            <th>Contact</th>
+            <th>Status & Result</th>
+            <th>Score</th>
+            <th>Answers</th>
+            <th>Timing</th>
+            <th>Actions</th>
+          </tr>
+        </thead>
+        <tbody>
+          <% if result_attempts.any? %>
+            <% result_attempts.each do |attempt| %>
+              <%
+                result_label = if attempt.submitted?
+                  attempt.passed? ? "Pass" : "Needs Review"
+                else
+                  "Pending"
+                end
+                result_class = if attempt.submitted?
+                  attempt.passed? ? "pass" : "review"
+                else
+                  "pending"
+                end
+                status_class = attempt.status == "submitted" ? "active" : "inactive"
+              %>
+              <tr>
+                <td>
+                  <div class="jj-candidate-cell">
+                    <strong><%= attempt.vrp&.name.presence || "-" %></strong>
+                    <span>Record ID: <%= attempt.vrp_id %></span>
+                    <span>User ID: <%= attempt.vrp&.user_name.presence || "-" %></span>
+                  </div>
+                </td>
+                <td><%= attempt.vrp&.mobile_no.presence || "-" %></td>
+                <td>
+                  <div class="jj-status-stack">
+                    <span class="status-pill <%= status_class %>"><%= attempt.status.titleize %></span>
+                    <span class="jj-result-chip <%= result_class %>"><%= result_label %></span>
+                  </div>
+                </td>
+                <td>
+                  <div class="jj-score-stack">
+                    <strong><%= attempt.score.to_s("F") %> / <%= attempt.total_marks.to_s("F") %></strong>
+                    <span><%= format("%.2f%%", attempt.percentage.to_f) %></span>
+                  </div>
+                </td>
+                <td>
+                  <dl class="jj-answer-stack">
+                    <div>
+                      <dt>Correct</dt>
+                      <dd><%= attempt.correct_answers_count %></dd>
+                    </div>
+                    <div>
+                      <dt>Wrong</dt>
+                      <dd><%= attempt.wrong_answers_count %></dd>
+                    </div>
+                    <div>
+                      <dt>Skipped</dt>
+                      <dd><%= attempt.skipped_answers_count %></dd>
+                    </div>
+                  </dl>
+                  <%
+                    reviewed_answers = attempt.answers.sort_by { |answer| answer.question_position.to_i }
+                  %>
+                  <% if reviewed_answers.any? %>
+                    <details class="jj-answer-review">
+                      <summary>View Ticks</summary>
+                      <div class="jj-answer-review-list">
+                        <% reviewed_answers.each.with_index(1) do |answer, serial_number| %>
+                          <article class="jj-answer-review-item <%= answer.correct? ? "correct" : "wrong" %>">
+                            <div class="jj-answer-review-question">
+                              <span>Q<%= answer.question_position.presence || serial_number %></span>
+                              <p><%= answer.question_text %></p>
+                            </div>
+                            <dl>
+                              <div>
+                                <dt>Selected</dt>
+                                <dd><%= answer.selected_answer_label %></dd>
+                              </div>
+                              <div>
+                                <dt>Correct</dt>
+                                <dd><%= answer.correct_answer_label %></dd>
+                              </div>
+                              <div>
+                                <dt>Marks</dt>
+                                <dd><%= answer.marks_awarded.to_s("F") %> / <%= answer.question_marks %></dd>
+                              </div>
+                            </dl>
+                          </article>
+                        <% end %>
+                      </div>
+                    </details>
+                  <% else %>
+                    <span class="jj-answer-empty">No ticks yet</span>
+                  <% end %>
+                </td>
+                <td>
+                  <div class="jj-time-stack">
+                    <span><strong>Started</strong><%= attempt.started_at&.strftime("%d/%m/%Y %I:%M %p").presence || "-" %></span>
+                    <span><strong>Submitted</strong><%= attempt.submitted_at&.strftime("%d/%m/%Y %I:%M %p").presence || "-" %></span>
+                    <span><strong>Time</strong><%= attempt.time_taken_label %></span>
+                  </div>
+                </td>
+                <td>
+                  <div class="jj-action-cell jj-row-actions">
+                    <%= link_to "Open", jj_exam_result_path(attempt.access_token), class: "table-action", target: "_blank", rel: "noopener" %>
+                    <%= button_to "Delete Attempt", destroy_attempt_jj_quiz_path(@quiz, attempt_id: attempt.id), method: :delete, class: "table-action danger", form: { data: { turbo_confirm: "Delete this JJ attempt? This will delete the submitted answers and allow this JJ to take the exam again." } } %>
+                  </div>
+                </td>
+              </tr>
+            <% end %>
+          <% else %>
+            <tr><td colspan="7">No result submitted yet.</td></tr>
+          <% end %>
+        </tbody>
+      </table>
+    </div>
+    <div class="table-pagination" data-pagination-for="jj_results_table"></div>
+  </section>
+</section>
