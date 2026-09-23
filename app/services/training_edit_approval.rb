@@ -59,7 +59,7 @@ class TrainingEditApproval
       if pending
         pending.with_lock do
           raise InvalidTransition, "This request was already decided. Reload the training form before editing." unless pending.data["status"] == "Pending"
-          raise InvalidTransition, "The original record changed. Reload before submitting." unless pending.data["before"] == record.data
+          raise InvalidTransition, "The original record changed. Reload before submitting." unless comparable_data(pending.data["before"]) == comparable_data(record.data)
           previous = pending.data.deep_dup
           history = Array(previous["history"]) + [{ "action" => "resubmitted", "actor" => identity(actor), "at" => Time.current.iso8601 }]
           pending.update!(data: previous.merge(routing).merge(
@@ -128,6 +128,34 @@ class TrainingEditApproval
     actor_usernames(actor).include?(username(approver))
   end
 
+  # The "before" snapshot and the live record store the same values in different
+  # shapes: blank as nil or "", a single upload as "path" or ["path"], and keys
+  # that only appear once a newer form version saves them. Comparing raw hashes
+  # therefore rejects approvals where nothing actually changed, so compare a
+  # normalised view instead. Real content edits still differ and are still caught.
+  def self.comparable_data(data)
+    Hash(data).each_with_object({}) do |(key, value), memo|
+      normalized = comparable_value(value)
+      memo[key] = normalized unless normalized.nil?
+    end
+  end
+
+  def self.comparable_value(value)
+    case value
+    when String
+      value.strip.presence
+    when Array
+      cleaned = value.filter_map { |item| comparable_value(item) }
+      # A single upload is stored as "path" in one snapshot and ["path"] in the
+      # other, so collapse one-element arrays to make those two forms equal.
+      cleaned.size == 1 ? cleaned.first : cleaned.presence
+    when Hash
+      comparable_data(value).presence
+    else
+      value
+    end
+  end
+
   def self.status_label(revision)
     status = revision.data["status"].to_s
     return "Approved" if status == "Approved"
@@ -157,7 +185,7 @@ class TrainingEditApproval
           if data["step"] >= data["approvers"].size
             record = ModuleRecord.find(data["record_id"])
             record.with_lock do
-              raise InvalidTransition, "The original record changed. Reject this request and submit a fresh edit." unless record.module_slug == "training-form" && record.data == data["before"]
+              raise InvalidTransition, "The original record changed. Reject this request and submit a fresh edit." unless record.module_slug == "training-form" && comparable_data(record.data) == comparable_data(data["before"])
               record.update!(data: data["proposed"])
             end
             data["status"] = "Approved"

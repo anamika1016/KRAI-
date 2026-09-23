@@ -7,9 +7,36 @@ class OfficeDashboardCalculator < ModulesController
     @filtered_bills = bills
     @dashboard_vrps = vrps
     @dashboard_visible_vrp_ids = vrps.map(&:id)
+    @dashboard_month_filter_value = params.key?(:month) ? dashboard_filter_param(:month) : Date.current.prev_month.strftime("%B")
+    @dashboard_fcoc_filter_value = dashboard_filter_param(:fcoc, :fco)
   end
 
   private
+
+  # These web helpers otherwise reload every JJ in an FCO, bypassing the
+  # caller's filtered population. Keep the correction local to the mobile API.
+  def dashboard_fco_active_vrp_records(fco, month = nil, vrps = nil)
+    rows = Array(@filtered_targets).select { |target| training_fcoc_text_matches?(target.vrp&.fcoc, fco) }
+    ids = rows.map(&:vrp_id).to_set
+    Array(vrps || @filtered_vrps).select { |vrp| ids.include?(vrp.id) }
+  end
+
+  def dashboard_fco_active_vrp_count(fco, month = nil, vrps = nil)
+    dashboard_fco_active_vrp_records(fco, month, vrps).size
+  end
+
+  def dashboard_billing_records
+    defined?(@filtered_bills) ? @filtered_bills : super
+  end
+
+  def dashboard_summary_target_sql_filters_base(**options)
+    conditions, binds = super
+    if defined?(@filtered_targets)
+      conditions << "t.id IN (:office_target_ids)"
+      binds[:office_target_ids] = @filtered_targets.map(&:id)
+    end
+    [conditions, binds]
+  end
 
   def compute_dashboard_agronomics_login
     super || office_dashboard_roles.any? { |role| role.include?("agricultural specialist") }

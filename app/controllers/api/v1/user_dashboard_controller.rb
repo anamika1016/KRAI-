@@ -4,7 +4,11 @@ module Api
       def show
         return render_vrp_error if current_api_user.is_a?(Vrp)
 
+        started = Process.clock_gettime(Process::CLOCK_MONOTONIC)
         response = cached_user_dashboard_response
+        duration = ((Process.clock_gettime(Process::CLOCK_MONOTONIC) - started) * 1000).round(2)
+        self.response.set_header("Server-Timing", "dashboard;dur=#{duration}")
+        response = response.merge(meta: { server_processing_ms: duration, cache_hit: !!@dashboard_cache_hit })
         render json: response, status: response[:success] ? :ok : :internal_server_error
       end
 
@@ -51,7 +55,7 @@ module Api
         dashboard = cached_user_dashboard_response
         return render json: dashboard, status: :internal_server_error unless dashboard[:success]
 
-        value = config[:path].reduce(dashboard) { |data, key| data.respond_to?(:[]) ? data[key] || data[key.to_s] : nil }
+        value = config[:section_card] ? dashboard[:sections].flat_map { |section| section[:cards] }.find { |card| card[:key] == config[:section_card] }&.dig(:value) : config[:path].reduce(dashboard) { |data, key| data.respond_to?(:[]) ? data[key] || data[key.to_s] : nil }
         render json: { success: true, dashboard_type: "user", widget: params[:widget], heading: config[:heading], value: value, filters: dashboard[:filters], generated_at: Time.current.iso8601 }
       end
 
@@ -82,6 +86,50 @@ module Api
 
       private
 
+      def office_section_list_catalog
+        catalog = { "summary_ics" => "Total ICS Count", "summary_villages" => "Total Villages Count",
+          "summary_farmers" => "Total Farmer Count", "other_activities" => "Main Major Work Indicator - Other" }
+        %w[sausar turekela].each do |fco|
+          %w[required active vacant].each { |kind| catalog["fco_requirement_#{fco}_#{kind}"] = "#{fco.titleize} #{kind.titleize}" }
+          %w[male female].each { |kind| catalog["gender_#{fco}_#{kind}"] = "#{fco.titleize} #{kind.titleize}" }
+        end
+        catalog
+      end
+
+      def office_section_list_payload(type, calculator, vrps, targets)
+        records = if type.start_with?("summary_")
+          scope = calculator.send(:dashboard_total_afl_farmer_scope)
+          columns = %i[fco_id fco fpo_id fpo_name ics_id ics_name]
+          if type == "summary_farmers"
+            scope.where("NULLIF(BTRIM(tracenet_no), '') IS NOT NULL")
+              .pluck(:id, :farmer_name, :tracenet_no, :fco, :ics_name, :village_name)
+              .map { |row| %i[id farmer_name tracenet_no fco ics_name village_name].zip(row).to_h }
+          else
+            columns += %i[village_id village_name] if type == "summary_villages"
+            scope.where.not((type == "summary_villages" ? :village_id : :ics_id) => [nil, ""])
+              .distinct.pluck(*columns).map { |row| columns.zip(row).to_h }
+          end
+        elsif type == "other_activities"
+          OfficeDashboardSections.new(calculator: calculator, targets: targets,
+            participation: {}, month: nil, fcoc: nil).other_rows
+        else
+          parts = type.split("_")
+          fco, kind = parts.last(2)
+          visible = vrps.any? { |vrp| calculator.send(:training_fcoc_text_matches?, vrp.fcoc, fco) }
+          if !visible
+            []
+          elsif %w[required vacant].include?(kind)
+            calculator.send(:dashboard_jj_requirement_items, fco.titleize, vrps, targets)
+              .select { |item| item[:title].downcase.end_with?(kind) }.map { |item| item.slice(:title, :value) }
+          else
+            rows = calculator.send(:dashboard_fco_active_vrp_records, fco, nil, vrps)
+            rows = rows.select { |vrp| vrp.gender.to_s == kind } if %w[male female].include?(kind)
+            rows.map { |vrp| admin_vrp_list_row(vrp, targets.map { |target| target.vrp_id.to_s }, []) }
+          end
+        end
+        { title: office_section_list_catalog.fetch(type), records: records }
+      end
+
       def report_widget_response(widget, config, dashboard_type)
         calculator = dashboard_calculator
         vrps, targets, = filtered_scope(calculator)
@@ -102,6 +150,7 @@ module Api
       def cached_user_dashboard_response
         key = user_dashboard_cache_key
         cached = Rails.cache.read(key)
+        @dashboard_cache_hit = cached.present?
         return cached if cached
 
         response = build_user_dashboard_response
@@ -113,7 +162,7 @@ module Api
       end
 
       def user_dashboard_list_catalog
-        admin_dashboard_list_catalog.merge(
+        admin_dashboard_list_catalog.merge(office_section_list_catalog).merge(
           "farmer_wise_target_mapping" => "Farmer-wise Target Mapping List",
           "activity_wise_target_mapping" => "Activity-wise Target Mapping List",
           "activity_wise_achievement" => "Activity-wise Achievement List",
@@ -122,7 +171,12 @@ module Api
       end
 
       def user_dashboard_widget_catalog
-        {
+        extras = office_section_list_catalog.to_h { |key, title| [key, { heading: title, section_card: key }] }
+        (OfficeDashboardSections::DEMO + %w[mapped_farmer training_red training_yellow training_green] +
+          OfficeDashboardSections::OTHER.keys.map { |key| "other_#{key}" }).each do |key|
+          extras[key] = { heading: key.humanize, section_card: key }
+        end
+        extras.merge({
           "cc_jj_work_status" => { heading: "CC and JJ Work Status", path: %i[cc_jj_work_status] },
           "demonstration_method" => { heading: "Demonstration Method", path: %i[demonstration_method] },
           "total_registered" => { heading: "Total Registered Jeevika Jankar", path: %i[cards total_registered_vrp] },
@@ -136,7 +190,7 @@ module Api
           "targeted_farmers" => { heading: "Targeted Farmers", path: %i[dashboard_summary values targeted_farmers] },
           "farmer_wise_achievement" => { heading: "Farmer-wise Achievement", path: %i[dashboard_summary values farmer_wise_achievement] },
           "farmer_wise_pending_achievement" => { heading: "Farmer-wise Pending Achievement", path: %i[dashboard_summary values farmer_wise_pending_achievement] }
-        }
+        })
       end
 
       def user_dashboard_list_payload(list_type)
@@ -145,6 +199,9 @@ module Api
         calculator = dashboard_calculator
         vrps, targets, options = filtered_scope(calculator)
         set_filtered_scope(calculator, vrps, targets, [])
+        if office_section_list_catalog.key?(list_type)
+          return office_section_list_payload(list_type, calculator, vrps, targets)
+        end
         if list_type == "cc_jj_work_status"
           return { title: user_dashboard_list_catalog.fetch(list_type), headers: CcJjWorkStatusReport::HEADERS,
             records: CcJjWorkStatusReport.new(calculator: calculator).rows }
@@ -155,6 +212,10 @@ module Api
         end
         bills = filtered_bills(calculator, vrps)
         set_filtered_scope(calculator, vrps, targets, bills)
+        unless list_type.start_with?("training_", "farmer_wise_", "weekly_", "activity_wise_") || %w[targeted_farmers ics_farmers].include?(list_type)
+          @admin_dashboard_api_context = { web: calculator, vrps: vrps, targets: targets, all_targets: targets, bills: bills }
+          return admin_dashboard_list_payload(list_type)
+        end
         months = calculator.send(:dashboard_month_options_for_targets, targets)
         participation_month = selected_month(:participation_month, months, calculator, targets)
         participation_fcoc = filter_param(:participation_fcoc) || calculator.send(:dashboard_default_visible_fcoc, options[:fcos])
@@ -234,6 +295,8 @@ module Api
           success: true,
           message: "User dashboard fetched successfully.",
           dashboard_type: "user",
+          sections: OfficeDashboardSections.new(calculator: calculator, targets: targets,
+            participation: participation, month: participation_month, fcoc: participation_fcoc).sections,
           user: user_payload,
           filters: applied_filters,
           filter_options: options,
@@ -282,7 +345,7 @@ module Api
         ]
         filters = admin_dashboard_cache_filters
         user_key = current_api_user_payload.sort.to_h
-        ["api-v1-user-dashboard-office-v7", Date.current.to_s, user_key, filters, version_parts].to_json
+        ["api-v1-user-dashboard-office-v8", Date.current.to_s, user_key, filters, version_parts].to_json
       end
 
       def cache_table_version(model)
@@ -308,6 +371,7 @@ module Api
       def dashboard_calculator
         OfficeDashboardCalculator.new.tap do |controller|
           controller.request = request
+          controller.params = params
           controller.instance_variable_set(:@current_app_user, current_api_user_payload)
         end
       end
@@ -322,7 +386,11 @@ module Api
         vrps, targets = search_scope(vrps, targets)
         @calculation_stage = "dashboard_activity_filters"
         options = { main_activities: values(targets, :main_activity_name) }
-        selected_main_activity = params.key?(:main_activity) ? filter_param(:main_activity) : default_farmer_activity_filter(calculator, options[:main_activities])
+        selected_main_activity = params.key?(:main_activity) ? filter_param(:main_activity) : default_farmer_activity_filter(calculator, values(targets.select { |target|
+          month = params.key?(:month) ? filter_param(:month) : Date.current.prev_month.strftime("%B")
+          month.blank? || same?(target.month_name, month)
+        }, :main_activity_name))
+        @resolved_main_activity = selected_main_activity
         selected_sub_activity = filter_param(:sub_activity)
         legacy_activity = filter_param(:activity)
         if selected_main_activity.present?
@@ -420,12 +488,11 @@ module Api
 
       def filtered_bills(calculator, vrps)
         ids = id_lookup(vrps)
-        filters_active = %i[search activity main_activity sub_activity fcoc fco cluster_incharge ics ics_name month post post_wise_name vrp_id].any? { |key| filter_param(key).present? }
         scope = ModuleRecord.where(module_slug: "jeevika-jankar-bill-process")
         return [] if ids.blank?
 
         scope = scope.where("COALESCE(NULLIF(data::jsonb ->> 'select_vrp', ''), NULLIF(data::jsonb ->> 'vrp_id', ''), data::jsonb ->> 'jeevika_jankar_id') IN (?)", ids.keys)
-        selected_bill_month = filter_param(:month)
+        selected_bill_month = params.key?(:month) ? filter_param(:month) : Date.current.prev_month.strftime("%B")
         if selected_bill_month.present?
           scope = scope.where("LOWER(BTRIM(data::jsonb ->> 'bill_month')) = ?", selected_bill_month.to_s.strip.downcase)
         end
@@ -438,7 +505,7 @@ module Api
           end
         end
         records = records
-          .select { |record| ids.key?(record.data["select_vrp"].to_s) || !filters_active }
+          .select { |record| ids.key?((record.data["select_vrp"].presence || record.data["vrp_id"].presence || record.data["jeevika_jankar_id"]).to_s) }
         selected_activity = filter_param(:activity)
         selected_main_activity = filter_param(:main_activity)
         selected_sub_activity = filter_param(:sub_activity)
@@ -578,9 +645,12 @@ module Api
       end
 
       def applied_filters
-        %i[search activity main_activity sub_activity fcoc fco cluster_incharge ics ics_name month post post_wise_name vrp_id participation_month participation_fcoc weekly_target_month weekly_target_fcoc weekly_target_week]
+        explicit = %i[search activity main_activity sub_activity fcoc fco cluster_incharge ics ics_name month post post_wise_name vrp_id participation_month participation_fcoc weekly_target_month weekly_target_fcoc weekly_target_week ics_report_month ics_report_ics]
           .filter_map { |key| value = filter_param(key); [key, value] if value.present? }
           .to_h
+        explicit[:month] = Date.current.prev_month.strftime("%B") unless params.key?(:month)
+        explicit[:main_activity] = @resolved_main_activity if @resolved_main_activity.present? && !params.key?(:main_activity)
+        explicit
       end
 
       def activity_options(targets)

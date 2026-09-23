@@ -1,5 +1,6 @@
 class CcTargetStatusReport
   FCO_IDS = %w[1004 1006].freeze
+  CC_NAME_KEYS = %w[cluster_coordinator_name cluster_incharge cluster_coordinator].freeze
   HEADERS = ["month", "fco_id", "fpo_name", "cluster_incharge", "jj_names", "target", "achievement", "status"].freeze
 
   def initialize(calculator:, month: nil, fco: nil)
@@ -181,9 +182,13 @@ class CcTargetStatusReport
       rec_month = data["month"].to_s.strip
       next if !all_months? && rec_month.downcase != @month.downcase
 
-      cc_name = data["cluster_coordinator_name"].to_s.strip.presence ||
-                data["cluster_incharge"].to_s.strip.presence ||
-                data["cluster_coordinator"].to_s.strip.presence
+      cc_name = CC_NAME_KEYS.filter_map { |key_name| data[key_name].to_s.strip.presence }.first
+
+      # A Cluster Coordinator cleared on the training form must stop counting
+      # towards that CC. The JJ/VRP fallback below is only for legacy records
+      # saved before this field existed, where the key is absent altogether --
+      # otherwise removing the name would silently keep the old achievement.
+      next if cc_name.blank? && CC_NAME_KEYS.any? { |key_name| data.key?(key_name) }
 
       key = nil
       if cc_name.present?
