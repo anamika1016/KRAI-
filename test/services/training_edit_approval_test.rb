@@ -132,4 +132,31 @@ class TrainingEditApprovalTest < ActiveSupport::TestCase
     end
   end
 
+  test "email backfill does not block approve or reject and latest email is retained" do
+    %w[approve reject].each do |decision|
+      before = { "created_by_id" => "40", "created_by_record_type" => "Vrp",
+        "cluster_coordinator_name" => "Coordinator" }
+      current = before.merge("created_by_email" => "current@example.test")
+      record = ModuleRecord.create!(module_slug: "training-form", data: current)
+      revision = ModuleRecord.create!(module_slug: TrainingEditApproval::SLUG, data: {
+        "record_id" => record.id, "before" => before,
+        "proposed" => before.merge("cluster_coordinator_name" => "N/A", "created_by_email" => "stale@example.test"),
+        "status" => "Pending", "step" => 0, "approval_role" => "agronomist",
+        "approvers" => ["Approver"], "history" => []
+      })
+      TrainingEditApproval.decide!(revision: revision, actor: { "user_type" => "admin", "id" => 1 }, decision: decision, remarks: "Reviewed")
+      assert_equal decision == "approve" ? "Approved" : "Rejected", revision.reload.data["status"]
+      assert_equal "current@example.test", record.reload.data["created_by_email"]
+      assert_equal decision == "approve" ? "N/A" : "Coordinator", record.data["cluster_coordinator_name"]
+    end
+  end
+
+  test "creator identity changes remain protected even when email changes" do
+    before = { "created_by_id" => "40", "created_by_record_type" => "Vrp", "created_by_email" => "old@example.test" }
+    assert_raises(TrainingEditApproval::InvalidTransition) do
+      TrainingEditApproval.merge_approved_data(before: before, proposed: before,
+        current: before.merge("created_by_id" => "41", "created_by_email" => "new@example.test"))
+    end
+  end
+
 end

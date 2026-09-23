@@ -161,9 +161,12 @@ class TrainingEditApproval
   def self.merge_approved_data(before:, proposed:, current:)
     before, proposed, current = [before, proposed, current].map { |value| Hash(value) }
     keys = before.keys | proposed.keys
-    changed = keys.select { |key| comparable_value(before[key]) != comparable_value(proposed[key]) }
+    # Email is stamped/backfilled on save, not an editable training field.
+    # Keep the current email even for old pending snapshots lacking that key.
+    changed = keys.reject { |key| key == "created_by_email" }
+      .select { |key| comparable_value(before[key]) != comparable_value(proposed[key]) }
     protected_keys = (before.keys | current.keys).select do |key|
-      key.start_with?("created_by") ||
+      (key.start_with?("created_by") && key != "created_by_email") ||
         (%w[vrp_id select_vrp jeevika_jankar_id fco_name trainee_department] + TrainingStaffScope::OFFICE_KEYS).include?(key)
     end
     conflicts = changed.select do |key|
