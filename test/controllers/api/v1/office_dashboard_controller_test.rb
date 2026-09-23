@@ -83,6 +83,59 @@ class Api::V1::OfficeDashboardControllerTest < ActionDispatch::IntegrationTest
     assert_includes calculator.send(:dashboard_training_participation_records, month_name: "August"), record
   end
 
+  test "complete sections expose working lists and numeric demonstration pairs" do
+    get "/api/v1/user-dashboard", params: { month: "August", main_activity: "All" }, headers: headers(@specialist)
+    assert_response :success
+    body = response.parsed_body
+    assert body["success"], body.inspect
+    assert_operator body.dig("meta", "server_processing_ms"), :>=, 0
+    assert response.headers["Server-Timing"].include?("dashboard;dur=")
+    sections = body.fetch("sections").index_by { |section| section["key"] }
+    assert_equal %w[summary participation demonstration other billing gender fco_requirement cc_jj_work_status].sort, sections.keys.sort
+    demo = sections.fetch("demonstration")["cards"]
+    assert_equal 6, demo.size
+    assert_equal({ "target" => 0.0, "achievement" => 0.0 }, demo.find { |card| card["key"] == "input_demo_inm" }["value"])
+    sections.values.flat_map { |section| section["cards"] }.each do |card|
+      get card.fetch("list_endpoint"), params: { month: "August", main_activity: "All" }, headers: headers(@specialist)
+      assert_response :success, card.inspect
+      assert response.parsed_body["success"], card.inspect
+    end
+    assert sections.fetch("gender")["cards"].none? { |card| card["title"].include?("Turekela") }
+  end
+
+  test "FCO and gender cards never reload someone else's JJ in the same office" do
+    hidden = create_vrp(@other_specialist, "Hidden cluster", @first.fcoc)
+    create_target(hidden, "1004", "Hidden ICS")
+    [@specialist, @cluster].each do |user|
+      get "/api/v1/user-dashboard", params: { month: "August", main_activity: "All" }, headers: headers(user)
+      assert_response :success
+      cards = response.parsed_body.fetch("sections").flat_map { |section| section["cards"] }
+      assert_equal 1, cards.find { |card| card["key"] == "fco_requirement_sausar_active" }["value"]
+      assert_equal 1, cards.find { |card| card["key"] == "gender_sausar_male" }["value"]
+      get "/api/v1/user-dashboard/lists/gender_sausar_male", params: { month: "August", main_activity: "All" }, headers: headers(user)
+      assert_equal [@first.id], response.parsed_body["records"].map { |row| row["id"] }
+    end
+  end
+
+  test "Other achievements do not include another JJ's entry for the same farmer" do
+    @first_target.update!(main_activity_name: "Compost")
+    ModuleRecord.create!(module_slug: "training-form", data: {
+      "vrp_id" => @second.id.to_s, "month" => "August", "main_activity" => "Compost",
+      "selected_farmer_ids" => @first_target.afl_ids.map(&:to_s)
+    })
+    get "/api/v1/user-dashboard/lists/other_activities", params: { month: "August", main_activity: "All" }, headers: headers(@specialist)
+    assert_response :success
+    rows = response.parsed_body.fetch("records")
+    assert_equal 1, rows.size
+    assert_equal 1, rows.first["mapped_farmer"]
+    assert_equal 0, rows.first["achievement_farmer"]
+    get "/api/v1/user-dashboard", params: { month: "August", main_activity: "All", vrp_id: @second.id }, headers: headers(@specialist)
+    assert_response :success
+    sections = response.parsed_body.fetch("sections").index_by { |section| section["key"] }
+    assert sections.fetch("summary")["cards"].all? { |card| card["value"] == 0 }
+    assert sections.fetch("other")["cards"].all? { |card| card["value"] == 0 }
+  end
+
   private
 
   def headers(user)
