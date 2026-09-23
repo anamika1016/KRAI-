@@ -1,0 +1,715 @@
+{
+  "info": {
+    "name": "CC FCOC Agronomist \u2014 complete mobile dashboard",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json",
+    "description": "Deploy backend first. Set base_url, login and password locally. Run Login, Filters, Complete dashboard. Token is stored automatically. Repeat separately for CC, FCOC and Agronomist. GET requests do not need a JSON body. Tests do not enforce a production latency promise."
+  },
+  "auth": {
+    "type": "bearer",
+    "bearer": [
+      {
+        "key": "token",
+        "value": "{{token}}",
+        "type": "string"
+      }
+    ]
+  },
+  "variable": [
+    {
+      "key": "base_url",
+      "value": "https://krai.ploughmanagro.com"
+    },
+    {
+      "key": "token",
+      "value": ""
+    },
+    {
+      "key": "month",
+      "value": "September"
+    },
+    {
+      "key": "main_activity",
+      "value": "Farmers' Training"
+    },
+    {
+      "key": "widget_key",
+      "value": "summary_ics"
+    },
+    {
+      "key": "list_key",
+      "value": "summary_ics"
+    },
+    {
+      "key": "login",
+      "value": ""
+    },
+    {
+      "key": "password",
+      "value": ""
+    },
+    {
+      "key": "sub_activity",
+      "value": "All"
+    },
+    {
+      "key": "fco",
+      "value": "All"
+    },
+    {
+      "key": "ics",
+      "value": "All"
+    }
+  ],
+  "item": [
+    {
+      "name": "01 POST Login \u2014 saves token",
+      "request": {
+        "auth": {
+          "type": "noauth"
+        },
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "url": "{{base_url}}/api/v1/login",
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"login\": \"{{login}}\",\n  \"password\": \"{{password}}\"\n}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.collectionVariables.unset(\"token\");",
+              "pm.test(\"HTTP 200\", () => pm.response.to.have.status(200));",
+              "const body = pm.response.json();",
+              "pm.test(\"Success\", () => pm.expect(body.success).to.eql(true));",
+              "if (pm.response.code === 200 && body.token) pm.collectionVariables.set(\"token\", body.token);"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "Configuration",
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": "{{base_url}}/api/v1/user-dashboard/configuration?month={{month}}&main_activity={{main_activity}}&sub_activity={{sub_activity}}&fco={{fco}}&ics={{ics}}"
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test(\"HTTP 200\", () => pm.response.to.have.status(200));",
+              "const body = pm.response.json();",
+              "pm.test(\"Success\", () => pm.expect(body.success).to.eql(true));"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "Filters",
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": "{{base_url}}/api/v1/user-dashboard/filters?month={{month}}&main_activity={{main_activity}}&sub_activity={{sub_activity}}&fco={{fco}}&ics={{ics}}"
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test(\"HTTP 200\", () => pm.response.to.have.status(200));",
+              "const body = pm.response.json();",
+              "pm.test(\"Success\", () => pm.expect(body.success).to.eql(true));"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "Complete dashboard",
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": "{{base_url}}/api/v1/user-dashboard?month={{month}}&main_activity={{main_activity}}&sub_activity={{sub_activity}}&fco={{fco}}&ics={{ics}}"
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test(\"HTTP 200\", () => pm.response.to.have.status(200));",
+              "const body = pm.response.json();",
+              "pm.test(\"Success\", () => pm.expect(body.success).to.eql(true));"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "Widget",
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": "{{base_url}}/api/v1/user-dashboard/widgets/{{widget_key}}?month={{month}}&main_activity={{main_activity}}&sub_activity={{sub_activity}}&fco={{fco}}&ics={{ics}}"
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test(\"HTTP 200\", () => pm.response.to.have.status(200));",
+              "const body = pm.response.json();",
+              "pm.test(\"Success\", () => pm.expect(body.success).to.eql(true));"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "View list",
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": "{{base_url}}/api/v1/user-dashboard/lists/{{list_key}}?month={{month}}&main_activity={{main_activity}}&sub_activity={{sub_activity}}&fco={{fco}}&ics={{ics}}"
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test(\"HTTP 200\", () => pm.response.to.have.status(200));",
+              "const body = pm.response.json();",
+              "pm.test(\"Success\", () => pm.expect(body.success).to.eql(true));"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "Excel export",
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": "{{base_url}}/api/v1/user-dashboard/lists/{{list_key}}/export?month={{month}}&main_activity={{main_activity}}&sub_activity={{sub_activity}}&fco={{fco}}&ics={{ics}}"
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test(\"HTTP 200\", () => pm.response.to.have.status(200));",
+              "pm.test(\"Excel\", () => pm.expect(pm.response.headers.get(\"Content-Type\")).to.include(\"spreadsheetml\"));"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "All dashboard View Lists",
+      "item": [
+        {
+          "name": "GET summary_ics",
+          "request": {
+            "method": "GET",
+            "url": "{{base_url}}/api/v1/user-dashboard/lists/summary_ics?month={{month}}&main_activity={{main_activity}}&sub_activity={{sub_activity}}&fco={{fco}}&ics={{ics}}"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"HTTP 200\", () => pm.response.to.have.status(200));",
+                  "const body = pm.response.json();",
+                  "pm.test(\"Success\", () => pm.expect(body.success).to.eql(true));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "GET summary_villages",
+          "request": {
+            "method": "GET",
+            "url": "{{base_url}}/api/v1/user-dashboard/lists/summary_villages?month={{month}}&main_activity={{main_activity}}&sub_activity={{sub_activity}}&fco={{fco}}&ics={{ics}}"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"HTTP 200\", () => pm.response.to.have.status(200));",
+                  "const body = pm.response.json();",
+                  "pm.test(\"Success\", () => pm.expect(body.success).to.eql(true));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "GET summary_farmers",
+          "request": {
+            "method": "GET",
+            "url": "{{base_url}}/api/v1/user-dashboard/lists/summary_farmers?month={{month}}&main_activity={{main_activity}}&sub_activity={{sub_activity}}&fco={{fco}}&ics={{ics}}"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"HTTP 200\", () => pm.response.to.have.status(200));",
+                  "const body = pm.response.json();",
+                  "pm.test(\"Success\", () => pm.expect(body.success).to.eql(true));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "GET total_mapped_main_activities",
+          "request": {
+            "method": "GET",
+            "url": "{{base_url}}/api/v1/user-dashboard/lists/total_mapped_main_activities?month={{month}}&main_activity={{main_activity}}&sub_activity={{sub_activity}}&fco={{fco}}&ics={{ics}}"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"HTTP 200\", () => pm.response.to.have.status(200));",
+                  "const body = pm.response.json();",
+                  "pm.test(\"Success\", () => pm.expect(body.success).to.eql(true));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "GET total_mapped_sub_activities",
+          "request": {
+            "method": "GET",
+            "url": "{{base_url}}/api/v1/user-dashboard/lists/total_mapped_sub_activities?month={{month}}&main_activity={{main_activity}}&sub_activity={{sub_activity}}&fco={{fco}}&ics={{ics}}"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"HTTP 200\", () => pm.response.to.have.status(200));",
+                  "const body = pm.response.json();",
+                  "pm.test(\"Success\", () => pm.expect(body.success).to.eql(true));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "GET training_unique_farmers",
+          "request": {
+            "method": "GET",
+            "url": "{{base_url}}/api/v1/user-dashboard/lists/training_unique_farmers?month={{month}}&main_activity={{main_activity}}&sub_activity={{sub_activity}}&fco={{fco}}&ics={{ics}}"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"HTTP 200\", () => pm.response.to.have.status(200));",
+                  "const body = pm.response.json();",
+                  "pm.test(\"Success\", () => pm.expect(body.success).to.eql(true));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "GET training_red",
+          "request": {
+            "method": "GET",
+            "url": "{{base_url}}/api/v1/user-dashboard/lists/training_red?month={{month}}&main_activity={{main_activity}}&sub_activity={{sub_activity}}&fco={{fco}}&ics={{ics}}"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"HTTP 200\", () => pm.response.to.have.status(200));",
+                  "const body = pm.response.json();",
+                  "pm.test(\"Success\", () => pm.expect(body.success).to.eql(true));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "GET training_yellow",
+          "request": {
+            "method": "GET",
+            "url": "{{base_url}}/api/v1/user-dashboard/lists/training_yellow?month={{month}}&main_activity={{main_activity}}&sub_activity={{sub_activity}}&fco={{fco}}&ics={{ics}}"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"HTTP 200\", () => pm.response.to.have.status(200));",
+                  "const body = pm.response.json();",
+                  "pm.test(\"Success\", () => pm.expect(body.success).to.eql(true));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "GET training_green",
+          "request": {
+            "method": "GET",
+            "url": "{{base_url}}/api/v1/user-dashboard/lists/training_green?month={{month}}&main_activity={{main_activity}}&sub_activity={{sub_activity}}&fco={{fco}}&ics={{ics}}"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"HTTP 200\", () => pm.response.to.have.status(200));",
+                  "const body = pm.response.json();",
+                  "pm.test(\"Success\", () => pm.expect(body.success).to.eql(true));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "GET demonstration_method",
+          "request": {
+            "method": "GET",
+            "url": "{{base_url}}/api/v1/user-dashboard/lists/demonstration_method?month={{month}}&main_activity={{main_activity}}&sub_activity={{sub_activity}}&fco={{fco}}&ics={{ics}}"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"HTTP 200\", () => pm.response.to.have.status(200));",
+                  "const body = pm.response.json();",
+                  "pm.test(\"Success\", () => pm.expect(body.success).to.eql(true));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "GET other_activities",
+          "request": {
+            "method": "GET",
+            "url": "{{base_url}}/api/v1/user-dashboard/lists/other_activities?month={{month}}&main_activity={{main_activity}}&sub_activity={{sub_activity}}&fco={{fco}}&ics={{ics}}"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"HTTP 200\", () => pm.response.to.have.status(200));",
+                  "const body = pm.response.json();",
+                  "pm.test(\"Success\", () => pm.expect(body.success).to.eql(true));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "GET bill_approved",
+          "request": {
+            "method": "GET",
+            "url": "{{base_url}}/api/v1/user-dashboard/lists/bill_approved?month={{month}}&main_activity={{main_activity}}&sub_activity={{sub_activity}}&fco={{fco}}&ics={{ics}}"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"HTTP 200\", () => pm.response.to.have.status(200));",
+                  "const body = pm.response.json();",
+                  "pm.test(\"Success\", () => pm.expect(body.success).to.eql(true));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "GET bill_pending",
+          "request": {
+            "method": "GET",
+            "url": "{{base_url}}/api/v1/user-dashboard/lists/bill_pending?month={{month}}&main_activity={{main_activity}}&sub_activity={{sub_activity}}&fco={{fco}}&ics={{ics}}"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"HTTP 200\", () => pm.response.to.have.status(200));",
+                  "const body = pm.response.json();",
+                  "pm.test(\"Success\", () => pm.expect(body.success).to.eql(true));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "GET cc_jj_work_status",
+          "request": {
+            "method": "GET",
+            "url": "{{base_url}}/api/v1/user-dashboard/lists/cc_jj_work_status?month={{month}}&main_activity={{main_activity}}&sub_activity={{sub_activity}}&fco={{fco}}&ics={{ics}}"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"HTTP 200\", () => pm.response.to.have.status(200));",
+                  "const body = pm.response.json();",
+                  "pm.test(\"Success\", () => pm.expect(body.success).to.eql(true));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "GET fco_requirement_sausar_required",
+          "request": {
+            "method": "GET",
+            "url": "{{base_url}}/api/v1/user-dashboard/lists/fco_requirement_sausar_required?month={{month}}&main_activity={{main_activity}}&sub_activity={{sub_activity}}&fco={{fco}}&ics={{ics}}"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"HTTP 200\", () => pm.response.to.have.status(200));",
+                  "const body = pm.response.json();",
+                  "pm.test(\"Success\", () => pm.expect(body.success).to.eql(true));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "GET fco_requirement_sausar_active",
+          "request": {
+            "method": "GET",
+            "url": "{{base_url}}/api/v1/user-dashboard/lists/fco_requirement_sausar_active?month={{month}}&main_activity={{main_activity}}&sub_activity={{sub_activity}}&fco={{fco}}&ics={{ics}}"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"HTTP 200\", () => pm.response.to.have.status(200));",
+                  "const body = pm.response.json();",
+                  "pm.test(\"Success\", () => pm.expect(body.success).to.eql(true));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "GET fco_requirement_sausar_vacant",
+          "request": {
+            "method": "GET",
+            "url": "{{base_url}}/api/v1/user-dashboard/lists/fco_requirement_sausar_vacant?month={{month}}&main_activity={{main_activity}}&sub_activity={{sub_activity}}&fco={{fco}}&ics={{ics}}"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"HTTP 200\", () => pm.response.to.have.status(200));",
+                  "const body = pm.response.json();",
+                  "pm.test(\"Success\", () => pm.expect(body.success).to.eql(true));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "GET fco_requirement_turekela_required",
+          "request": {
+            "method": "GET",
+            "url": "{{base_url}}/api/v1/user-dashboard/lists/fco_requirement_turekela_required?month={{month}}&main_activity={{main_activity}}&sub_activity={{sub_activity}}&fco={{fco}}&ics={{ics}}"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"HTTP 200\", () => pm.response.to.have.status(200));",
+                  "const body = pm.response.json();",
+                  "pm.test(\"Success\", () => pm.expect(body.success).to.eql(true));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "GET fco_requirement_turekela_active",
+          "request": {
+            "method": "GET",
+            "url": "{{base_url}}/api/v1/user-dashboard/lists/fco_requirement_turekela_active?month={{month}}&main_activity={{main_activity}}&sub_activity={{sub_activity}}&fco={{fco}}&ics={{ics}}"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"HTTP 200\", () => pm.response.to.have.status(200));",
+                  "const body = pm.response.json();",
+                  "pm.test(\"Success\", () => pm.expect(body.success).to.eql(true));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "GET fco_requirement_turekela_vacant",
+          "request": {
+            "method": "GET",
+            "url": "{{base_url}}/api/v1/user-dashboard/lists/fco_requirement_turekela_vacant?month={{month}}&main_activity={{main_activity}}&sub_activity={{sub_activity}}&fco={{fco}}&ics={{ics}}"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"HTTP 200\", () => pm.response.to.have.status(200));",
+                  "const body = pm.response.json();",
+                  "pm.test(\"Success\", () => pm.expect(body.success).to.eql(true));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "GET gender_sausar_male",
+          "request": {
+            "method": "GET",
+            "url": "{{base_url}}/api/v1/user-dashboard/lists/gender_sausar_male?month={{month}}&main_activity={{main_activity}}&sub_activity={{sub_activity}}&fco={{fco}}&ics={{ics}}"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"HTTP 200\", () => pm.response.to.have.status(200));",
+                  "const body = pm.response.json();",
+                  "pm.test(\"Success\", () => pm.expect(body.success).to.eql(true));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "GET gender_sausar_female",
+          "request": {
+            "method": "GET",
+            "url": "{{base_url}}/api/v1/user-dashboard/lists/gender_sausar_female?month={{month}}&main_activity={{main_activity}}&sub_activity={{sub_activity}}&fco={{fco}}&ics={{ics}}"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"HTTP 200\", () => pm.response.to.have.status(200));",
+                  "const body = pm.response.json();",
+                  "pm.test(\"Success\", () => pm.expect(body.success).to.eql(true));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "GET gender_turekela_male",
+          "request": {
+            "method": "GET",
+            "url": "{{base_url}}/api/v1/user-dashboard/lists/gender_turekela_male?month={{month}}&main_activity={{main_activity}}&sub_activity={{sub_activity}}&fco={{fco}}&ics={{ics}}"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"HTTP 200\", () => pm.response.to.have.status(200));",
+                  "const body = pm.response.json();",
+                  "pm.test(\"Success\", () => pm.expect(body.success).to.eql(true));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "GET gender_turekela_female",
+          "request": {
+            "method": "GET",
+            "url": "{{base_url}}/api/v1/user-dashboard/lists/gender_turekela_female?month={{month}}&main_activity={{main_activity}}&sub_activity={{sub_activity}}&fco={{fco}}&ics={{ics}}"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"HTTP 200\", () => pm.response.to.have.status(200));",
+                  "const body = pm.response.json();",
+                  "pm.test(\"Success\", () => pm.expect(body.success).to.eql(true));"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

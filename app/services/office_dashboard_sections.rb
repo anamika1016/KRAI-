@@ -22,13 +22,9 @@ class OfficeDashboardSections
     summary = call(:dashboard_summary_cards, @targets).map do |item|
       card(SUMMARY.fetch(item[:title]), item[:title], item[:value], SUMMARY.fetch(item[:title]), popup_items: item[:popup_items])
     end
-    demo = call(:demonstration_method_cards).each_with_index.map do |item, index|
-      parts = item[:value].to_s.split("/")
-      value = parts.size == 2 ? { target: parts.first.to_f, achievement: parts.last.to_f } : item[:value]
-      card(DEMO.fetch(index), item[:title], value, "demonstration_method")
-    end
+    demo = demonstration_cards
     participation = [card("mapped_farmer", "Mapped Farmer", call(:training_mapped_farmer_distinct_count_for_participation,
-      month_name: @month, fcoc_name: @fcoc, targets: @targets), "training_unique_farmers")]
+      month_name: @month, fcoc_name: @fcoc, targets: call(:training_participation_targets_for_dashboard, month_name: @month, fcoc_name: @fcoc)), "training_unique_farmers")]
     %w[red yellow green].zip(["Pending", "Only 1 Training", "1+ Trainings"]).each do |status, title|
       participation << card("training_#{status}", title, @participation[status.to_sym].to_i, "training_#{status}")
     end
@@ -57,6 +53,14 @@ class OfficeDashboardSections
         rows: MobileDashboardReportCards.cc_jj_rows(call_report.summary),
         groups: MobileDashboardReportCards.cc_jj_groups(call_report.summary),
         list_endpoint: "#{ROOT}/lists/cc_jj_work_status")]
+  end
+
+  def demonstration_cards
+    call(:demonstration_method_cards).each_with_index.map do |item, index|
+      parts = item[:value].to_s.split("/")
+      value = parts.size == 2 ? { target: parts.first.to_f, achievement: parts.last.to_f } : item[:value]
+      card(DEMO.fetch(index), item[:title], value, "demonstration_method")
+    end
   end
 
   def other_rows

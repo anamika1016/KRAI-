@@ -136,6 +136,70 @@ class Api::V1::OfficeDashboardControllerTest < ActionDispatch::IntegrationTest
     assert sections.fetch("other")["cards"].all? { |card| card["value"] == 0 }
   end
 
+  test "CC Agronomist and FCOC role spellings use server authorization" do
+    [[@cluster, "CC"], [@specialist, "Agronomist"], [@fco, "FCOC"]].each do |user, role|
+      user.update!(role: role)
+      get "/api/v1/user-dashboard/lists/total_registered", params: { month: "All", main_activity: "All" }, headers: headers(user)
+      assert_response :success
+      assert_equal [@first.id], response.parsed_body["records"].map { |row| row["id"] }, role
+    end
+  end
+
+  test "cache is separated by user and filter and reports per-request timing" do
+    old_cache = Rails.cache
+    Rails.cache = ActiveSupport::Cache::MemoryStore.new
+    filters = { month: "August", main_activity: "All" }
+    get "/api/v1/user-dashboard", params: filters, headers: headers(@specialist)
+    assert_response :success
+    assert_equal false, response.parsed_body.dig("meta", "cache_hit")
+    first = response.parsed_body
+    get "/api/v1/user-dashboard", params: filters, headers: headers(@specialist)
+    assert_equal true, response.parsed_body.dig("meta", "cache_hit")
+    assert_equal first["sections"], response.parsed_body["sections"]
+    get "/api/v1/user-dashboard", params: filters, headers: headers(@other_specialist)
+    assert_equal false, response.parsed_body.dig("meta", "cache_hit")
+    assert_equal @other_specialist.id, response.parsed_body.dig("user", "id")
+    get "/api/v1/user-dashboard", params: filters.merge(vrp_id: @second.id), headers: headers(@specialist)
+    assert_equal false, response.parsed_body.dig("meta", "cache_hit")
+    assert_equal 0, response.parsed_body.dig("cards", "total_registered_vrp")
+  ensure
+    Rails.cache = old_cache
+  end
+
+  test "summary counts lists exports and widgets agree for AFL groups" do
+    farmer = Afl.find(@first_target.afl_ids.first)
+    farmer.update!(tracenet_no: "office-unique-farmer")
+    %w[summary_ics summary_villages summary_farmers].each do |key|
+      get "/api/v1/user-dashboard/widgets/#{key}", params: { month: "August", main_activity: "All" }, headers: headers(@specialist)
+      assert_response :success
+      assert_equal 1, response.parsed_body["value"]
+      get "/api/v1/user-dashboard/lists/#{key}", params: { month: "August", main_activity: "All" }, headers: headers(@specialist)
+      assert_response :success
+      assert_equal 1, response.parsed_body["count"]
+      get "/api/v1/user-dashboard/lists/#{key}/export", params: { month: "August", main_activity: "All" }, headers: headers(@specialist)
+      assert_response :success
+      assert_equal XlsxExporter::MIME_TYPE, response.media_type
+    end
+  end
+
+  test "each requested role applies month activity FCO ICS and JJ filters to the complete dashboard" do
+    [@specialist, @cluster, @fco].each do |user|
+      base = { month: "August", main_activity: "Farmers' Training", sub_activity: "Soil", fco: @first.fcoc, ics: "Office A" }
+      get "/api/v1/user-dashboard", params: base, headers: headers(user)
+      assert_response :success
+      assert_equal 1, response.parsed_body.dig("cards", "total_registered_vrp"), user.role
+      [{ month: "January" }, { main_activity: "Unknown" }, { sub_activity: "Unknown" },
+        { fco: @second.fcoc }, { ics: "Office B" }, { vrp_id: @second.id }].each do |change|
+        get "/api/v1/user-dashboard", params: base.merge(change), headers: headers(user)
+        assert_response :success
+        body = response.parsed_body
+        assert_equal 0, body.dig("cards", "total_registered_vrp"), "#{user.role}: #{change}"
+        assert_equal 0, body.dig("dashboard_summary", "values", "farmer_wise_target_mapping")
+        assert body.fetch("sections").find { |section| section["key"] == "summary" }["cards"].all? { |card| card["value"] == 0 }
+      end
+    end
+  end
+
   private
 
   def headers(user)

@@ -86,6 +86,18 @@ module Api
 
       private
 
+      def office_ics_report(calculator, targets, records, month, fcoc)
+        month = filter_param(:ics_report_month) if params.key?(:ics_report_month)
+        records = calculator.send(:dashboard_training_participation_records, month_name: month, fcoc_name: fcoc)
+        targets = calculator.send(:training_participation_targets_for_dashboard, month_name: month, fcoc_name: fcoc)
+        selected = filter_param(:ics_report_ics)
+        rows = selected ? calculator.send(:ics_farmer_report_rows, targets, records, selected_ics: selected) : []
+        { selected_month: month, selected_ics: selected,
+          ics_options: calculator.send(:ics_farmer_report_options, records, targets),
+          summary: calculator.send(:ics_farmer_report_summary, rows), rows: rows, count: rows.size,
+          list_endpoint: "/api/v1/user-dashboard/lists/ics_farmers" }
+      end
+
       def office_section_list_catalog
         catalog = { "summary_ics" => "Total ICS Count", "summary_villages" => "Total Villages Count",
           "summary_farmers" => "Total Farmer Count", "other_activities" => "Main Major Work Indicator - Other" }
@@ -141,7 +153,8 @@ module Api
             month: params.key?(:month) ? filter_param(:month) : Date.current.prev_month.strftime("%B")).summary
         end
         extra = widget == "cc_jj_work_status" ? { groups: MobileDashboardReportCards.cc_jj_groups(rows) } :
-          { cards: MobileDashboardReportCards.demonstration_cards(rows) }
+          { cards: OfficeDashboardSections.new(calculator: calculator, targets: targets,
+            participation: {}, month: nil, fcoc: nil).demonstration_cards }
         value = widget == "cc_jj_work_status" ? MobileDashboardReportCards.cc_jj_rows(rows) : rows
         { success: true, dashboard_type: dashboard_type, widget: widget, heading: config[:heading],
           value: value, filters: applied_filters, **extra, generated_at: Time.current.iso8601 }
@@ -171,10 +184,17 @@ module Api
       end
 
       def user_dashboard_widget_catalog
-        extras = office_section_list_catalog.to_h { |key, title| [key, { heading: title, section_card: key }] }
+        extras = office_section_list_catalog.except("other_activities").to_h { |key, title| [key, { heading: title, section_card: key }] }
         (OfficeDashboardSections::DEMO + %w[mapped_farmer training_red training_yellow training_green] +
           OfficeDashboardSections::OTHER.keys.map { |key| "other_#{key}" }).each do |key|
           extras[key] = { heading: key.humanize, section_card: key }
+        end
+        { "total_ics_count" => "summary_ics", "total_villages_count" => "summary_villages",
+          "total_farmer_count" => "summary_farmers",
+          "total_mapped_main_activities" => "total_mapped_main_activities",
+          "total_mapped_sub_activities" => "total_mapped_sub_activities", "no_training" => "training_red",
+          "only_1_training" => "training_yellow", "one_plus_trainings" => "training_green" }.each do |key, card|
+          extras[key] = { heading: key.humanize, section_card: card }
         end
         extras.merge({
           "cc_jj_work_status" => { heading: "CC and JJ Work Status", path: %i[cc_jj_work_status] },
@@ -228,7 +248,7 @@ module Api
         weekly_targets = weekly_targets.select { |target| calculator.send(:training_target_matches_fcoc?, target, weekly_fcoc) } if weekly_fcoc.present?
         weekly_rows = calculator.send(:weekly_activity_target_farmer_status_rows,
           weekly_targets, month_name: weekly_month, fcoc_name: weekly_fcoc, week_number: selected_week)
-        ics_month = filter_param(:ics_report_month) || participation_month
+        ics_month = params.key?(:ics_report_month) ? filter_param(:ics_report_month) : participation_month
         ics_targets = calculator.send(:training_participation_targets_for_dashboard,
           month_name: ics_month, fcoc_name: participation_fcoc)
         ics_records = calculator.send(:dashboard_training_participation_records,
@@ -306,6 +326,7 @@ module Api
           dashboard_summary: dashboard_summary_payload(calculator, targets, participation, weekly),
           farmer_training_participation_status: participation_payload(participation, participation_month, participation_fcoc, months),
           weekly_activity_target_status: weekly_payload(weekly, weekly_month, weekly_fcoc),
+          ics_wise_farmer_report: office_ics_report(calculator, targets, records, participation_month, participation_fcoc),
           monthly_target_summary: monthly_summary(targets),
           hierarchy: hierarchy_payload(calculator),
           generated_at: Time.current.iso8601
@@ -497,7 +518,7 @@ module Api
           scope = scope.where("LOWER(BTRIM(data::jsonb ->> 'bill_month')) = ?", selected_bill_month.to_s.strip.downcase)
         end
         records = scope.to_a
-          .select { |record| calculator.send(:jeevika_jankar_bill_record_visible?, record) }
+          .select { |record| calculator.send(:jeevika_jankar_bill_blocks_duplicate?, record) && calculator.send(:jeevika_jankar_bill_record_visible?, record) }
         if calculator.send(:module_cluster_incharge_login?)
           records.select! do |record|
             bill_vrp = calculator.send(:jeevika_bill_vrp, record)

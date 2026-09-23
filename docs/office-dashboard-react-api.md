@@ -68,28 +68,6 @@ Registration cards follow the selected target filters, so they may exclude JJs w
 
 Summary responses are cached briefly. Mapping changes can take roughly two minutes to appear because table versions and summaries each have a one-minute lifetime. Client caches must be separated by login and filter values, and cleared on logout. Never show previous-login data while loading.
 
-## Ready-to-copy client
+## Backend and Postman handoff
 
-Copy [officeDashboardApi.mjs](react-examples/officeDashboardApi.mjs) into the React project:
-
-```jsx
-import { createOfficeDashboardApi } from "./officeDashboardApi.mjs";
-
-const api = createOfficeDashboardApi({
-  baseUrl: API_ORIGIN,
-  getToken: () => authStore.getState().token,
-});
-
-// Run after office-user login. Keep existing Admin/JJ components unchanged.
-const configuration = await api.configuration();
-const options = await api.filters({ month: "All", main_activity: "All" });
-const filters = { month: "All", main_activity: "All" };
-const dashboard = await api.dashboard(filters);
-// dashboard.dashboard_summary.items.map(item => <Card key={item.key} ... />)
-const drilldown = await api.list("targeted_farmers", filters);
-const file = await api.exportList("targeted_farmers", filters);
-```
-
-In a React effect, pass `{ signal: abortController.signal }` to calls and abort in cleanup so an older filter request cannot overwrite newer data. On 401, return to login; on 403, show access denied; on 422, use a valid catalog key. On a 500 or `success: false`, show the error and a retry action—never convert a failed request into zero counts. The supplied client throws on both HTTP and JSON failures.
-
-For another frontend origin, existing reverse-proxy/CORS policy must permit that origin and the Authorization header. This handoff does not change deployment or CORS settings.
+Use [the complete API documentation](office-dashboard-postman-api.md) and import [the Postman collection](postman/office-dashboard.postman_collection.json). The handoff contains backend endpoints and request/response contracts only; no React implementation is supplied.

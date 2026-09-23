@@ -79,7 +79,20 @@ class DemonstrationMethodReport
             COUNT(*) FILTER (WHERE LOWER(TRIM(mr.data::jsonb ->> 'training_method')) = 'general training/meeting') AS general_training_done,
             COUNT(*) FILTER (WHERE LOWER(TRIM(mr.data::jsonb ->> 'training_method')) = 'input demo inm') AS input_demo_inm_done,
             COUNT(*) FILTER (WHERE LOWER(TRIM(mr.data::jsonb ->> 'training_method')) = 'input demo pm') AS input_demo_pm_done,
-            COUNT(*) FILTER (WHERE LOWER(TRIM(mr.data::jsonb ->> 'training_method')) = 'ffs') AS ffs_done
+            COUNT(*) FILTER (WHERE LOWER(TRIM(mr.data::jsonb ->> 'training_method')) = 'ffs') AS ffs_done,
+            -- CC achievement only counts sessions that still name a Cluster
+            -- Coordinator. Clearing the field, or picking "N/A", must drop the
+            -- session from the CC total while leaving the per-method counts
+            -- above untouched -- the training still happened. Records saved
+            -- before the field existed have no key at all and still count.
+            COUNT(*) FILTER (
+              WHERE LOWER(TRIM(mr.data::jsonb ->> 'training_method'))
+                      IN ('general training/meeting', 'input demo inm', 'input demo pm', 'ffs')
+                AND NOT (
+                  (mr.data::jsonb ? 'cluster_coordinator_name')
+                  AND COALESCE(TRIM(mr.data::jsonb ->> 'cluster_coordinator_name'), '') ~* '^(|n\\.?/?a\\.?|none|nil|null|-+)$'
+                )
+            ) AS cc_done
           FROM module_records mr
           WHERE mr.module_slug = 'training-form' AND #{month_filter}
             -- Only in-scope JJ records; the final LEFT JOIN discards the rest anyway,
@@ -103,7 +116,7 @@ class DemonstrationMethodReport
           vt.ffs_target AS ffs_target,
           COALESCE(ed.ffs_done, 0) AS ffs_done,
           COALESCE(vt.cc_target, 0) AS cc_target,
-          COALESCE(ed.general_training_done, 0) + COALESCE(ed.input_demo_inm_done, 0) + COALESCE(ed.input_demo_pm_done, 0) + COALESCE(ed.ffs_done, 0) AS cc_done
+          COALESCE(ed.cc_done, 0) AS cc_done
         FROM vrp_target vt
         LEFT JOIN vrps v ON v.id::text = vt.vrp_id::text
         LEFT JOIN entry_data ed ON ed.vrp_id = vt.vrp_id::text
