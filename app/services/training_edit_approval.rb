@@ -156,6 +156,33 @@ class TrainingEditApproval
     end
   end
 
+  # Apply only the requested changes to the latest record. A later unrelated
+  # edit must not block approval or be overwritten by the old proposed snapshot.
+  def self.merge_approved_data(before:, proposed:, current:)
+    before, proposed, current = [before, proposed, current].map { |value| Hash(value) }
+    keys = before.keys | proposed.keys
+    changed = keys.select { |key| comparable_value(before[key]) != comparable_value(proposed[key]) }
+    protected_keys = (before.keys | current.keys).select do |key|
+      key.start_with?("created_by") ||
+        (%w[vrp_id select_vrp jeevika_jankar_id fco_name trainee_department] + TrainingStaffScope::OFFICE_KEYS).include?(key)
+    end
+    conflicts = changed.select do |key|
+      live = comparable_value(current[key])
+      live != comparable_value(before[key]) && live != comparable_value(proposed[key])
+    end
+    # Ownership/office changes can invalidate the saved approval routing.
+    conflicts |= protected_keys.select { |key| comparable_value(current[key]) != comparable_value(before[key]) }
+    if conflicts.any?
+      raise InvalidTransition, "These training fields changed after this request: #{conflicts.sort.join(', ')}. Reject this request and submit a fresh edit."
+    end
+
+    current.deep_dup.tap do |merged|
+      changed.each do |key|
+        proposed.key?(key) ? merged[key] = proposed[key].deep_dup : merged.delete(key)
+      end
+    end
+  end
+
   def self.status_label(revision)
     status = revision.data["status"].to_s
     return "Approved" if status == "Approved"
@@ -185,8 +212,9 @@ class TrainingEditApproval
           if data["step"] >= data["approvers"].size
             record = ModuleRecord.find(data["record_id"])
             record.with_lock do
-              raise InvalidTransition, "The original record changed. Reject this request and submit a fresh edit." unless record.module_slug == "training-form" && comparable_data(record.data) == comparable_data(data["before"])
-              record.update!(data: data["proposed"])
+              raise InvalidTransition, "The original record is no longer a training form." unless record.module_slug == "training-form"
+              merged = merge_approved_data(before: data["before"], proposed: data["proposed"], current: record.data)
+              record.update!(data: merged)
             end
             data["status"] = "Approved"
           end

@@ -192,7 +192,10 @@ class CcTargetStatusReport
       rec_month = data["month"].to_s.strip
       next if !all_months? && rec_month.downcase != @month.downcase
 
-      cc_name = CC_NAME_KEYS.filter_map { |key_name| cc_name_value(data[key_name]) }.first
+      # An explicit current field wins over stale legacy aliases, including
+      # blank/N/A. Only records without that field may use a legacy value.
+      selected_key = CC_NAME_KEYS.find { |key_name| data.key?(key_name) }
+      cc_name = cc_name_value(data[selected_key]) if selected_key
 
       # A Cluster Coordinator cleared -- or set to "N/A" -- on the training form
       # must stop counting towards that CC. The JJ/VRP fallback below is only for

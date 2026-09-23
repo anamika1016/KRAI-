@@ -105,4 +105,31 @@ class TrainingEditApprovalTest < ActiveSupport::TestCase
     assert TrainingEditApproval.visible?(revision, approver)
     refute TrainingEditApproval.can_decide?(revision, submitter), "the submitter must not decide"
   end
+  test "approval preserves unrelated live edits while publishing CC removal" do
+    before = { "fco_name" => "FCO-C Sausar", "cluster_coordinator_name" => "Coordinator", "training_location" => "Old" }
+    record = ModuleRecord.create!(module_slug: "training-form", data: before.merge("training_location" => "New"))
+    revision = ModuleRecord.create!(module_slug: TrainingEditApproval::SLUG, data: {
+      "record_id" => record.id, "before" => before,
+      "proposed" => before.merge("cluster_coordinator_name" => "N/A"),
+      "status" => "Pending", "step" => 0, "approval_role" => "agronomist",
+      "approvers" => ["Approver"], "history" => []
+    })
+    TrainingEditApproval.decide!(revision: revision, actor: { "user_type" => "admin", "id" => 1 }, decision: "approve", remarks: "Verified")
+    assert_equal "N/A", record.reload.data["cluster_coordinator_name"]
+    assert_equal "New", record.data["training_location"]
+    assert_equal "Approved", revision.reload.data["status"]
+  end
+
+  test "merge accepts already applied changes but rejects same field and office conflicts" do
+    before = { "cluster_coordinator_name" => "A", "fco_name" => "Sausar" }
+    proposed = before.merge("cluster_coordinator_name" => "N/A")
+    assert_equal proposed, TrainingEditApproval.merge_approved_data(before: before, proposed: proposed, current: proposed)
+    [{ "cluster_coordinator_name" => "B" }, { "fco_name" => "Turekela" }].each do |change|
+      error = assert_raises(TrainingEditApproval::InvalidTransition) do
+        TrainingEditApproval.merge_approved_data(before: before, proposed: proposed, current: before.merge(change))
+      end
+      assert_includes error.message, change.keys.first
+    end
+  end
+
 end

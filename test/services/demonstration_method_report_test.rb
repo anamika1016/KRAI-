@@ -83,6 +83,24 @@ class DemonstrationMethodReportTest < ActiveSupport::TestCase
     assert_equal "0 / 5", DemonstrationMethodReport.new(targets: @targets, month: "all").rows.find { |item| item["vrp_id"] == @vrp.id }["FFS"]
   end
 
+  test "saving a removed CC recalculates achievement without removing training achievement" do
+    @targets.first.update!(cc_target: 1)
+    ModuleRecord.where(module_slug: "training-form").delete_all
+    record = ModuleRecord.create!(module_slug: "training-form", data: {
+      "created_by_id" => @vrp.id.to_s, "month" => "August",
+      "training_method" => "General Training/Meeting", "cluster_coordinator_name" => "Coordinator"
+    })
+    report_row = -> { DemonstrationMethodReport.new(targets: @targets, month: "August").rows.find { |row| row["vrp_id"] == @vrp.id } }
+    assert_equal "1 / 1", report_row.call["CC TARGET STATUS"]
+    ["N/A", "", nil].each do |removed|
+      record.update!(data: record.data.merge("cluster_coordinator_name" => removed))
+      assert_equal "1 / 0", report_row.call["CC TARGET STATUS"]
+      assert_equal "4 / 1", report_row.call["General Training/Meeting"]
+    end
+    record.update!(data: record.data.merge("cluster_coordinator_name" => "Coordinator"))
+    assert_equal "1 / 1", report_row.call["CC TARGET STATUS"]
+  end
+
   private
 
   def build_vrp(name)

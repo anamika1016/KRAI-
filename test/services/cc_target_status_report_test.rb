@@ -29,4 +29,18 @@ class CcTargetStatusReportTest < ActiveSupport::TestCase
     assert_equal "", report.send(:normalize_fco_id, nil, nil, nil)
   end
 
+  test "cleared current CC does not fall back to a stale legacy coordinator" do
+    record = ModuleRecord.create!(module_slug: "training-form", data: {
+      "month" => "August", "cluster_coordinator_name" => "Coordinator",
+      "cluster_incharge" => "Coordinator", "fco_name" => "Sausar"
+    })
+    key = ["1004", "Coordinator"]
+    report = CcTargetStatusReport.new(calculator: nil, month: "August")
+    assert_equal 1, report.send(:fetch_cc_achievements, [key])[key]
+    ["N/A", "", nil].each do |removed|
+      record.update!(data: record.data.merge("cluster_coordinator_name" => removed))
+      assert_equal 0, report.send(:fetch_cc_achievements, [key]).fetch(key, 0)
+    end
+  end
+
 end

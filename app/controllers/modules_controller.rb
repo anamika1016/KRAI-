@@ -12616,7 +12616,7 @@ class ModulesController < ApplicationController
     data["trainer_contact"] = trainer_contact if data["trainer_contact"].blank? && trainer_contact.present?
     data["fco_name"] = data["fco_name"].presence || data["trainee_department"].presence || training_trainee_department_default
     data["trainee_department"] = data["fco_name"] if data["trainee_department"].blank?
-    data["cluster_coordinator_name"] = data["cluster_coordinator_name"].presence || data["internal_trainer_name_1"].presence
+    data["cluster_coordinator_name"] = data["internal_trainer_name_1"].presence unless data.key?("cluster_coordinator_name")
     data["agronomist_name"] = data["agronomist_name"].presence || data["internal_trainer_name_2"].presence
     data["main_activity_type"] = data["main_activity_type"].presence || "Training"
     raw_main_activities = data["main_activity"].presence || data["training_topic"].presence

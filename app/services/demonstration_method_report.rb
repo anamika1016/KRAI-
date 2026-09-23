@@ -250,9 +250,8 @@ class DemonstrationMethodReport
   # Preserve the selected FCO(s), but use every mapping in those FCOs for the
   # month. This is the same population as the supplied FCO-wise SQL query.
   def demonstration_target_scope
-    return TargetMapping.all if @target_ids.blank?
-
-    fco_ids = @fco_ids || TargetMapping.where(id: @target_ids).where.not(fco_id: nil).distinct.pluck(:fco_id)
-    fco_ids.present? ? TargetMapping.where(fco_id: fco_ids) : TargetMapping.where(id: @target_ids)
+    # Preserve the caller's JJ/month/activity scope, including an empty scope.
+    # Expanding to the whole FCO reintroduces unrelated CC achievements.
+    TargetMapping.where(id: @target_ids)
   end
 end
