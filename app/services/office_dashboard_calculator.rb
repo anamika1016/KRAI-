@@ -76,8 +76,15 @@ class OfficeDashboardCalculator < ModulesController
       .map(&:to_s).reject(&:blank?))
   end
 
-  # Count only farmers in the target mappings authorized for this API request.
+  # Use the exact target-mapping JSON SQL used by the web Mapped Farmer card.
+  # It intentionally includes mappings for every authorized JJ, including a
+  # JJ that later became inactive.
   def training_mapped_farmer_distinct_count_for_participation(month_name:, fcoc_name:, targets:)
+    if month_name.present?
+      mapped, = farmer_training_mapped_farmer_count_and_popups(month_name: month_name, fcoc_name: fcoc_name)
+      return mapped.to_i
+    end
+
     Array(targets).flat_map { |target| target_farmer_ids(target) }
       .map(&:to_s).reject(&:blank?).uniq.size
   end
