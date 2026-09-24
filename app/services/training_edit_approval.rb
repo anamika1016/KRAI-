@@ -21,9 +21,9 @@ class TrainingEditApproval
       .compact_blank.map { |value| username(value) }.uniq
   end
 
-  def self.automatic_routing(data, actor)
+  def self.automatic_routing(data, actor, staff_catalogue: nil)
     office = TrainingStaffScope.office_for(data, actor)
-    candidates = TrainingStaffScope.staff(office, :agronomist)
+    candidates = TrainingStaffScope.staff(office, :agronomist, catalogue: staff_catalogue)
       .reject { |candidate| candidate["user_name"].blank? || identity(candidate) == identity(actor) }
       .uniq { |candidate| username(candidate["user_name"]) }
     return {} unless candidates.one?
@@ -33,14 +33,19 @@ class TrainingEditApproval
       "approver_identities" => [identity(approver)], "approval_office" => office, "approval_role" => "agronomist" }
   end
 
-  def self.assign_automatic_approver!(revision)
+  def self.assign_automatic_approver!(revision, staff_catalogue: nil)
     return revision unless revision.data["status"] == "Pending" && revision.data["approval_role"] != "agronomist"
 
     revision.with_lock do
       data = revision.data.deep_dup
-      routing = automatic_routing(data["before"] || {}, data["requester"] || {})
+      routing = automatic_routing(data["before"] || {}, data["requester"] || {}, staff_catalogue: staff_catalogue)
       routing = { "approvers" => [], "approver_identities" => [], "approval_role" => nil } if routing.empty?
-      revision.update!(data: data.merge(routing).merge("step" => 0))
+      updated_data = data.merge(routing).merge("step" => 0)
+      # Legacy unassigned requests are rechecked so a later Agronomist assignment
+      # is still picked up. Skip the identical write/reload on every page render.
+      next revision if updated_data == data
+
+      revision.update!(data: updated_data)
     end
     revision.reload
   end
@@ -101,8 +106,11 @@ class TrainingEditApproval
   def self.pending_for(actor)
     return [] if actor.blank?
 
+    # The sidebar checks all pending revisions. Reuse one catalogue for this request
+    # instead of loading every User and new-user record once per revision.
+    staff_catalogue = TrainingStaffScope.staff_catalogue
     ModuleRecord.where(module_slug: SLUG).where("data::jsonb ->> 'status' = 'Pending'").order(id: :desc).select do |revision|
-      assign_automatic_approver!(revision)
+      assign_automatic_approver!(revision, staff_catalogue: staff_catalogue)
       visible?(revision, actor)
     end
   end

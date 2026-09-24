@@ -57,7 +57,7 @@ class OfficeDashboardSections
       section("cc_jj_work_status", "CC and JJ Work Status", [],
         rows: MobileDashboardReportCards.cc_jj_rows(call_report.summary),
         groups: MobileDashboardReportCards.cc_jj_groups(call_report.summary),
-        list_endpoint: "#{ROOT}/lists/cc_jj_work_status")]
+        list_endpoint: "#{ROOT}/lists/cc_jj_work_status", export_endpoint: "#{ROOT}/lists/cc_jj_work_status/export")]
   end
 
   def demonstration_cards
@@ -90,11 +90,15 @@ class OfficeDashboardSections
     connection = TargetMapping.connection
     scope = TargetMapping.where(id: targets.map(&:id)).select(:vrp_id, :fco_id, :fco_name, :main_activity_name, :month_name, :afl_ids).to_sql
     @other_rows = connection.select_all(<<~SQL).to_a
-      WITH mapping AS (
+      WITH mapping AS MATERIALIZED (
         SELECT DISTINCT t.vrp_id, t.fco_id, t.fco_name, t.main_activity_name,
           LOWER(TRIM(t.month_name)) AS month, f.id AS farmer_id
         FROM (#{scope}) t
         CROSS JOIN LATERAL jsonb_array_elements_text(t.afl_ids::jsonb) f(id)
+      ), mapping_keys AS MATERIALIZED (
+        SELECT DISTINCT vrp_id::text AS vrp_id, month,
+          LOWER(TRIM(main_activity_name)) AS main_activity_name
+        FROM mapping
       ), training AS MATERIALIZED (
         SELECT DISTINCT
           COALESCE(NULLIF(r.data::jsonb ->> 'vrp_id', ''),
@@ -104,6 +108,13 @@ class OfficeDashboardSections
           LOWER(TRIM(r.data::jsonb ->> 'main_activity')) AS main_activity_name,
           TRIM(farmer.id) AS farmer_id
         FROM module_records r
+        INNER JOIN mapping_keys mapping_key ON mapping_key.vrp_id = COALESCE(
+          NULLIF(r.data::jsonb ->> 'vrp_id', ''),
+          CASE WHEN LOWER(r.data::jsonb ->> 'created_by_record_type') = 'vrp'
+          THEN r.data::jsonb ->> 'created_by_id' END
+        )
+          AND mapping_key.month = LOWER(TRIM(r.data::jsonb ->> 'month'))
+          AND mapping_key.main_activity_name = LOWER(TRIM(r.data::jsonb ->> 'main_activity'))
         CROSS JOIN LATERAL jsonb_array_elements_text(
           CASE
             WHEN jsonb_typeof(r.data::jsonb -> 'selected_farmer_ids') = 'array'
@@ -112,10 +123,6 @@ class OfficeDashboardSections
           END
         ) AS farmer(id)
         WHERE r.module_slug = 'training-form'
-          AND LOWER(TRIM(r.data::jsonb ->> 'month')) IN (SELECT DISTINCT month FROM mapping)
-          AND LOWER(TRIM(r.data::jsonb ->> 'main_activity')) IN (
-            SELECT DISTINCT LOWER(TRIM(main_activity_name)) FROM mapping
-          )
       ), detail AS (
         SELECT m.*, training.farmer_id IS NOT NULL AS done
         FROM mapping m

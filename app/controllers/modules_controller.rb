@@ -5104,7 +5104,11 @@ class ModulesController < ApplicationController
 
     targets = training_participation_targets_for_dashboard(month_name: month_name, fcoc_name: fcoc_name, main_activity_name: main_activity_name, sub_activity_name: sub_activity_name)
     farmer_ids = training_participation_valid_farmer_ids_for_targets(targets)
-    records = active_module_records_scope("training-form").order(created_at: :desc)
+    records = active_module_records_scope("training-form")
+      # training_record_main_activity_type? treats a blank value as Training.
+      # Apply the same predicate in SQL before loading JSON records into Ruby.
+      .where("COALESCE(LOWER(BTRIM(data::jsonb ->> 'main_activity_type')), '') IN ('', 'training')")
+      .order(created_at: :desc)
     if month_name.present?
       records = records.where("LOWER(BTRIM(data::jsonb ->> 'month')) = ?", month_name.to_s.strip.downcase)
     end
@@ -6368,10 +6372,13 @@ class ModulesController < ApplicationController
     sql = sql.gsub("WHERE mr.module_slug = 'training-form'", "WHERE mr.module_slug = 'training-form' #{week_filter}")
 
     if %w[unique mapped red pending total_red].include?(status.to_s)
-      farmer_scope = dashboard_visible_farmer_scope.where(fco_id: fco_ids)
-      binds = { month_name: selected_month.strip.downcase, fco_ids: fco_ids, visible_farmer_ids: farmer_scope.pluck(:id) }
+      # dashboard_scoped_training_sql already injects the authorised farmer scope.
+      # Do not materialise that scope into a large Ruby ID array: on big FCOs it
+      # produces a massive IN clause and was responsible for 9–13 second list spikes.
+      scoped_sql = dashboard_scoped_training_sql(sql).gsub(" AND a.id IN (:visible_farmer_ids)", "")
+      binds = { month_name: selected_month.strip.downcase, fco_ids: fco_ids }
       @mapped_farmer_details = ActiveRecord::Base.connection.exec_query(
-        ActiveRecord::Base.send(:sanitize_sql_array, [dashboard_scoped_training_sql(sql), binds])
+        ActiveRecord::Base.send(:sanitize_sql_array, [scoped_sql, binds])
       )
       return @mapped_farmer_details.map do |row|
         { farmer_id: row["id"].to_s, farmer_name: row["farmer_name"], father_name: row["father_name"],

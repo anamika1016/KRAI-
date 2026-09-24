@@ -71,6 +71,20 @@ The response is always `{ success, title, list_type, filters, count, records }`.
 
 For Participation cards, `training_unique_farmers`, `training_red`, `training_yellow`, and `training_green` now use the web dashboard View List SQL and the logged-in CC/Agronomist/FCOC authorization scope. Summary activity lists use the Summary card scope, and Demonstration uses `demonstration_method`.
 
+## 3B. Additional full-dashboard sections
+
+`GET /api/v1/user-dashboard` returns these sections in its `sections` array in addition to Summary, Participation and Demonstration. They follow the logged-in CC, Agronomist or FCOC authorization plus the same request filters.
+
+| Section key | Web section | View List API |
+| --- | --- | --- |
+| `other` | Main Major Work Indicator - Other | `/lists/other_activities` |
+| `fco_requirement` | FCO-wise JJ Requirement | Each returned card has `fco_requirement_sausar_required`, `_active`, `_vacant`, or the Turekela equivalent |
+| `billing` | Jeevika Jankar Billing | `/lists/bill_approved`, `/lists/bill_pending` |
+| `gender` | Gender Count | Each returned card has `gender_sausar_male`, `_female`, or the Turekela equivalent |
+| `cc_jj_work_status` | CC and JJ Work Status | `/lists/cc_jj_work_status` |
+
+Every card has a `list_endpoint` and `export_endpoint`; use the URLs returned by the API and send the same query filters and Bearer token.
+
 ## 4. Boxes, line by line
 
 Use the new `sections` array for the screenshot dashboard. Each card includes `key`, `title`, `value`, `list_key`, `list_endpoint`, `export_endpoint`. Follow returned URLs with the same query and token.
