@@ -236,6 +236,23 @@ class Api::V1::OfficeDashboardControllerTest < ActionDispatch::IntegrationTest
     Rails.cache = old_cache
   end
 
+  test "boxes endpoint matches full primary sections for each role and filters" do
+    [@specialist, @cluster, @fco].each do |user|
+      [{ month: "August", main_activity: "All" }, { month: "January", main_activity: "All" }].each do |query|
+        get "/api/v1/user-dashboard", params: query, headers: headers(user)
+        assert_response :success
+        expected = response.parsed_body.fetch("sections").select { |section| %w[summary participation demonstration].include?(section["key"]) }
+        get "/api/v1/user-dashboard/boxes", params: query, headers: headers(user)
+        assert_response :success
+        assert_equal expected, response.parsed_body.fetch("sections")
+      end
+    end
+    get "/api/v1/user-dashboard/boxes"
+    assert_response :unauthorized
+    get "/api/v1/user-dashboard/boxes", headers: headers(@first)
+    assert_response :forbidden
+  end
+
   private
 
   def headers(user)

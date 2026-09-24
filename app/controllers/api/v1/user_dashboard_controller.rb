@@ -12,6 +12,28 @@ module Api
         render json: response, status: response[:success] ? :ok : :internal_server_error
       end
 
+      # Lightweight mobile landing page: no weekly farmer lists, Other SQL,
+      # billing, hierarchy or CC/JJ work-status reports.
+      def boxes
+        return render_vrp_error if current_api_user.is_a?(Vrp)
+
+        started = Process.clock_gettime(Process::CLOCK_MONOTONIC)
+        calculator = dashboard_calculator
+        vrps, targets, options = filtered_scope(calculator)
+        set_filtered_scope(calculator, vrps, targets, [])
+        month = selected_month(:participation_month, [], calculator, targets)
+        fcoc = filter_param(:participation_fcoc) || calculator.send(:dashboard_default_visible_fcoc, options[:fcos])
+        records = calculator.send(:dashboard_training_participation_records, month_name: month, fcoc_name: fcoc)
+        counts = calculator.send(:training_participation_dashboard_counts, month_name: month, fcoc_name: fcoc, records: records)
+        sections = OfficeDashboardSections.new(calculator: calculator, targets: targets,
+          participation: counts, month: month, fcoc: fcoc).sections(only: :primary)
+        duration = ((Process.clock_gettime(Process::CLOCK_MONOTONIC) - started) * 1000).round(2)
+        response.set_header("Server-Timing", "dashboard;dur=#{duration}")
+        render json: { success: true, dashboard_type: "user", user: user_payload,
+          filters: applied_filters, filter_options: options, sections: sections,
+          meta: { server_processing_ms: duration }, generated_at: Time.current.iso8601 }
+      end
+
       # Scoped drill-down for CC, Agronomist, FCO and other office users.
       # It deliberately uses only the VRPs and targets already visible to this login.
       def list
@@ -73,7 +95,7 @@ module Api
 
         render json: {
           success: true, dashboard_type: "user", user: user_payload,
-          endpoint: "/api/v1/user-dashboard", filters_endpoint: "/api/v1/user-dashboard/filters",
+          endpoint: "/api/v1/user-dashboard", boxes_endpoint: "/api/v1/user-dashboard/boxes", filters_endpoint: "/api/v1/user-dashboard/filters",
           widgets: user_dashboard_widget_catalog.map { |key, config|
             { key: key, heading: config[:heading], endpoint: "/api/v1/user-dashboard/widgets/#{key}" }
           },
@@ -311,17 +333,19 @@ module Api
           week_number: selected_week).merge(status_counts: weekly_counts, rows_count: weekly_rows.size)
 
         @calculation_stage = "response_payload"
+        section_builder = OfficeDashboardSections.new(calculator: calculator, targets: targets,
+          participation: participation, month: participation_month, fcoc: participation_fcoc)
+        sections = section_builder.sections
         {
           success: true,
           message: "User dashboard fetched successfully.",
           dashboard_type: "user",
-          sections: OfficeDashboardSections.new(calculator: calculator, targets: targets,
-            participation: participation, month: participation_month, fcoc: participation_fcoc).sections,
+          sections: sections,
           user: user_payload,
           filters: applied_filters,
           filter_options: options,
-          cc_jj_work_status: CcJjWorkStatusReport.new(calculator: calculator).summary,
-          demonstration_method: DemonstrationMethodReport.new(targets: targets, month: params.key?(:month) ? filter_param(:month) : Date.current.prev_month.strftime("%B")).summary,
+          cc_jj_work_status: section_builder.send(:call_report).summary,
+          demonstration_method: calculator.instance_variable_get(:@demonstration_method_report).summary,
           cards: card_payload(calculator, vrps, targets, bills),
           dashboard_summary: dashboard_summary_payload(calculator, targets, participation, weekly),
           farmer_training_participation_status: participation_payload(participation, participation_month, participation_fcoc, months),

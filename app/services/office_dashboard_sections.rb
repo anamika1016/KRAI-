@@ -18,7 +18,7 @@ class OfficeDashboardSections
     @calculator, @targets, @participation, @month, @fcoc = calculator, targets, participation, month, fcoc
   end
 
-  def sections
+  def sections(only: nil)
     summary = call(:dashboard_summary_cards, @targets).map do |item|
       card(SUMMARY.fetch(item[:title]), item[:title], item[:value], SUMMARY.fetch(item[:title]), popup_items: item[:popup_items])
     end
@@ -28,6 +28,11 @@ class OfficeDashboardSections
     %w[red yellow green].zip(["Pending", "Only 1 Training", "1+ Trainings"]).each do |status, title|
       participation << card("training_#{status}", title, @participation[status.to_sym].to_i, "training_#{status}")
     end
+    primary = [section("summary", "Dashboard Summary", summary),
+      section("participation", "Farmer Training Participation Status", participation),
+      section("demonstration", "Demonstration Method", demo)]
+    return primary if only == :primary
+
     other = other_totals
     groups = call(:dashboard_cards).filter_map do |group|
       next unless ["FCO-wise JJ Requirement", "Jeevika Jankar Billing", "Gender Count"].include?(group[:title])

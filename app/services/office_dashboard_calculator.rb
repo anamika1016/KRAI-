@@ -38,6 +38,18 @@ class OfficeDashboardCalculator < ModulesController
     [conditions, binds]
   end
 
+  # Reuse expensive presentation calculations within this request only.
+  def dashboard_summary_cards(targets)
+    @office_summary_cards ||= super
+  end
+
+  def demonstration_method_cards
+    @demonstration_method_report ||= DemonstrationMethodReport.new(
+      targets: @filtered_targets || dashboard_target_mappings,
+      month: params.key?(:month) ? dashboard_filter_param(:month) : Date.current.prev_month.strftime("%B"))
+    super
+  end
+
   def compute_dashboard_agronomics_login
     super || office_dashboard_roles.any? { |role| role.include?("agricultural specialist") }
   end

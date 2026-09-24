@@ -123,6 +123,13 @@
       ]
     },
     {
+      "name": "GET 15 dashboard boxes (mobile landing page)",
+      "request": {
+        "method": "GET",
+        "url": "{{base_url}}/api/v1/user-dashboard/boxes?month={{month}}&main_activity={{main_activity}}&sub_activity={{sub_activity}}&fco={{fco}}&ics={{ics}}"
+      }
+    },
+    {
       "name": "Filters",
       "request": {
         "method": "GET",

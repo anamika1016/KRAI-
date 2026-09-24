@@ -134,3 +134,11 @@ GET /api/v1/user-dashboard?month=August&main_activity=Farmers%27%20Training&sub_
 Dashboard `filter_options.sub_activities` now excludes modules from other months. Populate dropdowns from the returned options; replace the previous options rather than appending. On a month/main selection change, clear dependent values to All and reload filters, then dashboard. GET body should be empty; login/password belong only to POST login. Every GET requires the logged-in user's Bearer token.
 
 Office API cache version stamps are now read from the database on each request, including fractional update timestamps. Committed record changes no longer wait for the previous one-minute version cache. Network and calculation time still apply; no fixed latency guarantee. Existing web code is unchanged by this correction.
+
+## Timeout mitigation: use boxes for the mobile landing page
+
+`GET /api/v1/user-dashboard/boxes?month=August&main_activity=Farmers%27%20Training&sub_activity=All&fco=All&ics=All`
+
+Returns the same `sections` for `summary`, `participation`, `demonstration` (15 cards), `filters`, `filter_options`, `user` and processing time. It skips weekly farmer rows, billing, hierarchy, Other and CC/JJ work-status calculations. The full endpoint remains available; use separate list/report URLs when opening those screens. No production latency guarantee has been established. Deploy the backend before using this new URL.
+
+Dropdown API: `GET /api/v1/user-dashboard/filters?month=August&main_activity=Farmers%27%20Training&sub_activity=All&fco=All&ics=All`. Both require Bearer authorization and an empty GET body. Use identical filter parameters for boxes and list requests.
