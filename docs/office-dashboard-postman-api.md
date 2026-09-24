@@ -135,6 +135,10 @@ Dashboard `filter_options.sub_activities` now excludes modules from other months
 
 Office API cache version stamps are now read from the database on each request, including fractional update timestamps. Committed record changes no longer wait for the previous one-minute version cache. Network and calculation time still apply; no fixed latency guarantee. Existing web code is unchanged by this correction.
 
+### Summary versus selected activity filters
+
+For exact web parity, the five **Dashboard Summary** cards use the authorized login scope and selected FCO, ICS, cluster, JJ and search filters. They do not change for `month`, `main_activity` or `sub_activity`. **Farmer Training Participation Status** and **Demonstration Method** use every selected filter, including month, main activity and sub activity, and therefore change immediately when a filter is applied.
+
 ## Timeout mitigation: use boxes for the mobile landing page
 
 `GET /api/v1/user-dashboard/boxes?month=August&main_activity=Farmers%27%20Training&sub_activity=All&fco=All&ics=All`

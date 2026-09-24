@@ -1,10 +1,12 @@
 # Request-local adapter for the office-user API. The web, Admin and JJ
 # dashboards continue to use ModulesController without these overrides.
 class OfficeDashboardCalculator < ModulesController
-  def apply_dashboard_scope(vrps:, targets:, bills:)
+  def apply_dashboard_scope(vrps:, targets:, bills:, summary_vrps: nil, summary_targets: nil)
     @filtered_vrps = vrps
     @filtered_targets = targets
     @filtered_bills = bills
+    @office_summary_vrps = summary_vrps
+    @office_summary_targets = summary_targets
     @dashboard_vrps = vrps
     @dashboard_visible_vrp_ids = vrps.map(&:id)
     @dashboard_month_filter_value = params.key?(:month) ? dashboard_filter_param(:month) : Date.current.prev_month.strftime("%B")
@@ -40,18 +42,44 @@ class OfficeDashboardCalculator < ModulesController
 
   # Reuse expensive presentation calculations within this request only.
   def dashboard_summary_cards(targets)
-    @office_summary_cards ||= super
+    return @office_summary_cards if defined?(@office_summary_cards)
+
+    original_targets = @filtered_targets
+    original_vrps = @filtered_vrps
+    original_dashboard_vrps = @dashboard_vrps
+    original_visible_vrp_ids = @dashboard_visible_vrp_ids
+    begin
+      if @office_summary_targets.present?
+        @filtered_targets = @office_summary_targets
+        @filtered_vrps = @office_summary_vrps if @office_summary_vrps.present?
+        @dashboard_vrps = @office_summary_vrps if @office_summary_vrps.present?
+        @dashboard_visible_vrp_ids = Array(@dashboard_vrps).map(&:id)
+      end
+      @office_summary_cards = super(@office_summary_targets.presence || targets)
+    ensure
+      @filtered_targets = original_targets
+      @filtered_vrps = original_vrps
+      @dashboard_vrps = original_dashboard_vrps
+      @dashboard_visible_vrp_ids = original_visible_vrp_ids
+    end
   end
 
-  # Keep historical target farmer IDs for the mobile office reports. June
-  # mappings can outlive a later AFL import, while their training entries still
-  # correctly reference the original assigned IDs.
+  # Keep historical target farmer IDs only when an old mapping has no
+  # matching row in the current AFL import. Normal months retain the exact
+  # web dashboard counts, including the valid difference between Total Farmer
+  # Count and Mapped Farmer.
   def training_participation_existing_farmer_id_set(targets)
+    current_ids = super
+    return current_ids if current_ids.any?
+
     Set.new(Array(targets).flat_map { |target| target_farmer_ids(target) }
       .map(&:to_s).reject(&:blank?))
   end
 
   def training_mapped_farmer_distinct_count_for_participation(month_name:, fcoc_name:, targets:)
+    current_count = super
+    return current_count if current_count.positive?
+
     Array(targets).flat_map { |target| target_farmer_ids(target) }
       .map(&:to_s).reject(&:blank?).uniq.size
   end
@@ -63,21 +91,19 @@ class OfficeDashboardCalculator < ModulesController
     training_mapped_farmer_distinct_count_for_participation(month_name: nil, fcoc_name: fcoc_name, targets: targets)
   end
 
-  # The web summary relies on the current AFL import. The office API must keep
-  # the selected, authorized target mappings as its source of truth so all
-  # months, including historical June, have the same role-filtered totals.
   def dashboard_summary_login_counts(targets)
+    counts = super
+    return counts if dashboard_global_view_user? || counts[:farmer_count].to_i.positive?
+
     rows = Array(targets)
     farmer_count = rows.flat_map { |target| target_farmer_ids(target) }
       .map(&:to_s).reject(&:blank?).uniq.size
-    {
+    counts.merge(
       ics_count: rows.map { |target| [target.fco_id.to_s, target.ics_id.to_s, target.ics_name.to_s] }.reject { |_fco, id, name| id.blank? && name.blank? }.uniq.size,
       village_count: rows.map { |target| [target.fco_id.to_s, target.village_id.to_s, target.village_name.to_s] }.reject { |_fco, id, name| id.blank? && name.blank? }.uniq.size,
       farmer_count: farmer_count,
-      mapped_farmer_count: farmer_count,
-      main_activity_count: rows.map { |target| normalize_dashboard_text(target.main_activity_name) }.reject(&:blank?).uniq.size,
-      sub_activity_count: rows.map { |target| normalize_dashboard_text(target.activity_name) }.reject(&:blank?).uniq.size
-    }
+      mapped_farmer_count: farmer_count
+    )
   end
 
   def demonstration_method_cards

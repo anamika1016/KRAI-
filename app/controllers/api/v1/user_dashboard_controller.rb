@@ -20,7 +20,8 @@ module Api
         started = Process.clock_gettime(Process::CLOCK_MONOTONIC)
         calculator = dashboard_calculator
         vrps, targets, options = filtered_scope(calculator)
-        set_filtered_scope(calculator, vrps, targets, [])
+        summary_vrps, summary_targets = summary_scope(calculator)
+        set_filtered_scope(calculator, vrps, targets, [], summary_vrps: summary_vrps, summary_targets: summary_targets)
         month = selected_month(:participation_month, [], calculator, targets)
         fcoc = filter_param(:participation_fcoc) || calculator.send(:dashboard_default_visible_fcoc, options[:fcos])
         records = calculator.send(:dashboard_training_participation_records, month_name: month, fcoc_name: fcoc)
@@ -242,10 +243,13 @@ module Api
 
         calculator = dashboard_calculator
         vrps, targets, options = filtered_scope(calculator)
-        set_filtered_scope(calculator, vrps, targets, [])
+        summary_vrps, summary_targets = summary_scope(calculator)
         if office_section_list_catalog.key?(list_type)
-          return office_section_list_payload(list_type, calculator, vrps, targets)
+          list_vrps, list_targets = list_type.start_with?("summary_") ? [summary_vrps, summary_targets] : [vrps, targets]
+          set_filtered_scope(calculator, list_vrps, list_targets, [], summary_vrps: summary_vrps, summary_targets: summary_targets)
+          return office_section_list_payload(list_type, calculator, list_vrps, list_targets)
         end
+        set_filtered_scope(calculator, vrps, targets, [], summary_vrps: summary_vrps, summary_targets: summary_targets)
         if list_type == "cc_jj_work_status"
           return { title: user_dashboard_list_catalog.fetch(list_type), headers: CcJjWorkStatusReport::HEADERS,
             records: CcJjWorkStatusReport.new(calculator: calculator).rows }
@@ -303,9 +307,10 @@ module Api
         calculator = dashboard_calculator
         @calculation_stage = "visible_vrps_and_targets"
         vrps, targets, options = filtered_scope(calculator)
+        summary_vrps, summary_targets = summary_scope(calculator)
         @calculation_stage = "visible_bills"
         bills = filtered_bills(calculator, vrps)
-        set_filtered_scope(calculator, vrps, targets, bills)
+        set_filtered_scope(calculator, vrps, targets, bills, summary_vrps: summary_vrps, summary_targets: summary_targets)
 
         @calculation_stage = "participation_month_options"
         months = calculator.send(:dashboard_month_options_for_targets, targets)
@@ -575,8 +580,36 @@ module Api
         records
       end
 
-      def set_filtered_scope(calculator, vrps, targets, bills)
-        calculator.apply_dashboard_scope(vrps: vrps, targets: targets, bills: bills)
+      # Summary follows the same role/FCO/ICS scope as the web dashboard.
+      # Participation and Demonstration continue to use month/activity filters.
+      def summary_scope(calculator)
+        vrps = calculator.send(:dashboard_vrps).to_a
+        targets = calculator.send(:dashboard_target_mappings).to_a
+        preload_dashboard_associations!(targets)
+        vrps, targets = search_scope(vrps, targets)
+        vrps, targets = filter_vrps(vrps, targets, :fcoc, filter_param(:fcoc, :fco))
+        vrps, targets = filter_vrps(vrps, targets, :cluster_incharge, filter_param(:cluster_incharge))
+
+        selected_ics = filter_param(:ics, :ics_name)
+        if selected_ics.present?
+          targets = targets.select { |target| same?(target.ics_name.presence || target.ics_id, selected_ics) }
+          vrps = restrict_vrps_to_targets(vrps, targets)
+        end
+
+        vrps, targets = filter_vrps(vrps, targets, :role, filter_param(:post, :post_wise_name))
+        selected_vrp_id = filter_param(:vrp_id)
+        if selected_vrp_id.present?
+          vrps = vrps.select { |vrp| vrp.id.to_s == selected_vrp_id.to_s }
+          targets = targets.select { |target| target.vrp_id.to_s == selected_vrp_id.to_s }
+        end
+        [vrps, targets]
+      end
+
+      def set_filtered_scope(calculator, vrps, targets, bills, summary_vrps: nil, summary_targets: nil)
+        calculator.apply_dashboard_scope(
+          vrps: vrps, targets: targets, bills: bills,
+          summary_vrps: summary_vrps, summary_targets: summary_targets
+        )
       end
 
       def selected_month(key, months, calculator, targets = nil)
@@ -629,9 +662,12 @@ module Api
       end
 
       def dashboard_summary_values(calculator, targets, participation, weekly)
-        main_activity_count = targets.filter_map { |target| target.main_activity_name.to_s.strip.presence }.uniq.size
-        sub_activity_count = targets.filter_map { |target| target.activity_name.to_s.strip.presence }.uniq.size
-        village_count = targets.map { |target| [target.village_id.to_s.strip, target.village_name.to_s.strip.downcase] }
+        # Keep duplicate summary fields consistent with the five web Summary cards.
+        # Only Participation-derived values below use the selected month/activity scope.
+        summary_targets = calculator.instance_variable_get(:@office_summary_targets).presence || targets
+        main_activity_count = summary_targets.filter_map { |target| target.main_activity_name.to_s.strip.presence }.uniq.size
+        sub_activity_count = summary_targets.filter_map { |target| target.activity_name.to_s.strip.presence }.uniq.size
+        village_count = summary_targets.map { |target| [target.village_id.to_s.strip, target.village_name.to_s.strip.downcase] }
           .reject { |id, name| id.blank? && name.blank? }
           .uniq
           .size
