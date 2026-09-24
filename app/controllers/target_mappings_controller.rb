@@ -1148,13 +1148,20 @@ class TargetMappingsController < ApplicationController
     []
   end
 
-  def module_options(module_slug, *field_keys)
+  def target_module_records(module_slug)
     return [] unless defined?(ModuleRecord) && ModuleRecord.table_exists?
 
-    ModuleRecord.where(module_slug: module_slug)
+    @target_module_records ||= {}
+    @target_module_records[module_slug] ||= ModuleRecord.where(module_slug: module_slug)
       .order(created_at: :desc)
-      .select { |record| record.data["status"].blank? || record.data["status"] == "Active" }
-      .filter_map { |record| field_keys.filter_map { |field| record.data[field].presence }.first }
+      .pluck(:data)
+      .map { |data| data.is_a?(String) ? JSON.parse(data) : (data || {}) }
+      .select { |data| data["status"].blank? || data["status"] == "Active" }
+  end
+
+  def module_options(module_slug, *field_keys)
+    target_module_records(module_slug)
+      .filter_map { |data| field_keys.filter_map { |field| data[field].presence }.first }
       .uniq
   end
 
@@ -1167,16 +1174,14 @@ class TargetMappingsController < ApplicationController
   def main_activity_type_map
     return [] unless defined?(ModuleRecord) && ModuleRecord.table_exists?
 
-    ModuleRecord.where(module_slug: "add-activity-group")
-      .order(created_at: :desc)
-      .select { |record| record.data["status"].blank? || record.data["status"] == "Active" }
-      .filter_map do |record|
-        main_activity = first_present_data(record, "main_activity_name", "activity_group_name", "activity_group", "group_name").to_s.strip
+    target_module_records("add-activity-group")
+      .filter_map do |data|
+        main_activity = first_present_data(data, "main_activity_name", "activity_group_name", "activity_group", "group_name").to_s.strip
         next if main_activity.blank?
 
         {
           main_activity: main_activity,
-          main_activity_type: first_present_data(record, "main_activity_type").to_s.strip
+          main_activity_type: first_present_data(data, "main_activity_type").to_s.strip
         }
       end
       .uniq { |row| row[:main_activity].to_s.downcase }
@@ -1185,12 +1190,10 @@ class TargetMappingsController < ApplicationController
   def target_sub_activity_map
     return [] unless defined?(ModuleRecord) && ModuleRecord.table_exists?
 
-    ModuleRecord.where(module_slug: "add-vrp-activity")
-      .order(created_at: :desc)
-      .select { |record| record.data["status"].blank? || record.data["status"] == "Active" }
-      .filter_map do |record|
-        main_activity = first_present_data(record, "main_activity", "activity_group", "activity_group_name", "main_activity_name").to_s.strip
-        sub_activity = first_present_data(record, "sub_activity_name", "activity_name", "vrp_activity_name").to_s.strip
+    target_module_records("add-vrp-activity")
+      .filter_map do |data|
+        main_activity = first_present_data(data, "main_activity", "activity_group", "activity_group_name", "main_activity_name").to_s.strip
+        sub_activity = first_present_data(data, "sub_activity_name", "activity_name", "vrp_activity_name").to_s.strip
         next if main_activity.blank? || sub_activity.blank?
 
         { main_activity: main_activity, sub_activity: sub_activity }

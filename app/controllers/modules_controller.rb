@@ -807,8 +807,8 @@ class ModulesController < ApplicationController
 
     @filtered_vrps = v_scope
     @filtered_targets = t_scope
-    @demonstration_method_report = DemonstrationMethodReport.new(targets: t_scope, month: @dashboard_month_filter_value)
     if params[:demonstration_list] == "true"
+      @demonstration_method_report = DemonstrationMethodReport.new(targets: t_scope, month: @dashboard_month_filter_value)
       @demonstration_method_rows = @demonstration_method_report.rows
       respond_to do |format|
         format.html { render :demonstration_method_list }
@@ -14691,8 +14691,13 @@ class ModulesController < ApplicationController
 
     @generic_field_options_cache[cache_key] = active_module_records_scope_for_all_modules
       .where.not(module_slug: @slug || current_slug)
+      .where("data::jsonb ?| ARRAY[?]::text[]", candidate_keys)
       .order(created_at: :desc)
-      .flat_map { |record| candidate_keys.filter_map { |candidate| record.data[candidate].presence } }
+      .pluck(:data)
+      .flat_map do |data|
+        data = JSON.parse(data) if data.is_a?(String)
+        candidate_keys.filter_map { |candidate| data[candidate].presence }
+      end
       .uniq
   end
 
