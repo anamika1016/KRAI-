@@ -13,6 +13,19 @@ class ModulesControllerDashboardTest < ActiveSupport::TestCase
     keyword_init: true
   )
 
+  test "generic field options match JSON data keys without treating the JSONB operator as a bind" do
+    source = ModuleRecord.create!(module_slug: "generic-field-source", data: {
+      "cluster_coordinator_name" => "Coordinator One"
+    })
+    controller = ModulesController.new
+    controller.instance_variable_set(:@slug, "training-form")
+    controller.define_singleton_method(:active_module_records_scope_for_all_modules) do
+      ModuleRecord.where(id: source.id)
+    end
+
+    assert_includes controller.send(:generic_field_options, "Cluster Coordinator"), "Coordinator One"
+  end
+
   test "configured dashboard reader receives full dashboard scope without admin permissions" do
     controller = ModulesController.new
     controller.define_singleton_method(:current_app_user) do

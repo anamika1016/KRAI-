@@ -14717,7 +14717,7 @@ class ModulesController < ApplicationController
 
     @generic_field_options_cache[cache_key] = active_module_records_scope_for_all_modules
       .where.not(module_slug: @slug || current_slug)
-      .where("data::jsonb ?| ARRAY[?]::text[]", candidate_keys)
+      .where("jsonb_exists_any(data::jsonb, ARRAY[?]::text[])", candidate_keys)
       .order(created_at: :desc)
       .pluck(:data)
       .flat_map do |data|
