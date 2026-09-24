@@ -2838,10 +2838,34 @@ function initDeferredLayoutPage() {
       });
     });
 
+    // A required control that is visually hidden -- the chip-backed Sub Activity
+    // select is clipped to 1x1 -- cannot be focused, so the browser refuses to
+    // submit and reports nothing at all: the form just looks frozen. Find any
+    // such control ourselves and say which field is missing.
+    const hiddenInvalidControl = (form) => Array.from(form.elements).find((element) => {
+      if (!element.willValidate || element.checkValidity()) return false;
+
+      return element.offsetParent === null || element.getClientRects().length === 0;
+    });
+
+    const controlLabel = (element) => {
+      const text = element.closest("label")?.querySelector("span")?.textContent ||
+        element.closest(".training-field")?.querySelector("span")?.textContent || "";
+      return text.replace(/\*/g, "").trim() || "a required field";
+    };
+
     formShell.querySelector("form")?.addEventListener("submit", (event) => {
-      if (validateTrainingCountSplit(true)) return;
+      if (!validateTrainingCountSplit(true)) {
+        event.preventDefault();
+        return;
+      }
+
+      const blocked = hiddenInvalidControl(event.currentTarget);
+      if (!blocked) return;
 
       event.preventDefault();
+      window.alert(`${controlLabel(blocked)} select karein. Ye field required hai.`);
+      (blocked.closest("label") || blocked).scrollIntoView({ block: "center", behavior: "smooth" });
     });
 	  });
 
