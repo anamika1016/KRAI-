@@ -24,8 +24,9 @@ module Api
         set_filtered_scope(calculator, vrps, targets, [], summary_vrps: summary_vrps, summary_targets: summary_targets)
         month = selected_month(:participation_month, [], calculator, targets)
         fcoc = filter_param(:participation_fcoc) || calculator.send(:dashboard_default_visible_fcoc, options[:fcos])
-        records = calculator.send(:dashboard_training_participation_records, month_name: month, fcoc_name: fcoc)
-        counts = calculator.send(:training_participation_dashboard_counts, month_name: month, fcoc_name: fcoc, records: records)
+        # Counts use the same SQL path as the web cards; loading every training
+        # record here only delays the mobile landing page.
+        counts = calculator.send(:training_participation_dashboard_counts, month_name: month, fcoc_name: fcoc, records: [])
         sections = OfficeDashboardSections.new(calculator: calculator, targets: targets,
           participation: counts, month: month, fcoc: fcoc).sections(only: :primary)
         duration = ((Process.clock_gettime(Process::CLOCK_MONOTONIC) - started) * 1000).round(2)

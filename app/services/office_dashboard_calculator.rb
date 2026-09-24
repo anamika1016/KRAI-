@@ -76,10 +76,8 @@ class OfficeDashboardCalculator < ModulesController
       .map(&:to_s).reject(&:blank?))
   end
 
+  # Count only farmers in the target mappings authorized for this API request.
   def training_mapped_farmer_distinct_count_for_participation(month_name:, fcoc_name:, targets:)
-    current_count = super
-    return current_count if current_count.positive?
-
     Array(targets).flat_map { |target| target_farmer_ids(target) }
       .map(&:to_s).reject(&:blank?).uniq.size
   end
@@ -155,11 +153,5 @@ class OfficeDashboardCalculator < ModulesController
     super
   end
 
-  # The legacy SQL summary rebuilds targets from the entire table and ignores
-  # the supplied target array (notably activity and JJ selections). Use the
-  # existing membership calculation for this API's explicitly filtered scope.
-  def training_participation_dashboard_counts_from_sql(**)
-    nil
-  end
 
 end
