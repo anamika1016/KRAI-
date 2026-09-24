@@ -13,6 +13,16 @@ class ModulesControllerDashboardTest < ActiveSupport::TestCase
     keyword_init: true
   )
 
+  test "configured dashboard reader receives full dashboard scope without admin permissions" do
+    controller = ModulesController.new
+    controller.define_singleton_method(:current_app_user) do
+      { "user_type" => "User", "email" => "noushad.parvez@ploughmanagro.com", "role" => "Assistant General Manager" }
+    end
+
+    assert controller.send(:dashboard_global_view_user?)
+    refute controller.send(:admin_dashboard_user?)
+  end
+
   test "target record count combines activity rows belonging to one assignment" do
     assignment = {
       vrp_id: 7,

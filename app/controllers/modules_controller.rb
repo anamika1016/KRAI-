@@ -43,6 +43,7 @@ class ModulesController < ApplicationController
   TARGET_RECORD_MODULE_SLUGS = (["training-form", "add-farmer-form"] + OTHER_TARGET_MODULE_SLUGS).freeze
   JEEVIKA_JANKAR_BILL_FIXED_TOTAL = 5000.0
   JEEVIKA_JANKAR_PAYMENT_DETAIL_SLUG = "jeevika-jankar-payment-detail".freeze
+  DASHBOARD_GLOBAL_READER_EMAILS = %w[noushad.parvez@ploughmanagro.com].freeze
   JEEVIKA_PAYMENT_TRANSACTION_TYPES = ["NEFT", "RTGS", "IMPS"].freeze
   # Observation sheet captured on the Jeevika Jankar bill. Labels are stored in
   # English so the existing language switcher can translate them like the rest
@@ -2165,17 +2166,34 @@ class ModulesController < ApplicationController
           AND TRIM(t.main_activity_name) <> ''
           AND LOWER(TRIM(t.main_activity_name)) <> 'farmers'' training'
         GROUP BY TRIM(t.fco_id), TRIM(t.fco_name), TRIM(t.main_activity_name)
+      ), achievement_keys AS MATERIALIZED (
+        SELECT DISTINCT LOWER(TRIM(t.month_name)) AS month_key,
+          LOWER(TRIM(t.main_activity_name)) AS main_activity_key,
+          LOWER(TRIM(t.fco_name)) AS fco_key
+        FROM target_mappings t
+        WHERE t.id IN (:target_ids) AND t.main_activity_name IS NOT NULL
+          AND TRIM(t.main_activity_name) <> ''
+          AND LOWER(TRIM(t.main_activity_name)) <> 'farmers'' training'
+        UNION
+        SELECT DISTINCT LOWER(TRIM(t.month_name)),
+          LOWER(TRIM(t.main_activity_name)),
+          LOWER('FCO-C ' || TRIM(t.fco_name))
+        FROM target_mappings t
+        WHERE t.id IN (:target_ids) AND t.main_activity_name IS NOT NULL
+          AND TRIM(t.main_activity_name) <> ''
+          AND LOWER(TRIM(t.main_activity_name)) <> 'farmers'' training'
       ), achievement_detail AS (
         SELECT DISTINCT LOWER(TRIM((m.data::jsonb)->>'fco_name')) AS fco_key,
           TRIM((m.data::jsonb)->>'main_activity') AS main_activity_name, f.farmer_id
         FROM module_records m
+        INNER JOIN achievement_keys achievement_key ON achievement_key.month_key = LOWER(TRIM((m.data::jsonb)->>'month'))
+          AND achievement_key.main_activity_key = LOWER(TRIM((m.data::jsonb)->>'main_activity'))
+          AND achievement_key.fco_key = LOWER(TRIM((m.data::jsonb)->>'fco_name'))
         CROSS JOIN LATERAL (
           SELECT TRIM(value) AS farmer_id
           FROM jsonb_array_elements_text(COALESCE((m.data::jsonb)->'selected_farmer_ids', '[]'::jsonb))
         ) f
-        WHERE LOWER(TRIM((m.data::jsonb)->>'month')) IN (
-          SELECT DISTINCT LOWER(TRIM(month_name)) FROM target_mappings WHERE id IN (:target_ids)
-        ) AND (m.data::jsonb)->>'main_activity' IS NOT NULL
+        WHERE (m.data::jsonb)->>'main_activity' IS NOT NULL
           AND TRIM((m.data::jsonb)->>'main_activity') <> ''
           AND LOWER(TRIM((m.data::jsonb)->>'main_activity')) <> 'farmers'' training'
       ), achievement_data AS (
@@ -8586,6 +8604,7 @@ class ModulesController < ApplicationController
 
   def dashboard_global_view_user?
     return true if admin_dashboard_user?
+    return true if DASHBOARD_GLOBAL_READER_EMAILS.include?(current_app_user&.dig("email").to_s.strip.downcase)
 
     [
       current_app_user&.dig("role"),

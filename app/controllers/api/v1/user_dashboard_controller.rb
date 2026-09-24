@@ -416,7 +416,7 @@ module Api
         ]
         filters = admin_dashboard_cache_filters
         user_key = current_api_user_payload.sort.to_h
-        ["api-v1-user-dashboard-office-v9", Date.current.to_s, user_key, filters, version_parts].to_json
+        ["api-v1-user-dashboard-office-v10", Date.current.to_s, user_key, filters, version_parts].to_json
       end
 
       def cache_table_version(model)
