@@ -95,17 +95,34 @@ class OfficeDashboardSections
           LOWER(TRIM(t.month_name)) AS month, f.id AS farmer_id
         FROM (#{scope}) t
         CROSS JOIN LATERAL jsonb_array_elements_text(t.afl_ids::jsonb) f(id)
+      ), training AS MATERIALIZED (
+        SELECT DISTINCT
+          COALESCE(NULLIF(r.data::jsonb ->> 'vrp_id', ''),
+            CASE WHEN LOWER(r.data::jsonb ->> 'created_by_record_type') = 'vrp'
+            THEN r.data::jsonb ->> 'created_by_id' END) AS vrp_id,
+          LOWER(TRIM(r.data::jsonb ->> 'month')) AS month,
+          LOWER(TRIM(r.data::jsonb ->> 'main_activity')) AS main_activity_name,
+          TRIM(farmer.id) AS farmer_id
+        FROM module_records r
+        CROSS JOIN LATERAL jsonb_array_elements_text(
+          CASE
+            WHEN jsonb_typeof(r.data::jsonb -> 'selected_farmer_ids') = 'array'
+              THEN r.data::jsonb -> 'selected_farmer_ids'
+            ELSE '[]'::jsonb
+          END
+        ) AS farmer(id)
+        WHERE r.module_slug = 'training-form'
+          AND LOWER(TRIM(r.data::jsonb ->> 'month')) IN (SELECT DISTINCT month FROM mapping)
+          AND LOWER(TRIM(r.data::jsonb ->> 'main_activity')) IN (
+            SELECT DISTINCT LOWER(TRIM(main_activity_name)) FROM mapping
+          )
       ), detail AS (
-        SELECT m.*, EXISTS (
-          SELECT 1 FROM module_records r
-          WHERE r.module_slug = 'training-form'
-            AND COALESCE(NULLIF(r.data::jsonb->>'vrp_id', ''),
-              CASE WHEN LOWER(r.data::jsonb->>'created_by_record_type') = 'vrp'
-              THEN r.data::jsonb->>'created_by_id' END) = m.vrp_id::text
-            AND LOWER(TRIM(r.data::jsonb->>'month')) = m.month
-            AND LOWER(TRIM(r.data::jsonb->>'main_activity')) = LOWER(TRIM(m.main_activity_name))
-            AND COALESCE(r.data::jsonb->'selected_farmer_ids', '[]'::jsonb) @> to_jsonb(ARRAY[m.farmer_id])
-        ) AS done FROM mapping m
+        SELECT m.*, training.farmer_id IS NOT NULL AS done
+        FROM mapping m
+        LEFT JOIN training ON training.vrp_id = m.vrp_id::text
+          AND training.month = m.month
+          AND training.main_activity_name = LOWER(TRIM(m.main_activity_name))
+          AND training.farmer_id = m.farmer_id
       ) SELECT fco_id, fco_name, main_activity_name,
         COUNT(DISTINCT farmer_id) AS mapped_farmer,
         COUNT(DISTINCT farmer_id) FILTER (WHERE done) AS achievement_farmer,

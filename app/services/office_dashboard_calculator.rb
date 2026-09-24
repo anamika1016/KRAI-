@@ -43,6 +43,43 @@ class OfficeDashboardCalculator < ModulesController
     @office_summary_cards ||= super
   end
 
+  # Keep historical target farmer IDs for the mobile office reports. June
+  # mappings can outlive a later AFL import, while their training entries still
+  # correctly reference the original assigned IDs.
+  def training_participation_existing_farmer_id_set(targets)
+    Set.new(Array(targets).flat_map { |target| target_farmer_ids(target) }
+      .map(&:to_s).reject(&:blank?))
+  end
+
+  def training_mapped_farmer_distinct_count_for_participation(month_name:, fcoc_name:, targets:)
+    Array(targets).flat_map { |target| target_farmer_ids(target) }
+      .map(&:to_s).reject(&:blank?).uniq.size
+  end
+
+  def training_registered_afl_farmer_count_for_participation(targets, fcoc_name: nil)
+    current_count = super
+    return current_count if current_count.positive?
+
+    training_mapped_farmer_distinct_count_for_participation(month_name: nil, fcoc_name: fcoc_name, targets: targets)
+  end
+
+  # The web summary relies on the current AFL import. The office API must keep
+  # the selected, authorized target mappings as its source of truth so all
+  # months, including historical June, have the same role-filtered totals.
+  def dashboard_summary_login_counts(targets)
+    rows = Array(targets)
+    farmer_count = rows.flat_map { |target| target_farmer_ids(target) }
+      .map(&:to_s).reject(&:blank?).uniq.size
+    {
+      ics_count: rows.map { |target| [target.fco_id.to_s, target.ics_id.to_s, target.ics_name.to_s] }.reject { |_fco, id, name| id.blank? && name.blank? }.uniq.size,
+      village_count: rows.map { |target| [target.fco_id.to_s, target.village_id.to_s, target.village_name.to_s] }.reject { |_fco, id, name| id.blank? && name.blank? }.uniq.size,
+      farmer_count: farmer_count,
+      mapped_farmer_count: farmer_count,
+      main_activity_count: rows.map { |target| normalize_dashboard_text(target.main_activity_name) }.reject(&:blank?).uniq.size,
+      sub_activity_count: rows.map { |target| normalize_dashboard_text(target.activity_name) }.reject(&:blank?).uniq.size
+    }
+  end
+
   def demonstration_method_cards
     @demonstration_method_report ||= DemonstrationMethodReport.new(
       targets: @filtered_targets || dashboard_target_mappings,
@@ -99,20 +136,4 @@ class OfficeDashboardCalculator < ModulesController
     nil
   end
 
-  def training_mapped_farmer_distinct_count_for_participation(month_name:, fcoc_name:, targets:)
-    ids = Array(targets).flat_map { |target| Array(target.afl_ids) }.map(&:to_s).uniq
-    return 0 if ids.empty?
-
-    Afl.where(id: ids).distinct.count(Arel.sql(<<~SQL.squish))
-      CASE WHEN LOWER(BTRIM(COALESCE(tracenet_no, ''))) NOT IN ('', 'null')
-      THEN CONCAT('tracenet:', LOWER(BTRIM(tracenet_no)))
-      ELSE CONCAT('id:', id::text) END
-    SQL
-  end
-
-  def training_registered_afl_farmer_count_for_participation(targets, fcoc_name: nil)
-    return 0 if defined?(@filtered_vrps) && @filtered_vrps.empty?
-
-    super
-  end
 end

@@ -109,9 +109,11 @@ module Api
       private
 
       def office_ics_report(calculator, targets, records, month, fcoc)
-        month = filter_param(:ics_report_month) if params.key?(:ics_report_month)
-        records = calculator.send(:dashboard_training_participation_records, month_name: month, fcoc_name: fcoc)
-        targets = calculator.send(:training_participation_targets_for_dashboard, month_name: month, fcoc_name: fcoc)
+        if params.key?(:ics_report_month)
+          month = filter_param(:ics_report_month)
+          records = calculator.send(:dashboard_training_participation_records, month_name: month, fcoc_name: fcoc)
+          targets = calculator.send(:training_participation_targets_for_dashboard, month_name: month, fcoc_name: fcoc)
+        end
         selected = filter_param(:ics_report_ics)
         rows = selected ? calculator.send(:ics_farmer_report_rows, targets, records, selected_ics: selected) : []
         { selected_month: month, selected_ics: selected,

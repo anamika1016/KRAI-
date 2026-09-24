@@ -142,3 +142,17 @@ Office API cache version stamps are now read from the database on each request, 
 Returns the same `sections` for `summary`, `participation`, `demonstration` (15 cards), `filters`, `filter_options`, `user` and processing time. It skips weekly farmer rows, billing, hierarchy, Other and CC/JJ work-status calculations. The full endpoint remains available; use separate list/report URLs when opening those screens. No production latency guarantee has been established. Deploy the backend before using this new URL.
 
 Dropdown API: `GET /api/v1/user-dashboard/filters?month=August&main_activity=Farmers%27%20Training&sub_activity=All&fco=All&ics=All`. Both require Bearer authorization and an empty GET body. Use identical filter parameters for boxes and list requests.
+
+## June and historical monthly data
+
+The office mobile API now calculates Dashboard Summary and Farmer Training Participation from the selected, authorized target mappings. This preserves historical farmer IDs when a later AFL import no longer contains them. Thus CC sees only JJs mapped under that CC, Agronomist sees only JJs registered by that Agronomist, and FCOC sees only JJs in the login FCO; these scopes apply in June and every other month.
+
+For a fast mobile page call:
+
+`GET /api/v1/user-dashboard/boxes?month=June&main_activity=Farmers%27%20Training&sub_activity=All&fco=All&ics=All`
+
+For dropdowns call:
+
+`GET /api/v1/user-dashboard/filters?month=June&main_activity=Farmers%27%20Training&sub_activity=All&fco=All&ics=All`
+
+Send the same Bearer token and same query values in both requests. `filters` supplies the cascading Month → Main Activity → Sub Activity → FCO → ICS options. A returned zero is therefore a real zero inside that login scope, not a global dashboard value.
