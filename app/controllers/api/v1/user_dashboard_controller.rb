@@ -250,6 +250,12 @@ module Api
           set_filtered_scope(calculator, list_vrps, list_targets, [], summary_vrps: summary_vrps, summary_targets: summary_targets)
           return office_section_list_payload(list_type, calculator, list_vrps, list_targets)
         end
+        if %w[total_mapped_main_activities total_mapped_sub_activities].include?(list_type)
+          set_filtered_scope(calculator, summary_vrps, summary_targets, [], summary_vrps: summary_vrps, summary_targets: summary_targets)
+          attribute, label = list_type == "total_mapped_main_activities" ? [:main_activity_name, "Main Activity"] : [:activity_name, "Sub Activity"]
+          return { title: user_dashboard_list_catalog.fetch(list_type), records: grouped_admin_activities(summary_targets, attribute, label) }
+        end
+
         set_filtered_scope(calculator, vrps, targets, [], summary_vrps: summary_vrps, summary_targets: summary_targets)
         if list_type == "cc_jj_work_status"
           return { title: user_dashboard_list_catalog.fetch(list_type), headers: CcJjWorkStatusReport::HEADERS,
@@ -258,6 +264,18 @@ module Api
         if list_type == "demonstration_method"
           return { title: user_dashboard_list_catalog.fetch(list_type), headers: DemonstrationMethodReport::HEADERS,
             records: DemonstrationMethodReport.new(targets: targets, month: params.key?(:month) ? filter_param(:month) : Date.current.prev_month.strftime("%B")).rows }
+        end
+        if %w[training_unique_farmers training_red training_pending training_yellow training_green].include?(list_type)
+          months = calculator.send(:dashboard_month_options_for_targets, targets)
+          participation_month = selected_month(:participation_month, months, calculator, targets)
+          participation_fcoc = filter_param(:participation_fcoc) || calculator.send(:dashboard_default_visible_fcoc, options[:fcos])
+          status = {
+            "training_unique_farmers" => "unique", "training_red" => "red", "training_pending" => "pending",
+            "training_yellow" => "yellow", "training_green" => "green"
+          }.fetch(list_type)
+          rows = calculator.send(:training_participation_web_rows,
+            status: status, month_name: participation_month, fcoc_name: participation_fcoc)
+          return { title: user_dashboard_list_catalog.fetch(list_type), records: rows }
         end
         bills = filtered_bills(calculator, vrps)
         set_filtered_scope(calculator, vrps, targets, bills)

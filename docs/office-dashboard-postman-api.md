@@ -58,6 +58,19 @@ Call `/filters` with the current selection. Read `filter_order`, `filters` and `
 
 `All` always stays inside the logged-in user's authorized scope. Section filters cannot restore targets excluded by top-level filters. Reset to web defaults by omitting filters; select all explicitly with `month=All&main_activity=All`.
 
+## 3A. One common View List API
+
+Every dashboard card includes `list_key` and `list_endpoint`. Do not create a different mobile URL for each box. Call the endpoint returned in that card, with the same query filters and Bearer token:
+
+```text
+GET {{base_url}}/api/v1/user-dashboard/lists/{{list_key}}?month=June&main_activity=Farmers%27%20Training&sub_activity=All&fco=FCO-C%20Turekela&ics=All
+Authorization: Bearer {{token}}
+```
+
+The response is always `{ success, title, list_type, filters, count, records }`. `count` is the number of actual returned rows. The matching Excel endpoint is `/api/v1/user-dashboard/lists/{{list_key}}/export` with the same filter parameters.
+
+For Participation cards, `training_unique_farmers`, `training_red`, `training_yellow`, and `training_green` now use the web dashboard View List SQL and the logged-in CC/Agronomist/FCOC authorization scope. Summary activity lists use the Summary card scope, and Demonstration uses `demonstration_method`.
+
 ## 4. Boxes, line by line
 
 Use the new `sections` array for the screenshot dashboard. Each card includes `key`, `title`, `value`, `list_key`, `list_endpoint`, `export_endpoint`. Follow returned URLs with the same query and token.

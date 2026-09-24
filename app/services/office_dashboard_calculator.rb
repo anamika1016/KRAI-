@@ -137,6 +137,74 @@ class OfficeDashboardCalculator < ModulesController
     end
   end
 
+  # Exact web View List rows for the four Participation cards. This keeps the
+  # list query on the same authorized base population as its count card.
+def training_participation_web_rows(status:, month_name:, fcoc_name:)
+  return [] if month_name.blank?
+
+  rows = with_web_participation_status_scope do
+    farmer_training_participation_rows_from_sql(
+      status.to_s, month_name: month_name, fcoc_name: fcoc_name
+    )
+  end
+  return rows unless %w[unique mapped].include?(status.to_s)
+
+  # Historic mappings (notably June) can point at IDs that no longer exist
+  # in the latest AFL import. Merge real AFL rows with the missing target
+  # mapping rows so count and View List always represent the same farmers.
+  historical_rows = historical_mapped_farmer_rows(month_name: month_name, fcoc_name: fcoc_name)
+  existing_ids = rows.each_with_object({}) { |row, ids| ids[row[:farmer_id].to_s] = true }
+  rows + historical_rows.reject { |row| existing_ids.key?(row[:farmer_id].to_s) }
+end
+
+def historical_mapped_farmer_rows(month_name:, fcoc_name:)
+  with_web_participation_status_scope do
+    targets = dashboard_target_mappings.select do |target|
+      normalize_dashboard_text(target.month_name) == normalize_dashboard_text(month_name) &&
+        (fcoc_name.blank? || training_target_matches_fcoc?(target, fcoc_name))
+    end
+    selected_ics = dashboard_filter_param(:ics, :ics_name)
+    if selected_ics.present?
+      targets.select! do |target|
+        [target.ics_id, target.ics_name].any? do |value|
+          normalize_dashboard_text(value) == normalize_dashboard_text(selected_ics)
+        end
+      end
+    end
+
+    target_by_farmer_id = {}
+    targets.each do |target|
+      target_farmer_ids(target).each { |farmer_id| target_by_farmer_id[farmer_id.to_s] ||= target }
+    end
+    farmers = Afl.where(id: target_by_farmer_id.keys).index_by { |farmer| farmer.id.to_s }
+    target_by_farmer_id.map do |farmer_id, target|
+      farmer = farmers[farmer_id]
+      {
+        farmer_id: farmer_id,
+        farmer_name: farmer&.farmer_name.presence || "Historical mapped farmer ##{farmer_id}",
+        father_name: farmer&.father_name.to_s,
+        mobile_no: farmer&.mobile_no.to_s,
+        tracenet_no: farmer&.tracenet_no.to_s,
+        ics: target.ics_name.presence || target.ics_id.presence || "-",
+        village: target.village_name.presence || target.village_id.presence || "-",
+        fcoc: target.fco_name.presence || target.vrp&.fcoc.presence || target.fco_id.presence || "-",
+        cluster_incharge: target.vrp&.cluster_incharge.presence || "-",
+        jeevika_jankar_name: target.vrp&.name.presence || "-",
+        vrp: target.vrp&.name.presence || "-",
+        registered_by: target_mapping_registered_by_name(target).presence || "-",
+        months: target.month_name.presence || month_name,
+        main_activities: target.main_activity_name.presence || "-",
+        sub_activities: target.activity_name.presence || "-",
+        attendance_count: 0,
+        status: "unique",
+        status_label: "Mapped Farmer",
+        historical_mapping: farmer.nil?,
+        source: "target_mapping"
+      }
+    end.sort_by { |row| [row[:village].to_s, row[:farmer_name].to_s] }
+  end
+end
+
   def training_registered_afl_farmer_count_for_participation(targets, fcoc_name: nil)
     current_count = super
     return current_count if current_count.positive?
