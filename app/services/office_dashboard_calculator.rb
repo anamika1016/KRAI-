@@ -76,13 +76,15 @@ class OfficeDashboardCalculator < ModulesController
       .map(&:to_s).reject(&:blank?))
   end
 
-  # Use the exact target-mapping JSON SQL used by the web Mapped Farmer card.
-  # It intentionally includes mappings for every authorized JJ, including a
-  # JJ that later became inactive.
+  # The web Mapped Farmer card uses the authorized FCO/JJ base population
+  # for a month. It deliberately does not restrict this card by main or sub
+  # activity, even when those dropdowns are selected.
   def training_mapped_farmer_distinct_count_for_participation(month_name:, fcoc_name:, targets:)
     if month_name.present?
-      mapped, = farmer_training_mapped_farmer_count_and_popups(month_name: month_name, fcoc_name: fcoc_name)
-      return mapped.to_i
+      return with_web_participation_status_scope do
+        mapped, = farmer_training_mapped_farmer_count_and_popups(month_name: month_name, fcoc_name: fcoc_name)
+        mapped.to_i
+      end
     end
 
     Array(targets).flat_map { |target| target_farmer_ids(target) }
