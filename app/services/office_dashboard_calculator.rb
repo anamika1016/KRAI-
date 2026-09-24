@@ -91,13 +91,41 @@ class OfficeDashboardCalculator < ModulesController
     # the generic calculation for explicit month=All instead.
     return counts if month_name.blank?
 
-    mapped, = farmer_training_mapped_farmer_count_and_popups(month_name: month_name, fcoc_name: fcoc_name)
-    red, = farmer_training_no_training_count_and_popups(month_name: month_name, fcoc_name: fcoc_name)
-    yellow, = farmer_training_yellow_farmer_count_and_popups(month_name: month_name, fcoc_name: fcoc_name)
-    green, = farmer_training_green_farmer_count_and_popups(month_name: month_name, fcoc_name: fcoc_name)
+    participation_targets = targets || training_participation_targets_for_dashboard(
+      month_name: month_name, fcoc_name: fcoc_name
+    )
+    mapped = training_mapped_farmer_distinct_count_for_participation(
+      month_name: month_name, fcoc_name: fcoc_name, targets: participation_targets
+    )
+
+    # Historical month mappings can reference farmers removed by a later AFL
+    # import. The web red/yellow/green cards therefore use the authorized base
+    # JJ/FCO population, not the selected target array. Temporarily restore
+    # that same base scope only for these status cards.
+    red, yellow, green = with_web_participation_status_scope do
+      red, = farmer_training_no_training_count_and_popups(month_name: month_name, fcoc_name: fcoc_name)
+      yellow, = farmer_training_yellow_farmer_count_and_popups(month_name: month_name, fcoc_name: fcoc_name)
+      green, = farmer_training_green_farmer_count_and_popups(month_name: month_name, fcoc_name: fcoc_name)
+      [red, yellow, green]
+    end
 
     counts.merge(total: mapped.to_i, red: red.to_i, pending: red.to_i,
       yellow: yellow.to_i, green: green.to_i)
+  end
+
+  def with_web_participation_status_scope
+    names = %i[@filtered_targets @dashboard_vrps @dashboard_visible_vrp_ids]
+    saved = names.to_h { |name| [name, instance_variable_defined?(name) ? instance_variable_get(name) : :__missing__] }
+    names.each { |name| remove_instance_variable(name) if instance_variable_defined?(name) }
+    yield
+  ensure
+    saved&.each do |name, value|
+      if value == :__missing__
+        remove_instance_variable(name) if instance_variable_defined?(name)
+      else
+        instance_variable_set(name, value)
+      end
+    end
   end
 
   def training_registered_afl_farmer_count_for_participation(targets, fcoc_name: nil)
