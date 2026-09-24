@@ -118,6 +118,19 @@ List response: `{ "success": true, "dashboard_type": "user", "list_type": "...",
 
 ## 6. Timing and verification
 
-The complete response contains `meta.server_processing_ms`, `meta.cache_hit`, and a `Server-Timing` header. These measure server dashboard processing, excluding network transfer. Postman separately shows total request time. The summary is cached for one minute with login and filter separation; version caching means changed source data can take roughly two minutes to appear. Production millisecond latency is not guaranteed by local tests.
+The complete response contains `meta.server_processing_ms`, `meta.cache_hit`, and a `Server-Timing` header. These measure server dashboard processing, excluding network transfer. Postman separately shows total request time. The summary is cached for one minute with login and filter separation; fresh database version stamps invalidate the office summary cache after source changes. Production millisecond latency is not guaranteed by local tests.
 
 The collection includes HTTP/JSON assertions, automatic token capture, export MIME checks and individual View List requests. Import it and run against the deployed backend with each role's credentials. Backend integration tests use the local test database; they are not a claim that the Postman desktop app or production endpoint was exercised.
+
+## September 24 integration correction: summary and month cascade
+
+Use `dashboard_summary.cards` for the five screenshot summary boxes, or `dashboard_summary.counts` for keyed values. These match `sections[key=summary].cards` and the corresponding summary widget/list endpoints. The older `dashboard_summary.items/values` remain compatibility metrics: `targeted_farmers` is **not** Total Farmer Count. Do not map those legacy values to the screenshot's five summary headings.
+
+```text
+GET /api/v1/user-dashboard/filters?month=August&main_activity=Farmers%27%20Training&sub_activity=All&fco=All&ics=All
+GET /api/v1/user-dashboard?month=August&main_activity=Farmers%27%20Training&sub_activity=All&fco=All&ics=All
+```
+
+Dashboard `filter_options.sub_activities` now excludes modules from other months. Populate dropdowns from the returned options; replace the previous options rather than appending. On a month/main selection change, clear dependent values to All and reload filters, then dashboard. GET body should be empty; login/password belong only to POST login. Every GET requires the logged-in user's Bearer token.
+
+Office API cache version stamps are now read from the database on each request, including fractional update timestamps. Committed record changes no longer wait for the previous one-minute version cache. Network and calculation time still apply; no fixed latency guarantee. Existing web code is unchanged by this correction.

@@ -200,6 +200,42 @@ class Api::V1::OfficeDashboardControllerTest < ActionDispatch::IntegrationTest
     end
   end
 
+  test "dashboard dropdowns are restricted by month and agree with filter endpoint" do
+    extra = @first_target.dup
+    extra.month_name = "July"
+    extra.activity_name = "July-only module"
+    extra.save!
+    [@specialist, @cluster, @fco].each do |user|
+      query = { month: "August", main_activity: "Farmers' Training" }
+      get "/api/v1/user-dashboard/filters", params: query, headers: headers(user)
+      assert_response :success
+      subs = response.parsed_body["filters"].find { |filter| filter["key"] == "sub_activity" }["options"]
+      get "/api/v1/user-dashboard", params: query, headers: headers(user)
+      assert_response :success
+      body = response.parsed_body
+      assert_equal ["Soil"], body.dig("filter_options", "sub_activities")
+      assert_equal subs, body.dig("filter_options", "sub_activities")
+      section = body["sections"].find { |item| item["key"] == "summary" }
+      assert_equal section["cards"].to_h { |card| [card["key"], card["value"]] }, body.dig("dashboard_summary", "counts")
+    end
+  end
+
+  test "cached summary immediately reflects committed target edits" do
+    old_cache = Rails.cache
+    Rails.cache = ActiveSupport::Cache::MemoryStore.new
+    query = { month: "August", main_activity: "Farmers' Training" }
+    get "/api/v1/user-dashboard", params: query, headers: headers(@specialist)
+    assert_response :success
+    assert_equal ["Soil"], response.parsed_body.dig("filter_options", "sub_activities")
+    @first_target.update!(activity_name: "Updated module")
+    get "/api/v1/user-dashboard", params: query, headers: headers(@specialist)
+    assert_response :success
+    assert_equal false, response.parsed_body.dig("meta", "cache_hit")
+    assert_equal ["Updated module"], response.parsed_body.dig("filter_options", "sub_activities")
+  ensure
+    Rails.cache = old_cache
+  end
+
   private
 
   def headers(user)

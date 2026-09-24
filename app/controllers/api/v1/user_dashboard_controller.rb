@@ -366,12 +366,12 @@ module Api
         ]
         filters = admin_dashboard_cache_filters
         user_key = current_api_user_payload.sort.to_h
-        ["api-v1-user-dashboard-office-v8", Date.current.to_s, user_key, filters, version_parts].to_json
+        ["api-v1-user-dashboard-office-v9", Date.current.to_s, user_key, filters, version_parts].to_json
       end
 
       def cache_table_version(model)
-        Rails.cache.fetch(["api-dashboard/table-version", model.table_name], expires_in: 1.minute) do
-          version = model.pick(Arel.sql("COUNT(*)"), Arel.sql("COALESCE(MAX(id), 0)"), Arel.sql("COALESCE(EXTRACT(EPOCH FROM MAX(updated_at))::bigint, 0)"))
+        begin
+          version = model.pick(Arel.sql("COUNT(*)"), Arel.sql("COALESCE(MAX(id), 0)"), Arel.sql("COALESCE(EXTRACT(EPOCH FROM MAX(updated_at)), 0)"))
           "#{model.table_name}:#{version.join(":")}"
         end
       rescue StandardError
@@ -380,9 +380,9 @@ module Api
 
       def cache_module_records_version(module_slugs)
         slugs = Array(module_slugs).map(&:to_s).sort
-        Rails.cache.fetch(["api-dashboard/module-record-version", slugs], expires_in: 1.minute) do
+        begin
           scope = ModuleRecord.where(module_slug: slugs)
-          version = scope.pick(Arel.sql("COUNT(*)"), Arel.sql("COALESCE(MAX(id), 0)"), Arel.sql("COALESCE(EXTRACT(EPOCH FROM MAX(updated_at))::bigint, 0)"))
+          version = scope.pick(Arel.sql("COUNT(*)"), Arel.sql("COALESCE(MAX(id), 0)"), Arel.sql("COALESCE(EXTRACT(EPOCH FROM MAX(updated_at)), 0)"))
           "module_records:#{version.join(":")}"
         end
       rescue StandardError
@@ -406,7 +406,13 @@ module Api
         @calculation_stage = "dashboard_search_filter"
         vrps, targets = search_scope(vrps, targets)
         @calculation_stage = "dashboard_activity_filters"
-        options = { main_activities: values(targets, :main_activity_name) }
+        months = values(targets, :month_name)
+        selected_dashboard_month = params.key?(:month) ? filter_param(:month) : Date.current.prev_month.strftime("%B")
+        if selected_dashboard_month.present?
+          targets = targets.select { |target| same?(target.month_name, selected_dashboard_month) }
+          vrps = restrict_vrps_to_targets(vrps, targets)
+        end
+        options = { months: months, main_activities: values(targets, :main_activity_name) }
         selected_main_activity = params.key?(:main_activity) ? filter_param(:main_activity) : default_farmer_activity_filter(calculator, values(targets.select { |target|
           month = params.key?(:month) ? filter_param(:month) : Date.current.prev_month.strftime("%B")
           month.blank? || same?(target.month_name, month)
@@ -440,7 +446,7 @@ module Api
           targets = targets.select { |target| same?(target.ics_name.presence || target.ics_id, selected_ics) }
           vrps = restrict_vrps_to_targets(vrps, targets)
         end
-        options[:months] = values(targets, :month_name)
+        options[:months] = months
         @calculation_stage = "dashboard_month_filter"
         selected_dashboard_month = params.key?(:month) ? filter_param(:month) : Date.current.prev_month.strftime("%B")
         if selected_dashboard_month.present?
@@ -572,7 +578,15 @@ module Api
 
       def dashboard_summary_payload(calculator, targets, participation, weekly)
         items = dashboard_summary_values(calculator, targets, participation, weekly)
+        summary_cards = calculator.send(:dashboard_summary_cards, targets).map do |card|
+          key = OfficeDashboardSections::SUMMARY.fetch(card[:title])
+          { key: key, title: card[:title], value: card[:value],
+            list_endpoint: "/api/v1/user-dashboard/lists/#{key}",
+            export_endpoint: "/api/v1/user-dashboard/lists/#{key}/export" }
+        end
         {
+          cards: summary_cards,
+          counts: summary_cards.to_h { |card| [card[:key], card[:value]] },
           language: dashboard_language,
           items: items.map do |key, value|
             labels = DASHBOARD_SUMMARY_LABELS.fetch(key)
