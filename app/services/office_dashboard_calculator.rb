@@ -82,6 +82,24 @@ class OfficeDashboardCalculator < ModulesController
       .map(&:to_s).reject(&:blank?).uniq.size
   end
 
+  # The web dashboard overwrites the generic participation calculation with
+  # its final four card queries. Keep that exact behavior for all office APIs:
+  # mapped target farmers, no-training farmers, one training and repeated training.
+  def training_participation_dashboard_counts(month_name:, fcoc_name:, records:, targets: nil, week_number: nil)
+    counts = super
+    # The legacy final-card queries default a blank month to August. Preserve
+    # the generic calculation for explicit month=All instead.
+    return counts if month_name.blank?
+
+    mapped, = farmer_training_mapped_farmer_count_and_popups(month_name: month_name, fcoc_name: fcoc_name)
+    red, = farmer_training_no_training_count_and_popups(month_name: month_name, fcoc_name: fcoc_name)
+    yellow, = farmer_training_yellow_farmer_count_and_popups(month_name: month_name, fcoc_name: fcoc_name)
+    green, = farmer_training_green_farmer_count_and_popups(month_name: month_name, fcoc_name: fcoc_name)
+
+    counts.merge(total: mapped.to_i, red: red.to_i, pending: red.to_i,
+      yellow: yellow.to_i, green: green.to_i)
+  end
+
   def training_registered_afl_farmer_count_for_participation(targets, fcoc_name: nil)
     current_count = super
     return current_count if current_count.positive?
