@@ -48,7 +48,7 @@ class TrainingStaffScope
     [data["first_name"], data["last_name"]].compact_blank.join(" ").gsub(/\s+/, " ").strip.presence || data["user_name"]
   end
 
-  def self.options(office, kind)
-    ["N/A"] + staff(office, kind).filter_map { |data| name(data).presence }.uniq { |name| normalize(name) }.sort
+  def self.options(office, kind, catalogue: nil)
+    ["N/A"] + staff(office, kind, catalogue: catalogue).filter_map { |data| name(data).presence }.uniq { |name| normalize(name) }.sort
   end
 end

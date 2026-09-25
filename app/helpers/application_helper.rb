@@ -218,7 +218,7 @@ module ApplicationHelper
   end
 
   def pending_training_approvals
-    @pending_training_approvals ||= TrainingEditApproval.pending_for(current_app_user)
+    @pending_training_approvals ||= TrainingEditApproval.summaries_for(current_app_user, pending_only: true)
   end
 
   def training_sidebar_pending?(link)

@@ -106,7 +106,7 @@ class AflsController < ApplicationController
     policy.request = request
     policy.instance_variable_set(:@current_app_user, current_app_user)
     scope = scope.merge(policy.send(:dashboard_visible_farmer_scope))
-    @fco_filter = %w[1004 1006] if @fco_filter.to_s.strip.casecmp("All FCO").zero?
+    @fco_filter = %w[1004 1006 1095] if @fco_filter.to_s.strip.casecmp("All FCO").zero?
     if @fco_filter.present?
       fco_values = afl_filter_values(@fco_filter)
       scope = scope.where(

@@ -1,5 +1,5 @@
 class CcJjWorkStatusReport
-  FCO_IDS = %w[1004 1006].freeze
+  FCO_IDS = %w[1004 1006 1095].freeze
   HEADERS = ["month", "fco_id", "fpo_id", "fpo_name", "cluster_incharge", "vrp_name", "total_farmer", "No Activity Mapping", "No Training Mapping", "Training Mapped But No Entry", "Training Entry Done", "Red", "Completed", "Cluster Coordinator Involved", "Agronomist Involved"].freeze
 
   def initialize(calculator:, month: nil, fco: nil)
@@ -10,6 +10,7 @@ class CcJjWorkStatusReport
     @fco = "" if @fco.downcase.start_with?("all")
     @fco = "1004" if @fco.downcase.include?("sausar")
     @fco = "1006" if @fco.downcase.include?("turekela")
+    @fco = "1095" if @fco.downcase.include?("pavijetpur")
   end
 
   def summary
@@ -32,7 +33,7 @@ class CcJjWorkStatusReport
   end
 
   def caption
-    "#{all_months? ? 'All Months' : @month} · #{{ '1004' => 'Sausar', '1006' => 'Turekela' }.fetch(@fco, 'Sausar and Turekela')}"
+    "#{all_months? ? 'All Months' : @month} · #{{ '1004' => 'Sausar', '1006' => 'Turekela', '1095' => 'Pavijetpur' }.fetch(@fco, 'Sausar, Turekela and Pavijetpur')}"
   end
 
   private

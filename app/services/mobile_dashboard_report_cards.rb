@@ -17,13 +17,13 @@ class MobileDashboardReportCards
 
   def self.cc_jj_rows(rows)
     rows.map do |row|
-      row.merge("fco_name" => { "1004" => "Sausar", "1006" => "Turekela" }[row["fco_id"].to_s],
+      row.merge("fco_name" => { "1004" => "Sausar", "1006" => "Turekela", "1095" => "Pavijetpur" }[row["fco_id"].to_s],
         "total_cc" => row["toatl_cc"].to_i, "total_jj" => row["toatl_jj"].to_i)
     end
   end
 
   def self.cc_jj_groups(rows)
-    { "1004" => "Sausar", "1006" => "Turekela" }.map do |id, name|
+    { "1004" => "Sausar", "1006" => "Turekela", "1095" => "Pavijetpur" }.map do |id, name|
       statuses = %w[Red Completed].to_h do |status|
         row = rows.find { |item| item["fco_id"].to_s == id && item["status"].to_s.casecmp?(status) } || {}
         [status.downcase.to_sym, { cc: row["toatl_cc"].to_i, jj: row["toatl_jj"].to_i }]

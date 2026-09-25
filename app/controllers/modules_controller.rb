@@ -854,7 +854,7 @@ class ModulesController < ApplicationController
     if dashboard_filters_active || module_cluster_incharge_login?
       bill_scope = filtered_vrp_ids.any? ? bill_scope.where("data::jsonb ->> 'select_vrp' IN (?)", filtered_vrp_ids) : ModuleRecord.none
     end
-    bill_records = bill_scope.to_a
+    bill_records = bill_summary_scope(bill_scope).to_a
     unless admin_dashboard_user?
       bill_records = bill_records.select { |r| jeevika_jankar_bill_record_visible?(r) }
     end
@@ -4218,7 +4218,7 @@ class ModulesController < ApplicationController
     selected_values = training_fcoc_filter_values(fcoc_value)
     return selected_values if selected_values.any?
 
-    training_fcoc_filter_values("1004", "1006", "Sausar", "Turekela", "FCO-C Sausar", "FCO-C Turekela")
+    training_fcoc_filter_values("1004", "1006", "1095", "Sausar", "Turekela", "Pavijetpur", "FCO-C Sausar", "FCO-C Turekela", "FCO-C Pavijetpur")
   end
 
   def dashboard_fco_active_vrp_count(fco_name_or_id, month_name = "August", vrps = nil)
@@ -4230,6 +4230,8 @@ class ModulesController < ApplicationController
                        "(LOWER(TRIM(t.fco_id)) IN ('1004', 'sausar') OR LOWER(TRIM(t.fco_name)) LIKE '%sausar%')"
                      elsif normalized.include?("1006") || normalized.include?("turekela")
                        "(LOWER(TRIM(t.fco_id)) IN ('1006', 'turekela') OR LOWER(TRIM(t.fco_name)) LIKE '%turekela%')"
+                     elsif normalized.include?("1095") || normalized.include?("pavijetpur")
+                       "(LOWER(TRIM(t.fco_id)) IN ('1095', 'pavijetpur') OR LOWER(TRIM(t.fco_name)) LIKE '%pavijetpur%')"
                      else
                        "(LOWER(TRIM(t.fco_id)) = :norm OR LOWER(TRIM(t.fco_name)) = :norm)"
                      end
@@ -4287,6 +4289,8 @@ class ModulesController < ApplicationController
                        "(LOWER(TRIM(t.fco_id)) IN ('1004', 'sausar') OR LOWER(TRIM(t.fco_name)) LIKE '%sausar%')"
                      elsif normalized.include?("1006") || normalized.include?("turekela")
                        "(LOWER(TRIM(t.fco_id)) IN ('1006', 'turekela') OR LOWER(TRIM(t.fco_name)) LIKE '%turekela%')"
+                     elsif normalized.include?("1095") || normalized.include?("pavijetpur")
+                       "(LOWER(TRIM(t.fco_id)) IN ('1095', 'pavijetpur') OR LOWER(TRIM(t.fco_name)) LIKE '%pavijetpur%')"
                      else
                        "(LOWER(TRIM(t.fco_id)) = :norm OR LOWER(TRIM(t.fco_name)) = :norm)"
                      end
@@ -4326,6 +4330,8 @@ class ModulesController < ApplicationController
                "1004"
              elsif normalized_fco.include?("1006") || normalized_fco.include?("turekela")
                "1006"
+             elsif normalized_fco.include?("1095") || normalized_fco.include?("pavijetpur")
+               "1095"
              else
                nil
              end
@@ -4513,7 +4519,7 @@ class ModulesController < ApplicationController
         "fcoc" => @dashboard_fcoc_filter_value
       )
       .compact_blank
-      target_params["fco_id"] = %w[1004 1006] if target_params["fcoc"].blank?
+      target_params["fco_id"] = %w[1004 1006 1095] if target_params["fcoc"].blank?
       target_params
     end
   end
@@ -4528,7 +4534,7 @@ class ModulesController < ApplicationController
       ics: dashboard_filter_param(:ics, :ics_name),
       format: format
     }.compact_blank
-    params_hash[:fco_id] = %w[1004 1006] if params_hash[:training_fcoc].blank?
+    params_hash[:fco_id] = %w[1004 1006 1095] if params_hash[:training_fcoc].blank?
     params_hash
   end
 
@@ -4538,7 +4544,7 @@ class ModulesController < ApplicationController
     if fcoc_value.present?
       params_hash[:fcoc] = fcoc_value
     else
-      params_hash[:fco_id] = %w[1004 1006]
+      params_hash[:fco_id] = %w[1004 1006 1095]
     end
     params_hash[:ics] = dashboard_filter_param(:ics, :ics_name) if dashboard_filter_param(:ics, :ics_name).present?
     params_hash
@@ -4818,7 +4824,7 @@ class ModulesController < ApplicationController
       post: params[:post].presence,
       vrp_id: params[:vrp_id].presence
     }.compact_blank
-    params_hash[:fco_id] = %w[1004 1006] if params_hash[:training_fcoc].blank?
+    params_hash[:fco_id] = %w[1004 1006 1095] if params_hash[:training_fcoc].blank?
     params_hash
   end
 
@@ -5765,7 +5771,7 @@ class ModulesController < ApplicationController
 
   def training_fcoc_ids_from_param(fcoc_name)
     raw_values = Array(fcoc_name).flatten.map(&:to_s).reject(&:blank?)
-    return %w[1004 1006] if raw_values.blank?
+    return %w[1004 1006 1095] if raw_values.blank?
 
     ids = []
     raw_values.each do |val|
@@ -5776,12 +5782,15 @@ class ModulesController < ApplicationController
       if normalized.include?("1006") || normalized.include?("turekela")
         ids << "1006"
       end
+      if normalized.include?("1095") || normalized.include?("pavijetpur")
+        ids << "1095"
+      end
       if normalized.match?(/\A\d+\z/)
         ids << normalized
       end
     end
     ids = ids.uniq
-    ids.presence || %w[1004 1006]
+    ids.presence || %w[1004 1006 1095]
   end
 
   def farmer_training_mapped_farmer_count_and_popups(month_name:, fcoc_name:)
@@ -5919,8 +5928,8 @@ class ModulesController < ApplicationController
   end
 
   def format_red_fco_popups(rows, fco_ids)
-    fco_name_map = { "1004" => "Sausar", "1006" => "Turekela" }
-    target_ids = Array(fco_ids).presence || %w[1004 1006]
+    fco_name_map = { "1004" => "Sausar", "1006" => "Turekela", "1095" => "Pavijetpur" }
+    target_ids = Array(fco_ids).presence || %w[1004 1006 1095]
     rows_by_id = Array(rows).index_by { |r| r["fco_id"].to_s.strip.downcase }
 
     target_ids.flat_map do |id|
@@ -5943,8 +5952,8 @@ class ModulesController < ApplicationController
   end
 
   def format_red_fco_details(rows, fco_ids)
-    fco_name_map = { "1004" => "Sausar", "1006" => "Turekela" }
-    target_ids = Array(fco_ids).presence || %w[1004 1006]
+    fco_name_map = { "1004" => "Sausar", "1006" => "Turekela", "1095" => "Pavijetpur" }
+    target_ids = Array(fco_ids).presence || %w[1004 1006 1095]
     rows_by_id = Array(rows).index_by { |r| r["fco_id"].to_s.strip.downcase }
 
     target_ids.map do |id|
@@ -6030,8 +6039,8 @@ class ModulesController < ApplicationController
   end
 
   def format_fco_popups(rows, fco_ids, count_key)
-    fco_name_map = { "1004" => "Sausar", "1006" => "Turekela" }
-    target_ids = Array(fco_ids).presence || %w[1004 1006]
+    fco_name_map = { "1004" => "Sausar", "1006" => "Turekela", "1095" => "Pavijetpur" }
+    target_ids = Array(fco_ids).presence || %w[1004 1006 1095]
     rows_by_id = Array(rows).index_by { |r| r["fco_id"].to_s.strip.downcase }
 
     target_ids.map do |id|
@@ -9259,7 +9268,13 @@ class ModulesController < ApplicationController
   def cached_vrps_by_id
     return {} unless model_ready?(:Vrp)
 
-    @cached_vrps_by_id ||= Vrp.includes(:vrp_bank_master, :vrp_profile, photo_attachment: :blob).index_by { |vrp| vrp.id.to_s }
+    @cached_vrps_by_id ||= begin
+      vrps = Vrp.includes(:vrp_bank_master, :vrp_profile, photo_attachment: :blob).to_a
+      # Bill/target visibility inspects creator identities for each JJ. Prime
+      # those lookups once rather than querying per creator, email and mobile.
+      preload_dashboard_vrp_identity_records!(vrps)
+      vrps.index_by { |vrp| vrp.id.to_s }
+    end
   end
 
   def module_cluster_visible_vrp_id_strings
@@ -9479,6 +9494,10 @@ class ModulesController < ApplicationController
     base = ModuleRecord.where(module_slug: record_source_slug)
     return base unless @slug == "jeevika-jankar-bill-list"
 
+    bill_summary_scope(base)
+  end
+
+  def bill_summary_scope(base)
     base.select(<<~SQL.squish)
       module_records.id, module_records.module_slug,
       module_records.created_at, module_records.updated_at,
@@ -9500,12 +9519,17 @@ class ModulesController < ApplicationController
   def training_edit_revision_for(record)
     return unless record&.module_slug == "training-form"
 
-    @training_edit_revisions_by_record ||= ModuleRecord.where(module_slug: TrainingEditApproval::SLUG)
+    @training_edit_revisions_by_record ||= TrainingEditApproval.summary_scope
       .order(id: :desc).to_a.each_with_object({}) do |revision, index|
         index[revision.data["record_id"].to_s] ||= revision
       end
     revision = @training_edit_revisions_by_record[record.id.to_s]
-    revision = TrainingEditApproval.assign_automatic_approver!(revision) if revision
+    if revision && revision.data["status"] == "Pending" && revision.data["approval_role"] != "agronomist"
+      @training_edit_staff_catalogue ||= TrainingStaffScope.staff_catalogue
+      full_revision = ModuleRecord.find(revision.id)
+      TrainingEditApproval.assign_automatic_approver!(full_revision, staff_catalogue: @training_edit_staff_catalogue)
+      revision.data = full_revision.data.except("before", "proposed", "evidence", "history")
+    end
     revision
   end
 
@@ -13483,7 +13507,8 @@ class ModulesController < ApplicationController
     if !vrp_login_user? && (@record.present? || !admin_dashboard_user?) && ["Cluster Coordinator Name", "Agronomist Name"].include?(field)
       office = TrainingStaffScope.office_for(@record&.data || {}, current_app_user || {})
       kind = field == "Cluster Coordinator Name" ? :cluster_coordinator : :agronomist
-      return TrainingStaffScope.options(office, kind)
+      @training_people_staff_catalogue ||= TrainingStaffScope.staff_catalogue
+      return TrainingStaffScope.options(office, kind, catalogue: @training_people_staff_catalogue)
     end
 
     case field

@@ -33,7 +33,7 @@ month_training_done AS (
 /* FARMER KO USKE ACTUAL VRP + CC SE MAP KARNA */
 farmer_vrp_mapping AS (
     SELECT DISTINCT
-        CASE LOWER(TRIM(t.fco_id)) WHEN 'sausar' THEN '1004' WHEN 'turekela' THEN '1006' ELSE TRIM(t.fco_id) END AS fco_id,
+        CASE LOWER(TRIM(t.fco_id)) WHEN 'sausar' THEN '1004' WHEN 'turekela' THEN '1006' WHEN 'pavijetpur' THEN '1095' ELSE TRIM(t.fco_id) END AS fco_id,
         v.afl_id,
         t.vrp_id::text AS vrp_id,
         vd.vrp_name,

@@ -1256,14 +1256,15 @@ class TargetMappingsController < ApplicationController
   # (sausar/turekela). Match both so a code filter still finds name rows and vice versa.
   FCO_CODE_NAME_ALIASES = {
     "1004" => "sausar", "sausar" => "1004",
-    "1006" => "turekela", "turekela" => "1006"
+    "1006" => "turekela", "turekela" => "1006",
+    "1095" => "pavijetpur", "pavijetpur" => "1095"
   }.freeze
 
   def target_mapping_fco_filter_values(value)
     raw_values = Array(value).flatten.map(&:to_s).map(&:strip).reject(&:blank?)
     return [] if raw_values.blank?
 
-    raw_values = %w[1004 1006] if raw_values.any? { |entry| entry.casecmp("All FCO").zero? }
+    raw_values = %w[1004 1006 1095] if raw_values.any? { |entry| entry.casecmp("All FCO").zero? }
 
     raw_values.flat_map do |entry|
       short_name = entry.sub(/\Afco\s*-\s*c\s+/i, "").strip

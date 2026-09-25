@@ -26,6 +26,32 @@ class ModulesControllerDashboardTest < ActiveSupport::TestCase
     assert_includes controller.send(:generic_field_options, "Cluster Coordinator"), "Coordinator One"
   end
 
+  test "office Other section delegates cards and View List rows to the web reporting calculation" do
+    rows = [{ "main_activity_name" => "Seed Distribution", "mapped_farmer" => 4,
+      "achievement_farmer" => 3, "pending_farmer" => 1, "distinct_mapped_farmer" => 4 }]
+    web_totals = { main_major_work_indicator: 1, mapped_farmer: 4,
+      achievement_farmer: 3, pending_farmer: 1, achieved: 75.0 }
+    targets = [OpenStruct.new(id: 9)]
+    received_rows_targets = received_totals_targets = nil
+    calculator = Object.new
+    calculator.define_singleton_method(:dashboard_other_activity_rows) do |received|
+      received_rows_targets = received
+      rows
+    end
+    calculator.define_singleton_method(:dashboard_other_activity_totals) do |received|
+      received_totals_targets = received
+      web_totals
+    end
+
+    section = OfficeDashboardSections.new(calculator: calculator, targets: targets,
+      participation: {}, month: "June", fcoc: nil)
+
+    assert_equal rows, section.other_rows
+    assert_equal web_totals, section.other_totals
+    assert_equal targets, received_rows_targets
+    assert_equal targets, received_totals_targets
+  end
+
   test "configured dashboard reader receives full dashboard scope without admin permissions" do
     controller = ModulesController.new
     controller.define_singleton_method(:current_app_user) do

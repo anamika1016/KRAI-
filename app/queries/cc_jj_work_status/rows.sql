@@ -1,6 +1,6 @@
 WITH month_any_mapping AS (
     SELECT
-        CASE LOWER(TRIM(t.fco_id)) WHEN 'sausar' THEN '1004' WHEN 'turekela' THEN '1006' ELSE TRIM(t.fco_id) END AS fco_id,
+        CASE LOWER(TRIM(t.fco_id)) WHEN 'sausar' THEN '1004' WHEN 'turekela' THEN '1006' WHEN 'pavijetpur' THEN '1095' ELSE TRIM(t.fco_id) END AS fco_id,
         v.afl_id,
         STRING_AGG(
             DISTINCT t.vrp_id::text,
@@ -15,13 +15,13 @@ WITH month_any_mapping AS (
     WHERE %{target_month_filter}
 
     GROUP BY
-        CASE LOWER(TRIM(t.fco_id)) WHEN 'sausar' THEN '1004' WHEN 'turekela' THEN '1006' ELSE TRIM(t.fco_id) END,
+        CASE LOWER(TRIM(t.fco_id)) WHEN 'sausar' THEN '1004' WHEN 'turekela' THEN '1006' WHEN 'pavijetpur' THEN '1095' ELSE TRIM(t.fco_id) END,
         v.afl_id
 ),
 
 month_training_mapping AS (
     SELECT
-        CASE LOWER(TRIM(t.fco_id)) WHEN 'sausar' THEN '1004' WHEN 'turekela' THEN '1006' ELSE TRIM(t.fco_id) END AS fco_id,
+        CASE LOWER(TRIM(t.fco_id)) WHEN 'sausar' THEN '1004' WHEN 'turekela' THEN '1006' WHEN 'pavijetpur' THEN '1095' ELSE TRIM(t.fco_id) END AS fco_id,
         v.afl_id,
         STRING_AGG(
             DISTINCT t.vrp_id::text,
@@ -38,7 +38,7 @@ month_training_mapping AS (
           LIKE '%farmers'' training%'
 
     GROUP BY
-        CASE LOWER(TRIM(t.fco_id)) WHEN 'sausar' THEN '1004' WHEN 'turekela' THEN '1006' ELSE TRIM(t.fco_id) END,
+        CASE LOWER(TRIM(t.fco_id)) WHEN 'sausar' THEN '1004' WHEN 'turekela' THEN '1006' WHEN 'pavijetpur' THEN '1095' ELSE TRIM(t.fco_id) END,
         v.afl_id
 ),
 
@@ -143,7 +143,7 @@ farmer_vrp_details AS (
 
 registered_farmer_vrp_details AS (
     SELECT
-        CASE LOWER(TRIM(m.fco_id)) WHEN 'sausar' THEN '1004' WHEN 'turekela' THEN '1006' ELSE TRIM(m.fco_id) END AS fco_id,
+        CASE LOWER(TRIM(m.fco_id)) WHEN 'sausar' THEN '1004' WHEN 'turekela' THEN '1006' WHEN 'pavijetpur' THEN '1095' ELSE TRIM(m.fco_id) END AS fco_id,
         farmer.afl_id,
         STRING_AGG(DISTINCT NULLIF(TRIM(v.name), ''), ', ') AS vrp_name,
         STRING_AGG(DISTINCT NULLIF(TRIM(v.cluster_incharge), ''), ', ') AS cluster_incharge

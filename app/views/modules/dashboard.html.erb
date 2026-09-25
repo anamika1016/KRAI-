@@ -606,7 +606,7 @@
         <button type="button" class="metric-card-popup-trigger" data-card-popup-trigger title="Open in popup" aria-label="Open CC and JJ Work Status details"><svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M14 4h6v6M20 4l-9 9"/><path d="M10 4H5a1 1 0 0 0-1 1v14a1 1 0 0 0 1 1h14a1 1 0 0 0 1-1v-5"/></svg></button>
         <div class="cc-jj-status-groups">
           <% summary_by_fco = @cc_jj_work_status_report.summary.group_by { |row| row["fco_id"] } %>
-          <% { "1004" => "Sausar", "1006" => "Turekela" }.each do |fco_id, fco_name| %>
+          <% { "1004" => "Sausar", "1006" => "Turekela", "1095" => "Pavijetpur" }.each do |fco_id, fco_name| %>
             <div class="cc-jj-status-fco-row">
               <strong class="cc-jj-status-fco-name"><%= fco_name %></strong>
               <div class="cc-jj-status-fco-groups">

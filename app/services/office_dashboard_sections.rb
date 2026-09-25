@@ -68,85 +68,25 @@ class OfficeDashboardSections
     end
   end
 
+  # The Other cards and their View List must use the same reporting query as
+  # the web dashboard. That query also handles the Farmers' Training filter by
+  # restoring the matching Other mappings while retaining the selected month,
+  # FCO, ICS, CC and JJ scope.
   def other_rows
-    return @other_rows if defined?(@other_rows)
-
-    # Keep the web's secondary Other panel, preserving non-activity filters.
-    targets = @targets.reject { |target| target.main_activity_name.to_s.strip.casecmp?("Farmers' Training") }
-    if targets.empty?
-      ids = Array(@calculator.instance_variable_get(:@filtered_vrps)).map(&:id).to_set
-      month = @calculator.instance_variable_get(:@dashboard_month_filter_value)
-      ics = call(:dashboard_filter_param, :ics, :ics_name)
-      targets = call(:dashboard_target_mappings).select do |target|
-        !target.main_activity_name.to_s.strip.casecmp?("Farmers' Training") && ids.include?(target.vrp_id) &&
-          (month.blank? || target.month_name.to_s.casecmp?(month)) &&
-          (ics.blank? || (target.ics_name.presence || target.ics_id).to_s.casecmp?(ics))
-      end
-    end
-    return @other_rows = [] if targets.empty?
-
-    # Unlike the legacy FCO aggregate, require the entry's JJ and selected
-    # farmer to belong to these exact mappings before counting achievements.
-    connection = TargetMapping.connection
-    scope = TargetMapping.where(id: targets.map(&:id)).select(:vrp_id, :fco_id, :fco_name, :main_activity_name, :month_name, :afl_ids).to_sql
-    @other_rows = connection.select_all(<<~SQL).to_a
-      WITH mapping AS MATERIALIZED (
-        SELECT DISTINCT t.vrp_id, t.fco_id, t.fco_name, t.main_activity_name,
-          LOWER(TRIM(t.month_name)) AS month, f.id AS farmer_id
-        FROM (#{scope}) t
-        CROSS JOIN LATERAL jsonb_array_elements_text(t.afl_ids::jsonb) f(id)
-      ), mapping_keys AS MATERIALIZED (
-        SELECT DISTINCT vrp_id::text AS vrp_id, month,
-          LOWER(TRIM(main_activity_name)) AS main_activity_name
-        FROM mapping
-      ), training AS MATERIALIZED (
-        SELECT DISTINCT
-          COALESCE(NULLIF(r.data::jsonb ->> 'vrp_id', ''),
-            CASE WHEN LOWER(r.data::jsonb ->> 'created_by_record_type') = 'vrp'
-            THEN r.data::jsonb ->> 'created_by_id' END) AS vrp_id,
-          LOWER(TRIM(r.data::jsonb ->> 'month')) AS month,
-          LOWER(TRIM(r.data::jsonb ->> 'main_activity')) AS main_activity_name,
-          TRIM(farmer.id) AS farmer_id
-        FROM module_records r
-        INNER JOIN mapping_keys mapping_key ON mapping_key.vrp_id = COALESCE(
-          NULLIF(r.data::jsonb ->> 'vrp_id', ''),
-          CASE WHEN LOWER(r.data::jsonb ->> 'created_by_record_type') = 'vrp'
-          THEN r.data::jsonb ->> 'created_by_id' END
-        )
-          AND mapping_key.month = LOWER(TRIM(r.data::jsonb ->> 'month'))
-          AND mapping_key.main_activity_name = LOWER(TRIM(r.data::jsonb ->> 'main_activity'))
-        CROSS JOIN LATERAL jsonb_array_elements_text(
-          CASE
-            WHEN jsonb_typeof(r.data::jsonb -> 'selected_farmer_ids') = 'array'
-              THEN r.data::jsonb -> 'selected_farmer_ids'
-            ELSE '[]'::jsonb
-          END
-        ) AS farmer(id)
-        WHERE r.module_slug = 'training-form'
-      ), detail AS (
-        SELECT m.*, training.farmer_id IS NOT NULL AS done
-        FROM mapping m
-        LEFT JOIN training ON training.vrp_id = m.vrp_id::text
-          AND training.month = m.month
-          AND training.main_activity_name = LOWER(TRIM(m.main_activity_name))
-          AND training.farmer_id = m.farmer_id
-      ) SELECT fco_id, fco_name, main_activity_name,
-        COUNT(DISTINCT farmer_id) AS mapped_farmer,
-        COUNT(DISTINCT farmer_id) FILTER (WHERE done) AS achievement_farmer,
-        COUNT(DISTINCT farmer_id) - COUNT(DISTINCT farmer_id) FILTER (WHERE done) AS pending_farmer,
-        (SELECT COUNT(DISTINCT farmer_id) FROM mapping) AS distinct_mapped_farmer
-      FROM detail GROUP BY fco_id, fco_name, main_activity_name ORDER BY fco_name, main_activity_name
-    SQL
+    @other_rows ||= Array(call(:dashboard_other_activity_rows, @targets))
   end
 
   def other_totals
-    rows = other_rows
-    mapped = rows.sum { |row| row["mapped_farmer"].to_i }
-    done = rows.sum { |row| row["achievement_farmer"].to_i }
-    { main_major_work_indicator: rows.map { |row| row["main_activity_name"] }.uniq.size,
-      mapped_farmer: rows.first&.fetch("distinct_mapped_farmer", 0).to_i,
-      achievement_farmer: done, pending_farmer: rows.sum { |row| row["pending_farmer"].to_i },
-      achieved: mapped.positive? ? (100.0 * done / mapped).round(2) : 0 }
+    @other_totals ||= begin
+      totals = call(:dashboard_other_activity_totals, @targets)
+      {
+        main_major_work_indicator: totals[:main_major_work_indicator].to_i,
+        mapped_farmer: totals[:mapped_farmer].to_i,
+        achievement_farmer: totals[:achievement_farmer].to_i,
+        pending_farmer: totals[:pending_farmer].to_i,
+        achieved: totals[:achieved].to_f
+      }
+    end
   end
 
   private

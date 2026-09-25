@@ -1,5 +1,5 @@
 class CcTargetStatusReport
-  FCO_IDS = %w[1004 1006].freeze
+  FCO_IDS = %w[1004 1006 1095].freeze
   CC_NAME_KEYS = %w[cluster_coordinator_name cluster_incharge cluster_coordinator].freeze
   # "N/A" is a real option in the Cluster Coordinator dropdown, so selecting it
   # means "no Cluster Coordinator" exactly like clearing the field does.
@@ -15,6 +15,7 @@ class CcTargetStatusReport
     @fco = "" if @fco.downcase.start_with?("all")
     @fco = "1004" if @fco.downcase.include?("sausar")
     @fco = "1006" if @fco.downcase.include?("turekela")
+    @fco = "1095" if @fco.downcase.include?("pavijetpur")
   end
 
   def summary
@@ -26,7 +27,7 @@ class CcTargetStatusReport
   end
 
   def caption
-    "#{all_months? ? 'All Months' : @month} · #{{ '1004' => 'Sausar', '1006' => 'Turekela' }.fetch(@fco, @fco.presence || 'All FCOs')}"
+    "#{all_months? ? 'All Months' : @month} · #{{ '1004' => 'Sausar', '1006' => 'Turekela', '1095' => 'Pavijetpur' }.fetch(@fco, @fco.presence || 'All FCOs')}"
   end
 
   private
@@ -65,6 +66,7 @@ class CcTargetStatusReport
       fpo_name = case fco_id
       when "1004" then "Sausar"
       when "1006" then "Turekela"
+      when "1095" then "Pavijetpur"
       else @fco_names[fco_id].presence || fco_id
       end
 
@@ -279,6 +281,7 @@ class CcTargetStatusReport
     combined = vals.compact.map(&:to_s).join(" ").strip.downcase
     return "1004" if combined.include?("sausar") || combined.include?("1004")
     return "1006" if combined.include?("turekela") || combined.include?("1006")
+    return "1095" if combined.include?("pavijetpur") || combined.include?("1095")
 
     vals.map { |value| value.to_s.strip.split("||").first.to_s }.find { |value| value.match?(/\A\d+\z/) } ||
       vals.map { |value| value.to_s.strip }.find(&:present?).to_s

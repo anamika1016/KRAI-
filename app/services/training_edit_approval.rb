@@ -115,6 +115,32 @@ class TrainingEditApproval
     end
   end
 
+  # Lists and badges need routing metadata, not image evidence or training snapshots.
+  # Projected revisions are read-only; routing and decisions use complete records.
+  def self.summary_scope(scope = ModuleRecord.where(module_slug: SLUG))
+    scope.select(:id, :module_slug, :created_at, :updated_at)
+      .select("(module_records.data::jsonb - ARRAY['before', 'proposed', 'evidence', 'history'])::text AS data")
+      .readonly
+  end
+
+  def self.summaries_for(actor, pending_only: false)
+    return [] if actor.blank?
+
+    scope = ModuleRecord.where(module_slug: SLUG)
+    scope = scope.where("data::jsonb ->> 'status' = 'Pending'") if pending_only
+    staff_catalogue = nil
+    summary_scope(scope).order(id: :desc).filter_map do |summary|
+      if summary.data["status"] == "Pending" && summary.data["approval_role"] != "agronomist"
+        # Preserve legacy routing, loading staff once only when routing is needed.
+        staff_catalogue ||= TrainingStaffScope.staff_catalogue
+        revision = ModuleRecord.find(summary.id)
+        assign_automatic_approver!(revision, staff_catalogue: staff_catalogue)
+        summary.data = revision.data.except("before", "proposed", "evidence", "history")
+      end
+      summary if visible?(summary, actor)
+    end
+  end
+
   def self.visible?(revision, actor)
     return true if actor["user_type"].to_s.casecmp("admin").zero? || revision.data["requester_identity"] == identity(actor)
 

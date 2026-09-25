@@ -1,12 +1,6 @@
 class TrainingEditApprovalsController < ApplicationController
   def index
-    # Keep approval routing unchanged, but load the staff catalogue once for the
-    # whole list instead of repeating full staff scans for every pending revision.
-    staff_catalogue = TrainingStaffScope.staff_catalogue
-    @revisions = ModuleRecord.where(module_slug: TrainingEditApproval::SLUG).order(id: :desc).select do |revision|
-      TrainingEditApproval.assign_automatic_approver!(revision, staff_catalogue: staff_catalogue)
-      TrainingEditApproval.visible?(revision, current_app_user)
-    end
+    @revisions = TrainingEditApproval.summaries_for(current_app_user)
     @revisions.sort_by! do |revision|
       [TrainingEditApproval.can_decide?(revision, current_app_user) ? 0 : (revision.data["status"] == "Pending" ? 1 : 2), -revision.id]
     end
