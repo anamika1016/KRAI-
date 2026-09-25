@@ -474,6 +474,10 @@ module Api
       def cached_admin_dashboard_list_payload(list_type)
         return unless admin_dashboard_list_catalog.key?(list_type)
 
+        if list_type == "total_ics_count"
+          return cache_admin_dashboard_payload("list/total_ics_count-afl-v2") { admin_afl_ics_list_payload }
+        end
+
         cache_admin_dashboard_payload("list/#{list_type}") do
           if lightweight_admin_dashboard_list_type?(list_type)
             prepare_lightweight_admin_dashboard_context
@@ -482,6 +486,22 @@ module Api
           end
           admin_dashboard_list_payload(list_type)
         end
+      end
+
+      def admin_afl_ics_list_payload
+        web = OfficeDashboardCalculator.new
+        web.request = request
+        web.params = params
+        web.instance_variable_set(:@current_app_user, current_api_user_payload)
+        columns = %i[fco_id fco fpo_id fpo_name ics_id ics_name]
+        rows = web.send(:dashboard_total_afl_farmer_scope).where.not(ics_id: [nil, ""])
+          .group(*columns).order(*columns)
+          .pluck(*columns, Arel.sql("COUNT(tracenet_no)"))
+          .map do |values|
+            row = (columns + [:farmer_count]).zip(values).to_h
+            row.merge(ics: row[:ics_name].presence || row[:ics_id], fco_name: row[:fco])
+          end
+        { title: admin_dashboard_list_catalog.fetch("total_ics_count"), records: rows }
       end
 
       # Reuse the current web card and drill-down calculations without rendering HTML.
@@ -1139,9 +1159,7 @@ module Api
         when "target_records"
           grouped_admin_targets(targets)
         when "total_ics_count"
-          targets.group_by { |target| target.ics_name.presence || target.ics_id }.reject { |name, _| name.blank? }.map do |name, rows|
-            { ics: name, target_records: rows.size, jeevika_jankar_count: rows.filter_map(&:vrp_id).uniq.size, villages: rows.filter_map(&:village_name).uniq.size }
-          end
+          admin_afl_ics_list_payload[:records]
         when "total_mapped_villages"
           grouped_admin_villages(targets)
         when "targeted_farmers"
