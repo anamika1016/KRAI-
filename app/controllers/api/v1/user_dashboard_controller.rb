@@ -590,7 +590,14 @@ module Api
 
       def filter_vrps(vrps, targets, attribute, selected)
         return [vrps, targets] if selected.blank?
-        filtered = vrps.select { |v| same?(v.public_send(attribute), selected) }
+        calculator = dashboard_calculator if attribute == :fcoc
+        filtered = vrps.select do |vrp|
+          if calculator
+            calculator.send(:training_fcoc_text_matches?, vrp.fcoc, selected)
+          else
+            same?(vrp.public_send(attribute), selected)
+          end
+        end
         ids = id_lookup(filtered)
         [filtered, targets.select { |t| ids.key?(t.vrp_id.to_s) }]
       end

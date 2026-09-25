@@ -315,6 +315,41 @@ class Api::V1::OfficeDashboardControllerTest < ActionDispatch::IntegrationTest
     assert_nil row["fpo_id"]
   end
 
+  test "Pavijetpur FCO aliases return all four ICS without target mappings" do
+    pavijetpur_user = create_user("FCO-Pavijetpur", "FCO-Pavijetpur")
+    create_vrp(pavijetpur_user, "Pavijetpur CC", "FCO-Pavijetpur")
+    4.times do |index|
+      Afl.create!(farmer_name: "Pavijetpur farmer #{index}", fco_id: "1095", fco: "Pavijetpur",
+        ics_id: "PAVI-#{index}", ics_name: "Pavijetpur ICS #{index}",
+        village_id: "PAVI-V-#{index}", village_name: "Pavijetpur village #{index}", tracenet_no: "PAVI-T-#{index}")
+    end
+    ["All", "1095", "Pavijetpur", "FCO-Pavijetpur", "FCO-C Pavijetpur"].each do |fco|
+      %w[summary_ics summary_villages summary_farmers].each do |type|
+        get "/api/v1/user-dashboard/lists/#{type}",
+          params: { month: "June", fco: fco, ics: "All" }, headers: headers(pavijetpur_user)
+        assert_response :success
+        assert_equal 4, response.parsed_body.fetch("count"), "#{type}: #{fco}"
+        assert_equal ["1095"], response.parsed_body.fetch("records").map { |row| row["fco_id"] }.uniq
+      end
+    end
+    get "/api/v1/user-dashboard/lists/summary_ics",
+      params: { fco: "1095", ics: "All" }, headers: headers(@fco)
+    assert_response :success
+    assert_empty response.parsed_body.fetch("records")
+  end
+
+  test "authorized all FCO summary includes Pavijetpur alongside Sausar and Turekela" do
+    calculator = OfficeDashboardCalculator.new
+    calculator.request = ActionDispatch::TestRequest.create
+    calculator.params = ActionController::Parameters.new(fco: "All", ics: "All")
+    calculator.instance_variable_set(:@dashboard_source_fcoc_login, true)
+    calculator.instance_variable_set(:@current_app_user, { "user_type" => "User", "role" => "FCO" })
+    pavijetpur = create_vrp(@other_fco, "Pavijetpur CC", "FCO-Pavijetpur")
+    calculator.apply_dashboard_scope(vrps: [@first, @second, pavijetpur], targets: [], bills: [])
+    Afl.create!(farmer_name: "Pavijetpur farmer", fco_id: "1095", fco: "Pavijetpur", ics_id: "PAVI", ics_name: "PAVI")
+    assert_equal %w[1004 1006 1095], calculator.send(:dashboard_total_afl_farmer_scope).distinct.pluck(:fco_id).sort
+  end
+
   private
 
   def headers(user)
