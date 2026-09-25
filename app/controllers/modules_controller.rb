@@ -40,6 +40,15 @@ class ModulesController < ApplicationController
 
   APPROVAL_REGISTRATION_MODULES = ["Farmer Registration", "VRP Registration", "Jeevika Jankar Registration"].freeze
   OTHER_TARGET_MODULE_SLUGS = ["seed-distribution-target", "papl360-target", "other-target"].freeze
+  # FCO offices shown in the dashboard's Gender Count and FCO-wise JJ Requirement
+  # cards. Add a new office here and its boxes appear in both automatically.
+  DASHBOARD_FCO_NAMES = %w[Sausar Turekela Pavijetpur].freeze
+  # Modules whose show page is an entry form only -- no Saved Records table.
+  # Keep in sync with entry_only_slugs in show.html.erb.
+  SHOW_ENTRY_ONLY_SLUGS = [
+    "add-activity-group", "add-vrp-activity", "task-completion-indicator", "approval-master",
+    "access-control", "vrp-bill-add", "jeevika-jankar-bill-process", "training-form"
+  ].freeze
   TARGET_RECORD_MODULE_SLUGS = (["training-form", "add-farmer-form"] + OTHER_TARGET_MODULE_SLUGS).freeze
   JEEVIKA_JANKAR_BILL_FIXED_TOTAL = 5000.0
   JEEVIKA_JANKAR_PAYMENT_DETAIL_SLUG = "jeevika-jankar-payment-detail".freeze
@@ -3677,7 +3686,7 @@ class ModulesController < ApplicationController
       ], style: "registration"),
       dashboard_group_card("Jeevika Jankar Billing", billing_items, style: "billing")
     ]
-    fco_names = %w[Sausar Turekela]
+    fco_names = DASHBOARD_FCO_NAMES
     gender_month = params[:month].presence || params[:training_month].presence || "August"
     gender_items = fco_names.flat_map do |fco_name|
       # Same JJ set as the FCO-wise JJ Requirement "Active" box, split by gender.
@@ -9540,20 +9549,17 @@ class ModulesController < ApplicationController
       @slug == "training-form-list"
   end
 
+  # show.html.erb renders the "Saved Records" table for every module except the
+  # entry-only forms, new-user and the Other Target forms. This must agree with
+  # that condition: an allow-list silently rendered an empty table for any module
+  # missing from it, so newly added modules looked like they never saved anything.
   def module_records_required_for_show?
     return true if @record.present?
-    return true if @slug.to_s.end_with?("-list")
-    return true if %w[
-      stakeholder-master stakeholder-role role-name
-      parent-office-add office-category-add office-mapping-add
-      month-master
-      state-master district-master block-master gram-panchayat-master village-master
-    ].include?(@slug)
-    return true if @slug == "lg-directory-list"
-    return true if @slug == "jeevika-jankar-payment-list-detail"
-    return true if @slug == "jeevika-jankar-completed-payment-list"
+    return false if @slug == "new-user"
+    return false if SHOW_ENTRY_ONLY_SLUGS.include?(@slug)
+    return false if OTHER_TARGET_MODULE_SLUGS.include?(@slug)
 
-    false
+    true
   end
 
   def preserve_training_uploads(previous_data, next_data)

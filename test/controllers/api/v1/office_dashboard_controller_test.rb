@@ -253,6 +253,68 @@ class Api::V1::OfficeDashboardControllerTest < ActionDispatch::IntegrationTest
     assert_response :forbidden
   end
 
+  test "June list returns full mapped population and identifiers only in the authorized FCO" do
+    @second_target.update!(month_name: "June")
+    farmer = Afl.find(@second_target.afl_ids.first)
+    farmer.update!(fpo_id: "TEST-FPO", fpo_name: "Test FPO", tracenet_no: "TEST-TRACE")
+    query = { month: "June", main_activity: "Farmers' Training", sub_activity: "All", fco: "FCO-C Turekela", ics: "All" }
+    get "/api/v1/user-dashboard/lists/training_unique_farmers", params: query, headers: headers(@other_fco)
+    assert_response :success
+    rows = response.parsed_body.fetch("records")
+    assert_equal [farmer.id.to_s], rows.map { |row| row["farmer_id"] }
+    assert_equal "1006", rows.first["fco_id"]
+    assert_equal "TEST-FPO", rows.first["fpo_id"]
+    assert_equal @second_target.ics_id, rows.first["ics_id"]
+    get "/api/v1/user-dashboard/lists/training_unique_farmers", params: query, headers: headers(@specialist)
+    assert_response :success
+    assert_empty response.parsed_body.fetch("records")
+    get "/api/v1/user-dashboard/lists/summary_farmers", params: query, headers: headers(@other_fco)
+    assert_response :success
+    assert_equal "TEST-FPO", response.parsed_body.fetch("records").first.fetch("fpo_id")
+  end
+
+  test "all month mapped list returns visible farmers instead of an empty list" do
+    get "/api/v1/user-dashboard/lists/training_unique_farmers",
+      params: { month: "All", main_activity: "All", fco: "FCO-C Sausar" }, headers: headers(@specialist)
+    assert_response :success
+    assert_equal @first_target.afl_ids.map(&:to_s), response.parsed_body.fetch("records").map { |row| row["farmer_id"] }
+  end
+
+  test "yellow and green lists retain training counts and location IDs" do
+    farmer = Afl.find(@second_target.afl_ids.first)
+    farmer.update!(fpo_id: "TEST-FPO")
+    %w[yellow green].each_with_index do |status, index|
+      ModuleRecord.create!(module_slug: "training-form", data: {
+        "created_by_id" => @second.id.to_s, "created_by_record_type" => "Vrp",
+        "vrp_id" => @second.id.to_s, "month" => "August", "main_activity" => "Farmers' Training",
+        "sub_activity" => "Soil", "selected_farmer_ids" => [farmer.id.to_s],
+        "target_mapping_ids" => [@second_target.id.to_s]
+      })
+      get "/api/v1/user-dashboard/lists/training_#{status}",
+        params: { month: "August", fco: @second.fcoc, ics: "All" }, headers: headers(@other_fco)
+      assert_response :success
+      rows = response.parsed_body.fetch("records")
+      assert_equal [farmer.id.to_s], rows.map { |row| row["farmer_id"] }
+      assert_equal index + 1, rows.first["attendance_count"]
+      assert_equal "1006", rows.first["fco_id"]
+      assert_equal "TEST-FPO", rows.first["fpo_id"]
+      assert_equal @second_target.ics_id, rows.first["ics_id"]
+    end
+  end
+
+  test "historical mapped farmer keeps target location identifiers" do
+    @second_target.update!(month_name: "June", afl_ids: ["999999999999"])
+    get "/api/v1/user-dashboard/lists/training_unique_farmers",
+      params: { month: "June", fco: @second.fcoc, ics: "All" }, headers: headers(@other_fco)
+    assert_response :success
+    row = response.parsed_body.fetch("records").find { |item| item["farmer_id"] == "999999999999" }
+    assert row
+    assert row["historical_mapping"]
+    assert_equal "1006", row["fco_id"]
+    assert_equal @second_target.ics_id, row["ics_id"]
+    assert_nil row["fpo_id"]
+  end
+
   private
 
   def headers(user)

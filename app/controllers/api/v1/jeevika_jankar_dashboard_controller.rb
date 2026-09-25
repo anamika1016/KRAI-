@@ -224,7 +224,7 @@ module Api
             web = context[:web]
             vrps = web.send(:dashboard_vrps)
             gender_month = params[:month].presence || params[:training_month].presence || "August"
-            items = %w[Sausar Turekela].flat_map do |fco|
+            items = ModulesController::DASHBOARD_FCO_NAMES.flat_map do |fco|
               active = web.send(:dashboard_fco_active_vrp_records, fco, gender_month, vrps)
               web.send(:dashboard_jj_requirement_items, fco, vrps, context[:targets]) + [
                 { title: "#{fco} Male", value: active.count { |vrp| web.send(:normalize_dashboard_text, vrp.gender) == "male" } },
@@ -952,7 +952,7 @@ module Api
             bill_approved: bills.count { |bill| web.send(:dashboard_bill_approved?, bill) },
             bill_pending: bills.count { |bill| web.send(:dashboard_bill_pending?, bill) }
           },
-          fco_wise_jeevika_jankar: %w[Sausar Turekela].map do |fco_name|
+          fco_wise_jeevika_jankar: ModulesController::DASHBOARD_FCO_NAMES.map do |fco_name|
             matching = vrps.select do |vrp|
               web.send(:normalize_dashboard_text, vrp.fcoc).include?(web.send(:normalize_dashboard_text, fco_name))
             end

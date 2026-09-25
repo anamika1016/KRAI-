@@ -140,12 +140,15 @@ module Api
           columns = %i[fco_id fco fpo_id fpo_name ics_id ics_name]
           if type == "summary_farmers"
             scope.where("NULLIF(BTRIM(tracenet_no), '') IS NOT NULL")
-              .pluck(:id, :farmer_name, :tracenet_no, :fco, :ics_name, :village_name)
-              .map { |row| %i[id farmer_name tracenet_no fco ics_name village_name].zip(row).to_h }
+              .order(:fco_id, :ics_id, :id)
+              .pluck(:id, :farmer_name, :father_name, :mobile_no, :tracenet_no, *columns, :village_id, :village_name)
+              .map { |row| (%i[id farmer_name father_name mobile_no tracenet_no] + columns + %i[village_id village_name]).zip(row).to_h }
           else
             columns += %i[village_id village_name] if type == "summary_villages"
             scope.where.not((type == "summary_villages" ? :village_id : :ics_id) => [nil, ""])
-              .distinct.pluck(*columns).map { |row| columns.zip(row).to_h }
+              .group(*columns).order(*columns)
+              .pluck(*columns, Arel.sql("COUNT(tracenet_no)"))
+              .map { |row| (columns + [:farmer_count]).zip(row).to_h }
           end
         elsif type == "other_activities"
           OfficeDashboardSections.new(calculator: calculator, targets: targets,
@@ -200,8 +203,18 @@ module Api
         build_user_dashboard_response
       end
 
+      PRIMARY_LIST_ALIASES = {
+        "total_ics_count" => "summary_ics", "total_villages_count" => "summary_villages",
+        "total_farmer_count" => "summary_farmers", "mapped_farmer" => "training_unique_farmers",
+        "no_training" => "training_red", "only_1_training" => "training_yellow",
+        "one_plus_trainings" => "training_green",
+        **OfficeDashboardSections::DEMO.to_h { |key| [key, "demonstration_method"] }
+      }.freeze
+
       def user_dashboard_list_catalog
         admin_dashboard_list_catalog.merge(office_section_list_catalog).merge(
+          PRIMARY_LIST_ALIASES.to_h { |key, _type| [key, key.humanize] }
+        ).merge(
           "farmer_wise_target_mapping" => "Farmer-wise Target Mapping List",
           "activity_wise_target_mapping" => "Activity-wise Target Mapping List",
           "activity_wise_achievement" => "Activity-wise Achievement List",
@@ -239,9 +252,37 @@ module Api
         })
       end
 
+      def office_activity_list_rows(targets, attribute, label)
+        targets.group_by { |target| target.public_send(attribute).to_s.squish.downcase }
+          .reject { |name, _| name.blank? }.values.map do |group|
+            {
+              name: group.first.public_send(attribute), activity_type: label, assignment_status: "Mapped",
+              main_activity: group.first.main_activity_name, sub_activity: group.first.activity_name,
+              sub_activity_count: group.map { |target| target.activity_name.to_s.squish.downcase }.reject(&:blank?).uniq.size,
+              target_count: group.size, target_records: group.size,
+              target_quantity: number(group.sum { |target| target.target_quantity.to_f }),
+              jeevika_jankar_count: group.filter_map(&:vrp_id).uniq.size,
+              farmer_count: group.flat_map { |target| mapped_farmer_ids(target) }.uniq.size,
+              months: group.filter_map(&:month_name).uniq,
+              fco_ids: group.filter_map { |target| target.fco_id.presence }.uniq,
+              ics_ids: group.filter_map { |target| target.ics_id.presence }.uniq,
+              village_ids: group.filter_map { |target| target.village_id.presence }.uniq
+            }
+          end.sort_by { |row| [row[:main_activity].to_s.downcase, row[:sub_activity].to_s.downcase] }
+          .each_with_index.map { |row, index| row.merge(id: index + 1) }
+      end
+
+      def participation_list_fcoc(calculator, options)
+        return filter_param(:participation_fcoc) if params.key?(:participation_fcoc)
+        return filter_param(:fcoc, :fco) if params.key?(:fcoc) || params.key?(:fco)
+
+        calculator.send(:dashboard_default_visible_fcoc, options[:fcos])
+      end
+
       def user_dashboard_list_payload(list_type)
         return unless user_dashboard_list_catalog.key?(list_type)
 
+        list_type = PRIMARY_LIST_ALIASES.fetch(list_type, list_type)
         calculator = dashboard_calculator
         vrps, targets, options = filtered_scope(calculator)
         summary_vrps, summary_targets = summary_scope(calculator)
@@ -253,7 +294,7 @@ module Api
         if %w[total_mapped_main_activities total_mapped_sub_activities].include?(list_type)
           set_filtered_scope(calculator, summary_vrps, summary_targets, [], summary_vrps: summary_vrps, summary_targets: summary_targets)
           attribute, label = list_type == "total_mapped_main_activities" ? [:main_activity_name, "Main Activity"] : [:activity_name, "Sub Activity"]
-          return { title: user_dashboard_list_catalog.fetch(list_type), records: grouped_admin_activities(summary_targets, attribute, label) }
+          return { title: user_dashboard_list_catalog.fetch(list_type), records: office_activity_list_rows(summary_targets, attribute, label) }
         end
 
         set_filtered_scope(calculator, vrps, targets, [], summary_vrps: summary_vrps, summary_targets: summary_targets)
@@ -268,7 +309,7 @@ module Api
         if %w[training_unique_farmers training_red training_pending training_yellow training_green].include?(list_type)
           months = calculator.send(:dashboard_month_options_for_targets, targets)
           participation_month = selected_month(:participation_month, months, calculator, targets)
-          participation_fcoc = filter_param(:participation_fcoc) || calculator.send(:dashboard_default_visible_fcoc, options[:fcos])
+          participation_fcoc = participation_list_fcoc(calculator, options)
           status = {
             "training_unique_farmers" => "unique", "training_red" => "red", "training_pending" => "pending",
             "training_yellow" => "yellow", "training_green" => "green"
@@ -285,7 +326,7 @@ module Api
         end
         months = calculator.send(:dashboard_month_options_for_targets, targets)
         participation_month = selected_month(:participation_month, months, calculator, targets)
-        participation_fcoc = filter_param(:participation_fcoc) || calculator.send(:dashboard_default_visible_fcoc, options[:fcos])
+        participation_fcoc = participation_list_fcoc(calculator, options)
         participation_records = calculator.send(:dashboard_training_participation_records, month_name: participation_month, fcoc_name: participation_fcoc)
         population = calculator.send(:training_participation_population_rows,
           month_name: participation_month, fcoc_name: participation_fcoc, records: participation_records)
