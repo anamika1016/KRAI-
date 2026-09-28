@@ -1,0 +1,49 @@
+# Only aggregate data visible to the signed-in dashboard user is sent to the AI.
+class AssistantContext
+  FILTERS = %w[month training_month ics ics_name fcoc fco_id].freeze
+
+  def initialize(controller, filters: {})
+    @controller = controller
+    @filters = filters.to_h.stringify_keys.slice(*FILTERS).transform_values { |value| value.to_s.first(100) }
+  end
+
+  def call(messages)
+    return { data_available: false } if @controller.send(:current_app_user).blank?
+
+    policy = ModulesController.new
+    policy.request = @controller.request
+    policy.instance_variable_set(:@current_app_user, @controller.send(:current_app_user))
+    question = Array(messages).reverse.filter_map { |m| m["content"] if m.is_a?(Hash) && m["role"] == "user" }.first.to_s
+    @filters = AssistantReports.filters(question, @filters).slice(*FILTERS)
+    month = Date::MONTHNAMES.compact.find { |name| question.match?(/\b#{name}\b/i) }
+    month ||= @filters["month"].presence || @filters["training_month"].presence || Date.current.prev_month.strftime("%B")
+    policy.params = ActionController::Parameters.new(@filters.merge("month" => month))
+    vrps = policy.send(:dashboard_vrps)
+    visible_ids = vrps.map(&:id)
+    gender = ModulesController::DASHBOARD_FCO_NAMES.map do |fco|
+      # The dashboard helper can fetch additional VRPs. Intersect again to
+      # prevent those records crossing the current user's visibility boundary.
+      records = policy.send(:dashboard_fco_active_vrp_records, fco, month, vrps).select { |vrp| visible_ids.include?(vrp.id) }
+      { fco: fco, male: records.count { |v| v.gender.to_s.strip.casecmp("male").zero? },
+        female: records.count { |v| v.gender.to_s.strip.casecmp("female").zero? } }
+    end
+    farmers = policy.send(:dashboard_visible_farmer_scope)
+    fco = @filters["fco_id"].presence || @filters["fcoc"].presence
+    if fco.present? && !fco.downcase.start_with?("all")
+      known_fcos = { "1004" => "sausar", "1006" => "turekela", "1095" => "pavijetpur" }
+      canonical = known_fcos[fco] || fco.sub(/\Afco\s*-\s*c\s+/i, "").downcase
+      aliases = policy.send(:training_fcoc_filter_values, [fco, canonical, known_fcos.key(canonical)]).map { |v| v.to_s.strip.downcase }
+      farmers = farmers.where("LOWER(BTRIM(fco_id)) IN (:values) OR LOWER(BTRIM(fco)) IN (:values)", values: aliases)
+      gender = gender.select { |row| policy.send(:training_fcoc_text_matches?, row[:fco], canonical) }
+    end
+    {
+      source: "Signed-in user's dashboard", month: month,
+      scope: "Visible records only. Gender counts are active JJ/VRPs, not farmers. JJ gender is scoped by FCO/month/user visibility (not ICS). Farmer totals are all-month visible totals; farmer FCO: #{fco.presence || 'all visible'}. ICS: #{@filters["ics"].presence || @filters["ics_name"].presence || 'all visible'}.",
+      jj_gender_by_fco: gender,
+      farmers: farmers.count,
+      villages: farmers.where.not(village_id: [nil, ""]).distinct.count(:village_id),
+      ics: farmers.where.not(ics_id: [nil, ""]).distinct.count(:ics_id),
+      modules: ModulesController::MODULES.map { |slug, definition| { slug: slug, title: definition[:title], purpose: definition[:purpose], fields: definition[:fields] } }
+    }
+  end
+end

@@ -1,0 +1,46 @@
+<div class="ai-assistant" data-ai-assistant data-endpoint="<%= assistant_chat_path %>" data-reports-endpoint="<%= assistant_reports_path %>">
+  <button type="button" class="ai-assistant-toggle" data-ai-toggle aria-expanded="false" aria-controls="project-assistant" aria-label="Open project assistant">
+    <span aria-hidden="true">✦</span><span class="ai-assistant-toggle-label">Ask AI</span>
+  </button>
+  <section id="project-assistant" class="ai-assistant-panel" data-ai-panel hidden aria-label="Project assistant">
+    <header class="ai-assistant-header">
+      <div class="ai-assistant-title">
+        <span class="ai-assistant-title-icon" aria-hidden="true">✦</span>
+        <div><strong>Project assistant</strong><small>Your workspace, one conversation</small></div>
+      </div>
+      <div class="ai-assistant-header-actions">
+        <button type="button" class="ai-assistant-close" data-ai-clear aria-label="Start new conversation" title="New conversation">↻</button>
+        <button type="button" class="ai-assistant-close" data-ai-close aria-label="Close assistant">✕</button>
+      </div>
+    </header>
+    <div class="ai-assistant-toolbar">
+      <span><span class="ai-assistant-status-dot"></span> Project help &amp; reports</span>
+      <button type="button" data-ai-reports aria-expanded="false" aria-controls="assistant-reports">↓ Excel reports</button>
+    </div>
+    <div id="assistant-reports" class="ai-assistant-reports" data-ai-report-panel hidden>
+      <label for="assistant-report-search">Choose a report to download</label>
+      <input id="assistant-report-search" data-ai-report-search type="search" placeholder="Search farmers, training, bills…" autocomplete="off">
+      <p>Downloads use report permissions and supported page filters.</p>
+      <div data-ai-report-list class="ai-assistant-report-list" aria-live="polite"></div>
+    </div>
+    <div class="ai-assistant-messages" data-ai-messages role="log" aria-live="polite" aria-relevant="additions" aria-label="Conversation">
+      <div class="ai-assistant-welcome" data-ai-welcome>
+        <span class="ai-assistant-welcome-icon" aria-hidden="true">✦</span>
+        <h2>What would you like to know?</h2>
+        <p>Project samjhein, counts poochhein, ya apni report Excel mein download karein.</p>
+        <div class="ai-assistant-suggestions">
+          <button type="button" data-ai-prompt="Project summary"><span>◫</span> Project summary <span>↗</span></button>
+          <button type="button" data-ai-prompt="Sausar male count"><span>◎</span> Sausar JJ gender count <span>↗</span></button>
+          <button type="button" data-ai-prompt="Farmer list Excel"><span>↓</span> Farmers in Excel <span>↗</span></button>
+          <button type="button" data-ai-prompt="Training form kya hai"><span>?</span> Training form help <span>↗</span></button>
+        </div>
+      </div>
+    </div>
+    <form class="ai-assistant-form" data-ai-form>
+      <label class="ai-assistant-sr-only" for="assistant-question">Your project question</label>
+      <textarea id="assistant-question" data-ai-input class="ai-assistant-input" rows="2" maxlength="4000" placeholder="Ask a question… Hindi or English" autocomplete="off"></textarea>
+      <button type="submit" class="ai-assistant-send" data-ai-send aria-label="Send message">↑</button>
+    </form>
+    <div class="ai-assistant-footer">Enter to send · Shift + Enter for a new line</div>
+  </section>
+</div>

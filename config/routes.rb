@@ -144,6 +144,8 @@ Rails.application.routes.draw do
   root "sessions#new"
 
   # In-app AI assistant (floating chat widget).
+  get "assistant/reports", to: "assistant#reports", as: :assistant_reports
+  get "assistant/summary", to: "assistant#summary", as: :assistant_summary
   post "assistant/chat", to: "assistant#chat", as: :assistant_chat
 
   get "dashboard", to: "modules#dashboard", as: :dashboard
