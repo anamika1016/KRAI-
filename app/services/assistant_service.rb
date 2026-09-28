@@ -89,8 +89,7 @@ def initialize(api_key: ENV["OPENAI_API_KEY"], model: ENV["ASSISTANT_MODEL"].pre
   @http = http
 end
 
-# messages
-: an array of { "role" => "user"|"assistant", "content" => String }.
+  # messages: an array of { "role" => "user"|"assistant", "content" => String }.
   # Returns the assistant's reply text (String).
   def chat(messages, context: nil)
     normalized = normalize_messages(messages)
