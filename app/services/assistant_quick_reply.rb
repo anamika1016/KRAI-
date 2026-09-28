@@ -18,7 +18,7 @@ class AssistantQuickReply
       return { reply: downloads.any? ? "Excel ke liye report select karein. Download mein aapki existing access permissions apply hongi. Requested filters: #{filters.presence || 'report defaults'}. Module exports contain all visible records; report exports apply their supported filters." : "Kaunsa data Excel mein chahiye? Neeche Excel reports kholkar report search karein — farmers, training, bills, targets ya koi module.", downloads: downloads, show_reports: true }
     end
 
-    return { reply: "Namaste! Project ke features poochhein, live summary dekhein, ya Excel reports se data download karein. Example: Sausar male count August." } if question.match?(/\A(hi|hello|hey|namaste|नमस्ते)[!. ]*\z/i)
+    return { reply: "Namaste! Main Jeevika Jankar app ke baare mein aapki madad kar sakta hoon. Aap kya jaanna chahte hain?" } if question.match?(/\A(hi|hello|hey|namaste|नमस्ते)[!. ]*\z/i)
 
     # Exact module title/slug + help gets a maintained, code-derived answer.
     help_query = question.downcase.sub(/\A(?:help|about|how to use)\s+/, "").sub(/\s+(?:kya hai|kaise use kare|help)\??\z/, "").delete_suffix("?").strip
@@ -38,7 +38,7 @@ class AssistantQuickReply
       genders = %w[male female].select { |g| question.match?(/\b#{g}\b/i) }
       return { reply: "Is FCO ke visible JJ gender records nahi mile. FCO aur month check karein." } if rows.empty?
       text = rows.map { |row| "#{row[:fco]}: #{genders.map { |g| "#{g.capitalize} #{row[g.to_sym]}" }.join(', ')}" }.join("\n")
-      return { reply: "Active JJ / VRP gender count — #{data[:month]}\n#{text}\nSirf aapke visible JJ records. Yeh farmer gender count nahi hai.", downloads: [AssistantReports.link(AssistantReports.catalog.first, @filters.merge("month" => data[:month]))] }
+      return { reply: "Active JJ / VRP gender count — #{data[:month]}\n#{text}\nSirf aapke visible JJ records. Yeh farmer gender count nahi hai." }
     end
 
     if question.match?(/\A(?:(?:sausar|turekela|pavijetpur|1004|1006|1095|total|farmer|farmers|village|villages|ics|count|kitne|hai|hain|in|ke|ka|ki|\s|[?.,]))+\z/i)
@@ -47,13 +47,13 @@ class AssistantQuickReply
                elsif question.match?(/\bics\b/i) then :ics end
       if metric
         data = @context.call(messages)
-        return { reply: "#{metric.to_s.capitalize}: #{data[metric]}\n#{data[:scope]}", downloads: [AssistantReports.link(AssistantReports.catalog.first, AssistantReports.filters(question, @filters))] } if data.key?(metric)
+        return { reply: "#{metric.to_s.capitalize}: #{data[metric]}\n#{data[:scope]}" } if data.key?(metric)
       end
     end
 
     return unless question.match?(/\A(?:dashboard |live |project )?summary\??\z/i)
     data = @context.call(messages)
     return unless data[:farmers]
-    { reply: "Visible project summary\nFarmers: #{data[:farmers]}\nVillages: #{data[:villages]}\nICS: #{data[:ics]}\n#{data[:scope]}", downloads: [AssistantReports.link(AssistantReports.catalog.first, @filters)] }
+    { reply: "Visible project summary\nFarmers: #{data[:farmers]}\nVillages: #{data[:villages]}\nICS: #{data[:ics]}\n#{data[:scope]}" }
   end
 end

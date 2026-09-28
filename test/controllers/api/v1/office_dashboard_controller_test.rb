@@ -350,6 +350,71 @@ class Api::V1::OfficeDashboardControllerTest < ActionDispatch::IntegrationTest
     assert_equal %w[1004 1006 1095], calculator.send(:dashboard_total_afl_farmer_scope).distinct.pluck(:fco_id).sort
   end
 
+test "secondary user sections match web cards for CC Agronomist and FCOC" do
+  query = { month: "August", main_activity: "Farmers' Training", sub_activity: "All", fco: "All", ics: "All" }
+  [[@cluster, "CC"], [@specialist, "Agronomist"], [@fco, "FCOC"]].each do |user, role|
+    user.update!(role: role)
+    web = ModulesController.new
+    web.request = ActionDispatch::TestRequest.create
+    web.response = ActionDispatch::TestResponse.new
+    web.params = ActionController::Parameters.new(query)
+    api = Api::V1::UserDashboardController.new
+    api.define_singleton_method(:current_api_user) { user }
+    web.instance_variable_set(:@current_app_user, api.send(:current_api_user_payload))
+    web.send(:dashboard)
+
+    get "/api/v1/user-dashboard", params: query, headers: headers(user)
+    assert_response :success, role
+    sections = response.parsed_body.fetch("sections").index_by { |section| section["key"] }
+    web_groups = web.instance_variable_get(:@dashboard_cards).to_h { |group| [group[:title], group[:items]] }
+    ["Jeevika Jankar Billing", "Gender Count", "FCO-wise JJ Requirement"].each do |title|
+      key = { "Jeevika Jankar Billing" => "billing", "Gender Count" => "gender", "FCO-wise JJ Requirement" => "fco_requirement" }.fetch(title)
+      expected = web_groups.fetch(title).to_h { |item| [item[:title], item[:value]] }
+      actual = sections.fetch(key).fetch("cards").to_h { |card| [card["title"], card["value"]] }
+      assert_equal expected.slice(*actual.keys), actual, "#{role}: #{title}"
+    end
+    assert_equal JSON.parse(JSON.generate(MobileDashboardReportCards.cc_jj_groups(web.instance_variable_get(:@cc_jj_work_status_report).summary))),
+      sections.fetch("cc_jj_work_status").fetch("groups"), role
+    totals = web.instance_variable_get(:@dashboard_other_activity_totals)
+    other = sections.fetch("other").fetch("cards").to_h { |card| [card["key"].delete_prefix("other_"), card["value"]] }
+    assert_equal totals[:main_major_work_indicator].to_i, other.fetch("main_major_work_indicator")
+    assert_equal totals[:mapped_farmer].to_i, other.fetch("mapped_farmer")
+    assert_equal totals[:achievement_farmer].to_i, other.fetch("achievement_farmer")
+    assert_equal totals[:pending_farmer].to_i, other.fetch("pending_farmer")
+  end
+end
+
+test "June Other cards and list match the web dashboard for an office user" do
+  query = { month: "June", main_activity: "Farmers' Training", sub_activity: "All", fco: "All", ics: "All" }
+  web = ModulesController.new
+  web.request = ActionDispatch::TestRequest.create
+  web.response = ActionDispatch::TestResponse.new
+  web.params = ActionController::Parameters.new(query)
+  api = Api::V1::UserDashboardController.new
+  api.define_singleton_method(:current_api_user) { @specialist }
+  web.instance_variable_set(:@current_app_user, api.send(:current_api_user_payload))
+  web.send(:dashboard)
+
+  get "/api/v1/user-dashboard", params: query, headers: headers(@specialist)
+  assert_response :success
+  other = response.parsed_body.fetch("sections").find { |section| section["key"] == "other" }.fetch("cards")
+    .to_h { |card| [card["key"].delete_prefix("other_"), card["value"]] }
+  totals = web.instance_variable_get(:@dashboard_other_activity_totals)
+  assert_equal totals[:main_major_work_indicator].to_i, other.fetch("main_major_work_indicator")
+  assert_equal totals[:mapped_farmer].to_i, other.fetch("mapped_farmer")
+  assert_equal totals[:achievement_farmer].to_i, other.fetch("achievement_farmer")
+  assert_equal totals[:pending_farmer].to_i, other.fetch("pending_farmer")
+
+  get "/api/v1/user-dashboard/lists/other_activities", params: query, headers: headers(@specialist)
+  assert_response :success
+  expected = web.send(:dashboard_other_activity_rows, web.instance_variable_get(:@filtered_targets))
+    .map { |row| row.slice("fco_id", "fco_name", "main_activity_name", "total_mapping", "mapped_farmer", "achievement_farmer", "pending_farmer") }
+  actual = response.parsed_body.fetch("records").map do |row|
+    row.slice("fco_id", "fco_name", "main_activity_name", "total_mapping", "mapped_farmer", "achievement_farmer", "pending_farmer")
+  end
+  assert_equal expected, actual
+end
+
   private
 
   def headers(user)

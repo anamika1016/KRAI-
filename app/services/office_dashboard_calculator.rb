@@ -7,8 +7,14 @@ class OfficeDashboardCalculator < ModulesController
     @filtered_bills = bills
     @office_summary_vrps = summary_vrps
     @office_summary_targets = summary_targets
-    @dashboard_vrps = vrps
-    @dashboard_visible_vrp_ids = vrps.map(&:id)
+    @office_authorized_vrps ||= (defined?(@dashboard_vrps) && @dashboard_vrps.present? ? Array(@dashboard_vrps).dup : Array(vrps))
+    @office_authorized_vrp_ids ||= @office_authorized_vrps.map(&:id).to_set
+    if !defined?(@dashboard_vrps) || @dashboard_vrps.blank?
+      @dashboard_vrps = @office_authorized_vrps
+      @dashboard_visible_vrp_ids = @office_authorized_vrp_ids.to_a
+    end
+    # Keep the authorised web scope loaded before API filters. The web FCO/JJ,
+    # billing, gender and CC/JJ cards use it for their own reporting queries.
     @dashboard_month_filter_value = params.key?(:month) ? dashboard_filter_param(:month) : Date.current.prev_month.strftime("%B")
     @dashboard_fcoc_filter_value = dashboard_filter_param(:fcoc, :fco)
   end
@@ -33,20 +39,16 @@ class OfficeDashboardCalculator < ModulesController
     super || office_dashboard_roles.any? { |role| role.match?(/\Afco(?:[-\s]|$)/) }
   end
 
-  # These web helpers otherwise reload every JJ in an FCO, bypassing the
-  # caller's filtered population. Keep the correction local to the mobile API.
+  # Use the same month/FCO target query as the web cards, then keep only JJs
+  # already authorised for this API login. This prevents activity filters from
+  # shrinking card values and prevents the SQL helper from exposing other JJs.
   def dashboard_fco_active_vrp_records(fco, month = nil, vrps = nil)
-    rows = Array(@filtered_targets).select { |target| training_fcoc_text_matches?(target.vrp&.fcoc, fco) }
-    ids = rows.map(&:vrp_id).to_set
-    Array(vrps || @filtered_vrps).select { |vrp| ids.include?(vrp.id) }
+    candidates = super(fco, month, @office_authorized_vrps || vrps)
+    candidates.select { |vrp| @office_authorized_vrp_ids.include?(vrp.id) }
   end
 
   def dashboard_fco_active_vrp_count(fco, month = nil, vrps = nil)
     dashboard_fco_active_vrp_records(fco, month, vrps).size
-  end
-
-  def dashboard_billing_records
-    defined?(@filtered_bills) ? @filtered_bills : super
   end
 
   def dashboard_summary_target_sql_filters_base(**options)
@@ -295,12 +297,6 @@ class OfficeDashboardCalculator < ModulesController
 
   def dashboard_participation_targets
     defined?(@filtered_targets) ? @filtered_targets : super
-  end
-
-  def dashboard_visible_target_scope
-    return super unless defined?(@filtered_targets)
-
-    super.where(id: @filtered_targets.map(&:id))
   end
 
   def module_record_visible_for_current_context?(record)

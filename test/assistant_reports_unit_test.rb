@@ -67,7 +67,7 @@ class AssistantReportsUnitTest < Minitest::Test
     answer = responder(context).call(messages("Sausar female count July"))
     assert_includes answer[:reply], "Female 4"
     refute_includes answer[:reply], "Male 12"
-    assert_includes answer[:downloads].first[:url], "month=July"
+    assert_nil answer[:downloads]
   end
 
   def test_simple_farmer_count_is_local_and_preserves_scope
@@ -75,7 +75,7 @@ class AssistantReportsUnitTest < Minitest::Test
     answer = responder(context).call(messages("Sausar farmer count"))
     assert_includes answer[:reply], "Farmers: 12"
     assert_includes answer[:reply], "All-month visible farmers"
-    assert_includes answer[:downloads].first[:url], "fco_id=1004"
+    assert_nil answer[:downloads]
   end
 
   def test_spreadsheet_output_is_real_xlsx_and_does_not_execute_formulas

@@ -13,7 +13,10 @@ invalid assignment under `[Service]`:
 ```ini
 [Service]
 Environment="OPENAI_API_KEY=REPLACE_WITH_NEW_KEY"
-Environment="ASSISTANT_MODEL=gpt-4o-mini"
+# Optional: model priority list. The assistant tries the next model only when
+# the earlier model is unavailable. There are no free OpenAI API models; API
+# billing must be active for every model in this list.
+Environment="ASSISTANT_MODELS=gpt-4o-mini,gpt-4.1-mini,gpt-4.1"
 ```
 
 `Environment=` requires `NAME=value`, not a bare key. Save, then run:

@@ -25,7 +25,6 @@ function initAssistant() {
   const reportPanel = root.querySelector("[data-ai-report-panel]");
   const reportList = root.querySelector("[data-ai-report-list]");
   const reportSearch = root.querySelector("[data-ai-report-search]");
-  const reportButton = root.querySelector("[data-ai-reports]");
   const welcome = root.querySelector("[data-ai-welcome]");
   const clearButton = root.querySelector("[data-ai-clear]");
 
@@ -50,7 +49,6 @@ function initAssistant() {
 
   async function showReports() {
     reportPanel.hidden = false;
-    reportButton.setAttribute("aria-expanded", "true");
     reportList.textContent = "Loading reports…";
     try {
       const url = new URL(root.dataset.reportsEndpoint, window.location.origin);
@@ -178,10 +176,6 @@ function initAssistant() {
     }
   }
 
-  reportButton.addEventListener("click", () => {
-    if (reportPanel.hidden) showReports();
-    else { reportPanel.hidden = true; reportButton.setAttribute("aria-expanded", "false"); }
-  });
   reportSearch.addEventListener("input", renderReports);
   clearButton.addEventListener("click", () => {
     if (busy) return;

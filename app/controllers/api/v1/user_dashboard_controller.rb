@@ -127,9 +127,10 @@ module Api
       def office_section_list_catalog
         catalog = { "summary_ics" => "Total ICS Count", "summary_villages" => "Total Villages Count",
           "summary_farmers" => "Total Farmer Count", "other_activities" => "Main Major Work Indicator - Other" }
-        %w[sausar turekela].each do |fco|
-          %w[required active vacant].each { |kind| catalog["fco_requirement_#{fco}_#{kind}"] = "#{fco.titleize} #{kind.titleize}" }
-          %w[male female].each { |kind| catalog["gender_#{fco}_#{kind}"] = "#{fco.titleize} #{kind.titleize}" }
+        ModulesController::DASHBOARD_FCO_NAMES.each do |fco|
+          key = fco.to_s.downcase
+          %w[required active vacant].each { |kind| catalog["fco_requirement_#{key}_#{kind}"] = "#{fco.titleize} #{kind.titleize}" }
+          %w[male female].each { |kind| catalog["gender_#{key}_#{kind}"] = "#{fco.titleize} #{kind.titleize}" }
         end
         catalog
       end
@@ -163,7 +164,8 @@ module Api
             calculator.send(:dashboard_jj_requirement_items, fco.titleize, vrps, targets)
               .select { |item| item[:title].downcase.end_with?(kind) }.map { |item| item.slice(:title, :value) }
           else
-            rows = calculator.send(:dashboard_fco_active_vrp_records, fco, nil, vrps)
+            month = params.key?(:month) ? filter_param(:month) : Date.current.prev_month.strftime("%B")
+            rows = calculator.send(:dashboard_fco_active_vrp_records, fco, month, vrps)
             rows = rows.select { |vrp| vrp.gender.to_s == kind } if %w[male female].include?(kind)
             rows.map { |vrp| admin_vrp_list_row(vrp, targets.map { |target| target.vrp_id.to_s }, []) }
           end
@@ -305,6 +307,11 @@ module Api
         if list_type == "demonstration_method"
           return { title: user_dashboard_list_catalog.fetch(list_type), headers: DemonstrationMethodReport::HEADERS,
             records: DemonstrationMethodReport.new(targets: targets, month: params.key?(:month) ? filter_param(:month) : Date.current.prev_month.strftime("%B")).rows }
+        end
+        if %w[bill_approved bill_pending].include?(list_type)
+          bills = calculator.send(:dashboard_billing_records)
+          bills.select! { |bill| list_type == "bill_approved" ? calculator.send(:dashboard_bill_approved?, bill) : calculator.send(:dashboard_bill_pending?, bill) }
+          return { title: user_dashboard_list_catalog.fetch(list_type), records: bills.map { |bill| admin_bill_list_row(bill, calculator) } }
         end
         if %w[training_unique_farmers training_red training_pending training_yellow training_green].include?(list_type)
           months = calculator.send(:dashboard_month_options_for_targets, targets)
@@ -457,7 +464,7 @@ module Api
         ]
         filters = admin_dashboard_cache_filters
         user_key = current_api_user_payload.sort.to_h
-        ["api-v1-user-dashboard-office-v11", Date.current.to_s, user_key, filters, version_parts].to_json
+        ["api-v1-user-dashboard-office-v12", Date.current.to_s, user_key, filters, version_parts].to_json
       end
 
       def cache_table_version(model)
