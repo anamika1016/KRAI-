@@ -68,6 +68,36 @@
           <%= yield %>
         </div>
       </div>
+
+      <div class="ai-assistant" data-ai-assistant data-endpoint="<%= assistant_chat_path %>">
+        <button type="button" class="ai-assistant-toggle" data-ai-toggle aria-expanded="false" aria-label="Open AI assistant">
+          <span class="ai-assistant-toggle-icon" aria-hidden="true">✨</span>
+        </button>
+
+        <div class="ai-assistant-panel" data-ai-panel hidden>
+          <div class="ai-assistant-header">
+            <div class="ai-assistant-title">
+              <span class="ai-assistant-title-icon" aria-hidden="true">✨</span>
+              <div>
+                <strong>AI Assistant</strong>
+                <small>Ask about this application</small>
+              </div>
+            </div>
+            <button type="button" class="ai-assistant-close" data-ai-close aria-label="Close">✕</button>
+          </div>
+
+          <div class="ai-assistant-messages" data-ai-messages aria-live="polite">
+            <div class="ai-assistant-msg ai-assistant-msg--bot">
+              Hi! Main is application ka AI assistant hoon. Aap mujhse dashboards, reports, target mapping, training forms — kisi bhi feature ke baare me puch sakte hain.
+            </div>
+          </div>
+
+          <form class="ai-assistant-form" data-ai-form>
+            <textarea data-ai-input class="ai-assistant-input" rows="1" placeholder="Type your question…" autocomplete="off"></textarea>
+            <button type="submit" class="ai-assistant-send" data-ai-send aria-label="Send">➤</button>
+          </form>
+        </div>
+      </div>
     <% end %>
   </body>
 </html>

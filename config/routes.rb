@@ -142,6 +142,10 @@ Rails.application.routes.draw do
   get  "jj-exam/result/:token", to: "jj_exam#result", as: :jj_exam_result
 
   root "sessions#new"
+
+  # In-app AI assistant (floating chat widget).
+  post "assistant/chat", to: "assistant#chat", as: :assistant_chat
+
   get "dashboard", to: "modules#dashboard", as: :dashboard
   get "dashboard/cc-jj-work-status", to: "modules#dashboard", defaults: { work_status_list: "true" }, as: :cc_jj_work_status_list
   get "dashboard/cc-target-status", to: "modules#cc_target_status_list", as: :cc_target_status_list
