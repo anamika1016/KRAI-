@@ -70,6 +70,20 @@ class Api::V1::AdminDashboardWidgetValuesTest < ActionDispatch::IntegrationTest
     end
   end
 
+  test "mapped indicator lists return the same row count the widget shows" do
+    %w[All August].each do |month|
+      # A selected main activity narrows the dashboard view but not these widgets,
+      # so the drill-down list has to span every indicator the widget counted.
+      filters = @filters.merge(month: month, main_activity: "August Main")
+      %w[total_mapped_main_activities total_mapped_sub_activities].each do |widget|
+        expected = widget_value(widget, filters)
+        get "/api/v1/admin-dashboard/lists/#{widget}", params: filters, headers: @headers
+        assert_response :success
+        assert_equal expected, response.parsed_body.fetch("records").size, "#{widget}: #{month}"
+      end
+    end
+  end
+
   test "ICS villages and farmers use AFL totals even without targets in the selected month" do
     %w[total_ics_count total_villages_count total_farmer_count].each do |widget|
       assert_equal 1, widget_value(widget, @filters.merge(month: "December")), widget

@@ -1166,9 +1166,9 @@ module Api
           web.send(:training_afl_farmer_rows_for_participation,
             month_name: dashboard_list_participation_month, fcoc_name: filter_param(:participation_fcoc, :training_fcoc))
         when "total_mapped_main_activities"
-          grouped_admin_activities(targets, :main_activity_name, "Main Activity")
+          grouped_admin_activities(summary_activity_targets(web), :main_activity_name, "Main Activity")
         when "total_mapped_sub_activities"
-          grouped_admin_activities(targets, :activity_name, "Sub Activity")
+          grouped_admin_activities(summary_activity_targets(web), :activity_name, "Sub Activity")
         when "farmer_wise_target_mapping"
           dashboard_participation_target_map_rows(web, context)
         when "farmer_wise_achievement"
@@ -1311,6 +1311,13 @@ module Api
               months: rows.filter_map(&:month_name).uniq
             }
           end
+      end
+
+      # The main/sub indicator widgets count every activity in scope, ignoring the
+      # activity filter itself. Their lists must use that same scope or the row
+      # count will not match the number the user tapped.
+      def summary_activity_targets(web)
+        @summary_activity_targets ||= web.send(:dashboard_summary_target_scope).includes(:vrp).to_a
       end
 
       def grouped_admin_activities(targets, attribute, label)

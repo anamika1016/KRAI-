@@ -1233,6 +1233,11 @@ class TargetMappingsController < ApplicationController
   end
 
   def filtered_visible_target_mappings
+    # Summary mode is the dashboard's "View List" drill-down. Reuse the exact
+    # scope the dashboard card counted so the list total always matches the
+    # number the user clicked, for whichever month/FCO/ICS is selected.
+    return dashboard_target_policy.send(:dashboard_summary_target_scope) if params[:summary_mode].present?
+
     scope = visible_target_mappings
     scope = scope.where(vrp_id: params[:vrp_id]) if params[:vrp_id].present?
     scope = scope.where("LOWER(BTRIM(month_name)) = ?", params[:month].to_s.strip.downcase) if params[:month].present?

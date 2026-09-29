@@ -3711,8 +3711,8 @@ class ModulesController < ApplicationController
       dashboard_summary_card("Total ICS Count", summary_counts[:ics_count], "Total ICS for selected login and filters", afls_path(dashboard_summary_afl_params.merge(summary_mode: "ics")), dashboard_path(dashboard_summary_target_params.merge(format: :xlsx))),
       dashboard_summary_card("Total Villages Count", summary_counts[:village_count], "Total villages for selected login and filters", afls_path(dashboard_summary_afl_params.merge(summary_mode: "village")), dashboard_path(dashboard_summary_target_params.merge(format: :xlsx))),
       dashboard_summary_card("Total Farmer Count", summary_counts[:farmer_count], "Total registered farmers for selected login and filters", afls_path(dashboard_summary_afl_params.merge(summary_mode: "farmer")), dashboard_path(dashboard_summary_target_params.merge(format: :xlsx))),
-      dashboard_summary_card("Total Mapped Main Activities", summary_counts[:main_activity_count], "Filtered main activities", target_mappings_path(dashboard_summary_target_params.merge(summary_mode: "main_activity")), dashboard_path(dashboard_summary_target_params.merge(format: :xlsx)), popup_items: main_activity_popup_items),
-      dashboard_summary_card("Total Mapped Sub-Activities", summary_counts[:sub_activity_count], "Filtered sub-activities", target_mappings_path(dashboard_summary_target_params.merge(summary_mode: "sub_activity")), dashboard_path(dashboard_summary_target_params.merge(format: :xlsx)), popup_items: sub_activity_popup_items)
+      dashboard_summary_card("Total Mapped Main Activities", summary_counts[:main_activity_count], "Filtered main activities", target_mappings_path(dashboard_summary_activity_target_params.merge(summary_mode: "main_activity")), dashboard_path(dashboard_summary_target_params.merge(format: :xlsx)), popup_items: main_activity_popup_items),
+      dashboard_summary_card("Total Mapped Sub-Activities", summary_counts[:sub_activity_count], "Filtered sub-activities", target_mappings_path(dashboard_summary_activity_target_params.merge(summary_mode: "sub_activity")), dashboard_path(dashboard_summary_target_params.merge(format: :xlsx)), popup_items: sub_activity_popup_items)
     ]
   end
 
@@ -3800,60 +3800,76 @@ class ModulesController < ApplicationController
     { main_activity_count: 0, sub_activity_count: 0 }
   end
 
-  def dashboard_summary_target_sql_filters_base(include_activity_filters: true)
+  # Builds the WHERE clause behind every dashboard summary card. The table
+  # aliases are configurable so the same predicate can be reused by the
+  # "View List" pages, which join through ActiveRecord's real table names.
+  def dashboard_summary_target_sql_filters_base(include_activity_filters: true, target_alias: "t", vrp_alias: "v")
     conditions = ["1=1"]
     binds = {}
     unless dashboard_global_view_user?
-      conditions << "t.vrp_id IN (:authorized_vrp_ids)"
+      conditions << "#{target_alias}.vrp_id IN (:authorized_vrp_ids)"
       binds[:authorized_vrp_ids] = dashboard_visible_vrp_ids
     end
 
-    if @dashboard_month_filter_value.present?
-      conditions << "LOWER(BTRIM(t.month_name)) = :summary_month"
-      binds[:summary_month] = normalize_dashboard_text(@dashboard_month_filter_value)
+    month_value = @dashboard_month_filter_value.presence || dashboard_filter_param(:month, :training_month)
+    if month_value.present?
+      conditions << "LOWER(BTRIM(#{target_alias}.month_name)) = :summary_month"
+      binds[:summary_month] = normalize_dashboard_text(month_value)
     end
 
     if include_activity_filters
       main_activity_value = @dashboard_main_activity_filter_value.presence || dashboard_filter_param(:main_activity)
       if main_activity_value.present?
-        conditions << "LOWER(BTRIM(t.main_activity_name)) = :summary_main_activity"
+        conditions << "LOWER(BTRIM(#{target_alias}.main_activity_name)) = :summary_main_activity"
         binds[:summary_main_activity] = normalize_dashboard_text(main_activity_value)
       end
 
       sub_activity_value = dashboard_filter_param(:sub_activity)
       if sub_activity_value.present?
-        conditions << "LOWER(BTRIM(t.activity_name)) = :summary_sub_activity"
+        conditions << "LOWER(BTRIM(#{target_alias}.activity_name)) = :summary_sub_activity"
         binds[:summary_sub_activity] = normalize_dashboard_text(sub_activity_value)
       end
     end
 
     fcoc_value = @dashboard_fcoc_filter_value.presence || dashboard_filter_param(:fcoc, :fco)
     fco_values = dashboard_summary_fco_filter_values(fcoc_value)
-    conditions << "(LOWER(BTRIM(t.fco_name)) IN (:summary_fco_values) OR LOWER(BTRIM(t.fco_id)) IN (:summary_fco_values) OR LOWER(BTRIM(v.fcoc)) IN (:summary_fco_values))"
+    conditions << "(LOWER(BTRIM(#{target_alias}.fco_name)) IN (:summary_fco_values) OR LOWER(BTRIM(#{target_alias}.fco_id)) IN (:summary_fco_values) OR LOWER(BTRIM(#{vrp_alias}.fcoc)) IN (:summary_fco_values))"
     binds[:summary_fco_values] = fco_values
 
     ics_value = dashboard_filter_param(:ics, :ics_name)
     if ics_value.present?
-      conditions << "(LOWER(BTRIM(t.ics_name)) = :summary_ics OR LOWER(BTRIM(t.ics_id)) = :summary_ics)"
+      conditions << "(LOWER(BTRIM(#{target_alias}.ics_name)) = :summary_ics OR LOWER(BTRIM(#{target_alias}.ics_id)) = :summary_ics)"
       binds[:summary_ics] = normalize_dashboard_text(ics_value)
     end
 
     selected_vrp_id = dashboard_filter_param(:vrp_id)
     if selected_vrp_id.present?
-      conditions << "t.vrp_id = :summary_vrp_id"
+      conditions << "#{target_alias}.vrp_id = :summary_vrp_id"
       binds[:summary_vrp_id] = selected_vrp_id.to_i
     elsif vrp_login_user? && current_vrp_record.present?
-      conditions << "t.vrp_id = :summary_vrp_id"
+      conditions << "#{target_alias}.vrp_id = :summary_vrp_id"
       binds[:summary_vrp_id] = current_vrp_record.id
     elsif dashboard_agronomics_login?
-      conditions << "t.vrp_id IN (:summary_registered_vrp_ids)"
+      conditions << "#{target_alias}.vrp_id IN (:summary_registered_vrp_ids)"
       binds[:summary_registered_vrp_ids] = dashboard_registered_vrp_ids_for_current_user
     elsif dashboard_cc_vrp_scope_active?
-      conditions << "t.vrp_id IN (:summary_visible_vrp_ids)"
+      conditions << "#{target_alias}.vrp_id IN (:summary_visible_vrp_ids)"
       binds[:summary_visible_vrp_ids] = module_cluster_visible_vrp_ids
     end
 
     [conditions, binds]
+  end
+
+  # The "View List" behind the Total Mapped Main/Sub Work Indicator cards has to
+  # count exactly what the card counted, so it reuses the card's own predicate
+  # instead of re-deriving the filters from the query string.
+  def dashboard_summary_target_scope(include_activity_filters: false)
+    conditions, binds = dashboard_summary_target_sql_filters_base(
+      include_activity_filters: include_activity_filters,
+      target_alias: "target_mappings",
+      vrp_alias: "vrps"
+    )
+    TargetMapping.left_joins(:vrp).where(conditions.join(" AND "), binds)
   end
 
   def dashboard_summary_target_sql_filters
@@ -4531,6 +4547,12 @@ class ModulesController < ApplicationController
       target_params["fco_id"] = %w[1004 1006 1095] if target_params["fcoc"].blank?
       target_params
     end
+  end
+
+  # The activity cards count every main/sub indicator in scope, so their drill-down
+  # links must not carry an activity filter the count never applied.
+  def dashboard_summary_activity_target_params
+    dashboard_summary_target_params.except("main_activity", "sub_activity")
   end
 
   def dashboard_summary_participation_params(status:, format: nil)

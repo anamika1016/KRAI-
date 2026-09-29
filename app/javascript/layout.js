@@ -2316,20 +2316,39 @@ function initDeferredLayoutPage() {
       });
     };
 
-    const autoSelectMappedSubActivities = () => {
+    const storedSelectedValues = (select) => {
+      try { return JSON.parse(select.dataset.selectedValues || "[]"); } catch (_error) { return []; }
+    };
+
+    // Only the target-mapping cascade may pre-tick activities. Until a month /
+    // ICS / Gram is chosen the cascade yields nothing and the select still holds
+    // the server's full catalogue, so ticking every option would invent
+    // activities that were never mapped. In that case fall back to whatever the
+    // record already had saved.
+    const applyMappedSelection = (select, mappedOptions) => {
+      const allowed = (mappedOptions.length ? mappedOptions.map(optionValue) : storedSelectedValues(select))
+        .map(normalizeOption)
+        .filter(Boolean);
+      Array.from(select.options).forEach((option) => {
+        option.selected = Boolean(option.value) && allowed.includes(normalizeOption(option.value));
+      });
+      select.dataset.selectedValues = JSON.stringify(
+        Array.from(select.selectedOptions).map((option) => option.value).filter(Boolean)
+      );
+    };
+
+    const autoSelectMappedSubActivities = (mappedOptions = []) => {
       if (!subActivitySelect || !mainActivitySelect?.value) {
         renderSubActivityChips();
         return;
       }
-      Array.from(subActivitySelect.options).forEach((option) => { option.selected = Boolean(option.value); });
-      subActivitySelect.dataset.selectedValues = JSON.stringify(selectedSubActivityValues());
+      applyMappedSelection(subActivitySelect, mappedOptions);
       renderSubActivityChips();
     };
 
-    const autoSelectMappedMainActivities = () => {
+    const autoSelectMappedMainActivities = (mappedOptions = []) => {
       if (!mainActivitySelect) return;
-      Array.from(mainActivitySelect.options).forEach((option) => { option.selected = Boolean(option.value); });
-      mainActivitySelect.dataset.selectedValues = JSON.stringify(selectedMainActivityValues());
+      applyMappedSelection(mainActivitySelect, mappedOptions);
       renderMainActivityChips();
     };
 
@@ -2717,13 +2736,13 @@ function initDeferredLayoutPage() {
 	    if (mainActivitySelect && !(initialMainOptions.length === 0 && hasServerOptions(mainActivitySelect))) {
 	      fillTrainingSelect(mainActivitySelect, initialMainOptions, "Select Main Activity");
 	    }
-	    if (!selectedMainActivityValues().length) autoSelectMappedMainActivities();
+	    if (!selectedMainActivityValues().length) autoSelectMappedMainActivities(initialMainOptions);
 	    else renderMainActivityChips();
 	    const initialSubOptions = mappedSubActivityOptions();
 	    if (subActivitySelect && !(initialSubOptions.length === 0 && hasServerOptions(subActivitySelect))) {
 	      fillTrainingSelect(subActivitySelect, initialSubOptions, "Select Sub Activity");
 	    }
-	    if (selectedSubActivityValues().length) renderSubActivityChips(); else autoSelectMappedSubActivities();
+	    if (selectedSubActivityValues().length) renderSubActivityChips(); else autoSelectMappedSubActivities(initialSubOptions);
 	    initializingTraining = false;
 	    renderTrainingFarmers();
 
@@ -2740,6 +2759,7 @@ function initDeferredLayoutPage() {
 	      icsSelect.value = "";
 	      villageSelect.value = "";
 	      if (mainActivitySelect) mainActivitySelect.dataset.selectedValue = "";
+	      if (mainActivitySelect) mainActivitySelect.dataset.selectedValues = "[]";
 	      if (subActivitySelect) subActivitySelect.dataset.selectedValues = "[]";
 	      if (mainActivitySelect) mainActivitySelect.value = "";
 	      if (subActivitySelect) subActivitySelect.value = "";
@@ -2751,10 +2771,10 @@ function initDeferredLayoutPage() {
 	      setOnlyTrainingOption(villageSelect, villageOptions);
 	      const mainOptions = mappedMainActivityOptions();
 	      if (mainActivitySelect) fillTrainingSelect(mainActivitySelect, mainOptions, "Select Main Activity");
-	      autoSelectMappedMainActivities();
+	      autoSelectMappedMainActivities(mainOptions);
 	      const subOptions = mappedSubActivityOptions();
 	      if (subActivitySelect) fillTrainingSelect(subActivitySelect, subOptions, "Select Sub Activity");
-	      autoSelectMappedSubActivities();
+	      autoSelectMappedSubActivities(subOptions);
 	      selectedFarmerIds.clear();
 	      renderTrainingFarmers();
 	    };
@@ -2765,6 +2785,7 @@ function initDeferredLayoutPage() {
 	      villageSelect.dataset.selectedValue = "";
 	      villageSelect.value = "";
 	      if (mainActivitySelect) mainActivitySelect.dataset.selectedValue = "";
+	      if (mainActivitySelect) mainActivitySelect.dataset.selectedValues = "[]";
 	      if (subActivitySelect) subActivitySelect.dataset.selectedValues = "[]";
 	      if (mainActivitySelect) mainActivitySelect.value = "";
 	      if (subActivitySelect) subActivitySelect.value = "";
@@ -2773,38 +2794,40 @@ function initDeferredLayoutPage() {
 	      setOnlyTrainingOption(villageSelect, villageOptions);
 	      const mainOptions = mappedMainActivityOptions();
 	      if (mainActivitySelect) fillTrainingSelect(mainActivitySelect, mainOptions, "Select Main Activity");
-	      autoSelectMappedMainActivities();
+	      autoSelectMappedMainActivities(mainOptions);
 	      const subOptions = mappedSubActivityOptions();
 	      if (subActivitySelect) fillTrainingSelect(subActivitySelect, subOptions, "Select Sub Activity");
-	      autoSelectMappedSubActivities();
+	      autoSelectMappedSubActivities(subOptions);
 	      selectedFarmerIds.clear();
 	      renderTrainingFarmers();
 	    });
 	    villageSelect.addEventListener("change", () => {
 	      if (mainActivitySelect) mainActivitySelect.dataset.selectedValue = "";
+	      if (mainActivitySelect) mainActivitySelect.dataset.selectedValues = "[]";
 	      if (subActivitySelect) subActivitySelect.dataset.selectedValues = "[]";
 	      if (mainActivitySelect) mainActivitySelect.value = "";
 	      if (subActivitySelect) subActivitySelect.value = "";
 	      const mainOptions = mappedMainActivityOptions();
 	      if (mainActivitySelect) fillTrainingSelect(mainActivitySelect, mainOptions, "Select Main Activity");
-	      autoSelectMappedMainActivities();
+	      autoSelectMappedMainActivities(mainOptions);
 	      const subOptions = mappedSubActivityOptions();
 	      if (subActivitySelect) fillTrainingSelect(subActivitySelect, subOptions, "Select Sub Activity");
-	      autoSelectMappedSubActivities();
+	      autoSelectMappedSubActivities(subOptions);
 	      selectedFarmerIds.clear();
 	      renderTrainingFarmers();
 	    });
 	    mainActivityTypeSelect?.addEventListener("change", () => {
 	      if (mainActivitySelect) mainActivitySelect.dataset.selectedValue = "";
+	      if (mainActivitySelect) mainActivitySelect.dataset.selectedValues = "[]";
 	      if (subActivitySelect) subActivitySelect.dataset.selectedValues = "[]";
 	      if (mainActivitySelect) mainActivitySelect.value = "";
 	      if (subActivitySelect) subActivitySelect.value = "";
 	      const mainOptions = mappedMainActivityOptions();
 	      if (mainActivitySelect) fillTrainingSelect(mainActivitySelect, mainOptions, "Select Main Activity");
-	      autoSelectMappedMainActivities();
+	      autoSelectMappedMainActivities(mainOptions);
 	      const subOptions = mappedSubActivityOptions();
 	      if (subActivitySelect) fillTrainingSelect(subActivitySelect, subOptions, "Select Sub Activity");
-	      autoSelectMappedSubActivities();
+	      autoSelectMappedSubActivities(subOptions);
 	      selectedFarmerIds.clear();
 	      renderTrainingFarmers();
 	    });
@@ -2814,8 +2837,9 @@ function initDeferredLayoutPage() {
 	      if (subActivitySelect) subActivitySelect.dataset.selectedValues = "[]";
 	      if (subActivitySelect) subActivitySelect.value = "";
 	      if (subActivitySelect) {
-	        fillTrainingSelect(subActivitySelect, mappedSubActivityOptions(), "Select Sub Activity");
-	        autoSelectMappedSubActivities();
+	        const subOptions = mappedSubActivityOptions();
+	        fillTrainingSelect(subActivitySelect, subOptions, "Select Sub Activity");
+	        autoSelectMappedSubActivities(subOptions);
 	      }
 	      selectedFarmerIds.clear();
 	      renderTrainingFarmers();
