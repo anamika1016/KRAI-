@@ -39,6 +39,27 @@ class Api::V1::OfficeDashboardControllerTest < ActionDispatch::IntegrationTest
     assert_equal 0, body.dig("farmer_training_participation_status", "total_unique_farmers")
   end
 
+  test "main and sub indicator cards keep the web summary scope" do
+    extra = @first_target.dup
+    extra.month_name = "July"
+    extra.main_activity_name = "Farmers WhatsApp Groups"
+    extra.activity_name = "Village level farmers groups"
+    extra.save!
+
+    filters = { month: "August", main_activity: "Farmers' Training", sub_activity: "Soil" }
+    get "/api/v1/user-dashboard", params: filters, headers: headers(@specialist)
+
+    assert_response :success
+    cards = response.parsed_body.fetch("sections").find { |section| section["key"] == "summary" }.fetch("cards").index_by { |card| card["key"] }
+    assert_equal 2, cards.fetch("total_mapped_main_activities")["value"]
+    assert_equal 2, cards.fetch("total_mapped_sub_activities")["value"]
+
+    get "/api/v1/user-dashboard/lists/total_mapped_main_activities", params: filters, headers: headers(@specialist)
+    assert_equal 2, response.parsed_body["count"]
+    get "/api/v1/user-dashboard/lists/total_mapped_sub_activities", params: filters, headers: headers(@specialist)
+    assert_equal 2, response.parsed_body["count"]
+  end
+
   test "summary list and widget share scope and explicit all months" do
     get "/api/v1/user-dashboard", params: { month: "All", main_activity: "All" }, headers: headers(@specialist)
     assert_response :success
@@ -195,7 +216,9 @@ class Api::V1::OfficeDashboardControllerTest < ActionDispatch::IntegrationTest
         body = response.parsed_body
         assert_equal 0, body.dig("cards", "total_registered_vrp"), "#{user.role}: #{change}"
         assert_equal 0, body.dig("dashboard_summary", "values", "farmer_wise_target_mapping")
-        assert body.fetch("sections").find { |section| section["key"] == "summary" }["cards"].all? { |card| card["value"] == 0 }
+        if (change.keys & %i[fco ics vrp_id]).any?
+          assert body.fetch("sections").find { |section| section["key"] == "summary" }["cards"].all? { |card| card["value"] == 0 }
+        end
       end
     end
   end
