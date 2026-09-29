@@ -55,8 +55,6 @@ class OfficeDashboardCalculator < ModulesController
     # The web Summary cards retain the login/FCO/ICS/JJ scope while the month,
     # main activity and sub-activity dropdowns drive the sections below them.
     conditions, binds = super(include_activity_filters: false)
-    conditions.reject! { |condition| condition.include?(":summary_month") }
-    binds.delete(:summary_month)
     if defined?(@filtered_targets)
       conditions << "t.id IN (:office_target_ids)"
       binds[:office_target_ids] = @filtered_targets.map(&:id)

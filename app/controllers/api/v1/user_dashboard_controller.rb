@@ -654,14 +654,18 @@ module Api
         records
       end
 
-      # These five Summary cards follow the web dashboard scope: login/FCO/ICS/JJ.
-      # Month and activity dropdowns belong to Participation/Demonstration and must
-      # not reduce the mapped Main/Sub Major Work Indicator counts.
+      # Summary cards and View Lists follow the selected month plus the
+      # login/FCO/ICS/JJ scope. Main/sub dropdowns must not shrink these totals.
       def summary_scope(calculator)
         vrps = calculator.send(:dashboard_vrps).to_a
         targets = calculator.send(:dashboard_target_mappings).to_a
         preload_dashboard_associations!(targets)
         vrps, targets = search_scope(vrps, targets)
+        selected_month = params.key?(:month) ? filter_param(:month) : Date.current.prev_month.strftime("%B")
+        if selected_month.present?
+          targets = targets.select { |target| same?(target.month_name, selected_month) }
+          vrps = restrict_vrps_to_targets(vrps, targets)
+        end
         vrps, targets = filter_vrps(vrps, targets, :fcoc, filter_param(:fcoc, :fco))
         vrps, targets = filter_vrps(vrps, targets, :cluster_incharge, filter_param(:cluster_incharge))
 

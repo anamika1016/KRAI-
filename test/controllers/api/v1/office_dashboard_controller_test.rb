@@ -39,25 +39,33 @@ class Api::V1::OfficeDashboardControllerTest < ActionDispatch::IntegrationTest
     assert_equal 0, body.dig("farmer_training_participation_status", "total_unique_farmers")
   end
 
-  test "main and sub indicator cards keep the web summary scope" do
-    extra = @first_target.dup
-    extra.month_name = "July"
-    extra.main_activity_name = "Farmers WhatsApp Groups"
-    extra.activity_name = "Village level farmers groups"
-    extra.save!
+  test "main and sub indicator cards and lists use the selected month" do
+    [[@first_target.main_activity_name, "Water"], [@first_target.main_activity_name, "Seed"],
+      [@first_target.main_activity_name, "Compost"], ["Farmers WhatsApp Groups", "Village level farmers groups"]].each do |main, sub|
+      row = @first_target.dup
+      row.main_activity_name = main
+      row.activity_name = sub
+      row.save!
+    end
+    july = @first_target.dup
+    july.month_name = "July"
+    july.main_activity_name = "July-only Main"
+    july.activity_name = "July-only Sub"
+    july.save!
 
-    filters = { month: "August", main_activity: "Farmers' Training", sub_activity: "Soil" }
+    filters = { month: "August", main_activity: @first_target.main_activity_name, sub_activity: "Soil" }
     get "/api/v1/user-dashboard", params: filters, headers: headers(@specialist)
 
     assert_response :success
     cards = response.parsed_body.fetch("sections").find { |section| section["key"] == "summary" }.fetch("cards").index_by { |card| card["key"] }
     assert_equal 2, cards.fetch("total_mapped_main_activities")["value"]
-    assert_equal 2, cards.fetch("total_mapped_sub_activities")["value"]
+    assert_equal 5, cards.fetch("total_mapped_sub_activities")["value"]
 
     get "/api/v1/user-dashboard/lists/total_mapped_main_activities", params: filters, headers: headers(@specialist)
     assert_equal 2, response.parsed_body["count"]
     get "/api/v1/user-dashboard/lists/total_mapped_sub_activities", params: filters, headers: headers(@specialist)
-    assert_equal 2, response.parsed_body["count"]
+    assert_equal 5, response.parsed_body["count"]
+    assert response.parsed_body["records"].none? { |row| row["name"] == "July-only Sub" }
   end
 
   test "summary list and widget share scope and explicit all months" do
