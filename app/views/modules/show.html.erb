@@ -1999,6 +1999,14 @@
         </div>
       </div>
 
+      <% if @slug == "training-form-list" && @module_records_screen_limited %>
+        <div class="app-notice" style="margin-bottom: 12px;">
+          Showing the latest <%= number_with_delimiter(ModulesController::SCREEN_RECORD_LIMIT) %> of <%= number_with_delimiter(@module_records_total_count) %> records for faster loading.
+          <%= link_to "Show all (slower)", url_for(request.query_parameters.merge(all: 1)), data: { turbo: false } %>
+          · use <strong>Export</strong> for the complete list.
+        </div>
+      <% end %>
+
       <div class="table-shell">
         <% fast_open_list_table = ["training-form-list", "jeevika-jankar-bill-list", "jeevika-jankar-payment-list", "seed-distribution-target-list", "papl360-target-list", "other-target-list"].include?(@slug) %>
         <table class="module-table user-list-table" id="<%= table_id %>" data-paginated-table data-page-size="15" <% if fast_open_list_table %>data-fast-open-table="true"<% end %> <%= 'data-preserve-order="true"'.html_safe if @slug == "training-form-list" %>>
@@ -2304,7 +2312,33 @@
               <% if training_section %>
                 <div class="training-section-heading">
                   <span class="training-section-number" aria-hidden="true"><%= training_section[0] %></span>
-                  <div><h3><%= training_section[1] %></h3><p><%= training_section[2] %></p></div>
+                  <div>
+                    <div class="training-section-title-wrap">
+                      <h3><%= training_section[1] %></h3>
+                      <% if training_section[0] == "05" %>
+                        <div class="photo-info-tooltip-wrap">
+                          <span class="photo-info-eye-icon" aria-label="Photo Guidelines" tabindex="0">
+                            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                              <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path>
+                              <circle cx="12" cy="12" r="3"></circle>
+                            </svg>
+                          </span>
+                          <div class="photo-info-tooltip-content">
+                            <div class="photo-info-tooltip-header">Training के दौरान कम से कम 5 प्रकार की फोटो इस प्रकार कैप्चर करें</div>
+                            <ul class="photo-info-tooltip-list">
+                              <li><strong>Opening/Introduction Photo —</strong> Trainer सामने हो और किसान बैठे/खड़े होकर Training लेते दिखाई दें। कोशिश करें कि पूरा समूह फ्रेम में आए।</li>
+                              <li><strong>Training Major Work Indicator Photo —</strong> Trainer जिस विषय पर समझा रहा है, उसकी वास्तविक Major Work Indicator दिखे। जैसे INM/IPM, बीज उपचार, खाद/दवा का उपयोग, FFS या Field Demonstration हो तो सामग्री/फसल भी फोटो में आए।</li>
+                              <li><strong>Farmer Interaction Photo —</strong> किसान सवाल पूछते, सामग्री देखते या practical करते हुए दिखाई दें। केवल Trainer की फोटो न लें।</li>
+                              <li><strong>Wide Group Photo —</strong> Training समाप्त होने पर सभी किसानों और Trainer की एक साफ Group Photo लें। चेहरों की पहचान हो सके और फोटो बहुत दूर से न हो।</li>
+                              <li><strong>Evidence/Documentation Photo —</strong> यदि Attendance sheet, Training banner/board, demonstration material आदि है, तो उसकी भी एक फोटो लें। Banner पर संभव हो तो Training Name, Village, Date और Topic दिखाई दे।</li>
+                            </ul>
+                            <div class="photo-info-tooltip-footer"><strong>फोटो लेने का तरीका:</strong> मोबाइल को अधिकतर Landscape (आड़ा) रखें, कैमरा सीधा रखें, पर्याप्त रोशनी हो, blurry फोटो न लें और एक ही angle की बहुत सारी फोटो के बजाय अलग-अलग evidence वाली फोटो लें। यदि GPS/Date-Time वाली फोटो की आवश्यकता MIS में है, तो location/date-time capture भी रखा जा सकता है।</div>
+                          </div>
+                        </div>
+                      <% end %>
+                    </div>
+                    <p><%= training_section[2] %></p>
+                  </div>
                 </div>
               <% end %>
             <% end %>

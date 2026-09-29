@@ -9470,10 +9470,25 @@ class ModulesController < ApplicationController
     params[:slug] || params[:module_slug]
   end
 
+  # The Training Form List renders every saved training record into one HTML
+  # table and paginates it client-side, so on production (thousands of rows) the
+  # browser has to build the whole DOM before the JS pagination hides all but a
+  # page — that is the freeze. Cap the on-screen set to the most recent records;
+  # the full data stays reachable via the Excel export and the "Show all" link
+  # (?all=1). Only the HTML screen is capped — xlsx/zip exports load everything.
+  SCREEN_RECORD_LIMIT = 800
+
   def module_records
     return [] unless ModuleRecord.table_exists?
 
-    records = bill_list_records_scope.to_a
+    scope = bill_list_records_scope
+    if screen_limited_module_records?
+      @module_records_total_count = scope.count
+      @module_records_screen_limited = @module_records_total_count > SCREEN_RECORD_LIMIT
+      scope = scope.reorder(created_at: :desc, id: :desc).limit(SCREEN_RECORD_LIMIT) if @module_records_screen_limited
+    end
+
+    records = scope.to_a
     if record_source_slug == "jeevika-jankar-bill-process"
       records = if ["jeevika-jankar-payment-list", "jeevika-jankar-payment-list-detail"].include?(@slug) && jeevika_jankar_payment_module_access?(@slug)
         records.select { |record| jeevika_bill_final_approved?(record) }

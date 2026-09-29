@@ -179,8 +179,12 @@ class AflsController < ApplicationController
         .pluck(:fco_id, :fco, :fpo_id, :fpo_name, :ics_id, :ics_name, :village_id, :village_name, Arel.sql("COUNT(tracenet_no)"))
         .map { |fco_id, fco, fpo_id, fpo_name, ics_id, ics_name, village_id, village_name, farmer_count| { fco_id: fco_id, fco: fco, fpo_id: fpo_id, fpo_name: fpo_name, ics_id: ics_id, ics_name: ics_name, village_id: village_id, village_name: village_name, farmer_count: farmer_count } }
     when "farmer"
-      scope.where.not(tracenet_no: [nil, ""])
-        .group(:fco_id, :fco, :fpo_id, :fpo_name, :ics_id, :ics_name, :village_id, :village_name, :tracenet_no, :farmer_name, :father_name)
+      # The dashboard "Total Farmer Count" card counts every AFL row with a
+      # non-blank tracenet_no (COUNT(NULLIF(BTRIM(tracenet_no), ''))) — duplicates
+      # included. So the drill-down list must show one row per such record and
+      # must NOT group/deduplicate, otherwise the list total under-counts the
+      # card (e.g. 11,456 vs 11,742). Use the same non-blank-tracenet predicate.
+      scope.where("NULLIF(BTRIM(tracenet_no), '') IS NOT NULL")
         .order(:fco_id, :ics_id, :tracenet_no)
         .pluck(:fco_id, :fco, :fpo_id, :fpo_name, :ics_id, :ics_name, :village_id, :village_name, :tracenet_no, :farmer_name, :father_name)
         .map { |fco_id, fco, fpo_id, fpo_name, ics_id, ics_name, village_id, village_name, tracenet_no, farmer_name, father_name| { fco_id: fco_id, fco: fco, fpo_id: fpo_id, fpo_name: fpo_name, ics_id: ics_id, ics_name: ics_name, village_id: village_id, village_name: village_name, tracenet_no: tracenet_no, farmer_name: farmer_name, father_name: father_name } }
