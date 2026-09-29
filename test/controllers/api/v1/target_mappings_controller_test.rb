@@ -46,6 +46,8 @@ class Api::V1::TargetMappingsControllerTest < ActionDispatch::IntegrationTest
     rows = response.parsed_body["records"].index_by { |row| row["main_activity"] }
 
     assert_equal({ "sub_activity_count" => 2, "farmer_count" => 3, "target_count" => 2 }, rows.fetch("Farmers' Training").slice("sub_activity_count", "farmer_count", "target_count"))
+    assert_equal 3, rows.fetch("Farmers' Training")["mapped_farmer_count"]
+    assert_equal 2, rows.fetch("Farmers' Training")["target_mapping_count"]
     assert_equal({ "sub_activity_count" => 1, "farmer_count" => 1, "target_count" => 1 }, rows.fetch("Farmers WhatsApp Groups").slice("sub_activity_count", "farmer_count", "target_count"))
   end
 
@@ -60,6 +62,28 @@ class Api::V1::TargetMappingsControllerTest < ActionDispatch::IntegrationTest
     row = response.parsed_body["records"].first
     assert_equal "Farmers' Training", row["main_activity"]
     assert_equal 1, row["farmer_count"]
+  end
+
+  test "sub activity summary includes every web row for multiple FCO IDs" do
+    %w[Soil Water Seed Compost Irrigation Induction].each_with_index do |sub, index|
+      create_mapping(main: "Farmers' Training", sub: sub, farmers: [@farmer_1],
+        fco_id: %w[1004 1006 1095][index % 3],
+        fco_name: %w[Sausar Turekela Pavijetpur][index % 3])
+    end
+
+    get "/api/v1/target-mappings/recent", params: {
+      month: "August", summary_mode: "sub_major_work_indicators",
+      fco_id: %w[1004 1006 1095], per_page: 100
+    }, headers: @headers, as: :json
+
+    assert_response :success
+    assert_equal "sub_activity", response.parsed_body["summary_mode"]
+    assert_equal 6, response.parsed_body["count"]
+    assert_equal %w[Compost Induction Irrigation Seed Soil Water],
+      response.parsed_body["records"].map { |row| row["sub_activity"] }
+    assert response.parsed_body["records"].all? { |row|
+      row["mapped_farmer_count"] == 1 && row["target_mapping_count"] == 1
+    }
   end
 
   test "raw mode remains available for consumers that need individual mappings" do

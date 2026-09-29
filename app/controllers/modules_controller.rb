@@ -17,7 +17,7 @@ class ModulesController < ApplicationController
                 :jeevika_bill_detail_rows, :jeevika_bill_current_approval_step,
                 :jeevika_bill_approval_history, :jeevika_bill_current_approver?,
                 :jeevika_bill_approval_steps, :jeevika_bill_summary, :jeevika_bill_approver_display_name,
-                :jeevika_bill_attachment_rows, :jeevika_jankar_display_name,
+                :jeevika_bill_attachment_rows, :jeevika_bill_observation_row, :jeevika_jankar_display_name,
                 :jeevika_jankar_vrp_label, :jeevika_bill_time_slot_rows,
                 :jeevika_bill_description_rows, :jeevika_bill_bank_rows,
                 :jeevika_bill_prepared_by, :jeevika_bill_approved_by_rows,
@@ -10429,6 +10429,27 @@ class ModulesController < ApplicationController
     raw_items = record&.data&.[]("bill_items")
     raw_items = raw_items.values if raw_items.is_a?(Hash)
     Array(raw_items).select { |item| item.respond_to?(:[]) }
+  end
+
+  # The observation ratings are saved inside each bill's own data. Build the same
+  # row the Jeevika Jankar Observation List renders, but for this single bill, so
+  # the bill detail (eye-icon) view can show it below. Returns nil when the bill
+  # has no observation ratings.
+  def jeevika_bill_observation_row(record)
+    data = record&.data || {}
+    observations = data["observations"].is_a?(Hash) ? data["observations"] : {}
+
+    option_labels = JEEVIKA_JANKAR_OBSERVATION_OPTIONS.to_h { |option| [option[:key], option[:label]] }
+    row = {
+      jeevika_jankar_name: (data["select_vrp_name"].presence || data["jeevika_jankar_name"].presence ||
+        jeevika_bill_vrp(record)&.name).to_s,
+      bill_month: data["bill_month"].to_s,
+      ratings: JEEVIKA_JANKAR_OBSERVATION_PARAMETERS.map do |parameter|
+        option_key = observations[parameter[:key]].to_s
+        { key: option_key, label: option_labels[option_key] }
+      end
+    }
+    row.merge(jeevika_jankar_observation_score(row[:ratings]))
   end
 
   def jeevika_bill_summary(record)

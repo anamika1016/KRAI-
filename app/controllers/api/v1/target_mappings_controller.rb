@@ -4,6 +4,12 @@ module Api
       DEFAULT_PER_PAGE = 100
       MAX_PER_PAGE = 200
       SUMMARY_MODES = %w[main_activity sub_activity raw].freeze
+      SUMMARY_MODE_ALIASES = {
+        "main_major_work_indicator" => "main_activity",
+        "main_major_work_indicators" => "main_activity",
+        "sub_major_work_indicator" => "sub_activity",
+        "sub_major_work_indicators" => "sub_activity"
+      }.freeze
 
       # This endpoint deliberately delegates filtering and visibility to the web
       # Target Mapping controller.  The mobile list and the web list therefore use
@@ -75,14 +81,24 @@ module Api
       end
 
       def requested_summary_mode
-        requested = params[:summary_mode].to_s.strip.downcase
+        requested = (params[:summary_mode].presence || params[:list_type]).to_s.strip.downcase
+        requested = SUMMARY_MODE_ALIASES.fetch(requested, requested)
         SUMMARY_MODES.include?(requested) ? requested : "main_activity"
       end
 
       def summary_records(mappings, mode)
         controller = web_target_mappings_controller
         controller.instance_variable_set(:@target_summary_mode, mode)
-        controller.send(:target_mapping_summary_rows, mappings)
+        controller.send(:target_mapping_summary_rows, mappings).map do |row|
+          # Keep the web names and add the mobile table names. Both values are
+          # generated from the same grouped target rows.
+          row.merge(
+            main_major_work_indicator: row[:main_activity],
+            sub_major_work_indicator: row[:sub_activity],
+            mapped_farmer_count: row[:farmer_count],
+            target_mapping_count: row[:target_count]
+          )
+        end
       end
 
       def raw_records(mappings)

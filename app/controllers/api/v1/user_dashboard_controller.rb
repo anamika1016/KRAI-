@@ -654,28 +654,10 @@ module Api
         records
       end
 
-      # Summary follows the same role/FCO/ICS scope as the web dashboard.
-      # Participation and Demonstration continue to use month/activity filters.
+      # Summary and its View Lists use the same complete filter scope as the
+      # web dashboard, including month, activity, FCO, ICS and selected JJ.
       def summary_scope(calculator)
-        vrps = calculator.send(:dashboard_vrps).to_a
-        targets = calculator.send(:dashboard_target_mappings).to_a
-        preload_dashboard_associations!(targets)
-        vrps, targets = search_scope(vrps, targets)
-        vrps, targets = filter_vrps(vrps, targets, :fcoc, filter_param(:fcoc, :fco))
-        vrps, targets = filter_vrps(vrps, targets, :cluster_incharge, filter_param(:cluster_incharge))
-
-        selected_ics = filter_param(:ics, :ics_name)
-        if selected_ics.present?
-          targets = targets.select { |target| same?(target.ics_name.presence || target.ics_id, selected_ics) }
-          vrps = restrict_vrps_to_targets(vrps, targets)
-        end
-
-        vrps, targets = filter_vrps(vrps, targets, :role, filter_param(:post, :post_wise_name))
-        selected_vrp_id = filter_param(:vrp_id)
-        if selected_vrp_id.present?
-          vrps = vrps.select { |vrp| vrp.id.to_s == selected_vrp_id.to_s }
-          targets = targets.select { |target| target.vrp_id.to_s == selected_vrp_id.to_s }
-        end
+        vrps, targets, = filtered_scope(calculator)
         [vrps, targets]
       end
 

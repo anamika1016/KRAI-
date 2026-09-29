@@ -69,13 +69,13 @@ class OfficeDashboardCalculator < ModulesController
     original_dashboard_vrps = @dashboard_vrps
     original_visible_vrp_ids = @dashboard_visible_vrp_ids
     begin
-      if @office_summary_targets.present?
-        @filtered_targets = @office_summary_targets
-        @filtered_vrps = @office_summary_vrps if @office_summary_vrps.present?
-        @dashboard_vrps = @office_summary_vrps if @office_summary_vrps.present?
+      unless @office_summary_targets.nil?
+        @filtered_targets = Array(@office_summary_targets)
+        @filtered_vrps = Array(@office_summary_vrps)
+        @dashboard_vrps = Array(@office_summary_vrps)
         @dashboard_visible_vrp_ids = Array(@dashboard_vrps).map(&:id)
       end
-      @office_summary_cards = super(@office_summary_targets.presence || targets)
+      @office_summary_cards = super(@office_summary_targets.nil? ? targets : @office_summary_targets)
     ensure
       @filtered_targets = original_targets
       @filtered_vrps = original_vrps
@@ -100,6 +100,8 @@ class OfficeDashboardCalculator < ModulesController
   # for a month. It deliberately does not restrict this card by main or sub
   # activity, even when those dropdowns are selected.
   def training_mapped_farmer_distinct_count_for_participation(month_name:, fcoc_name:, targets:)
+    return 0 if defined?(@filtered_targets) && @filtered_targets.empty?
+
     if month_name.present?
       return with_web_participation_status_scope do
         mapped, = farmer_training_mapped_farmer_count_and_popups(month_name: month_name, fcoc_name: fcoc_name)
@@ -116,6 +118,10 @@ class OfficeDashboardCalculator < ModulesController
   # mapped target farmers, no-training farmers, one training and repeated training.
   def training_participation_dashboard_counts(month_name:, fcoc_name:, records:, targets: nil, week_number: nil)
     counts = super
+    if defined?(@filtered_targets) && @filtered_targets.empty?
+      return counts.merge(total: 0, target_map_total: 0, completed_target_map_total: 0,
+        red: 0, pending: 0, yellow: 0, green: 0)
+    end
     # The legacy final-card queries default a blank month to August. Preserve
     # the generic calculation for explicit month=All instead.
     return counts if month_name.blank?
@@ -160,6 +166,8 @@ class OfficeDashboardCalculator < ModulesController
   # Exact web View List rows for the four Participation cards. This keeps the
   # list query on the same authorized base population as its count card.
   def training_participation_web_rows(status:, month_name:, fcoc_name:)
+    return [] if defined?(@filtered_targets) && @filtered_targets.empty?
+
     if month_name.blank?
       records = dashboard_training_participation_records(month_name: nil, fcoc_name: fcoc_name)
       rows = training_participation_population_rows(month_name: nil, fcoc_name: fcoc_name, records: records)

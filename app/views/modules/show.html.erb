@@ -233,6 +233,11 @@
         </table>
       </div>
 
+      <details class="bill-farmers-collapse no-print">
+        <summary class="bill-farmers-summary">
+          <span class="bill-farmers-summary-title">Farmer Details</span>
+          <span class="bill-farmers-summary-hint">Click to view</span>
+        </summary>
       <div class="table-shell">
         <table class="module-table detail-table">
           <thead>
@@ -301,6 +306,46 @@
           </tbody>
         </table>
       </div>
+      </details>
+
+      <% observation_row = jeevika_bill_observation_row(detail_record) %>
+      <% if observation_row %>
+      <div class="bill-observation-section no-print">
+        <div class="bill-observation-header">
+          <h2>Jeevika Jankar Observation</h2>
+          <span class="observation-grade observation-grade-<%= observation_row[:grade][:key] %>">
+            <%= observation_row[:grade][:label] %> · <%= observation_row[:score_percentage] %>%
+          </span>
+        </div>
+        <div class="table-shell">
+          <table class="module-table jeevika-observation-table">
+            <thead>
+              <tr>
+                <% ModulesController::JEEVIKA_JANKAR_OBSERVATION_PARAMETERS.each_with_index do |parameter, index| %>
+                  <th class="observation-rating-head" title="<%= parameter[:label] %>">
+                    <span class="observation-head-index"><%= index + 1 %></span>
+                    <span><%= parameter[:short_label] %></span>
+                  </th>
+                <% end %>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <% observation_row[:ratings].each do |rating| %>
+                  <td>
+                    <% if rating[:label].present? %>
+                      <span class="observation-badge observation-badge-<%= rating[:key].tr("_", "-") %>"><%= rating[:label] %></span>
+                    <% else %>
+                      <span class="observation-badge observation-badge-blank">Not Rated</span>
+                    <% end %>
+                  </td>
+                <% end %>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+      <% end %>
 
       <% approval_status_text = jeevika_bill_status_label(detail_record).to_s.downcase %>
       <% show_approval_progress = !approval_status_text.include?("submitted") || jeevika_bill_approval_history(detail_record).any? %>
