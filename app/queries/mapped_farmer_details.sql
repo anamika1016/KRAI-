@@ -213,7 +213,13 @@ LEFT JOIN farmer_vrp_details fvd
     ON fvd.fco_id = a.fco_id
    AND fvd.afl_id = a.id::text
 
+-- The dashboard "Mapped Farmer" card counts only farmers that are actually
+-- mapped in this month's target_mappings (am.afl_id present). This list feeds
+-- the same card's "View List", so it must be restricted the same way — without
+-- the am.afl_id filter it returns every farmer in the FCO (mapped + unmapped),
+-- so the list total (e.g. 11,742) overshoots the card (e.g. 9,378).
 WHERE a.fco_id IN (:fco_ids) AND a.id IN (:visible_farmer_ids)
+  AND am.afl_id IS NOT NULL
 
 ORDER BY
     a.fco_id,
