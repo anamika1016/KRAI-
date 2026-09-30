@@ -590,7 +590,9 @@ class TargetMappingsController < ApplicationController
   end
 
   def target_farmers_for(vrp_id:, fco_id:, ics_id:, village_id:, month_name:, main_activity_name:, activity_name:, edit_target: nil)
-    return [] if vrp_id.blank? || fco_id.blank? || ics_id.blank? || village_id.blank?
+    # Farmer availability is determined by the selected AFL location. A JJ is
+    # required to save the mapping, but should not block viewing its farmers.
+    return [] if fco_id.blank? || ics_id.blank? || village_id.blank?
     return [] unless defined?(Afl) && Afl.table_exists?
 
     assigned_ids = assigned_farmer_ids_for_location(
@@ -714,29 +716,20 @@ class TargetMappingsController < ApplicationController
   end
 
   def fco_options(vrp_id = nil)
-    unique_fco_options(afl_fco_options + saved_location_options(vrp_id, :fco_id, :fco_name))
+    # The form must only offer locations backed by current AFL farmer records.
+    unique_fco_options(afl_fco_options)
   end
 
   def ics_options_for(fco_value, vrp_id = nil)
     return [] if fco_value.blank?
 
-    mapping_scope = filter_mapping_location(mapped_location_scope(vrp_id), :fco_id, :fco_name, fco_value)
-    target_scope = filter_mapping_location(target_location_scope(vrp_id), :fco_id, :fco_name, fco_value)
-    saved_options = saved_location_options(vrp_id, :ics_id, :ics_name, mapping_scope, target_scope)
-
-    unique_location_options(afl_ics_options_for(fco_value) + saved_options)
+    unique_location_options(afl_ics_options_for(fco_value))
   end
 
   def village_options_for(fco_value, ics_value, vrp_id = nil)
     return [] if fco_value.blank? || ics_value.blank?
 
-    mapping_scope = filter_mapping_location(mapped_location_scope(vrp_id), :fco_id, :fco_name, fco_value)
-    mapping_scope = filter_mapping_location(mapping_scope, :ics_id, :ics_name, ics_value)
-    target_scope = filter_mapping_location(target_location_scope(vrp_id), :fco_id, :fco_name, fco_value)
-    target_scope = filter_mapping_location(target_scope, :ics_id, :ics_name, ics_value)
-    saved_options = saved_location_options(vrp_id, :village_id, :village_name, mapping_scope, target_scope)
-
-    unique_location_options(afl_village_options_for(fco_value, ics_value) + saved_options)
+    unique_location_options(afl_village_options_for(fco_value, ics_value))
   end
 
   def afl_fco_options
@@ -1185,6 +1178,8 @@ class TargetMappingsController < ApplicationController
           main_activity_type: first_present_data(data, "main_activity_type").to_s.strip
         }
       end
+      # Prefer an explicit activity type over a newer legacy record with a blank type.
+      .sort_by { |row| row[:main_activity_type].blank? ? 1 : 0 }
       .uniq { |row| row[:main_activity].to_s.downcase }
   end
 
