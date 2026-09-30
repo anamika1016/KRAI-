@@ -393,6 +393,29 @@ class Api::V1::OfficeDashboardControllerTest < ActionDispatch::IntegrationTest
     assert_empty response.parsed_body.fetch("records")
   end
 
+  test "zero-data Pavijetpur remains present in gender requirement cards and empty lists" do
+    admin = User.create!(first_name: "Zero", last_name: "Admin", user_name: "zero_admin_#{SecureRandom.hex(3)}",
+      password: "secret", user_type: "admin", status: "Active")
+    ModuleRecord.create!(module_slug: "add-fco", data: { "fco_id" => "1095", "fco_name" => "Pavijetpur", "status" => "Active" })
+    filters = { month: "August", main_activity: @first_target.main_activity_name, sub_activity: "All", fco: "All", ics: "All" }
+
+    get "/api/v1/user-dashboard", params: filters, headers: headers(admin)
+
+    assert_response :success
+    sections = response.parsed_body.fetch("sections").index_by { |section| section["key"] }
+    fco_cards = sections.fetch("fco_requirement").fetch("cards").index_by { |card| card["key"] }
+    gender_cards = sections.fetch("gender").fetch("cards").index_by { |card| card["key"] }
+    assert_equal 0, fco_cards.fetch("fco_requirement_pavijetpur_active")["value"]
+    assert_equal 0, gender_cards.fetch("gender_pavijetpur_male")["value"]
+    assert_equal 0, gender_cards.fetch("gender_pavijetpur_female")["value"]
+
+    %w[gender_pavijetpur_male gender_pavijetpur_female fco_requirement_pavijetpur_active].each do |list|
+      get "/api/v1/user-dashboard/lists/#{list}", params: filters, headers: headers(admin)
+      assert_response :success
+      assert_empty response.parsed_body.fetch("records")
+    end
+  end
+
   test "FCO requirement gender cards and lists include Pavijetpur and new backend FCOs dynamically" do
     admin = User.create!(first_name: "Dynamic", last_name: "Admin", user_name: "dynamic_admin_#{SecureRandom.hex(3)}",
       password: "secret", user_type: "admin", status: "Active")

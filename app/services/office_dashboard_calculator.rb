@@ -23,12 +23,33 @@ class OfficeDashboardCalculator < ModulesController
 
   # API-only dynamic FCO source. The web controller remains unchanged.
   def dashboard_fco_names(vrps = nil)
-    names = Array(vrps || @office_authorized_vrps || dashboard_vrps).each_with_object({}) do |vrp, values|
-      value = vrp.respond_to?(:fcoc) ? vrp.fcoc.to_s.squish : ""
-      value = value.sub(/\Afco\s*(?:-\s*c)?\s*[-:]?\s*/i, "").squish
-      values[normalize_dashboard_text(value)] ||= value if value.present?
+    values = {}
+    add_name = lambda do |raw_name, raw_id = nil|
+      name = raw_name.to_s.squish.presence || raw_id.to_s.squish.presence
+      next if name.blank?
+
+      name = name.sub(/\Afco\s*(?:-\s*c)?\s*[-:]?\s*/i, "").squish
+      values[normalize_dashboard_text(name)] ||= name if name.present?
     end
-    names.values.sort_by { |name| normalize_dashboard_text(name) }
+
+    Array(vrps || @office_authorized_vrps || dashboard_vrps).each { |vrp| add_name.call(vrp.fcoc) }
+    dashboard_visible_target_scope.distinct.pluck(:fco_name, :fco_id).each { |name, id| add_name.call(name, id) }
+    dashboard_visible_farmer_scope.distinct.pluck(:fco, :fco_id).each { |name, id| add_name.call(name, id) }
+    if dashboard_global_view_user?
+      VrpIcsMapping.distinct.pluck(:fco_name, :fco_id).each { |name, id| add_name.call(name, id) }
+      ModuleRecord.where(module_slug: "add-fco").find_each do |record|
+        data = record.data
+        add_name.call(data["fco_name"].presence || data["fcoc_name"].presence || data["office_name"].presence || data["name"], data["fco_id"])
+      end
+    end
+
+    names = values.values
+    selected = dashboard_filter_param(:fcoc, :fco)
+    names.select! { |name| training_fcoc_text_matches?(name, selected) } if selected.present?
+    names.sort_by { |name| normalize_dashboard_text(name) }
+  rescue StandardError => error
+    Rails.logger.warn("Dynamic API FCO names failed: #{error.class}: #{error.message}")
+    values.to_h.values.sort_by { |name| normalize_dashboard_text(name) }
   end
 
   def dashboard_cards
