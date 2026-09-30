@@ -1276,12 +1276,12 @@ class VrpsController < ApplicationController
     @current_user_office_name = current_user_office_name
     @cluster_incharge_user_mappings = cluster_incharge_user_mappings
     @cluster_incharge_options = cluster_incharge_options
-    @state_options = module_record_options("state-master", "state_name")
-    @district_options = module_record_options("district-master", "district_name")
-    @block_options = module_record_options("block-master", "block_name")
     @location_hierarchy_mappings = location_hierarchy_mappings
-    @gram_panchayat_options = location_gram_panchayat_options
-    @village_options = module_record_options("village-master", "village_name")
+    @state_options = location_options_for(:state)
+    @district_options = location_options_for(:district)
+    @block_options = location_options_for(:block)
+    @gram_panchayat_options = location_options_for(:gram_panchayat)
+    @village_options = location_options_for(:village)
   end
 
   def vrp_type_options
@@ -1878,6 +1878,19 @@ class VrpsController < ApplicationController
     row = { id: record.id.to_s }
     values.each { |key, value| row[key] = value.to_s.strip if value.present? }
     row
+  end
+
+  def location_options_for(level)
+    key = level.to_sym
+    rows = Array(@location_hierarchy_mappings).filter_map do |row|
+      label = row[key].to_s.strip.presence
+      next if label.blank? || code_like_location_value?(label)
+
+      [label, row[:id].to_s]
+    end
+
+    rows.uniq { |label, _id| label.downcase }
+      .sort_by { |label, _id| label.downcase }
   end
 
   def location_gram_panchayat_options

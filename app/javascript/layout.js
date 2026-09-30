@@ -476,8 +476,8 @@ function initDeferredLayoutPage() {
           const name = document.createElement("strong");
           name.textContent = farmer.farmer_name || `Farmer #${farmer.id}`;
           const meta = document.createElement("small");
-          meta.textContent = [["Father", farmer.father_name], ["Tracenet", farmer.tracenet_no], ["Mobile", farmer.mobile_no], ["Village", farmer.village_name]]
-            .filter(([, value]) => value).map(([label, value]) => `${label}: ${value}`).join(" | ");
+          meta.textContent = [`Village: ${farmer.village_name || "-"}`, `Father: ${farmer.father_name || "-"}`, `Tracenet: ${farmer.tracenet_no || "-"}`]
+            .filter(Boolean).join(" | ");
           content.append(name, meta);
           item.append(content);
           fragment.append(item);
@@ -2653,10 +2653,9 @@ function initDeferredLayoutPage() {
 
 	      farmerList.innerHTML = farmers.map((farmer) => {
 	        const meta = [
-	          farmer.father_name ? `Father: ${farmer.father_name}` : "",
-	          farmer.tracenet_no ? `Tracenet: ${farmer.tracenet_no}` : "",
-	          farmer.mobile_no ? `Mobile: ${farmer.mobile_no}` : "",
-	          farmer.khasara_no ? `Khasara: ${farmer.khasara_no}` : ""
+	          `Village: ${farmer.village_name || "-"}`,
+	          `Father: ${farmer.father_name || "-"}`,
+	          `Tracenet: ${farmer.tracenet_no || "-"}`
 	        ].filter(Boolean).join(" | ");
 	        const isSelected = selectedFarmerIds.has(String(farmer.id));
 	        const checked = isSelected ? " checked" : "";
@@ -3189,10 +3188,9 @@ function initDeferredLayoutPage() {
         const checked = isChecked ? " checked" : "";
         const disabled = completed ? " disabled" : "";
         const meta = [
-          farmer.father_name ? `Father: ${farmer.father_name}` : "",
-          farmer.tracenet_no ? `Tracenet: ${farmer.tracenet_no}` : "",
-          farmer.mobile_no ? `Mobile: ${farmer.mobile_no}` : "",
-          farmer.khasara_no ? `Khasara: ${farmer.khasara_no}` : "",
+          `Village: ${farmer.village_name || "-"}`,
+          `Father: ${farmer.father_name || "-"}`,
+          `Tracenet: ${farmer.tracenet_no || "-"}`,
           completed ? "Already submitted" : ""
         ].filter(Boolean).join(" | ");
 
@@ -3509,10 +3507,9 @@ function initDeferredLayoutPage() {
 
       farmersList.innerHTML = farmers.map((farmer) => {
         const meta = [
-          farmer.father_name ? `Father: ${farmer.father_name}` : "",
-          farmer.tracenet_no ? `Tracenet: ${farmer.tracenet_no}` : "",
-          farmer.mobile_no ? `Mobile: ${farmer.mobile_no}` : "",
-          farmer.khasara_no ? `Khasara: ${farmer.khasara_no}` : ""
+          `Village: ${farmer.village_name || "-"}`,
+          `Father: ${farmer.father_name || "-"}`,
+          `Tracenet: ${farmer.tracenet_no || "-"}`
         ].filter(Boolean).join(" | ");
 
         return `
@@ -4288,10 +4285,9 @@ function initDeferredLayoutPage() {
 
       farmerList.innerHTML = farmers.map((farmer) => {
         const meta = [
-          farmer.father_name ? `Father: ${farmer.father_name}` : "",
-          farmer.tracenet_no ? `Tracenet: ${farmer.tracenet_no}` : "",
-          farmer.mobile_no ? `Mobile: ${farmer.mobile_no}` : "",
-          farmer.khasara_no ? `Khasara: ${farmer.khasara_no}` : ""
+          `Village: ${farmer.village_name || "-"}`,
+          `Father: ${farmer.father_name || "-"}`,
+          `Tracenet: ${farmer.tracenet_no || "-"}`
         ].filter(Boolean).join(" | ");
         const alreadyMapped = farmer.already_mapped;
         const checked = farmer.selected ? " checked" : "";
@@ -5974,7 +5970,7 @@ function initDeferredLayoutPage() {
 
       if (totalTargetInput) totalTargetInput.value = String(totalTarget);
       if (totalAchievementInput) totalAchievementInput.value = String(totalAchievement);
-      // Total Payment is a fixed/manual amount (₹5000 default), not derived from the
+      // Total Payment is a manually entered amount, not derived from the
       // removed Rate/Amount columns, so it is no longer auto-overwritten here.
       syncPaymentRemarks();
     };
@@ -7070,6 +7066,18 @@ function initDeferredLayoutPage() {
 	    const setLanguage = (language) => {
       const nextLanguage = ["en", "hi", "mr", "or", "gu"].includes(language) ? language : "en";
       localStorage.setItem("vrp_language", nextLanguage);
+      // Google Translate rewrites the DOM into <font> wrappers that the custom
+      // translator cannot fully undo, so switching back to English after a
+      // Google-translated language used to need a manual refresh. When Google's
+      // translation is active (it adds a translated-ltr/rtl class on <html>) and
+      // English is chosen, reset the cookie and reload once for a clean English page.
+      const googleActive = document.documentElement.classList.contains("translated-ltr") ||
+        document.documentElement.classList.contains("translated-rtl");
+      if (nextLanguage === "en" && googleActive) {
+        setGoogleTranslateCookie("en");
+        window.location.reload();
+        return;
+      }
       applyGoogleLanguage(nextLanguage);
       applyLanguage(nextLanguage);
     };

@@ -110,13 +110,15 @@
             <span>Prepared by ==> <%= prepared_by[:name] %> <%= prepared_by[:at] %></span>
             <% if approved_rows.any? %>
               <% approved_rows.each do |level, approver, at, action_by| %>
-                <span><%= level.to_s.gsub(/Approval/i, "Approver").gsub(/\bFinance\b/i, "Financial") %> ==> <%= approver.presence || action_by %> <%= at %></span>
+                <span><%= level.to_s.gsub(/Approval/i, "Approver").gsub(/\bFinance\b/i, "Financial").gsub(/Fourth Approver/i, "Financial Approver") %> ==> <%= approver.presence || action_by %> <%= at %></span>
               <% end %>
             <% else %>
               <span>-</span>
             <% end %>
             <% if jeevika_bill_status_label(detail_record).to_s.downcase.include?("final approved") %>
               <%= render "modules/approved_stamp" %>
+            <% else %>
+              <%= render "modules/pending_stamp" %>
             <% end %>
           </div>
         </div>
@@ -210,8 +212,6 @@
               <th>Target</th>
               <th>Achievement</th>
               <th>Pending</th>
-              <th>Rate</th>
-              <th>Total</th>
             </tr>
           </thead>
           <tbody>
@@ -225,8 +225,6 @@
                 <td><%= item["target_quantity"].presence || "0" %></td>
                 <td><%= item["achievement_count"].presence || "0" %></td>
                 <td><%= item["pending_count"].presence || "0" %></td>
-                <td><%= item["rate"].presence || "0.00" %></td>
-                <td><%= item["amount"].presence || "0.00" %></td>
               </tr>
             <% end %>
           </tbody>
@@ -964,8 +962,8 @@
           <label>
             <span>Total Payment</span>
             <input name="module_record[grand_total]" type="number" min="0.01"
-              step="0.01"
-              value="<%= @record&.data&.[]("grand_total").presence || format("%.2f", ModulesController::JEEVIKA_JANKAR_BILL_FIXED_TOTAL) %>"
+              step="0.01" placeholder="Enter total payment"
+              value="<%= @record&.data&.[]("grand_total").presence %>"
               data-jeevika-grand-total required>
           </label>
           <% saved_payment = @record&.data&.[]("grand_total").to_f %>

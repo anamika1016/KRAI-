@@ -1942,7 +1942,13 @@ class ModulesController < ApplicationController
     completed_ids = targets.flat_map { |target| completed_training_farmer_ids_for(target, target_farmer_ids(target)) }.map(&:to_s).uniq
     completed_lookup = completed_ids.index_with(true)
 
-    farmers = training_farmers_for_ids(farmer_ids).map do |farmer|
+    village_names_by_farmer_id = targets.each_with_object({}) do |target, result|
+      village_name = target.village_name.presence || target_village_label(target)
+      next if village_name.blank?
+
+      target_farmer_ids(target).each { |farmer_id| result[farmer_id.to_s] ||= village_name }
+    end
+    farmers = training_farmers_for_ids(farmer_ids, village_names_by_id: village_names_by_farmer_id).map do |farmer|
       farmer.merge(already_included: completed_lookup.key?(farmer[:id].to_s))
     end
 
@@ -3671,11 +3677,22 @@ class ModulesController < ApplicationController
     pending_approvals = dashboard_pending_approval_vrps(active_vrps).size
 
     bill_records = dashboard_billing_records
+    # Move the Jeevika Jankar Billing counts with the dashboard month filter:
+    # when a month is chosen, only that month's bills are counted (bill_month).
+    selected_bill_month = @dashboard_month_filter_value.presence
+    selected_bill_month = nil if selected_bill_month.to_s.casecmp("all").zero?
+    if selected_bill_month.present?
+      bill_records = bill_records.select do |r|
+        normalize_dashboard_text(r.data["bill_month"].presence || r.data["select_bill_month"]) ==
+          normalize_dashboard_text(selected_bill_month)
+      end
+    end
+    bill_month_filter = { bill_month: selected_bill_month }.compact
     approved_bills = bill_records.count { |r| dashboard_bill_approved?(r) }
     pending_bills = bill_records.count { |r| dashboard_bill_pending?(r) }
     billing_items = [
-      { title: "Approved", value: approved_bills, path: module_path("jeevika-jankar-bill-list", bill_status: "final-approved", record_state: "Active") },
-      { title: "Pending", value: pending_bills, path: module_path("jeevika-jankar-bill-list", bill_status: "pending", record_state: "Active") }
+      { title: "Approved", value: approved_bills, path: module_path("jeevika-jankar-bill-list", { bill_status: "final-approved", record_state: "Active" }.merge(bill_month_filter)) },
+      { title: "Pending", value: pending_bills, path: module_path("jeevika-jankar-bill-list", { bill_status: "pending", record_state: "Active" }.merge(bill_month_filter)) }
     ]
 
     cards = [
@@ -10351,7 +10368,7 @@ class ModulesController < ApplicationController
           financial_year: item["financial_year"].presence || jeevika_month_financial_year(item["bill_month"]).presence || "-",
           bill_month: item["bill_month"].presence || "-",
           approval_date: item["approval_date"].presence || record.data["approval_date"].presence || "-",
-          amount: item["amount"].presence || format("%.2f", JEEVIKA_JANKAR_BILL_FIXED_TOTAL),
+          amount: item["amount"].presence || "0.00",
           transaction_id: record.data["transaction_id"].presence || "-",
           transaction_type: record.data["transaction_type"].presence || "-",
           transaction_date: record.data["transaction_date"].presence || "-",
@@ -10502,11 +10519,10 @@ class ModulesController < ApplicationController
   end
 
   def jeevika_jankar_bill_total_payment(record = nil)
-    fixed_total = format("%.2f", JEEVIKA_JANKAR_BILL_FIXED_TOTAL)
-    return fixed_total if record.blank?
+    return "0.00" if record.blank?
 
     amount = record.data["grand_total"]
-    amount.presence && amount.to_f.positive? ? amount : fixed_total
+    amount.presence && amount.to_f.positive? ? amount : "0.00"
   end
 
   def jeevika_bill_attachment_rows(record)
@@ -10520,17 +10536,21 @@ class ModulesController < ApplicationController
 
   def jeevika_bill_time_slot_rows(record)
     jeevika_bill_detail_rows(record).flat_map do |item|
+      farmer_details = Array(item["farmer_details"])
       dates = item["timesheet_dates"].to_s.split(",").map(&:strip).reject(&:blank?)
-      dates = Array(item["farmer_details"]).filter_map { |farmer| farmer["training_date"].presence }.uniq if dates.blank?
+      dates = farmer_details.filter_map { |farmer| farmer["training_date"].presence }.uniq if dates.blank?
       dates = ["-"] if dates.blank?
 
       dates.map do |date|
+        # Achievement per row = number of farmers actually trained on THIS date,
+        # not the item's overall achievement (which made every date row identical).
+        per_date_count = farmer_details.count { |farmer| farmer["training_date"].to_s.strip == date.to_s.strip }
         {
           working_date: bill_display_date(date),
           village: item["village"].presence || "-",
           activity: item["main_activity"].presence || "-",
           tci: item["activity"].presence || "-",
-          number: item["achievement_count"].presence || item["assigned_count"].presence || "0"
+          number: per_date_count.to_s
         }
       end
     end
@@ -10566,9 +10586,30 @@ class ModulesController < ApplicationController
 
   def jeevika_bill_prepared_by(record)
     sent_history = jeevika_bill_approval_history(record).find { |history| history.data["action"].to_s == "Sent for Approval" }
+    # "Prepared by" is the CC who created the bill. Older bills may not carry a
+    # "Sent for Approval" history entry (or its action_by is blank), which left
+    # the invoice showing "Prepared by ==> -". Fall back to the bill's own
+    # created_by (CC) name so the CC name always shows.
+    creator = record&.data || {}
+    creator_user = bill_creator_user(creator)
+    creator_record = bill_creator_module_record(creator)
+    creator_module_name = [creator_record&.data&.[]("first_name"), creator_record&.data&.[]("last_name")].compact_blank.join(" ").presence || creator_record&.data&.[]("name").presence
+    action_by = [
+      creator_user&.full_name,
+      creator_module_name,
+      creator_record&.data&.[]("created_by_name"),
+      creator["created_by_name"],
+      creator_user&.user_name,
+      creator_record&.data&.[]("user_name"),
+      creator["created_by_username"],
+      sent_history&.data&.[]("action_by")
+    ].find do |value|
+      value.to_s.strip.present? && !value.to_s.strip.casecmp("-").zero? &&
+        !value.to_s.strip.casecmp("n/a").zero? && !value.to_s.strip.casecmp("null").zero?
+    end
     {
-      name: jeevika_bill_prepared_by_name(sent_history&.data&.[]("action_by")),
-      at: bill_display_datetime(sent_history&.data&.[]("action_at").presence || record.created_at)
+      name: jeevika_bill_prepared_by_name(action_by),
+      at: bill_display_datetime(sent_history&.data&.[]("action_at").presence || record&.created_at)
     }
   end
 
@@ -14121,7 +14162,7 @@ class ModulesController < ApplicationController
     ]
   end
 
-  def training_farmers_for_ids(farmer_ids)
+  def training_farmers_for_ids(farmer_ids, village_names_by_id: {})
     return [] unless model_ready?(:Afl)
 
     farmer_ids = Array(farmer_ids).map(&:to_s).reject(&:blank?).uniq
@@ -14136,6 +14177,7 @@ class ModulesController < ApplicationController
           farmer_name: dashboard_text_value(farmer.farmer_name).presence || "Farmer ##{farmer.id}",
           father_name: dashboard_text_value(farmer.father_name),
           tracenet_no: dashboard_text_value(farmer.tracenet_no),
+          village_name: dashboard_text_value(farmer.village_name).presence || village_names_by_id[farmer.id.to_s].presence,
           mobile_no: dashboard_text_value(farmer.mobile_no),
           khasara_no: dashboard_text_value(farmer.khasara_no)
         }
@@ -14150,6 +14192,7 @@ class ModulesController < ApplicationController
         farmer_name: "Mapped Farmer ##{farmer_id}",
         father_name: nil,
         tracenet_no: nil,
+        village_name: village_names_by_id[farmer_id].presence,
         mobile_no: nil,
         khasara_no: nil,
         record_missing: true

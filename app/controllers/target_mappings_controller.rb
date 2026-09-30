@@ -641,6 +641,7 @@ class TargetMappingsController < ApplicationController
             farmer_name: profile[:farmer_name].presence || "Farmer ##{afl.id}",
             father_name: profile[:father_name].presence || "-",
             tracenet_no: profile[:tracenet_no].presence || "-",
+            village_name: afl.village_name.presence || "-",
             mobile_no: profile[:mobile_no].presence || "-",
             khasara_no: profile[:khasara_no].presence || "-",
             already_mapped: manual_full_target || already_mapped_ids.include?(afl.id.to_s),

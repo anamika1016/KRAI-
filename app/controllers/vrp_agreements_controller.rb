@@ -60,7 +60,7 @@ class VrpAgreementsController < ApplicationController
     return [] unless vrp_agreement_enabled?
 
     visible_agreement_vrps.includes(:vrp_profile)
-      .select(:id, :name, :user_name, :mobile_no, :agreement_accepted_at, :agreement_signature_data, :village_ids)
+      .select(:id, :name, :user_name, :mobile_no, :fcoc, :agreement_accepted_at, :agreement_signature_data, :village_ids)
       .where.not(agreement_accepted_at: nil)
       .where.not(agreement_signature_data: [nil, ""])
       .order(agreement_accepted_at: :desc)
@@ -68,6 +68,7 @@ class VrpAgreementsController < ApplicationController
         {
           id: vrp.id,
           name: vrp.name.presence || vrp.user_name.presence || "-",
+          fco: vrp.fcoc.presence || "-",
           village: agreement_village_name(vrp),
           mobile_no: vrp.mobile_no.presence || "-",
           accepted_at: vrp.agreement_accepted_at&.strftime("%d/%m/%Y %I:%M %p"),
