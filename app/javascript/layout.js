@@ -3872,7 +3872,7 @@ function initDeferredLayoutPage() {
     const selectedSubActivityNames = () => targetSelectedValues(subActivitySelect);
     const mainActivityTypeFor = (mainActivityName) => {
       const match = mainActivityTypeRows.find((row) => normalizeOption(row.main_activity) === normalizeOption(mainActivityName));
-      return normalizeOption(match?.main_activity_type || "Training");
+      return normalizeOption(match?.main_activity_type || "Other");
     };
     const trainingActivityTypeSelected = () => {
       const selected = selectedMainActivityNames();
@@ -3887,7 +3887,10 @@ function initDeferredLayoutPage() {
       const selectedValues = resetSelection ? [] : targetSelectedValues(mainActivitySelect);
       const filteredOptions = originalMainActivityOptions.filter((option) => {
         if (!option.value) return true;
-        return !villageTargetMode() || mainActivityTypeFor(option.value) !== normalizeOption("Training");
+        const activityType = mainActivityTypeFor(option.value);
+        return villageTargetMode()
+          ? activityType === normalizeOption("Other")
+          : activityType === normalizeOption("Training");
       });
 
       mainActivitySelect.innerHTML = "";

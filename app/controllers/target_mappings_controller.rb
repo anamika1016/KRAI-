@@ -1525,7 +1525,7 @@ class TargetMappingsController < ApplicationController
     return "Other" if name.blank?
 
     match = main_activity_type_map.find { |row| row[:main_activity].to_s.strip.downcase == name }
-    match&.dig(:main_activity_type).presence || "Training"
+    match&.dig(:main_activity_type).presence || "Other"
   end
 
   def target_number_value(value)
