@@ -2132,30 +2132,50 @@ class ModulesController < ApplicationController
 
   # Main Major Work Indicator - Other: use the reporting query directly so
   # mapping, achievement and pending farmers are calculated consistently.
-  def dashboard_other_activity_rows(targets)
-    # Never widen an empty scope to every mapping: an empty scope means the
-    # filters matched nothing, so this panel must stay empty too.
-    other_targets = Array(targets).reject do |target|
-      target.main_activity_name.to_s.strip.casecmp("Farmers' Training").zero?
+  def dashboard_other_activity_rows(_targets)
+    return [] unless model_ready?(:TargetMapping) && model_ready?(:ModuleRecord)
+
+    # This panel is independent of the dashboard's Main Activity selector. Build
+    # its mapping scope directly so a default Farmers' Training selection cannot
+    # hide Other indicators. By default include all three supported FCOs.
+    selected_fco = dashboard_filter_param(:fcoc, :fco).presence || @dashboard_fcoc_filter_value
+    fco_ids_for_values = lambda do |*values|
+      text = normalize_dashboard_text(values.flatten.compact.join(" "))
+      {
+        "1004" => text.include?("1004") || text.include?("sausar"),
+        "1006" => text.include?("1006") || text.include?("turekela"),
+        "1095" => text.include?("1095") || text.include?("pavijetpur")
+      }.filter_map { |id, matches| id if matches }
     end
-    # The dashboard commonly opens in Farmers' Training mode, which empties this
-    # panel's scope. Rebuild it from the full list, but keep every non-activity
-    # filter: @filtered_vrps already carries the FCO/cluster/post/VRP selections,
-    # so only the target-level month and ICS filters need reapplying here.
-    if other_targets.empty?
-      visible_vrp_ids = @filtered_vrps ? Array(@filtered_vrps).map(&:id).to_set : nil
-      selected_month = normalize_dashboard_text(@dashboard_month_filter_value)
-      selected_ics = dashboard_filter_param(:ics)
-      other_targets = dashboard_target_mappings.select do |target|
-        !target.main_activity_name.to_s.strip.casecmp("Farmers' Training").zero? &&
-          (visible_vrp_ids.nil? || (target.vrp_id.present? && visible_vrp_ids.include?(target.vrp_id))) &&
-          (selected_month.blank? || normalize_dashboard_text(target.month_name) == selected_month) &&
-          (selected_ics.blank? || (target.ics_name.presence || target.ics_id).to_s == selected_ics)
-      end
+    fco_ids = selected_fco.present? ? fco_ids_for_values.call(selected_fco) : %w[1004 1006 1095]
+    selected_month = normalize_dashboard_text(@dashboard_month_filter_value)
+    selected_ics = dashboard_filter_param(:ics, :ics_name)
+    selected_cluster = dashboard_filter_param(:cluster_incharge)
+    selected_vrp = dashboard_filter_param(:vrp_id)
+    selected_post = dashboard_filter_param(:post)
+    search_query = dashboard_filter_param(:search).to_s.downcase.strip
+
+    other_targets = dashboard_target_mappings.select do |target|
+      next false if target.main_activity_name.to_s.strip.casecmp("Farmers' Training").zero?
+      next false if target.main_activity_name.blank?
+      next false if selected_month.present? && normalize_dashboard_text(target.month_name) != selected_month
+
+      target_fco_ids = fco_ids_for_values.call(target.fco_id, target.fco_name, target.vrp&.fcoc)
+      next false if (target_fco_ids & fco_ids).empty?
+      next false if selected_ics.present? && (target.ics_name.presence || target.ics_id).to_s != selected_ics
+      next false if selected_vrp.present? && target.vrp_id.to_s != selected_vrp.to_s
+      next false if selected_cluster.present? && !cluster_label_matches?(selected_cluster, target.vrp&.cluster_incharge)
+      next false if selected_post.present? && target.vrp&.role.to_s != selected_post
+      next false if search_query.present? && ![
+        target.vrp&.name, target.month_name, target.village_name,
+        target.main_activity_name, target.activity_name, target.fco_name
+      ].compact.join(" ").downcase.include?(search_query)
+
+      true
     end
 
     target_ids = other_targets.filter_map(&:id).uniq
-    return [] if target_ids.empty? || !model_ready?(:TargetMapping) || !model_ready?(:ModuleRecord)
+    return [] if target_ids.empty?
 
     sql = <<~SQL
       WITH mapping_detail AS (
