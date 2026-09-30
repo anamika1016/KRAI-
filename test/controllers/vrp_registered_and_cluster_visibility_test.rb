@@ -45,12 +45,42 @@ class VrpRegisteredAndClusterVisibilityTest < ActiveSupport::TestCase
     assert_includes names, "Registered JJ", "JJ they registered must reach the dashboard too"
   end
 
+  test "accepted agreements follow the same visibility as the JJ list" do
+    [@registered_jj, @cluster_jj].each do |vrp|
+      vrp.update_columns(agreement_accepted_at: Time.current, agreement_signature_data: "data:image/png;base64,AAA")
+    end
+
+    names = agreement_names_for(@registrar, role: "Cluster Incharge")
+    assert_includes names, "Cluster JJ", "cluster-mapped JJ agreement should be listed"
+    assert_includes names, "Registered JJ", "agreement of a JJ they registered should be listed"
+
+    assert_includes agreement_names_for(@coordinator), "Registered JJ"
+  end
+
   test "an unrelated user sees neither" do
     stranger = User.create!(first_name: "Un", last_name: "Related", user_name: "unrelated_u",
       email: "unrelated@example.test", mobile_no: "9876500303", password: "secret",
       user_type: "user", status: "Active")
 
     assert_empty visible_names_for(stranger)
+  end
+
+
+  test "ZZDEBUG" do
+    payload = app_user_payload(@registrar, role: "Cluster Incharge")
+    policy = ModulesController.new
+    policy.set_request!(ActionDispatch::TestRequest.create)
+    policy.instance_variable_set(:@current_app_user, payload)
+    puts "current_app_user id=#{policy.send(:current_app_user)&.dig("id").inspect}"
+    puts "dashboard_current_app_user_ids=#{policy.send(:dashboard_current_app_user_ids).inspect}"
+    puts "registered_jj.created_by_id=#{@registered_jj.created_by_id.inspect}"
+    puts "cluster_login?=#{policy.send(:module_cluster_incharge_login?)}"
+    puts "registered_by?=#{policy.send(:jeevika_bill_vrp_registered_by_current_user?, @registered_jj)}"
+    puts "visible?=#{policy.send(:scoped_jeevika_vrp_visible?, @registered_jj)}"
+    puts "admin_dashboard_user?=#{policy.send(:admin_dashboard_user?)}"
+    puts "vrp_login_user?=#{policy.send(:vrp_login_user?)}"
+    puts "agronomics?=#{policy.send(:dashboard_agronomics_login?)}"
+    puts "source_fcoc?=#{policy.send(:dashboard_source_fcoc_login?)}"
   end
 
   private
@@ -77,6 +107,15 @@ class VrpRegisteredAndClusterVisibilityTest < ActiveSupport::TestCase
     payload = app_user_payload(user)
     controller.define_singleton_method(:current_app_user) { payload }
     controller.send(:visible_vrps).map(&:name)
+  end
+
+  def agreement_names_for(user, role: nil)
+    controller = VrpAgreementsController.new
+    controller.set_request!(ActionDispatch::TestRequest.create)
+    controller.set_response!(ActionDispatch::TestResponse.new)
+    payload = app_user_payload(user, role: role)
+    controller.define_singleton_method(:current_app_user) { payload }
+    controller.send(:accepted_agreement_rows).map { |row| row[:name] }
   end
 
   def dashboard_names_for(user, role: nil)
