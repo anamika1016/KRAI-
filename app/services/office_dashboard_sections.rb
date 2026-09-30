@@ -37,12 +37,8 @@ class OfficeDashboardSections
     groups = call(:dashboard_cards).filter_map do |group|
       next unless ["FCO-wise JJ Requirement", "Jeevika Jankar Billing", "Gender Count"].include?(group[:title])
       key = { "FCO-wise JJ Requirement" => "fco_requirement", "Jeevika Jankar Billing" => "billing", "Gender Count" => "gender" }.fetch(group[:title])
-      items = group[:items].filter_map do |item|
-        if key != "billing"
-          fco = item[:title].split.first
-          next unless Array(@calculator.instance_variable_get(:@filtered_vrps)).any? { |vrp| call(:training_fcoc_text_matches?, vrp.fcoc, fco) }
-        end
-        item_key = item[:title].downcase.tr(" ", "_")
+      items = group[:items].map do |item|
+        item_key = item[:title].parameterize(separator: "_")
         list = key == "billing" ? "bill_#{item_key}" : "#{key}_#{item_key}"
         card(list, item[:title], item[:value], list)
       end

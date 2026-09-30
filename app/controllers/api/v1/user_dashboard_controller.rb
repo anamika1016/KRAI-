@@ -131,12 +131,26 @@ module Api
       def office_section_list_catalog
         catalog = { "summary_ics" => "Total ICS Count", "summary_villages" => "Total Villages Count",
           "summary_farmers" => "Total Farmer Count", "other_activities" => "Main Major Work Indicator - Other" }
-        ModulesController::DASHBOARD_FCO_NAMES.each do |fco|
-          key = fco.to_s.downcase
-          %w[required active vacant].each { |kind| catalog["fco_requirement_#{key}_#{kind}"] = "#{fco.titleize} #{kind.titleize}" }
-          %w[male female].each { |kind| catalog["gender_#{key}_#{kind}"] = "#{fco.titleize} #{kind.titleize}" }
+        office_dashboard_fco_names.each do |fco|
+          key = fco.parameterize(separator: "_")
+          %w[required active vacant].each { |kind| catalog["fco_requirement_#{key}_#{kind}"] = "#{fco} #{kind.titleize}" }
+          %w[male female].each { |kind| catalog["gender_#{key}_#{kind}"] = "#{fco} #{kind.titleize}" }
         end
         catalog
+      end
+
+      def office_dashboard_fco_names(calculator = nil)
+        calculator ||= dashboard_calculator
+        calculator.send(:dashboard_fco_names)
+      end
+
+      def office_fco_list_metadata(type, calculator)
+        match = type.match(/\A(?:fco_requirement|gender)_(.+)_(required|active|vacant|male|female)\z/)
+        return unless match
+
+        key, kind = match.captures
+        fco = office_dashboard_fco_names(calculator).find { |name| name.parameterize(separator: "_") == key }
+        fco ? [fco, kind] : nil
       end
 
       def office_section_list_payload(type, calculator, vrps, targets)
@@ -159,18 +173,16 @@ module Api
           OfficeDashboardSections.new(calculator: calculator, targets: targets,
             participation: {}, month: nil, fcoc: nil).other_rows
         else
-          parts = type.split("_")
-          fco, kind = parts.last(2)
-          visible = vrps.any? { |vrp| calculator.send(:training_fcoc_text_matches?, vrp.fcoc, fco) }
-          if !visible
+          fco, kind = office_fco_list_metadata(type, calculator)
+          if fco.blank?
             []
           elsif %w[required vacant].include?(kind)
-            calculator.send(:dashboard_jj_requirement_items, fco.titleize, vrps, targets)
+            calculator.send(:dashboard_jj_requirement_items, fco, vrps, targets)
               .select { |item| item[:title].downcase.end_with?(kind) }.map { |item| item.slice(:title, :value) }
           else
             month = params.key?(:month) ? filter_param(:month) : DashboardDefaults.month
             rows = calculator.send(:dashboard_fco_active_vrp_records, fco, month, vrps)
-            rows = rows.select { |vrp| vrp.gender.to_s == kind } if %w[male female].include?(kind)
+            rows = rows.select { |vrp| vrp.gender.to_s.casecmp?(kind) } if %w[male female].include?(kind)
             rows.map { |vrp| admin_vrp_list_row(vrp, targets.map { |target| target.vrp_id.to_s }, []) }
           end
         end
@@ -293,7 +305,8 @@ module Api
         vrps, targets, options = filtered_scope(calculator)
         summary_vrps, summary_targets = summary_scope(calculator)
         if office_section_list_catalog.key?(list_type)
-          list_vrps, list_targets = list_type.start_with?("summary_") ? [summary_vrps, summary_targets] : [vrps, targets]
+          summary_based = list_type.start_with?("summary_", "fco_requirement_", "gender_")
+          list_vrps, list_targets = summary_based ? [summary_vrps, summary_targets] : [vrps, targets]
           set_filtered_scope(calculator, list_vrps, list_targets, [], summary_vrps: summary_vrps, summary_targets: summary_targets)
           return office_section_list_payload(list_type, calculator, list_vrps, list_targets)
         end

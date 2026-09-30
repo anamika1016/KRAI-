@@ -393,6 +393,35 @@ class Api::V1::OfficeDashboardControllerTest < ActionDispatch::IntegrationTest
     assert_empty response.parsed_body.fetch("records")
   end
 
+  test "FCO requirement gender cards and lists include Pavijetpur and new backend FCOs dynamically" do
+    admin = User.create!(first_name: "Dynamic", last_name: "Admin", user_name: "dynamic_admin_#{SecureRandom.hex(3)}",
+      password: "secret", user_type: "admin", status: "Active")
+    pavijetpur = create_vrp(admin, "Pavijetpur CC", "FCO-Pavijetpur")
+    pavijetpur.update_column(:gender, Vrp.genders.fetch("female"))
+    create_target(pavijetpur, "1095", "Pavijetpur ICS")
+    new_fco = create_vrp(admin, "New Valley CC", "FCO-C New Valley")
+    create_target(new_fco, "2000", "New Valley ICS")
+
+    filters = { month: "August", main_activity: @first_target.main_activity_name, sub_activity: "All", fco: "All", ics: "All" }
+    get "/api/v1/user-dashboard", params: filters, headers: headers(admin)
+
+    assert_response :success
+    sections = response.parsed_body.fetch("sections").index_by { |section| section["key"] }
+    fco_cards = sections.fetch("fco_requirement").fetch("cards").index_by { |card| card["key"] }
+    gender_cards = sections.fetch("gender").fetch("cards").index_by { |card| card["key"] }
+    assert_equal 1, fco_cards.fetch("fco_requirement_pavijetpur_active")["value"]
+    assert_equal 1, gender_cards.fetch("gender_pavijetpur_female")["value"]
+    assert_equal 1, fco_cards.fetch("fco_requirement_new_valley_active")["value"]
+    assert_equal 1, gender_cards.fetch("gender_new_valley_male")["value"]
+
+    { "gender_pavijetpur_female" => pavijetpur.id, "fco_requirement_pavijetpur_active" => pavijetpur.id,
+      "gender_new_valley_male" => new_fco.id, "fco_requirement_new_valley_active" => new_fco.id }.each do |list, expected_id|
+      get "/api/v1/user-dashboard/lists/#{list}", params: filters, headers: headers(admin)
+      assert_response :success
+      assert_equal [expected_id], response.parsed_body.fetch("records").map { |row| row["id"] }
+    end
+  end
+
   test "authorized all FCO summary includes Pavijetpur alongside Sausar and Turekela" do
     calculator = OfficeDashboardCalculator.new
     calculator.request = ActionDispatch::TestRequest.create

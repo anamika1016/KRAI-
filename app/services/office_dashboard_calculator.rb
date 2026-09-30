@@ -21,6 +21,35 @@ class OfficeDashboardCalculator < ModulesController
 
   private
 
+  # API-only dynamic FCO source. The web controller remains unchanged.
+  def dashboard_fco_names(vrps = nil)
+    names = Array(vrps || @office_authorized_vrps || dashboard_vrps).each_with_object({}) do |vrp, values|
+      value = vrp.respond_to?(:fcoc) ? vrp.fcoc.to_s.squish : ""
+      value = value.sub(/\Afco\s*(?:-\s*c)?\s*[-:]?\s*/i, "").squish
+      values[normalize_dashboard_text(value)] ||= value if value.present?
+    end
+    names.values.sort_by { |name| normalize_dashboard_text(name) }
+  end
+
+  def dashboard_cards
+    cards = super.reject { |group| ["Gender Count", "FCO-wise JJ Requirement"].include?(group[:title]) }
+    vrps = Array(@office_authorized_vrps || dashboard_vrps)
+    fco_names = dashboard_fco_names(vrps)
+    month = params[:month].presence || params[:training_month].presence || DashboardDefaults.month
+    gender_items = fco_names.flat_map do |fco_name|
+      fco_vrps = dashboard_fco_active_vrp_records(fco_name, month, vrps)
+      [
+        { title: "#{fco_name} Male", value: fco_vrps.count { |vrp| normalize_dashboard_text(vrp.gender) == "male" } },
+        { title: "#{fco_name} Female", value: fco_vrps.count { |vrp| normalize_dashboard_text(vrp.gender) == "female" } }
+      ]
+    end
+    targets = @office_summary_targets.nil? ? @filtered_targets : @office_summary_targets
+    cards << dashboard_group_card("Gender Count", gender_items, style: "registration")
+    cards << dashboard_group_card("FCO-wise JJ Requirement",
+      fco_names.flat_map { |fco_name| dashboard_jj_requirement_items(fco_name, vrps, targets) }, style: "fco")
+    cards
+  end
+
   # AFL uses numeric IDs/plain names, while JJ records also use FCO-Pavijetpur.
   # Expand equivalent labels only; the existing authorized JJ scope still decides
   # which offices the caller may see.
