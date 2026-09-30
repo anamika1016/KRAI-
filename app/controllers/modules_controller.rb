@@ -12560,7 +12560,13 @@ class ModulesController < ApplicationController
     return jeevika_bill_vrp_fco_visible?(vrp) if dashboard_source_fcoc_login?
     # Coordinating a cluster adds JJs, it does not replace the ones this user
     # registered -- returning only the cluster match hid their own registrations.
-    return true if module_cluster_incharge_login? && module_cluster_vrp_visible?(vrp)
+    #
+    # The cluster match is deliberately not gated on module_cluster_incharge_login?.
+    # That check needs "cluster" in the user's role or a hierarchy mapping, which
+    # many real coordinators lack, and it was hiding JJs that name them as their
+    # Cluster Incharge. A JJ pointing at this user is reason enough, and it is the
+    # same rule the Jeevika Jankar list already applies.
+    return true if module_cluster_vrp_visible?(vrp)
 
     jeevika_bill_vrp_registered_by_current_user?(vrp)
   end

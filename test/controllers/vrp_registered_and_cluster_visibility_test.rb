@@ -66,23 +66,6 @@ class VrpRegisteredAndClusterVisibilityTest < ActiveSupport::TestCase
   end
 
 
-  test "ZZDEBUG" do
-    payload = app_user_payload(@registrar, role: "Cluster Incharge")
-    policy = ModulesController.new
-    policy.set_request!(ActionDispatch::TestRequest.create)
-    policy.instance_variable_set(:@current_app_user, payload)
-    puts "current_app_user id=#{policy.send(:current_app_user)&.dig("id").inspect}"
-    puts "dashboard_current_app_user_ids=#{policy.send(:dashboard_current_app_user_ids).inspect}"
-    puts "registered_jj.created_by_id=#{@registered_jj.created_by_id.inspect}"
-    puts "cluster_login?=#{policy.send(:module_cluster_incharge_login?)}"
-    puts "registered_by?=#{policy.send(:jeevika_bill_vrp_registered_by_current_user?, @registered_jj)}"
-    puts "visible?=#{policy.send(:scoped_jeevika_vrp_visible?, @registered_jj)}"
-    puts "admin_dashboard_user?=#{policy.send(:admin_dashboard_user?)}"
-    puts "vrp_login_user?=#{policy.send(:vrp_login_user?)}"
-    puts "agronomics?=#{policy.send(:dashboard_agronomics_login?)}"
-    puts "source_fcoc?=#{policy.send(:dashboard_source_fcoc_login?)}"
-  end
-
   private
 
   def build_vrp(name, email)
