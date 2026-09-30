@@ -194,10 +194,10 @@ module Api
               targets = context[:targets]
             end
             rows = DemonstrationMethodReport.new(targets: targets,
-              month: params.key?(:month) ? filter_param(:month) : Date.current.prev_month.strftime("%B")).summary
+              month: params.key?(:month) ? filter_param(:month) : DashboardDefaults.month).summary
           end
           { rows: rows, filters: admin_filter_payload.merge(
-            month: params.key?(:month) ? filter_param(:month) : Date.current.prev_month.strftime("%B")) }
+            month: params.key?(:month) ? filter_param(:month) : DashboardDefaults.month) }
         end
         rows = payload[:rows]
         metric = DEMONSTRATION_WIDGET_METRICS[widget]
@@ -312,7 +312,7 @@ module Api
           calculator.send(:normalize_dashboard_text, actual) == calculator.send(:normalize_dashboard_text, selected)
         }
         months = values.call(targets, &:month_name).sort_by { |month| [calculator.send(:dashboard_month_index, month), month] }
-        month = params.key?(:month) ? filter_param(:month) : Date.current.prev_month.strftime("%B")
+        month = params.key?(:month) ? filter_param(:month) : DashboardDefaults.month
         rows = month.present? ? targets.select { |row| matches.call(row.month_name, month) } : targets
         mains = values.call(rows, &:main_activity_name)
         main = params.key?(:main_activity) ? filter_param(:main_activity) : default_farmer_activity_filter(calculator, mains)
@@ -515,7 +515,7 @@ module Api
       def mobile_participation_payload(dashboard_type)
         web = mobile_participation_calculator
         month = filter_param(:participation_month, :training_month, :month)
-        month = Date.current.prev_month.strftime("%B") unless %i[participation_month training_month month].any? { |key| params.key?(key) }
+        month = DashboardDefaults.month unless %i[participation_month training_month month].any? { |key| params.key?(key) }
         fco = filter_param(:participation_fcoc, :training_fcoc, :fcoc, :fco)
         week = params[:week].presence || params[:weekly_target_week]
         week = (1..4).include?(week.to_i) ? week.to_i : nil
@@ -747,7 +747,7 @@ module Api
 
         options[:months] = (targets.map(&:month_name) + web.send(:month_master_month_options)).compact_blank.uniq
           .sort_by { |month| web.send(:dashboard_month_index, month) || 0 }
-        selected_month = params.key?(:month) ? filter_param(:month) : Date.current.prev_month.strftime("%B")
+        selected_month = params.key?(:month) ? filter_param(:month) : DashboardDefaults.month
         if selected_month.present?
           targets.select! { |target| same_text?(target.month_name, selected_month) }
           vrp_ids = id_lookup(targets, :vrp_id)
@@ -858,7 +858,7 @@ module Api
           filters: admin_filter_payload.merge(main_activity: selected_main_activity, sub_activity: selected_sub_activity, fcoc: selected_fcoc, month: selected_month, post: selected_post),
           filter_options: options,
           cc_jj_work_status: CcJjWorkStatusReport.new(calculator: web).summary,
-          demonstration_method: DemonstrationMethodReport.new(targets: targets, month: params.key?(:month) ? filter_param(:month) : Date.current.prev_month.strftime("%B")).summary,
+          demonstration_method: DemonstrationMethodReport.new(targets: targets, month: params.key?(:month) ? filter_param(:month) : DashboardDefaults.month).summary,
           sections: card_data,
           cards: card_data.values_at(:registration, :target_assignment, :billing).reduce({}, &:merge),
           mobile_widget_values: mobile_widget_values,
@@ -1098,7 +1098,7 @@ module Api
         selected_ics = filter_param(:ics, :ics_name)
         targets.select! { |target| same_text?(target.ics_name.presence || target.ics_id, selected_ics) } if selected_ics.present?
 
-        selected_month = params.key?(:month) ? filter_param(:month) : Date.current.prev_month.strftime("%B")
+        selected_month = params.key?(:month) ? filter_param(:month) : DashboardDefaults.month
         targets.select! { |target| same_text?(target.month_name, selected_month) } if selected_month.present?
 
         selected_post = filter_param(:post, :post_wise_name)
@@ -1114,6 +1114,14 @@ module Api
           vrps.select! { |vrp| vrp.id == selected_vrp_id }
           targets.select! { |target| target.vrp_id == selected_vrp_id }
         end
+
+        # The shared summary scope reads these off the web calculator, so this
+        # lightweight path has to seed them exactly like the full context does.
+        # Without it a drill-down list ignores the defaulted month and lists
+        # every month, while the widget above it counts only the default one.
+        web.instance_variable_set(:@dashboard_month_filter_value, selected_month)
+        web.instance_variable_set(:@dashboard_main_activity_filter_value, selected_main_activity)
+        web.instance_variable_set(:@dashboard_fcoc_filter_value, selected_fcoc)
 
         months = web.send(:dashboard_month_options_for_targets, targets)
         default_month = web.send(:default_vrp_dashboard_month, months)
@@ -1149,7 +1157,7 @@ module Api
         when "cc_jj_work_status"
           CcJjWorkStatusReport.new(calculator: web).rows
         when "demonstration_method"
-          DemonstrationMethodReport.new(targets: targets, month: params.key?(:month) ? filter_param(:month) : Date.current.prev_month.strftime("%B")).rows
+          DemonstrationMethodReport.new(targets: targets, month: params.key?(:month) ? filter_param(:month) : DashboardDefaults.month).rows
         when "total_registered"
           vrps.map { |vrp| admin_vrp_list_row(vrp, assigned_ids, activity_ids) }
         when "final_approved"
@@ -1544,8 +1552,8 @@ module Api
       end
 
       def default_month(months)
-        previous = Date.current.prev_month.strftime("%B")
-        months.find { |month| same_text?(month, previous) } || months.last
+        preferred = DashboardDefaults.month
+        months.find { |month| same_text?(month, preferred) } || months.last
       end
 
       def unique_count(targets, field)

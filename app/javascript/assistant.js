@@ -2,6 +2,11 @@
 // Talks to POST /assistant/chat, keeps a short in-memory conversation history,
 // and renders the exchange in a panel. No external dependencies.
 
+// Set when a drag finishes, so the trailing click does not toggle the panel.
+let swallowNextClick = false;
+// The single window-resize listener owned by the current launcher.
+let keepLauncherInView = null;
+
 function initAssistant() {
   const root = document.querySelector("[data-ai-assistant]");
   if (!root || root.dataset.aiReady === "true") return;
@@ -187,7 +192,89 @@ function initAssistant() {
   root.querySelectorAll("[data-ai-prompt]").forEach((button) => button.addEventListener("click", () => send(button.dataset.aiPrompt)));
   root.addEventListener("keydown", (event) => { if (event.key === "Escape") closePanel(); });
 
-  toggle.addEventListener("click", () => {
+  // ── Draggable launcher ──────────────────────────────────────────────────
+  // The launcher floats over the bottom-right corner, where it covers table
+  // pagination. Let the user shove it out of the way. The position is
+  // deliberately not persisted: any refresh or navigation drops it back into
+  // its CSS home corner.
+  const DRAG_THRESHOLD_PX = 4;
+  let drag = null;
+
+  // A restored Turbo cache snapshot can carry the dragged inline styles back,
+  // so clear them on every init to keep "refresh puts it back" true.
+  root.style.cssText = "";
+  root.classList.remove("ai-assistant--left", "ai-assistant--top", "ai-assistant--dragging");
+
+  function moveTo(left, top) {
+    const rect = root.getBoundingClientRect();
+    const x = Math.min(Math.max(left, 0), Math.max(0, window.innerWidth - rect.width));
+    const y = Math.min(Math.max(top, 0), Math.max(0, window.innerHeight - rect.height));
+    root.style.left = `${x}px`;
+    root.style.top = `${y}px`;
+    root.style.right = "auto";
+    root.style.bottom = "auto";
+    // Re-anchor the panel so it never opens off-screen.
+    root.classList.toggle("ai-assistant--left", x + rect.width / 2 < window.innerWidth / 2);
+    root.classList.toggle("ai-assistant--top", y + rect.height / 2 < window.innerHeight / 2);
+  }
+
+  toggle.addEventListener("pointerdown", (event) => {
+    if (event.pointerType === "mouse" && event.button !== 0) return;
+
+    const rect = root.getBoundingClientRect();
+    drag = {
+      id: event.pointerId,
+      grabX: event.clientX - rect.left,
+      grabY: event.clientY - rect.top,
+      fromX: event.clientX,
+      fromY: event.clientY,
+      moved: false
+    };
+  });
+
+  toggle.addEventListener("pointermove", (event) => {
+    if (!drag || event.pointerId !== drag.id) return;
+
+    if (!drag.moved) {
+      // Below the threshold this is still a click, not a drag.
+      if (Math.abs(event.clientX - drag.fromX) < DRAG_THRESHOLD_PX &&
+          Math.abs(event.clientY - drag.fromY) < DRAG_THRESHOLD_PX) return;
+
+      drag.moved = true;
+      root.classList.add("ai-assistant--dragging");
+      toggle.setPointerCapture(drag.id);
+    }
+    event.preventDefault();
+    moveTo(event.clientX - drag.grabX, event.clientY - drag.grabY);
+  });
+
+  function endDrag(event) {
+    if (!drag || event.pointerId !== drag.id) return;
+
+    if (toggle.hasPointerCapture(drag.id)) toggle.releasePointerCapture(drag.id);
+    swallowNextClick = drag.moved;
+    drag = null;
+    root.classList.remove("ai-assistant--dragging");
+  }
+  toggle.addEventListener("pointerup", endDrag);
+  toggle.addEventListener("pointercancel", endDrag);
+
+  // Keep a dragged launcher on screen when the window is resized. Only one
+  // listener may exist at a time -- Turbo re-runs this file on every page.
+  if (keepLauncherInView) window.removeEventListener("resize", keepLauncherInView);
+  keepLauncherInView = () => {
+    if (!root.isConnected || !root.style.left) return;
+    moveTo(parseFloat(root.style.left), parseFloat(root.style.top));
+  };
+  window.addEventListener("resize", keepLauncherInView);
+
+  toggle.addEventListener("click", (event) => {
+    // A drag ends with a click event on the button; don't open the panel then.
+    if (swallowNextClick) {
+      swallowNextClick = false;
+      event.preventDefault();
+      return;
+    }
     if (panel.hidden) openPanel(); else closePanel();
   });
   if (closeBtn) closeBtn.addEventListener("click", closePanel);

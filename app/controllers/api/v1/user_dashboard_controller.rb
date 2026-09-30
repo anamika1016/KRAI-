@@ -1,6 +1,10 @@
 module Api
   module V1
     class UserDashboardController < JeevikaJankarDashboardController
+      MONTH_FILTER_ALIASES = {
+        "saptember" => "September",
+        "septamber" => "September"
+      }.freeze
       def show
         return render_vrp_error if current_api_user.is_a?(Vrp)
 
@@ -164,7 +168,7 @@ module Api
             calculator.send(:dashboard_jj_requirement_items, fco.titleize, vrps, targets)
               .select { |item| item[:title].downcase.end_with?(kind) }.map { |item| item.slice(:title, :value) }
           else
-            month = params.key?(:month) ? filter_param(:month) : Date.current.prev_month.strftime("%B")
+            month = params.key?(:month) ? filter_param(:month) : DashboardDefaults.month
             rows = calculator.send(:dashboard_fco_active_vrp_records, fco, month, vrps)
             rows = rows.select { |vrp| vrp.gender.to_s == kind } if %w[male female].include?(kind)
             rows.map { |vrp| admin_vrp_list_row(vrp, targets.map { |target| target.vrp_id.to_s }, []) }
@@ -181,7 +185,7 @@ module Api
           CcJjWorkStatusReport.new(calculator: calculator).summary
         else
           DemonstrationMethodReport.new(targets: targets,
-            month: params.key?(:month) ? filter_param(:month) : Date.current.prev_month.strftime("%B")).summary
+            month: params.key?(:month) ? filter_param(:month) : DashboardDefaults.month).summary
         end
         extra = widget == "cc_jj_work_status" ? { groups: MobileDashboardReportCards.cc_jj_groups(rows) } :
           { cards: OfficeDashboardSections.new(calculator: calculator, targets: targets,
@@ -306,7 +310,7 @@ module Api
         end
         if list_type == "demonstration_method"
           return { title: user_dashboard_list_catalog.fetch(list_type), headers: DemonstrationMethodReport::HEADERS,
-            records: DemonstrationMethodReport.new(targets: targets, month: params.key?(:month) ? filter_param(:month) : Date.current.prev_month.strftime("%B")).rows }
+            records: DemonstrationMethodReport.new(targets: targets, month: params.key?(:month) ? filter_param(:month) : DashboardDefaults.month).rows }
         end
         if %w[bill_approved bill_pending].include?(list_type)
           bills = calculator.send(:dashboard_billing_records)
@@ -490,7 +494,7 @@ module Api
       def dashboard_calculator
         OfficeDashboardCalculator.new.tap do |controller|
           controller.request = request
-          controller.params = params
+          controller.params = normalized_dashboard_params
           controller.instance_variable_set(:@current_app_user, current_api_user_payload)
         end
       end
@@ -505,14 +509,14 @@ module Api
         vrps, targets = search_scope(vrps, targets)
         @calculation_stage = "dashboard_activity_filters"
         months = values(targets, :month_name)
-        selected_dashboard_month = params.key?(:month) ? filter_param(:month) : Date.current.prev_month.strftime("%B")
+        selected_dashboard_month = params.key?(:month) ? filter_param(:month) : DashboardDefaults.month
         if selected_dashboard_month.present?
           targets = targets.select { |target| same?(target.month_name, selected_dashboard_month) }
           vrps = restrict_vrps_to_targets(vrps, targets)
         end
         options = { months: months, main_activities: values(targets, :main_activity_name) }
         selected_main_activity = params.key?(:main_activity) ? filter_param(:main_activity) : default_farmer_activity_filter(calculator, values(targets.select { |target|
-          month = params.key?(:month) ? filter_param(:month) : Date.current.prev_month.strftime("%B")
+          month = params.key?(:month) ? filter_param(:month) : DashboardDefaults.month
           month.blank? || same?(target.month_name, month)
         }, :main_activity_name))
         @resolved_main_activity = selected_main_activity
@@ -546,7 +550,7 @@ module Api
         end
         options[:months] = months
         @calculation_stage = "dashboard_month_filter"
-        selected_dashboard_month = params.key?(:month) ? filter_param(:month) : Date.current.prev_month.strftime("%B")
+        selected_dashboard_month = params.key?(:month) ? filter_param(:month) : DashboardDefaults.month
         if selected_dashboard_month.present?
           targets = targets.select { |t| same?(t.month_name, selected_dashboard_month) }
           vrps = restrict_vrps_to_targets(vrps, targets)
@@ -576,12 +580,34 @@ module Api
 
       def filter_param(*keys)
         keys.each do |key|
-          value = params[key].to_s.strip
+          value = normalized_filter_value(key, params[key])
           next if all_filter_value?(value)
 
           return value if value.present?
         end
         nil
+      end
+
+      def normalized_dashboard_params
+        values = params.to_unsafe_h.deep_dup
+        values.each_key { |key| values[key] = normalized_filter_value(key, values[key]) if values[key].is_a?(String) }
+        ActionController::Parameters.new(values)
+      end
+
+      def normalized_filter_value(key, raw_value)
+        value = raw_value.to_s.strip
+        2.times do
+          decoded = CGI.unescape(value)
+          break if decoded == value
+          value = decoded
+        end
+        return value unless key.to_s.end_with?("month") || key.to_s == "month"
+
+        MONTH_FILTER_ALIASES.fetch(value.downcase) do
+          Date::MONTHNAMES.compact.find { |month| month.casecmp?(value) } || value
+        end
+      rescue ArgumentError
+        value
       end
 
       def all_filter_value?(value)
@@ -624,7 +650,7 @@ module Api
         return [] if ids.blank?
 
         scope = scope.where("COALESCE(NULLIF(data::jsonb ->> 'select_vrp', ''), NULLIF(data::jsonb ->> 'vrp_id', ''), data::jsonb ->> 'jeevika_jankar_id') IN (?)", ids.keys)
-        selected_bill_month = params.key?(:month) ? filter_param(:month) : Date.current.prev_month.strftime("%B")
+        selected_bill_month = params.key?(:month) ? filter_param(:month) : DashboardDefaults.month
         if selected_bill_month.present?
           scope = scope.where("LOWER(BTRIM(data::jsonb ->> 'bill_month')) = ?", selected_bill_month.to_s.strip.downcase)
         end
@@ -661,7 +687,7 @@ module Api
         targets = calculator.send(:dashboard_target_mappings).to_a
         preload_dashboard_associations!(targets)
         vrps, targets = search_scope(vrps, targets)
-        selected_month = params.key?(:month) ? filter_param(:month) : Date.current.prev_month.strftime("%B")
+        selected_month = params.key?(:month) ? filter_param(:month) : DashboardDefaults.month
         if selected_month.present?
           targets = targets.select { |target| same?(target.month_name, selected_month) }
           vrps = restrict_vrps_to_targets(vrps, targets)
@@ -695,7 +721,7 @@ module Api
         return filter_param(key) if params.key?(key)
         return filter_param(:month) if params.key?(:month)
 
-        Date.current.prev_month.strftime("%B")
+        DashboardDefaults.month
       end
 
       def card_payload(calculator, vrps, targets, bills)
@@ -824,7 +850,7 @@ module Api
         explicit = %i[search activity main_activity sub_activity fcoc fco cluster_incharge ics ics_name month post post_wise_name vrp_id participation_month participation_fcoc weekly_target_month weekly_target_fcoc weekly_target_week ics_report_month ics_report_ics]
           .filter_map { |key| value = filter_param(key); [key, value] if value.present? }
           .to_h
-        explicit[:month] = Date.current.prev_month.strftime("%B") unless params.key?(:month)
+        explicit[:month] = DashboardDefaults.month unless params.key?(:month)
         explicit[:main_activity] = @resolved_main_activity if @resolved_main_activity.present? && !params.key?(:main_activity)
         explicit
       end

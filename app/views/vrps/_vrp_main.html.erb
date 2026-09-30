@@ -130,8 +130,12 @@
     <label class="form-label">TO</label>
     <% current_user_to_value = mapped_office_name?(@current_user_office_name) ? @current_user_office_name : nil %>
     <% to_value = f.object.to_name.presence || current_user_to_value.presence || (((@to_options || []).one?) ? @to_options.first.last : nil) %>
-    <% to_value = nil if to_value.present? && !mapped_office_name?(to_value) %>
-    <%= f.select :to_name, options_for_select(@to_options || [], to_value), { prompt: "Select TO" }, class: "form-select", data: { vrp_office_name: true, selected_value: to_value, strict_options: true } %>
+    <%# A TO this record is already saved against is kept even when the office
+        masters no longer map it, so opening the form cannot blank the field.
+        Only an unsaved suggestion is dropped when it is not a mapped office. %>
+    <% to_value = nil if to_value.present? && to_value != f.object.to_name.presence && !mapped_office_name?(to_value) %>
+    <% to_strict_options = f.object.to_name.blank? %>
+    <%= f.select :to_name, options_for_select(@to_options || [], to_value), { prompt: "Select TO" }, class: "form-select", data: { vrp_office_name: true, selected_value: to_value, strict_options: to_strict_options } %>
   </div>
 
   <div class="col-md-3 mb-3">

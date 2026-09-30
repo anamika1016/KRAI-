@@ -10,7 +10,7 @@ class CcTargetStatusReport
     @fco_names = {}
     @calculator = calculator
     filters = calculator.respond_to?(:params) && calculator.request ? calculator.params : {}
-    @month = (month || (filters.key?(:month) ? filters[:month] : Date.current.prev_month.strftime("%B"))).to_s.strip
+    @month = (month || (filters.key?(:month) ? filters[:month] : DashboardDefaults.month)).to_s.strip
     @fco = (fco || filters[:fcoc] || filters[:fco] || filters[:fco_id]).to_s.strip
     @fco = "" if @fco.downcase.start_with?("all")
     @fco = "1004" if @fco.downcase.include?("sausar")

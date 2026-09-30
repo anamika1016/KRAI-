@@ -16,7 +16,7 @@ class AssistantContext
     question = Array(messages).reverse.filter_map { |m| m["content"] if m.is_a?(Hash) && m["role"] == "user" }.first.to_s
     @filters = AssistantReports.filters(question, @filters).slice(*FILTERS)
     month = Date::MONTHNAMES.compact.find { |name| question.match?(/\b#{name}\b/i) }
-    month ||= @filters["month"].presence || @filters["training_month"].presence || Date.current.prev_month.strftime("%B")
+    month ||= @filters["month"].presence || @filters["training_month"].presence || DashboardDefaults.month
     policy.params = ActionController::Parameters.new(@filters.merge("month" => month))
     vrps = policy.send(:dashboard_vrps)
     visible_ids = vrps.map(&:id)

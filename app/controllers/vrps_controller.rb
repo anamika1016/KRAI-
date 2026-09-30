@@ -260,7 +260,29 @@ class VrpsController < ApplicationController
   def set_edit_dependencies
     set_form_dependencies
     @vrp = find_manageable_vrp(params[:id])
-    redirect_to vrps_path, alert: "VRP record not found." unless @vrp
+    return redirect_to vrps_path, alert: "VRP record not found." unless @vrp
+
+    keep_saved_office_options!
+  end
+
+  # Office masters drift after a Jeevika Jankar is saved -- an FCO-C or TO gets
+  # renamed, deactivated, or re-mapped. When that happens the edit form used to
+  # offer a list that did not contain the record's own office, so the dropdown
+  # fell back to a different one and saving quietly rewrote the record. Keep the
+  # stored value in the list so editing any other field is non-destructive.
+  def keep_saved_office_options!
+    @fcoc_options = options_including(@fcoc_options, @vrp.fcoc)
+    @to_options = options_including(@to_options, @vrp.to_name)
+    @cluster_incharge_options = options_including(@cluster_incharge_options, @vrp.cluster_incharge)
+  end
+
+  def options_including(options, value)
+    list = Array(options)
+    text = value.to_s.strip
+    return list if text.blank?
+    return list if list.any? { |option| Array(option).last.to_s.strip.casecmp(text).zero? }
+
+    list + [[text, text]]
   end
 
   def vrp_params
@@ -476,14 +498,12 @@ class VrpsController < ApplicationController
   def visible_vrps
     return Vrp.all if current_app_user.blank? || admin_user?
 
-    mapped_vrps = cluster_mapped_vrps.to_a
-    base_vrps = if cluster_incharge_login? || mapped_vrps.any?
-      mapped_vrps
-    else
-      own_vrps.to_a
-    end
-
-    (base_vrps + approval_related_vrps).uniq
+    # Registering a Jeevika Jankar and coordinating the cluster it sits in are
+    # independent reasons to see it, and one person is often both. Picking only
+    # one of the two lists hid every JJ a cluster coordinator had registered,
+    # and left a coordinator whose cluster label does not match seeing nothing
+    # at all. Union them instead.
+    (cluster_mapped_vrps.to_a + own_vrps.to_a + approval_related_vrps).uniq
   end
 
   def approval_progress_steps_for(vrp)

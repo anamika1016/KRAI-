@@ -11549,6 +11549,15 @@ body {
 .ai-assistant-toggle:active { transform: scale(0.97); }
 .ai-assistant--open .ai-assistant-toggle { transform: scale(0.9); opacity: 0.85; }
 
+/* The launcher can be dragged off the pagination controls it would otherwise
+   cover. touch-action keeps a touch drag from scrolling the page instead. */
+.ai-assistant-toggle { touch-action: none; }
+.ai-assistant--dragging .ai-assistant-toggle {
+  cursor: grabbing;
+  transform: none;
+  transition: none;
+}
+
 .ai-assistant-panel {
   position: absolute;
   right: 0;
@@ -11568,6 +11577,10 @@ body {
 /* The `hidden` HTML attribute must win over `display: flex` above,
    otherwise the panel shows on load without clicking the icon. */
 .ai-assistant-panel[hidden] { display: none; }
+/* Once dragged away from its home corner the panel re-anchors, so it opens
+   into the screen instead of off the edge. */
+.ai-assistant--left .ai-assistant-panel { right: auto; left: 0; }
+.ai-assistant--top .ai-assistant-panel { bottom: auto; top: 86px; }
 @keyframes ai-pop {
   from { opacity: 0; transform: translateY(12px) scale(0.98); }
   to   { opacity: 1; transform: translateY(0) scale(1); }

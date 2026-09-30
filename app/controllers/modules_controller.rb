@@ -785,9 +785,9 @@ class ModulesController < ApplicationController
       .compact_blank
       .sort_by { |m| dashboard_month_index(m) || 0 }
     weekly_target_scope = t_scope.dup
-    # Monthly dashboard summary opens on the previous month by default. Users
+    # Monthly dashboard summary opens on the current month by default. Users
     # can still choose All Months or another month from the filter.
-    default_dashboard_month = Date.current.prev_month.strftime("%B")
+    default_dashboard_month = DashboardDefaults.month
     @dashboard_month_filter_value = params.key?(:month) ? dashboard_filter_param(:month) : default_dashboard_month
     if @dashboard_month_filter_value.present?
       m = normalize_dashboard_text(@dashboard_month_filter_value)
@@ -2084,7 +2084,7 @@ class ModulesController < ApplicationController
   end
 
   def dashboard_filter_sub_activity_options(targets)
-    month = params.key?(:month) ? dashboard_filter_param(:month) : Date.current.prev_month.strftime("%B")
+    month = params.key?(:month) ? dashboard_filter_param(:month) : DashboardDefaults.month
     fcoc = dashboard_filter_param(:fcoc, :fco)
     fco_values = training_fcoc_filter_values(fcoc) if fcoc.present?
     ics = dashboard_filter_param(:ics, :ics_name)
@@ -3931,7 +3931,7 @@ class ModulesController < ApplicationController
   def demonstration_method_cards
     report = @demonstration_method_report || DemonstrationMethodReport.new(
       targets: @filtered_targets || dashboard_target_mappings,
-      month: params.key?(:month) ? dashboard_filter_param(:month) : Date.current.prev_month.strftime("%B"))
+      month: params.key?(:month) ? dashboard_filter_param(:month) : DashboardDefaults.month)
 
     summary_rows = report.summary
     opg_val = dashboard_quantity(summary_rows.sum { |r| r["OPG Target"].to_f })
@@ -12558,7 +12558,9 @@ class ModulesController < ApplicationController
     return vrp.id.to_s == current_vrp_record&.id.to_s if vrp_login_user?
     return jeevika_bill_vrp_registered_by_current_user?(vrp) if dashboard_agronomics_login?
     return jeevika_bill_vrp_fco_visible?(vrp) if dashboard_source_fcoc_login?
-    return module_cluster_vrp_visible?(vrp) if module_cluster_incharge_login?
+    # Coordinating a cluster adds JJs, it does not replace the ones this user
+    # registered -- returning only the cluster match hid their own registrations.
+    return true if module_cluster_incharge_login? && module_cluster_vrp_visible?(vrp)
 
     jeevika_bill_vrp_registered_by_current_user?(vrp)
   end

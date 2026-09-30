@@ -46,7 +46,7 @@ module Api
       private
 
       def selected_month
-        @selected_month ||= (params[:month].presence || Date.current.prev_month.strftime("%B")).to_s.strip.downcase
+        @selected_month ||= (params[:month].presence || DashboardDefaults.month).to_s.strip.downcase
       end
 
       def validate_month

@@ -15,7 +15,7 @@ class OfficeDashboardCalculator < ModulesController
     end
     # Keep the authorised web scope loaded before API filters. The web FCO/JJ,
     # billing, gender and CC/JJ cards use it for their own reporting queries.
-    @dashboard_month_filter_value = params.key?(:month) ? dashboard_filter_param(:month) : Date.current.prev_month.strftime("%B")
+    @dashboard_month_filter_value = params.key?(:month) ? dashboard_filter_param(:month) : DashboardDefaults.month
     @dashboard_fcoc_filter_value = dashboard_filter_param(:fcoc, :fco)
   end
 
@@ -281,7 +281,7 @@ class OfficeDashboardCalculator < ModulesController
   def demonstration_method_cards
     @demonstration_method_report ||= DemonstrationMethodReport.new(
       targets: @filtered_targets || dashboard_target_mappings,
-      month: params.key?(:month) ? dashboard_filter_param(:month) : Date.current.prev_month.strftime("%B"))
+      month: params.key?(:month) ? dashboard_filter_param(:month) : DashboardDefaults.month)
     super
   end
 

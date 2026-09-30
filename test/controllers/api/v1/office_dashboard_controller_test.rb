@@ -68,6 +68,30 @@ class Api::V1::OfficeDashboardControllerTest < ActionDispatch::IntegrationTest
     assert response.parsed_body["records"].none? { |row| row["name"] == "July-only Sub" }
   end
 
+  test "September typo and encoded activity still return dynamic cards and lists" do
+    september = @first_target.dup
+    september.month_name = "September"
+    september.save!
+    another = september.dup
+    another.main_activity_name = "Farmers WhatsApp Groups"
+    another.activity_name = "Village level farmers groups"
+    another.save!
+
+    filters = { month: "Saptember", main_activity: "Farmers%27%20Training", sub_activity: "All" }
+    get "/api/v1/user-dashboard", params: filters, headers: headers(@specialist)
+
+    assert_response :success
+    cards = response.parsed_body.fetch("sections").find { |section| section["key"] == "summary" }.fetch("cards").index_by { |card| card["key"] }
+    assert_equal 2, cards.fetch("total_mapped_main_activities")["value"]
+    assert_equal 2, cards.fetch("total_mapped_sub_activities")["value"]
+    assert_equal "September", response.parsed_body.dig("filters", "month")
+
+    get "/api/v1/user-dashboard/lists/total_mapped_sub_activities", params: filters, headers: headers(@specialist)
+    assert_response :success
+    assert_equal 2, response.parsed_body["count"]
+    assert_equal %w[Soil], response.parsed_body["records"].map { |row| row["name"] }.grep(/Soil/)
+  end
+
   test "summary list and widget share scope and explicit all months" do
     get "/api/v1/user-dashboard", params: { month: "All", main_activity: "All" }, headers: headers(@specialist)
     assert_response :success
