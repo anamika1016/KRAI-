@@ -42,6 +42,7 @@ module Api
       def web_filtered_mappings
         controller = web_target_mappings_controller
         scope = controller.send(:filtered_visible_target_mappings)
+        scope = merge_hierarchy_target_mappings(scope, controller)
         scope = apply_search(scope) if params[:search].present?
         scope.includes(:vrp, :vrp_ics_mapping).order("target_mappings.updated_at DESC").to_a
       end
@@ -52,6 +53,49 @@ module Api
         controller.params = normalized_web_params
         controller.instance_variable_set(:@current_app_user, current_api_user_payload)
         controller
+      end
+
+      # API-only: the web Target Mapping controller/page has no concept of the
+      # Agronomist/Manager hierarchy (user-hierarchy-mapping) -- its own scope
+      # only returns VRPs this login personally registered or directly
+      # manages. An Agricultural Specialist/Manager overseeing a cluster of
+      # Cluster Incharges never saw the target mappings those Cluster
+      # Incharges' own JJs saved here, even though their dashboard
+      # (OfficeDashboardCalculator#dashboard_vrps) already counts them -- so
+      # this API under-reported vs. that user's own dashboard (e.g. "713"
+      # saved records showing far fewer for a Sausar/specialist login).
+      #
+      # This widens only the mobile API's result set by re-running the exact
+      # same filters (reusing the web controller's own, unmodified
+      # `target_mapping_fco_filter_values` method) against the hierarchy
+      # VRPs and merging the two ID sets. The web controller/page itself is
+      # never modified by this -- it is only invoked read-only via `send`.
+      # `dashboard_hierarchy_vrps` returns [] for anyone not named as an
+      # overseer in an active hierarchy mapping, so this is a no-op for
+      # ordinary CC/FCO-C/VRP logins, and summary modes (dashboard card
+      # drill-downs) are left untouched.
+      def merge_hierarchy_target_mappings(own_scope, controller)
+        return own_scope unless requested_summary_mode == "raw"
+        return own_scope if controller.send(:admin_login?) || controller.send(:non_admin_vrp_login?)
+
+        policy = controller.send(:dashboard_target_policy)
+        return own_scope if policy.send(:dashboard_global_view_user?)
+
+        own_ids = Array(policy.send(:dashboard_visible_vrp_ids))
+        hierarchy_ids = Array(policy.send(:dashboard_hierarchy_vrps)).map(&:id) - own_ids
+        return own_scope if hierarchy_ids.blank?
+
+        values = normalized_web_params
+        hierarchy_scope = TargetMapping.where(vrp_id: hierarchy_ids)
+        hierarchy_scope = hierarchy_scope.where(vrp_id: values[:vrp_id]) if values[:vrp_id].present?
+        hierarchy_scope = hierarchy_scope.where("LOWER(BTRIM(month_name)) = ?", values[:month].to_s.strip.downcase) if values[:month].present?
+        hierarchy_scope = hierarchy_scope.where("LOWER(BTRIM(main_activity_name)) = ?", values[:main_activity].to_s.strip.downcase) if values[:main_activity].present?
+        hierarchy_scope = hierarchy_scope.where("LOWER(BTRIM(activity_name)) = ?", values[:sub_activity].to_s.strip.downcase) if values[:sub_activity].present?
+        fco_filter_values = controller.send(:target_mapping_fco_filter_values, values[:fcoc].presence || values[:fco_id].presence)
+        hierarchy_scope = hierarchy_scope.where("LOWER(BTRIM(fco_id)) IN (:fcoc) OR LOWER(BTRIM(fco_name)) IN (:fcoc)", fcoc: fco_filter_values) if fco_filter_values.any?
+        hierarchy_scope = hierarchy_scope.where("LOWER(BTRIM(ics_id)) = :ics OR LOWER(BTRIM(ics_name)) = :ics", ics: values[:ics].to_s.strip.downcase) if values[:ics].present?
+
+        TargetMapping.where(id: own_scope.pluck(:id) + hierarchy_scope.pluck(:id))
       end
 
       # The app sends `fco=All` and `ics=All`; the web form omits those values.
