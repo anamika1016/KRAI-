@@ -90,4 +90,17 @@ class Api::V1::JeevikaJankarDashboardControllerTest < ActionDispatch::Integratio
     assert_response :success
     assert_equal XlsxExporter::MIME_TYPE, response.media_type
   end
+
+  test "admin token on the legacy user dashboard route receives the admin dashboard" do
+    user = User.create!(first_name: "Legacy", last_name: "Admin", user_name: "legacy_admin",
+      email: "legacy-admin@example.com", mobile_no: "9876500002", password: "secret",
+      user_type: "admin", status: "Active")
+
+    get "/api/v1/user-dashboard", params: { month: "October", main_activity: "Farmers' Training" },
+      headers: { "Authorization" => "Bearer #{ApiAuthToken.encode(user)}" }
+
+    assert_response :success
+    assert_equal "admin", response.parsed_body["dashboard_type"]
+    assert response.parsed_body.key?("dashboard_summary")
+  end
 end

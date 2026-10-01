@@ -223,7 +223,7 @@ module Api
             context = prepare_lightweight_admin_dashboard_context
             web = context[:web]
             vrps = web.send(:dashboard_vrps)
-            gender_month = params[:month].presence || params[:training_month].presence || "August"
+            gender_month = params[:month].presence || params[:training_month].presence || DashboardDefaults.month
             items = ModulesController::DASHBOARD_FCO_NAMES.flat_map do |fco|
               active = web.send(:dashboard_fco_active_vrp_records, fco, gender_month, vrps)
               web.send(:dashboard_jj_requirement_items, fco, vrps, context[:targets]) + [
@@ -641,7 +641,7 @@ module Api
         user_key = current_api_user_payload.slice("id", "user_id", "username", "user_name", "user_type").sort.to_h
         # Keep the API cache namespace aligned with dashboard scope changes so
         # an old zero-result response is never returned after deployment.
-        ["api-v1-admin-dashboard-work-status-v12", Date.current.to_s, suffix, user_key, filters, version_parts].to_json
+        ["api-v1-admin-dashboard-work-status-v13", Date.current.to_s, suffix, user_key, filters, version_parts].to_json
       end
 
       def admin_dashboard_cache_filters

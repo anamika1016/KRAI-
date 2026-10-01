@@ -6,6 +6,12 @@ module Api
         "septamber" => "September"
       }.freeze
       def show
+        # Mobile clients historically called /user-dashboard for every office
+        # role.  An Admin token must receive the exact Admin dashboard payload
+        # (the same calculation as the web dashboard), not the restricted
+        # office-user roll-up.
+        return render_admin_dashboard if current_api_user_payload["user_type"].to_s.casecmp("admin").zero?
+
         return render_vrp_error if current_api_user.is_a?(Vrp)
 
         started = Process.clock_gettime(Process::CLOCK_MONOTONIC)
@@ -485,7 +491,7 @@ module Api
         # Bump this namespace whenever the dashboard scope calculation changes.
         # Otherwise a previously cached empty payload can outlive a deployment
         # even though the underlying TargetMapping records are available.
-        ["api-v1-user-dashboard-office-v14", Date.current.to_s, user_key, filters, version_parts].to_json
+        ["api-v1-user-dashboard-office-v15", Date.current.to_s, user_key, filters, version_parts].to_json
       end
 
       def cache_table_version(model)
