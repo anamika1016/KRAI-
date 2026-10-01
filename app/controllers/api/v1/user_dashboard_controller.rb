@@ -666,8 +666,16 @@ module Api
         vrps.select { |vrp| ids.key?(vrp.id.to_s) }
       end
 
-      def id_lookup(records)
-        records.each_with_object({}) { |record, lookup| lookup[record.id.to_s] = true }
+      # Matches JeevikaJankarDashboardController#id_lookup's signature. This
+      # subclass previously redeclared id_lookup with only one argument,
+      # which shadowed the parent's optional `attribute` parameter for any
+      # instance of this class (Ruby method lookup always finds the
+      # subclass's own definition first). That made every 2-argument
+      # id_lookup(targets, :vrp_id) call elsewhere in the parent raise
+      # "wrong number of arguments" with a 500 whenever this controller
+      # handled a request with a main_activity/sub_activity filter present.
+      def id_lookup(records, attribute = :id)
+        records.each_with_object({}) { |record, lookup| lookup[record.public_send(attribute).to_s] = true }
       end
 
       def filtered_bills(calculator, vrps)
