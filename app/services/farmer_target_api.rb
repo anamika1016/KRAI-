@@ -107,12 +107,46 @@ class FarmerTargetApi
       data: record.data
     }
     if record.module_slug == "training-form"
-      payload[:photo_count] = TRAINING_PHOTO_FIELDS.flat_map { |field| Array(record.data[field]) }.compact_blank.uniq.size
+      uploads = training_upload_payload(record.data)
+      payload[:uploads] = uploads
+      payload[:training_register] = uploads[:training_register]
+      payload[:photos] = uploads[:photos]
+      payload[:photo_count] = uploads[:photos].sum { |photo| photo[:files].size }
     end
     payload
   end
 
   private
+
+  # Keep the original `data` object intact for existing clients, and expose the
+  # same six web upload controls in a stable mobile-friendly shape.  The web
+  # form stores each field as either a single path or an array, so normalising
+  # here prevents a missing photo when the storage representation differs.
+  def training_upload_payload(data)
+    register = upload_files_for(data[TRAINING_REGISTER_FIELD])
+    labels = {
+      "training_photo_upload_with_geo_tag" => "Training Photo Upload with Geo Tag",
+      "photo_front_view" => "Photo Front View",
+      "photo_back_view" => "Photo Back View",
+      "photo_close_up_view" => "Photo Close-up View",
+      "photo_long_shot" => "Photo Long Shot"
+    }
+    {
+      training_register: { field: TRAINING_REGISTER_FIELD, label: "Training Register Upload", files: register },
+      photos: labels.map do |field, label|
+        # Older web records used `photo_close-up_view`; retain that saved
+        # evidence under the current close-up slot.
+        value = field == "photo_close_up_view" ? (data[field].presence || data["photo_close-up_view"]) : data[field]
+        { field: field, label: label, files: upload_files_for(value) }
+      end
+    }
+  end
+
+  def upload_files_for(value)
+    Array(value).flatten.compact_blank.map(&:to_s).uniq.map do |path|
+      { path: path, url: path, filename: File.basename(path) }
+    end
+  end
 
   def master_month_options(extra_months = [])
     master_months = active_month_master_records.filter_map do |record|

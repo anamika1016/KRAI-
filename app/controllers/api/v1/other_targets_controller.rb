@@ -21,6 +21,18 @@ module Api
       def form_options
         render_form_options
       end
+
+      def form_data
+        render_target_form_data
+      end
+
+      def farmers
+        render_target_form_farmers
+      end
+
+      def mapped_farmers
+        render_target_form_farmers(mapped: true)
+      end
     end
   end
 end

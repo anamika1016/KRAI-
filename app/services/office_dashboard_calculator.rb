@@ -54,8 +54,13 @@ class OfficeDashboardCalculator < ModulesController
 
   def dashboard_cards
     cards = super.reject { |group| ["Gender Count", "FCO-wise JJ Requirement"].include?(group[:title]) }
-    vrps = Array(@office_authorized_vrps || dashboard_vrps)
-    fco_names = dashboard_fco_names(vrps)
+    # These two dashboard groups are organisation-wide reference data.  A CC,
+    # Agronomist or FCO-C user must see Sausar, Turekela, Pavijetpur and any
+    # later configured FCO in the cards; their Target Mapping/API lists remain
+    # constrained by the normal authorised JJ scope.
+    vrps = model_ready?(:Vrp) ? Vrp.where.not(fcoc: [nil, ""]).to_a : Array(@office_authorized_vrps || dashboard_vrps)
+    targets = model_ready?(:TargetMapping) ? TargetMapping.includes(:vrp).to_a : Array(@office_summary_targets || @filtered_targets)
+    fco_names = dashboard_report_fco_names(vrps, targets)
     month = params[:month].presence || params[:training_month].presence || DashboardDefaults.month
     gender_items = fco_names.flat_map do |fco_name|
       fco_vrps = dashboard_fco_active_vrp_records(fco_name, month, vrps)
@@ -64,11 +69,22 @@ class OfficeDashboardCalculator < ModulesController
         { title: "#{fco_name} Female", value: fco_vrps.count { |vrp| normalize_dashboard_text(vrp.gender) == "female" } }
       ]
     end
-    targets = @office_summary_targets.nil? ? @filtered_targets : @office_summary_targets
     cards << dashboard_group_card("Gender Count", gender_items, style: "registration")
     cards << dashboard_group_card("FCO-wise JJ Requirement",
       fco_names.flat_map { |fco_name| dashboard_jj_requirement_items(fco_name, vrps, targets) }, style: "fco")
     cards
+  end
+
+  def dashboard_report_fco_names(vrps, targets)
+    names = dashboard_fco_names(vrps)
+    Array(targets).each do |target|
+      name = target.fco_name.to_s.squish.presence || target.fco_id.to_s.squish.presence || target.vrp&.fcoc.to_s.squish.presence
+      next if name.blank?
+
+      name = name.sub(/\Afco\s*(?:-\s*c)?\s*[-:]?\s*/i, "").squish
+      names << name if name.present?
+    end
+    names.uniq { |name| normalize_dashboard_text(name) }.sort_by { |name| normalize_dashboard_text(name) }
   end
 
   # AFL uses numeric IDs/plain names, while JJ records also use FCO-Pavijetpur.
@@ -93,8 +109,8 @@ class OfficeDashboardCalculator < ModulesController
   # already authorised for this API login. This prevents activity filters from
   # shrinking card values and prevents the SQL helper from exposing other JJs.
   def dashboard_fco_active_vrp_records(fco, month = nil, vrps = nil)
-    candidates = super(fco, month, @office_authorized_vrps || vrps)
-    candidates.select { |vrp| @office_authorized_vrp_ids.include?(vrp.id) }
+    source = vrps || @office_authorized_vrps
+    super(fco, month, source)
   end
 
   def dashboard_fco_active_vrp_count(fco, month = nil, vrps = nil)

@@ -20,7 +20,7 @@ class Api::V1::TargetMappingsControllerTest < ActionDispatch::IntegrationTest
     assert_response :unauthorized
   end
 
-  test "default list uses the same activity summary counts as the web target mapping list" do
+  test "default list uses the same row-level records as the web recent target mapping list" do
     create_mapping(main: "Farmers' Training", sub: "Soil", farmers: [@farmer_1, @farmer_2])
     create_mapping(main: "Farmers' Training", sub: "Water", farmers: [@farmer_2, @farmer_3])
     create_mapping(main: "Farmers WhatsApp Groups", sub: "Group", farmers: [@farmer_3], fco_id: "1004", fco_name: "Sausar")
@@ -37,12 +37,12 @@ class Api::V1::TargetMappingsControllerTest < ActionDispatch::IntegrationTest
 
     assert_response :success
     body = response.parsed_body
-    assert_equal "main_activity", body["summary_mode"]
-    assert_equal 2, body["count"]
+    assert_equal "raw", body["summary_mode"]
+    assert_equal 3, body["count"]
     assert_equal 1, body["records"].size
-    assert_equal 2, body.dig("pagination", "total_pages")
+    assert_equal 3, body.dig("pagination", "total_pages")
 
-    get "/api/v1/target-mappings/recent", params: { month: "August", fco: "All", ics: "All", page: 1, per_page: 100 }, headers: @headers, as: :json
+    get "/api/v1/target-mappings/recent", params: { month: "August", fco: "All", ics: "All", summary_mode: "main_activity", page: 1, per_page: 100 }, headers: @headers, as: :json
     rows = response.parsed_body["records"].index_by { |row| row["main_activity"] }
 
     assert_equal({ "sub_activity_count" => 2, "farmer_count" => 3, "target_count" => 2 }, rows.fetch("Farmers' Training").slice("sub_activity_count", "farmer_count", "target_count"))

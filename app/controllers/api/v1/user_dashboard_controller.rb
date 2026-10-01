@@ -477,11 +477,12 @@ module Api
             vrp-approval-history
             user-hierarchy-mapping
             new-user
+            month-master
           ])
         ]
         filters = admin_dashboard_cache_filters
         user_key = current_api_user_payload.sort.to_h
-        ["api-v1-user-dashboard-office-v12", Date.current.to_s, user_key, filters, version_parts].to_json
+        ["api-v1-user-dashboard-office-v13", Date.current.to_s, user_key, filters, version_parts].to_json
       end
 
       def cache_table_version(model)
@@ -521,7 +522,10 @@ module Api
         @calculation_stage = "dashboard_search_filter"
         vrps, targets = search_scope(vrps, targets)
         @calculation_stage = "dashboard_activity_filters"
-        months = values(targets, :month_name)
+        # A new active Month Master must be visible before its first target row
+        # is saved.  The web dashboard already includes these master options.
+        months = (values(targets, :month_name) + Array(calculator.send(:month_master_month_options))).compact_blank.uniq
+          .sort_by { |month| calculator.send(:dashboard_month_index, month) || 13 }
         selected_dashboard_month = params.key?(:month) ? filter_param(:month) : DashboardDefaults.month
         if selected_dashboard_month.present?
           targets = targets.select { |target| same?(target.month_name, selected_dashboard_month) }

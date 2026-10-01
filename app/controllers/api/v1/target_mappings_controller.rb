@@ -82,8 +82,13 @@ module Api
 
       def requested_summary_mode
         requested = (params[:summary_mode].presence || params[:list_type]).to_s.strip.downcase
+        # The web page headed "Recent Target Mappings" is a row-level table.
+        # Make the API match it when no mode is supplied; callers that render
+        # dashboard count cards can still explicitly request either summary.
+        return "raw" if requested.blank?
+
         requested = SUMMARY_MODE_ALIASES.fetch(requested, requested)
-        SUMMARY_MODES.include?(requested) ? requested : "main_activity"
+        SUMMARY_MODES.include?(requested) ? requested : "raw"
       end
 
       def summary_records(mappings, mode)

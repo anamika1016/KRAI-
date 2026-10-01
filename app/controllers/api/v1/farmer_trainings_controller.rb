@@ -22,7 +22,9 @@ module Api
           return render json: { success: false, message: "Farmer Training Form record not found." }, status: :not_found
         end
 
-        paths = FarmerTargetApi::TRAINING_PHOTO_FIELDS.flat_map { |field| Array(record.data[field]) }.compact_blank.uniq
+        paths = FarmerTargetApi::TRAINING_PHOTO_FIELDS.flat_map do |field|
+          field == "photo_close_up_view" ? Array(record.data[field].presence || record.data["photo_close-up_view"]) : Array(record.data[field])
+        end.compact_blank.uniq
         photos = paths.map.with_index do |path, index|
           {
             id: index + 1,
@@ -154,9 +156,16 @@ module Api
       end
 
       def fco_filter_matches?(mapping)
-        selected_id = params[:fco_id].presence || params[:fpo_id]
-        selected_name = params[:fco_name].presence || params[:fpo_name].presence || params[:fco].presence || params[:fpo]
-        filter_matches?(mapping[:fco_id], selected_id) && filter_matches?(mapping[:fco_name], selected_name)
+        selected = [params[:fco_id], params[:fpo_id], params[:fco_name], params[:fpo_name], params[:fco], params[:fpo]].compact_blank
+        return true if selected.blank? || selected.any? { |value| value.to_s.strip.casecmp("all").zero? }
+
+        actual = [mapping[:fco_id], mapping[:fpo_id], mapping[:fco_name], mapping[:fpo_name], mapping[:department]].compact_blank
+        selected.any? { |expected| actual.any? { |value| fco_value_matches?(value, expected) } }
+      end
+
+      def fco_value_matches?(actual, expected)
+        normalise = ->(value) { value.to_s.downcase.gsub(/\Afco\s*(?:-\s*c)?\s*[-:]?\s*/i, "").squish }
+        normalise.call(actual) == normalise.call(expected)
       end
 
       def filter_matches?(actual, selected)

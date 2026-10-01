@@ -311,7 +311,11 @@ module Api
         matches = ->(actual, selected) {
           calculator.send(:normalize_dashboard_text, actual) == calculator.send(:normalize_dashboard_text, selected)
         }
-        months = values.call(targets, &:month_name).sort_by { |month| [calculator.send(:dashboard_month_index, month), month] }
+        # Target rows only expose months that already have a mapping.  Include
+        # active Month Master values as well, so e.g. October is selectable as
+        # soon as it is configured in the web master.
+        months = (values.call(targets, &:month_name) + Array(calculator.send(:month_master_month_options))).compact_blank.uniq
+          .sort_by { |month| [calculator.send(:dashboard_month_index, month), month] }
         month = params.key?(:month) ? filter_param(:month) : DashboardDefaults.month
         rows = month.present? ? targets.select { |row| matches.call(row.month_name, month) } : targets
         mains = values.call(rows, &:main_activity_name)
@@ -631,10 +635,11 @@ module Api
             add-ics
             add-fco
             add-village
+            month-master
           ])
         ]
         user_key = current_api_user_payload.slice("id", "user_id", "username", "user_name", "user_type").sort.to_h
-        ["api-v1-admin-dashboard-work-status-v10", Date.current.to_s, suffix, user_key, filters, version_parts].to_json
+        ["api-v1-admin-dashboard-work-status-v11", Date.current.to_s, suffix, user_key, filters, version_parts].to_json
       end
 
       def admin_dashboard_cache_filters
