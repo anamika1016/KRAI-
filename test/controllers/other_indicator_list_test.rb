@@ -60,6 +60,8 @@ class OtherIndicatorListTest < ActionDispatch::IntegrationTest
     assert_response :success
 
     assert_select "#other_indicator_table thead th", text: "Jeevika Jankar"
+    # Other Target entries carry no approval status, so the column would be blank.
+    assert_select "#other_indicator_table thead th", text: "Status", count: 0
     assert_select "#other_indicator_table tbody td", text: "Pinki Parihar"
     assert_select "#other_indicator_table tbody td", text: "Aanjana Uikey"
     assert_select "h1", text: /September/

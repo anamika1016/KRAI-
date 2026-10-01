@@ -41,11 +41,14 @@ class ModulesController < ApplicationController
   APPROVAL_REGISTRATION_MODULES = ["Farmer Registration", "VRP Registration", "Jeevika Jankar Registration"].freeze
   OTHER_TARGET_MODULE_SLUGS = ["seed-distribution-target", "papl360-target", "other-target"].freeze
   # Column label => row key for the Main Major Work Indicator - Other list.
+  # Status is deliberately not shown: Other Target entries are saved without an
+  # approval status, so the column was blank on every row. It stays in the JSON
+  # payload for anything that needs it.
   OTHER_INDICATOR_LIST_HEADERS = {
     "Jeevika Jankar" => "jeevika_jankar_name", "FCO Name" => "fco_name",
     "Month" => "month", "Main Major Work Indicator" => "main_activity",
     "Sub Major Work Indicator" => "sub_activity", "Target" => "target",
-    "Achievement" => "achievement", "Status" => "status"
+    "Achievement" => "achievement"
   }.freeze
   # FCO offices shown in the dashboard's Gender Count and FCO-wise JJ Requirement
   # cards. Add a new office here and its boxes appear in both automatically.
