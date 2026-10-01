@@ -1,6 +1,19 @@
 # Request-local adapter for the office-user API. The web, Admin and JJ
 # dashboards continue to use ModulesController without these overrides.
 class OfficeDashboardCalculator < ModulesController
+  # The web dashboard resolves an Agronomist/Manager hierarchy through its
+  # rendered controller state.  API requests start with a fresh controller, so
+  # include the same Level-2/cluster JJs here before any month, ICS or activity
+  # filter is applied.  Without this October mappings owned by those clusters
+  # disappeared and every dashboard card became zero.
+  def dashboard_vrps
+    return @office_dashboard_vrps if defined?(@office_dashboard_vrps)
+
+    own_scope = Array(super)
+    hierarchy_scope = office_hierarchy_dashboard_reader? ? Array(dashboard_hierarchy_vrps) : []
+    @office_dashboard_vrps = (own_scope + hierarchy_scope).uniq { |vrp| vrp.id }
+  end
+
   def apply_dashboard_scope(vrps:, targets:, bills:, summary_vrps: nil, summary_targets: nil)
     @filtered_vrps = vrps
     @filtered_targets = targets
@@ -20,6 +33,12 @@ class OfficeDashboardCalculator < ModulesController
   end
 
   private
+
+  def office_hierarchy_dashboard_reader?
+    return true if dashboard_agronomics_login?
+
+    office_dashboard_roles.any? { |role| role.include?("manager") }
+  end
 
   # API-only dynamic FCO source. The web controller remains unchanged.
   def dashboard_fco_names(vrps = nil)
