@@ -96,6 +96,17 @@ class Api::V1::TargetMappingsControllerTest < ActionDispatch::IntegrationTest
     assert_equal mapping.id, response.parsed_body["records"].first["id"]
   end
 
+  test "raw recent list treats All month as every visible saved mapping" do
+    august = create_mapping(main: "Farmers' Training", sub: "Soil", farmers: [@farmer_1])
+    july = create_mapping(main: "Farmers' Training", sub: "Water", farmers: [@farmer_2], month: "July")
+
+    get "/api/v1/target-mappings/recent", params: { month: "All", fco: "All", ics: "All", per_page: 100 }, headers: @headers, as: :json
+
+    assert_response :success
+    assert_equal "raw", response.parsed_body["summary_mode"]
+    assert_equal [august.id, july.id].sort, response.parsed_body["records"].map { |row| row["id"] }.sort
+  end
+
   private
 
   def create_mapping(main:, sub:, farmers:, month: "August", fco_id: "1006", fco_name: "Turekela")

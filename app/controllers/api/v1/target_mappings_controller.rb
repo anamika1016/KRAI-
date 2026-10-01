@@ -58,7 +58,7 @@ module Api
       # Normalize both forms before using the web controller's filter methods.
       def normalized_web_params
         values = params.to_unsafe_h.deep_dup
-        %w[main_activity sub_activity ics].each do |key|
+        %w[month main_activity sub_activity ics].each do |key|
           values.delete(key) if all_filter_value?(values[key])
         end
 
@@ -71,7 +71,16 @@ module Api
           values["fcoc"] = fco
         end
 
-        values["summary_mode"] = requested_summary_mode
+        # Raw is the Recent Target Mappings web-table mode.  Do not pass a
+        # summary_mode to the web controller in that case: its presence invokes
+        # the dashboard drill-down scope and silently drops saved mappings.
+        # This keeps `month=All` as every visible saved target mapping.
+        mode = requested_summary_mode
+        if mode == "raw"
+          values.delete("summary_mode")
+        else
+          values["summary_mode"] = mode
+        end
         ActionController::Parameters.new(values)
       end
 
