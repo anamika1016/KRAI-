@@ -10,7 +10,7 @@ class OfficeDashboardSections
   }.freeze
   DEMO = %w[opg_training_target general_training_meeting input_demo_inm input_demo_pm ffs_exposure cc_target_status].freeze
   OTHER = {
-    main_major_work_indicator: "Main Major Work Indicator", mapped_farmer: "Mapped Farmer",
+    main_major_work_indicator: "Main Major Work Indicator", mapped_farmer: "Targeted Farmer",
     achievement_farmer: "Achievement Farmer", pending_farmer: "Pending Farmer", achieved: "Achieved"
   }.freeze
 

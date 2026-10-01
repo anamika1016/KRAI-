@@ -25,17 +25,21 @@ class AssistantQuickReply
     match = ModulesController::MODULES.find { |slug, m| [slug, slug.tr("-", " "), m[:title].downcase].include?(help_query) }
     if match
       slug, definition = match
-      return { reply: "#{definition[:title]}\n#{definition[:purpose]}\n\nFields: #{Array(definition[:fields]).join(', ')}", links: [{ title: "Open #{definition[:title]}", url: "/modules/#{slug}" }] }
+      title = display_label(definition[:title])
+      fields = Array(definition[:fields]).map { |field| display_label(field) }
+      return { reply: "#{title}\n#{display_label(definition[:purpose])}\n\nFields: #{fields.join(', ')}", links: [{ title: "Open #{title}", url: "/modules/#{slug}" }] }
     end
 
     # Only a tightly bounded gender query can bypass the language model.
-    if question.match?(/\A(?:(?:sausar|turekela|pavijetpur|1004|1006|1095|male|female|jj|vrp|active|count|kitne|hai|hain|total|in|ke|ka|ki|and|aur|\s|[?.,])|(?:#{Date::MONTHNAMES.compact.join('|')}))+\z/i) && question.match?(/\b(male|female)\b/i)
+    if question.match?(/\A(?:(?:sausar|turekela|pavijetpur|1004|1006|1095|male|female|gender|jj|vrp|active|count|kitne|hai|hain|total|in|ke|ka|ki|and|aur|\s|[?.,])|(?:#{Date::MONTHNAMES.compact.join('|')}))+\z/i) && question.match?(/\b(male|female|gender)\b/i)
       data = @context.call(messages)
       return unless data[:jj_gender_by_fco]
       rows = data[:jj_gender_by_fco]
       fco = { "1004" => "sausar", "1006" => "turekela", "1095" => "pavijetpur" }.find { |id, name| question.match?(/\b(?:#{id}|#{name})\b/i) }&.last
       rows = rows.select { |row| row[:fco].downcase.include?(fco) } if fco
+      # Asking for a "gender count" means both; naming one gender narrows to it.
       genders = %w[male female].select { |g| question.match?(/\b#{g}\b/i) }
+      genders = %w[male female] if genders.empty?
       return { reply: "Is FCO ke visible JJ gender records nahi mile. FCO aur month check karein." } if rows.empty?
       text = rows.map { |row| "#{row[:fco]}: #{genders.map { |g| "#{g.capitalize} #{row[g.to_sym]}" }.join(', ')}" }.join("\n")
       return { reply: "Active JJ / VRP gender count — #{data[:month]}\n#{text}\nSirf aapke visible JJ records. Yeh farmer gender count nahi hai." }
@@ -54,6 +58,21 @@ class AssistantQuickReply
     return unless question.match?(/\A(?:dashboard |live |project )?summary\??\z/i)
     data = @context.call(messages)
     return unless data[:farmers]
-    { reply: "Visible project summary\nFarmers: #{data[:farmers]}\nVillages: #{data[:villages]}\nICS: #{data[:ics]}\n#{data[:scope]}" }
+    { reply: "Visible project summary\nFarmers: #{data[:farmers]}\nVillages: #{data[:villages]}\nICS: #{data[:ics]}\n#{display_label(data[:scope])}" }
+  end
+
+  private
+
+  # Module definitions still use the original field names, but the screens show
+  # renamed labels: resource_person_label covers the stored renames and the UI
+  # additionally rewrites "activity" and "VRP" in the browser. Quoting the raw
+  # names told users to look for fields that are not on the form, so the
+  # assistant answers with exactly what is on screen.
+  def display_label(text)
+    ApplicationController.helpers.resource_person_label(text)
+      .gsub(/\bactivities\b/i, "Major Work Indicators")
+      .gsub(/\bactivity\b/i, "Major Work Indicator")
+      .gsub(/\bvrps\b/i, "Jeevika Jankars")
+      .gsub(/\bvrp\b/i, "Jeevika Jankar")
   end
 end

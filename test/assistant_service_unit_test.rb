@@ -59,12 +59,11 @@ class AssistantServiceUnitTest < Minitest::Test
     policy.define_singleton_method(:training_fcoc_filter_values) { |values| real_policy.send(:training_fcoc_filter_values, values) }
     policy.define_singleton_method(:training_fcoc_text_matches?) { |name, selected| real_policy.send(:training_fcoc_text_matches?, name, selected) }
     policy.define_singleton_method(:dashboard_fco_active_vrp_records) { |*| [visible, hidden] }
-    scope = Object.new
-    scope.define_singleton_method(:count) { |*| 3 }
-    scope.define_singleton_method(:where) { |*| self }
-    scope.define_singleton_method(:not) { |*| self }
-    scope.define_singleton_method(:distinct) { self }
-    policy.define_singleton_method(:dashboard_visible_farmer_scope) { scope }
+    # The context now reads the dashboard's own card counts so the assistant
+    # cannot quote a total that differs from the Dashboard Summary on screen.
+    policy.define_singleton_method(:dashboard_total_afl_farmer_count) { 3 }
+    policy.define_singleton_method(:dashboard_total_afl_village_count) { 2 }
+    policy.define_singleton_method(:dashboard_total_afl_ics_count) { 1 }
     controller = OpenStruct.new(current_app_user: { "id" => 1 }, request: nil)
     original_new = ModulesController.method(:new)
     ModulesController.define_singleton_method(:new) { policy }
@@ -74,6 +73,8 @@ class AssistantServiceUnitTest < Minitest::Test
       assert_equal 1, context[:jj_gender_by_fco].size
       assert context[:jj_gender_by_fco].all? { |row| row[:male] == 1 }
       assert_equal 3, context[:farmers]
+      assert_equal 2, context[:villages]
+      assert_equal 1, context[:ics]
       refute policy.params.key?("role")
       assert_equal controller.current_app_user, policy.instance_variable_get(:@current_app_user)
     ensure

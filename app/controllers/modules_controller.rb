@@ -11388,6 +11388,21 @@ class ModulesController < ApplicationController
       end
   end
 
+  # Achievement already banked against this assigned target by earlier
+  # submissions. Uses the same record matching as the reporting index, so the
+  # form and the dashboard always agree on how much is left.
+  def other_target_submitted_achievement(target_mapping_id, excluding_record_id: nil)
+    return 0.0 if target_mapping_id.blank? || !model_ready?(:ModuleRecord)
+
+    ModuleRecord.where(module_slug: OTHER_TARGET_MODULE_SLUGS).sum do |record|
+      next 0.0 if excluding_record_id.present? && record.id.to_s == excluding_record_id.to_s
+      next 0.0 unless approved_other_target_record?(record)
+      next 0.0 unless other_target_record_target_mapping_ids(record).include?(target_mapping_id.to_s)
+
+      decimal_value(record.data["achievement"]).to_f
+    end
+  end
+
   def other_target_record_target_mapping_ids(record)
     saved_id = record.data["target_mapping_id"].to_s.strip
     target_by_id = other_target_candidate_targets_by_id
@@ -11806,14 +11821,21 @@ class ModulesController < ApplicationController
       end
   end
 
+  # A target's Main Major Work Indicator Type comes from its own main activity,
+  # or from the registered parent of its sub activity.
+  #
+  # This used to also look the sub name up in the main-activity table and the
+  # main name up in the sub-activity table. Those cross lookups were a guess,
+  # and one name shared between a Training sub activity and an Other main
+  # indicator made Training targets resolve as "Other" -- which is how Training
+  # ICS, villages and activities ended up in the Other Target form. A target
+  # whose main activity is not set up now falls back to the "Training" default
+  # rather than being guessed into the wrong type.
   def jeevika_jankar_activity_setting_for(target, activity_settings, sub_activity_settings)
     main_key = normalize_dashboard_text(target.main_activity_name)
     sub_key = normalize_dashboard_text(target.activity_name)
 
-    activity_settings[main_key] ||
-      activity_settings[sub_key] ||
-      sub_activity_settings[sub_key] ||
-      sub_activity_settings[main_key]
+    activity_settings[main_key] || sub_activity_settings[sub_key]
   end
 
   def jeevika_jankar_farmers_by_id(targets)
@@ -13535,6 +13557,20 @@ class ModulesController < ApplicationController
     errors << "Achievement Target se jyada nahi ho sakta." if target && achievement && achievement > target
 
     target_mapping = seed_distribution_target_match(data)
+
+    # Achievement is cumulative across submissions for the same assigned target.
+    # Checking only this entry against the target let a 36 target be filled with
+    # 36 twice and report 72, so compare against what is actually left.
+    if target && achievement&.positive? && target_mapping.present?
+      amount = ->(value) { value.to_f == value.to_f.round ? value.to_f.round.to_s : format("%.2f", value) }
+      done = other_target_submitted_achievement(target_mapping[:target_mapping_id], excluding_record_id: @record&.id)
+      remaining = target - done
+      if remaining <= 0
+        errors << "Is target ka pura achievement (#{amount.call(done)}/#{amount.call(target)}) already submit ho chuka hai."
+      elsif achievement > remaining
+        errors << "Achievement #{amount.call(remaining)} se jyada nahi ho sakta. Target #{amount.call(target)}, already submitted #{amount.call(done)}."
+      end
+    end
     new_farmer_target = target_mapping&.dig(:new_farmer_target)
     farmer_count = whole_number_value(data["farmer_count"])
     selected_farmer_ids = Array(data["selected_farmer_ids"]).map(&:to_s).reject(&:blank?).uniq

@@ -1,4 +1,5 @@
-# The month every dashboard opens on when the user has not picked one.
+# The month every dashboard opens on when the user has not picked one, and the
+# month a new Other Target form pre-selects.
 #
 # This lived as a copy-pasted `Date.current.prev_month.strftime("%B")` in the
 # web dashboard, both mobile dashboard APIs and the CC / assistant reports.

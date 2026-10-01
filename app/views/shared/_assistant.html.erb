@@ -29,7 +29,9 @@
         <p>Jeevika Jankar app, reports, forms ya dashboard ke baare mein poochhiye.</p>
         <div class="ai-assistant-suggestions">
           <button type="button" data-ai-prompt="Project summary"><span>◫</span> Project summary <span>↗</span></button>
-          <button type="button" data-ai-prompt="Sausar male count"><span>◎</span> Sausar JJ gender count <span>↗</span></button>
+          <%# The prompt must match the button text: sending "Sausar male count"
+              answered with Male only, which did not match the "gender count" label. %>
+          <button type="button" data-ai-prompt="Sausar JJ gender count"><span>◎</span> Sausar JJ gender count <span>↗</span></button>
           <button type="button" data-ai-prompt="Training form kya hai"><span>?</span> Training form help <span>↗</span></button>
         </div>
       </div>

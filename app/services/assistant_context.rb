@@ -17,7 +17,11 @@ class AssistantContext
     @filters = AssistantReports.filters(question, @filters).slice(*FILTERS)
     month = Date::MONTHNAMES.compact.find { |name| question.match?(/\b#{name}\b/i) }
     month ||= @filters["month"].presence || @filters["training_month"].presence || DashboardDefaults.month
-    policy.params = ActionController::Parameters.new(@filters.merge("month" => month))
+    # The dashboard reads the FCO from :fcoc / :fco, so an fco_id-style filter
+    # has to arrive under that key or an FCO-specific question is answered with
+    # project-wide totals.
+    fco_param = @filters["fcoc"].presence || @filters["fco_id"].presence
+    policy.params = ActionController::Parameters.new(@filters.merge("month" => month, "fcoc" => fco_param).compact)
     vrps = policy.send(:dashboard_vrps)
     visible_ids = vrps.map(&:id)
     gender = ModulesController::DASHBOARD_FCO_NAMES.map do |fco|
@@ -27,22 +31,23 @@ class AssistantContext
       { fco: fco, male: records.count { |v| v.gender.to_s.strip.casecmp("male").zero? },
         female: records.count { |v| v.gender.to_s.strip.casecmp("female").zero? } }
     end
-    farmers = policy.send(:dashboard_visible_farmer_scope)
     fco = @filters["fco_id"].presence || @filters["fcoc"].presence
     if fco.present? && !fco.downcase.start_with?("all")
       known_fcos = { "1004" => "sausar", "1006" => "turekela", "1095" => "pavijetpur" }
       canonical = known_fcos[fco] || fco.sub(/\Afco\s*-\s*c\s+/i, "").downcase
-      aliases = policy.send(:training_fcoc_filter_values, [fco, canonical, known_fcos.key(canonical)]).map { |v| v.to_s.strip.downcase }
-      farmers = farmers.where("LOWER(BTRIM(fco_id)) IN (:values) OR LOWER(BTRIM(fco)) IN (:values)", values: aliases)
       gender = gender.select { |row| policy.send(:training_fcoc_text_matches?, row[:fco], canonical) }
     end
     {
       source: "Signed-in user's dashboard", month: month,
       scope: "Visible records only. Gender counts are active JJ/VRPs, not farmers. JJ gender is scoped by FCO/month/user visibility (not ICS). Farmer totals are all-month visible totals; farmer FCO: #{fco.presence || 'all visible'}. ICS: #{@filters["ics"].presence || @filters["ics_name"].presence || 'all visible'}.",
       jj_gender_by_fco: gender,
-      farmers: farmers.count,
-      villages: farmers.where.not(village_id: [nil, ""]).distinct.count(:village_id),
-      ics: farmers.where.not(ics_id: [nil, ""]).distinct.count(:ics_id),
+      # Reuse the dashboard's own card queries. Counting the raw visible farmer
+      # scope here instead reported every AFL row -- including other FCOs and
+      # rows with no tracenet number -- so the assistant quoted totals far
+      # larger than the Dashboard Summary the user was looking at.
+      farmers: policy.send(:dashboard_total_afl_farmer_count),
+      villages: policy.send(:dashboard_total_afl_village_count),
+      ics: policy.send(:dashboard_total_afl_ics_count),
       modules: ModulesController::MODULES.map { |slug, definition| { slug: slug, title: definition[:title], purpose: definition[:purpose], fields: definition[:fields] } }
     }
   end
