@@ -956,7 +956,19 @@ class ModulesController < ApplicationController
     @training_selected_month = selected_month
     @training_selected_sub_activity = selected_sub_activity
     default_status_month = default_vrp_dashboard_month(@training_month_options, targets)
-    @participation_month_filter_value = @dashboard_month_filter_value.presence || default_status_month
+    # The top "Month" filter's "All Months" option submits month="" -- previously
+    # that blank value fell straight through to default_status_month below, so
+    # picking "All Months" had no effect here and silently showed one month's
+    # numbers. When the user has actually submitted the filter with "All Months"
+    # selected (the :month param key is present but blank), honor it as "all" so
+    # the Farmer Training Participation Status (red/yellow/green) boxes use the
+    # all-months query. Any other case (no :month param at all, or a specific
+    # month chosen) is unchanged.
+    @participation_month_filter_value = if params.key?(:month) && @dashboard_month_filter_value.blank?
+      "all"
+    else
+      @dashboard_month_filter_value.presence || default_status_month
+    end
     @participation_selected_month = @participation_month_filter_value == "all" ? nil : @participation_month_filter_value
     @participation_fcoc_filter_value = @dashboard_fcoc_filter_value.presence || dashboard_default_visible_fcoc(@filter_fcoc_options)
     @participation_week_filter_value = dashboard_filter_param(:weekly_target_week).to_i if dashboard_filter_param(:weekly_target_week).present?
@@ -6017,6 +6029,11 @@ class ModulesController < ApplicationController
   end
 
   def compute_farmer_training_no_training_count_and_popups(month_name:, fcoc_name:)
+    # "All Months" selected: run the simpler all-months red query below instead of
+    # silently defaulting to August. Every other (specific-month) path below is
+    # unchanged.
+    return compute_farmer_training_no_training_count_and_popups_all_months(fcoc_name: fcoc_name) if month_name.blank?
+
     selected_month = month_name.presence || "August"
     fco_ids = training_fcoc_ids_from_param(fcoc_name)
     fco_values = fco_ids.flat_map { |id| training_fcoc_filter_values(id) }.uniq.map(&:downcase)
@@ -6094,6 +6111,54 @@ class ModulesController < ApplicationController
     [total_count, popups, details]
   rescue StandardError => e
     Rails.logger.warn("No training count SQL failed: #{e.message}")
+    [0, format_fco_popups([], fco_ids, "red_farmer_count"), []]
+  end
+
+  # "All Months" red count: a farmer is red here only when they have never been
+  # entered into any Farmers' Training record, across any month -- the simpler
+  # all-months definition (no per-month mapping breakdown, since mapping is tied
+  # to one month and "all months" has no single month to break it down against).
+  def compute_farmer_training_no_training_count_and_popups_all_months(fcoc_name:)
+    fco_ids = training_fcoc_ids_from_param(fcoc_name)
+    fco_filter_sql = "AND LOWER(BTRIM(a.fco_id)) IN (:fco_ids)"
+
+    sql = <<~SQL.squish
+      WITH august_training_done AS (
+          SELECT DISTINCT sf.farmer_id
+          FROM public.module_records mr
+          CROSS JOIN LATERAL jsonb_array_elements_text(
+              COALESCE(
+                  mr.data::jsonb -> 'selected_farmer_ids',
+                  '[]'::jsonb
+              )
+          ) AS sf(farmer_id)
+          WHERE mr.module_slug = 'training-form'
+            AND LOWER(COALESCE(mr.data::jsonb ->> 'main_activity', '')) LIKE '%farmers'' training%'
+      )
+      SELECT
+          a.fco_id,
+          COALESCE(MAX(NULLIF(BTRIM(a.fco), '')), a.fco_id) AS fco_name,
+          COUNT(DISTINCT a.id) AS red_farmer_count
+      FROM public.afls a
+      LEFT JOIN august_training_done td ON td.farmer_id = a.id::text
+      WHERE td.farmer_id IS NULL
+        #{fco_filter_sql}
+      GROUP BY a.fco_id
+      ORDER BY a.fco_id;
+    SQL
+
+    binds = { fco_ids: fco_ids.map(&:downcase) }
+    rows = ActiveRecord::Base.connection.exec_query(
+      ActiveRecord::Base.send(:sanitize_sql_array, [dashboard_scoped_training_sql(sql), binds])
+    ).to_a
+
+    total_count = rows.sum { |r| r["red_farmer_count"].to_i }
+    popups = format_fco_popups(rows, fco_ids, "red_farmer_count")
+    details = format_red_fco_details(rows, fco_ids)
+
+    [total_count, popups, details]
+  rescue StandardError => e
+    Rails.logger.warn("No training count (all months) SQL failed: #{e.message}")
     [0, format_fco_popups([], fco_ids, "red_farmer_count"), []]
   end
 
@@ -6176,9 +6241,16 @@ class ModulesController < ApplicationController
   def farmer_training_attendance_counts_by_fco(month_name:, fcoc_name:)
     @farmer_training_attendance_counts_by_fco ||= {}
     fco_ids = training_fcoc_ids_from_param(fcoc_name).map(&:downcase)
-    month = normalize_dashboard_text(month_name.presence || "August")
-    key = [month, fco_ids.sort, selected_participation_sql_week]
+    # "All Months" selected: drop the month filter (and the week filter, which is
+    # only meaningful within one month) so yellow/green are computed across every
+    # month's training entries, instead of silently defaulting to August.
+    all_months = month_name.blank?
+    month = all_months ? nil : normalize_dashboard_text(month_name.presence || "August")
+    key = [month, fco_ids.sort, all_months ? nil : selected_participation_sql_week]
     return @farmer_training_attendance_counts_by_fco[key] if @farmer_training_attendance_counts_by_fco.key?(key)
+
+    month_filter_sql = all_months ? "" : "AND LOWER(TRIM(mr.data::jsonb ->> 'month')) = :month_name"
+    week_filter_sql = all_months ? "" : training_participation_week_filter_sql(selected_participation_sql_week)
 
     sql = <<~SQL
       WITH attendance AS MATERIALIZED (
@@ -6188,8 +6260,8 @@ class ModulesController < ApplicationController
           COALESCE(mr.data::jsonb -> 'selected_farmer_ids', '[]'::jsonb)
         ) AS sf(farmer_id)
         WHERE mr.module_slug = 'training-form'
-          AND LOWER(TRIM(mr.data::jsonb ->> 'month')) = :month_name
-          #{training_participation_week_filter_sql(selected_participation_sql_week)}
+          #{month_filter_sql}
+          #{week_filter_sql}
           AND LOWER(COALESCE(mr.data::jsonb ->> 'main_activity', '')) LIKE '%farmers'' training%'
         GROUP BY sf.farmer_id
       )
@@ -6203,8 +6275,10 @@ class ModulesController < ApplicationController
       GROUP BY a.fco_id
       ORDER BY a.fco_id
     SQL
+    binds = { fco_ids: fco_ids }
+    binds[:month_name] = month unless all_months
     @farmer_training_attendance_counts_by_fco[key] = ActiveRecord::Base.connection.exec_query(
-      ActiveRecord::Base.send(:sanitize_sql_array, [dashboard_scoped_training_sql(sql), { month_name: month, fco_ids: fco_ids }])
+      ActiveRecord::Base.send(:sanitize_sql_array, [dashboard_scoped_training_sql(sql), binds])
     ).to_a
   end
 
@@ -6748,7 +6822,13 @@ class ModulesController < ApplicationController
       text = value.to_s.strip
       next if text.blank?
 
-      short_name = text.sub(/\Afco\s*-\s*c\s+/i, "").strip
+      # Office names are inconsistent: Sausar/Turekela are stored as "FCO-C Sausar"
+      # but Pavijetpur is stored as "FCO-Pavijetpur" (no "C"). The "C" used to be
+      # required, so "FCO-Pavijetpur" never stripped down to "Pavijetpur" and could
+      # never match the plain "Pavijetpur" filter value -- Gender Count and other
+      # FCO-scoped dashboard boxes silently returned 0 for Pavijetpur. Make the "C"
+      # optional so both naming styles strip to the same office name.
+      short_name = text.sub(/\Afco\s*-\s*(c\s+)?/i, "").strip
       [text, short_name]
     end.flatten.map { |value| normalize_dashboard_text(value) }.reject(&:blank?).uniq
   end
@@ -9719,7 +9799,7 @@ class ModulesController < ApplicationController
   end
 
   def screen_limited_module_records?
-    request.format.html? &&
+    request.present? && request.format.html? &&
       params[:all].blank? &&
       @record.blank? &&
       @slug == "training-form-list"
