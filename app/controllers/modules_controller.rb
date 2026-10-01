@@ -2107,27 +2107,83 @@ class ModulesController < ApplicationController
     end.map(&:activity_name).uniq.compact_blank.sort
   end
 
-  def dashboard_other_activity_totals(targets)
-    rows = dashboard_other_activity_rows(targets)
-    activities = rows.filter_map { |row| row["main_activity_name"].presence }.uniq
-    achievement_farmer = rows.sum { |row| row["achievement_farmer"].to_i }
-    mapped_farmer_by_activity = rows.each_with_object(Hash.new(0)) do |row, memo|
-      activity = row["main_activity_name"].presence
-      memo[activity] += row["mapped_farmer"].to_i if activity
+  # Main Major Work Indicator - Other. The box and its list both read the saved
+  # Other Target entries: target and achievement are summed from those entries,
+  # and the hover popup breaks them down per FCO. Only this panel uses them.
+  def dashboard_other_activity_totals(_targets = nil)
+    rows = dashboard_other_target_entry_rows
+    target = rows.sum { |row| row["target"].to_f }
+    achievement = rows.sum { |row| row["achievement"].to_f }
+    activities = rows.filter_map { |row| row["main_activity"].presence }.uniq
+    by_fco = rows.each_with_object(Hash.new { |hash, key| hash[key] = [0.0, 0.0] }) do |row, memo|
+      fco = row["fco_name"].presence || "-"
+      memo[fco][0] += row["target"].to_f
+      memo[fco][1] += row["achievement"].to_f
     end
-    # A farmer mapped to two Other activities counts once on the card but twice
-    # in the per-activity totals, so the card and the ratio use different bases.
-    mapped_farmer = rows.first&.[]("distinct_mapped_farmer").to_i
-    mapped_farmer_sum = mapped_farmer_by_activity.values.sum
 
     {
       main_major_work_indicator: activities.size,
-      mapped_farmer: mapped_farmer,
-      achievement_farmer: achievement_farmer,
-      pending_farmer: rows.sum { |row| row["pending_farmer"].to_i },
-      achieved: mapped_farmer_sum.positive? ? (achievement_farmer * 100.0 / mapped_farmer_sum).round(2) : 0,
-      main_major_work_indicator_popups: activities.map { |activity| "#{activity} = #{mapped_farmer_by_activity[activity]}" }
+      mapped_farmer: dashboard_amount_text(target),
+      achievement_farmer: dashboard_amount_text(achievement),
+      pending_farmer: dashboard_amount_text([target - achievement, 0].max),
+      achieved: target.positive? ? (achievement * 100.0 / target).round(2) : 0,
+      main_major_work_indicator_popups: by_fco.sort.map do |fco, (fco_target, fco_achievement)|
+        "#{fco} = #{dashboard_amount_text(fco_achievement)}/#{dashboard_amount_text(fco_target)}"
+      end
     }
+  end
+
+  # Whole numbers stay whole; only genuine fractions keep decimals.
+  def dashboard_amount_text(value)
+    value.to_f == value.to_f.round ? value.to_f.round : value.to_f.round(2)
+  end
+
+  # Saved Other Target entries for the selected month and FCO. Used only by the
+  # "Main Major Work Indicator - Other" box; the mobile other_activities list
+  # still uses dashboard_other_activity_rows.
+  def dashboard_other_target_entry_rows
+    return [] unless model_ready?(:ModuleRecord)
+
+    conditions = ["module_slug = 'other-target'"]
+    binds = {}
+
+    month = normalize_dashboard_text(@dashboard_month_filter_value)
+    if month.present?
+      conditions << "LOWER(BTRIM(data::jsonb->>'month')) = :month"
+      binds[:month] = month
+    end
+
+    # Always limited to the three project FCOs -- 1004 Sausar, 1006 Turekela,
+    # 1095 Pavijetpur -- and narrowed to one when the dashboard has an FCO
+    # selected. The name is stored both as "Sausar" and "FCO-C Sausar", so match
+    # the prefix-stripped form as well as the raw one.
+    selected_fco = dashboard_filter_param(:fcoc, :fco).presence || @dashboard_fcoc_filter_value
+    conditions << <<~COND.squish
+      (LOWER(BTRIM(REGEXP_REPLACE(COALESCE(data::jsonb->>'fcoc_name', ''), '^fco[- ]*c?[- ]*', '', 'i'))) IN (:fco_values)
+        OR LOWER(BTRIM(COALESCE(data::jsonb->>'fcoc_name', ''))) IN (:fco_values))
+    COND
+    binds[:fco_values] = dashboard_summary_fco_filter_values(selected_fco)
+
+    sql = <<~SQL.squish
+      SELECT data::jsonb->>'fcoc_name' AS fco_name,
+             data::jsonb->>'main_activity' AS main_activity,
+             data::jsonb->>'sub_activity' AS sub_activity,
+             COALESCE(NULLIF(BTRIM(data::jsonb->>'target'), '')::numeric, 0) AS target,
+             COALESCE(NULLIF(BTRIM(data::jsonb->>'achievement'), '')::numeric, 0) AS achievement,
+             COALESCE(NULLIF(BTRIM(data::jsonb->>'approval_status'), ''),
+                      NULLIF(BTRIM(data::jsonb->>'status'), ''), '-') AS status,
+             data::jsonb->>'target_mapping_id' AS target_mapping_id
+      FROM module_records
+      WHERE #{conditions.join(' AND ')}
+      ORDER BY 1, 2, 3
+    SQL
+
+    ActiveRecord::Base.connection.exec_query(
+      ActiveRecord::Base.send(:sanitize_sql_array, [sql, binds])
+    ).to_a
+  rescue StandardError => e
+    Rails.logger.warn("Other target entry rows failed: #{e.class} - #{e.message}")
+    []
   end
 
   # Main Major Work Indicator - Other: use the reporting query directly so

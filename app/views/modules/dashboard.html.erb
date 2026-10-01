@@ -524,7 +524,19 @@
       <div class="module-card-header"><h2><%= main_activity_filter_value.presence || "Activity" %> — <%= @dashboard_month_filter_value.presence || "All Months" %></h2></div>
       <div class="training-participation-boxes dashboard-summary-boxes">
         <% { main_major_work_indicator: "Main Major Work Indicator", mapped_farmer: "Targeted Farmer", achievement_farmer: "Achievement Farmer", pending_farmer: "Pending Farmer", achieved: "Achieved (%)" }.each do |key, label| %>
-          <div class="training-participation-box total dashboard-summary-box"><span><%= label %></span><strong><%= key == :achieved ? "#{@dashboard_other_activity_totals[key].to_f.round(2)}%" : @dashboard_other_activity_totals[key] %></strong></div>
+          <div class="training-participation-box total dashboard-summary-box">
+            <span><%= label %></span>
+            <strong><%= key == :achieved ? "#{@dashboard_other_activity_totals[key].to_f.round(2)}%" : @dashboard_other_activity_totals[key] %></strong>
+            <%# This panel shows when the Main Activity filter is not Farmers' Training.
+                It needs the same per-FCO hover popup as the Farmers' Training one. %>
+            <% if key == :main_major_work_indicator && Array(@dashboard_other_activity_totals[:main_major_work_indicator_popups]).any? %>
+              <span class="dashboard-card-hover-popup" role="tooltip">
+                <% Array(@dashboard_other_activity_totals[:main_major_work_indicator_popups]).each do |item| %>
+                  <span><%= item %></span>
+                <% end %>
+              </span>
+            <% end %>
+          </div>
         <% end %>
       </div>
     </section>
