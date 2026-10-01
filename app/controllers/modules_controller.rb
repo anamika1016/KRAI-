@@ -40,6 +40,13 @@ class ModulesController < ApplicationController
 
   APPROVAL_REGISTRATION_MODULES = ["Farmer Registration", "VRP Registration", "Jeevika Jankar Registration"].freeze
   OTHER_TARGET_MODULE_SLUGS = ["seed-distribution-target", "papl360-target", "other-target"].freeze
+  # Column label => row key for the Main Major Work Indicator - Other list.
+  OTHER_INDICATOR_LIST_HEADERS = {
+    "Jeevika Jankar" => "jeevika_jankar_name", "FCO Name" => "fco_name",
+    "Month" => "month", "Main Major Work Indicator" => "main_activity",
+    "Sub Major Work Indicator" => "sub_activity", "Target" => "target",
+    "Achievement" => "achievement", "Status" => "status"
+  }.freeze
   # FCO offices shown in the dashboard's Gender Count and FCO-wise JJ Requirement
   # cards. Add a new office here and its boxes appear in both automatically.
   DASHBOARD_FCO_NAMES = %w[Sausar Turekela Pavijetpur].freeze
@@ -827,6 +834,26 @@ class ModulesController < ApplicationController
           send_xlsx(headers: DemonstrationMethodReport::EXPORT_HEADERS,
             rows: @demonstration_method_rows.map { |row| DemonstrationMethodReport::EXPORT_HEADERS.map { |key| row[key] } },
             filename: "demonstration-method.xlsx", sheet_name: "Demonstration Method")
+        end
+      end
+      return
+    end
+    # View List behind the "Main Major Work Indicator - Other" box: the saved
+    # Other Target entries the box totals, for the same month and FCO.
+    if params[:other_indicator_list] == "true"
+      @other_indicator_rows = dashboard_other_target_entry_rows
+      # Month dropdown comes from the Month Master, with any month that already
+      # has entries added so a saved record is never unreachable.
+      @other_indicator_month_options = (
+        month_master_month_options + @other_indicator_rows.filter_map { |row| row["month"].presence }
+      ).uniq { |month| normalize_dashboard_text(month) }.sort_by { |month| [dashboard_month_index(month) || 99, month] }
+      respond_to do |format|
+        format.html { render :other_indicator_list }
+        format.json { render json: { success: true, records: @other_indicator_rows, count: @other_indicator_rows.size } }
+        format.xlsx do
+          send_xlsx(headers: OTHER_INDICATOR_LIST_HEADERS.keys,
+            rows: @other_indicator_rows.map { |row| OTHER_INDICATOR_LIST_HEADERS.values.map { |key| row[key] } },
+            filename: "main-major-work-indicator-other.xlsx", sheet_name: "Other Indicator")
         end
       end
       return
@@ -2115,11 +2142,19 @@ class ModulesController < ApplicationController
     target = rows.sum { |row| row["target"].to_f }
     achievement = rows.sum { |row| row["achievement"].to_f }
     activities = rows.filter_map { |row| row["main_activity"].presence }.uniq
-    by_fco = rows.each_with_object(Hash.new { |hash, key| hash[key] = [0.0, 0.0] }) do |row, memo|
-      fco = row["fco_name"].presence || "-"
-      memo[fco][0] += row["target"].to_f
-      memo[fco][1] += row["achievement"].to_f
+    by_fco = {}
+    rows.each do |row|
+      key = dashboard_bare_fco_name(row["fco_name"])
+      totals = by_fco[key] ||= [0.0, 0.0]
+      totals[0] += row["target"].to_f
+      totals[1] += row["achievement"].to_f
     end
+
+    # The breakdown always lists every project FCO, including ones with nothing
+    # recorded yet. Grouping only what exists made "All FCO" show a single FCO,
+    # which reads as a filter bug rather than as missing data.
+    selected_fco = dashboard_filter_param(:fcoc, :fco)
+    listed_fcos = selected_fco.present? ? [selected_fco.to_s.sub(/\Afco\s*-?\s*c?\s*/i, "").strip] : DASHBOARD_FCO_NAMES
 
     {
       main_major_work_indicator: activities.size,
@@ -2127,10 +2162,16 @@ class ModulesController < ApplicationController
       achievement_farmer: dashboard_amount_text(achievement),
       pending_farmer: dashboard_amount_text([target - achievement, 0].max),
       achieved: target.positive? ? (achievement * 100.0 / target).round(2) : 0,
-      main_major_work_indicator_popups: by_fco.sort.map do |fco, (fco_target, fco_achievement)|
-        "#{fco} = #{dashboard_amount_text(fco_achievement)}/#{dashboard_amount_text(fco_target)}"
+      main_major_work_indicator_popups: listed_fcos.map do |name|
+        fco_target, fco_achievement = by_fco.fetch(dashboard_bare_fco_name(name), [0.0, 0.0])
+        "#{name} = #{dashboard_amount_text(fco_achievement)}/#{dashboard_amount_text(fco_target)}"
       end
     }
+  end
+
+  # "FCO-C Sausar" and "Sausar" are the same office; compare on the bare name.
+  def dashboard_bare_fco_name(value)
+    normalize_dashboard_text(value.to_s.sub(/\Afco\s*-?\s*c?\s*/i, ""))
   end
 
   # Whole numbers stay whole; only genuine fractions keep decimals.
@@ -2165,7 +2206,9 @@ class ModulesController < ApplicationController
     binds[:fco_values] = dashboard_summary_fco_filter_values(selected_fco)
 
     sql = <<~SQL.squish
-      SELECT data::jsonb->>'fcoc_name' AS fco_name,
+      SELECT data::jsonb->>'jeevika_jankar_name' AS jeevika_jankar_name,
+             data::jsonb->>'fcoc_name' AS fco_name,
+             data::jsonb->>'month' AS month,
              data::jsonb->>'main_activity' AS main_activity,
              data::jsonb->>'sub_activity' AS sub_activity,
              COALESCE(NULLIF(BTRIM(data::jsonb->>'target'), '')::numeric, 0) AS target,
@@ -2175,7 +2218,7 @@ class ModulesController < ApplicationController
              data::jsonb->>'target_mapping_id' AS target_mapping_id
       FROM module_records
       WHERE #{conditions.join(' AND ')}
-      ORDER BY 1, 2, 3
+      ORDER BY 2, 1, 4, 5
     SQL
 
     ActiveRecord::Base.connection.exec_query(

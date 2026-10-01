@@ -153,6 +153,7 @@ Rails.application.routes.draw do
   get "dashboard/cc-target-status", to: "modules#cc_target_status_list", as: :cc_target_status_list
   get "dashboard/demonstration-method", to: "modules#dashboard", defaults: { demonstration_list: "true" }, as: :demonstration_method_list
   get "dashboard/demonstration-method/farmers", to: "modules#demonstration_method_farmers", as: :demonstration_method_farmers
+  get "dashboard/other-indicator", to: "modules#dashboard", defaults: { other_indicator_list: "true" }, as: :other_indicator_list
   get "dashboard/vrp-list/:list_type", to: "modules#vrp_dashboard_list", as: :vrp_dashboard_list
   delete "dashboard/vrp-mapped-villages/:id", to: "modules#destroy_vrp_mapped_village", as: :destroy_vrp_mapped_village
   get "dashboard/farmer-training-participation", to: "modules#farmer_training_participation", as: :farmer_training_participation

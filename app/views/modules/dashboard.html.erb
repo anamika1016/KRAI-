@@ -121,6 +121,7 @@
           <div>
             <h2>Main Major Work Indicator - Other</h2>
           </div>
+          <%= link_to "View List", other_indicator_list_path(request.query_parameters), class: "table-action" %>
         </div>
 
         <div class="training-participation-boxes dashboard-summary-boxes demonstration-method-boxes">
@@ -521,7 +522,10 @@
     <%= render "farmer_training_dashboard" %>
   <% elsif @dashboard_other_activity_totals.present? %>
     <section class="module-card dashboard-summary-panel">
-      <div class="module-card-header"><h2><%= main_activity_filter_value.presence || "Activity" %> — <%= @dashboard_month_filter_value.presence || "All Months" %></h2></div>
+      <div class="module-card-header">
+        <h2><%= main_activity_filter_value.presence || "Activity" %> — <%= @dashboard_month_filter_value.presence || "All Months" %></h2>
+        <%= link_to "View List", other_indicator_list_path(request.query_parameters), class: "table-action" %>
+      </div>
       <div class="training-participation-boxes dashboard-summary-boxes">
         <% { main_major_work_indicator: "Main Major Work Indicator", mapped_farmer: "Targeted Farmer", achievement_farmer: "Achievement Farmer", pending_farmer: "Pending Farmer", achieved: "Achieved (%)" }.each do |key, label| %>
           <div class="training-participation-box total dashboard-summary-box">
@@ -562,6 +566,7 @@
       <section class="module-card training-participation-status-card dashboard-status-panel dashboard-summary-panel demonstration-method-panel" id="other_major_work_indicator_boxes" style="margin-top: 20px;">
         <div class="module-card-header training-participation-status-header">
           <h2>Main Major Work Indicator - Other</h2>
+          <%= link_to "View List", other_indicator_list_path(request.query_parameters), class: "table-action" %>
         </div>
         <div class="training-participation-boxes dashboard-summary-boxes demonstration-method-boxes">
           <div class="training-participation-box total dashboard-summary-box">

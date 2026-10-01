@@ -24,9 +24,15 @@ class OtherIndicatorBoxTest < ActiveSupport::TestCase
     assert_equal (70 * 100.0 / 136).round(2), totals(month: "September")[:achieved]
   end
 
-  test "the popup breaks the totals down per FCO" do
-    assert_equal ["Sausar = 30/36", "Turekela = 40/100"],
-                 totals(month: "September")[:main_major_work_indicator_popups]
+  test "the popup lists every project FCO, zero included" do
+    assert_equal ["Sausar = 30/36", "Turekela = 40/100", "Pavijetpur = 0/0"],
+                 totals(month: "September")[:main_major_work_indicator_popups],
+                 "All FCO must list 1004, 1006 and 1095 even when one has no entries"
+  end
+
+  test "selecting one FCO shows only that FCO in the popup" do
+    assert_equal ["Sausar = 30/36"],
+                 totals(month: "September", fcoc: "FCO-C Sausar")[:main_major_work_indicator_popups]
   end
 
   test "the month filter is honoured" do
@@ -67,7 +73,7 @@ class OtherIndicatorBoxTest < ActiveSupport::TestCase
     rows = controller(month: "September").send(:dashboard_other_target_entry_rows)
 
     assert_equal 2, rows.size
-    assert_equal %w[fco_name main_activity sub_activity target achievement status target_mapping_id].sort,
+    assert_equal %w[jeevika_jankar_name fco_name month main_activity sub_activity target achievement status target_mapping_id].sort,
                  rows.first.keys.sort
   end
 
