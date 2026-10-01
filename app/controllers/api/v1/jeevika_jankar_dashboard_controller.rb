@@ -639,7 +639,9 @@ module Api
           ])
         ]
         user_key = current_api_user_payload.slice("id", "user_id", "username", "user_name", "user_type").sort.to_h
-        ["api-v1-admin-dashboard-work-status-v11", Date.current.to_s, suffix, user_key, filters, version_parts].to_json
+        # Keep the API cache namespace aligned with dashboard scope changes so
+        # an old zero-result response is never returned after deployment.
+        ["api-v1-admin-dashboard-work-status-v12", Date.current.to_s, suffix, user_key, filters, version_parts].to_json
       end
 
       def admin_dashboard_cache_filters

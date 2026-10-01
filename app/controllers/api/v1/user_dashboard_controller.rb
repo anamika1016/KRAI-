@@ -482,7 +482,10 @@ module Api
         ]
         filters = admin_dashboard_cache_filters
         user_key = current_api_user_payload.sort.to_h
-        ["api-v1-user-dashboard-office-v13", Date.current.to_s, user_key, filters, version_parts].to_json
+        # Bump this namespace whenever the dashboard scope calculation changes.
+        # Otherwise a previously cached empty payload can outlive a deployment
+        # even though the underlying TargetMapping records are available.
+        ["api-v1-user-dashboard-office-v14", Date.current.to_s, user_key, filters, version_parts].to_json
       end
 
       def cache_table_version(model)
