@@ -1843,13 +1843,70 @@ function initDeferredLayoutPage() {
     refreshClusterIncharges();
   });
 
-  document.addEventListener("change", (event) => {
+  // Phone cameras produce 3-8 MB photos, which are over the 5 MB per-photo
+  // limit enforced below. The size check then cleared the input, and because
+  // the training photo fields are `required`, the browser silently refused to
+  // submit the whole form -- so a training form filled in on a phone never
+  // reached the server at all, while desktop uploads (small scanned files)
+  // went through. Downscale photos in the browser first so they fit, which
+  // also keeps the multipart body small enough for the web server's own
+  // upload limit and makes uploading over mobile data far quicker.
+  const MAX_IMAGE_DIMENSION = 1600;
+  const IMAGE_QUALITY = 0.82;
+
+  const compressImageFile = (file) => new Promise((resolve) => {
+    // Anything we cannot safely re-encode (PDF, HEIC a browser cannot decode,
+    // an unsupported codec) resolves to the untouched original.
+    if (!file.type || !file.type.startsWith("image/") || typeof DataTransfer === "undefined") {
+      resolve(file);
+      return;
+    }
+
+    let objectUrl;
+    try {
+      objectUrl = URL.createObjectURL(file);
+    } catch (_error) {
+      resolve(file);
+      return;
+    }
+
+    const image = new Image();
+    const finish = (result) => {
+      URL.revokeObjectURL(objectUrl);
+      resolve(result);
+    };
+
+    image.onerror = () => finish(file);
+    image.onload = () => {
+      try {
+        const scale = Math.min(1, MAX_IMAGE_DIMENSION / Math.max(image.width, image.height));
+        const canvas = document.createElement("canvas");
+        canvas.width = Math.max(1, Math.round(image.width * scale));
+        canvas.height = Math.max(1, Math.round(image.height * scale));
+        canvas.getContext("2d").drawImage(image, 0, 0, canvas.width, canvas.height);
+        canvas.toBlob((blob) => {
+          // Keep the original whenever re-encoding failed or did not help.
+          if (!blob || blob.size >= file.size) {
+            finish(file);
+            return;
+          }
+          const name = `${file.name.replace(/\.[^.]+$/, "")}.jpg`;
+          finish(new File([blob], name, { type: "image/jpeg", lastModified: Date.now() }));
+        }, "image/jpeg", IMAGE_QUALITY);
+      } catch (_error) {
+        finish(file);
+      }
+    };
+    image.src = objectUrl;
+  });
+
+  document.addEventListener("change", async (event) => {
     const input = event.target;
     if (!input || !(input instanceof HTMLInputElement) || input.type !== "file") return;
 
     const maxSizeMb = Number(input.dataset.maxSizeMb || 0);
     const maxFiles = Number(input.dataset.maxFiles || 0);
-    const files = Array.from(input.files || []);
+    let files = Array.from(input.files || []);
     if (files.length === 0) return;
 
     if (input.dataset.pdfOnly === "true") {
@@ -1867,6 +1924,24 @@ function initDeferredLayoutPage() {
       return;
     }
 
+    // Shrink oversized photos instead of rejecting them. Assigning to
+    // input.files does not re-fire `change`, so this cannot loop.
+    if (maxSizeMb > 0 && files.some((file) => file.size > maxSizeMb * 1024 * 1024)) {
+      input.dataset.compressing = "true";
+      try {
+        const compressed = await Promise.all(files.map(compressImageFile));
+        const transfer = new DataTransfer();
+        compressed.forEach((file) => transfer.items.add(file));
+        input.files = transfer.files;
+        files = Array.from(input.files || []);
+      } catch (_error) {
+        // Leave the originally selected files in place; the size check below
+        // still protects the upload.
+      } finally {
+        delete input.dataset.compressing;
+      }
+    }
+
     if (maxSizeMb > 0) {
       const oversizedFiles = files.filter((file) => file.size > maxSizeMb * 1024 * 1024);
       if (oversizedFiles.length > 0) {
@@ -1879,6 +1954,14 @@ function initDeferredLayoutPage() {
   document.addEventListener("submit", (event) => {
     const form = event.target;
     if (!form || !(form instanceof HTMLFormElement)) return;
+
+    // Submitting while a photo is still being downscaled would send the
+    // original oversized file, so hold the submit until it finishes.
+    if (form.querySelector("input[type='file'][data-compressing='true']")) {
+      event.preventDefault();
+      window.alert("Photos taiyaar ho rahi hain, ek pal rukein aur phir Save karein.");
+      return false;
+    }
 
     const fileInputs = form.querySelectorAll("input[type='file'][data-max-files]");
     for (const input of fileInputs) {
@@ -2182,6 +2265,14 @@ function initDeferredLayoutPage() {
 	    let subActivityChips = null;
 	    if (subActivitySelect) {
 	      subActivitySelect.classList.add("training-sub-activity-native");
+	      // Once clipped to 1x1 the browser cannot focus this control, so a
+	      // `required` miss aborts submit without reporting anything -- the form
+	      // just looks frozen, which is what mobile users hit. Carry the rule in
+	      // a data attribute and enforce it ourselves with a visible message.
+	      if (subActivitySelect.required) {
+	        subActivitySelect.dataset.requiredWhenHidden = "true";
+	        subActivitySelect.required = false;
+	      }
 	      subActivityChips = document.createElement("div");
 	      subActivityChips.className = "training-sub-activity-chips";
 	      subActivityChips.setAttribute("aria-live", "polite");
@@ -2343,6 +2434,16 @@ function initDeferredLayoutPage() {
         return;
       }
       applyMappedSelection(subActivitySelect, mappedOptions);
+      // This select is required but clipped to 1x1, and its chips are the only
+      // UI -- there is no way for anyone to tick a value by hand. Leaving it
+      // empty makes the browser refuse to submit without reporting anything, so
+      // the form just looks frozen. Once a Main Activity is chosen, fall back to
+      // whatever the control actually offers. A blank form still selects
+      // nothing, because the guard above returns before reaching here.
+      if (!selectedSubActivityValues().length) {
+        Array.from(subActivitySelect.options).forEach((option) => { option.selected = Boolean(option.value); });
+        subActivitySelect.dataset.selectedValues = JSON.stringify(selectedSubActivityValues());
+      }
       renderSubActivityChips();
     };
 
@@ -2880,6 +2981,15 @@ function initDeferredLayoutPage() {
     formShell.querySelector("form")?.addEventListener("submit", (event) => {
       if (!validateTrainingCountSplit(true)) {
         event.preventDefault();
+        return;
+      }
+
+      // Sub Activity is required but hidden behind its chips, so the browser
+      // cannot report it. Say what is missing instead of dying silently.
+      if (subActivitySelect?.dataset.requiredWhenHidden === "true" && !selectedSubActivityValues().length) {
+        event.preventDefault();
+        window.alert("Sub Major Work Indicator select karein. Pehle Month, ICS, Gram aur Main Major Work Indicator chunein.");
+        (subActivityChips || subActivitySelect).scrollIntoView({ block: "center", behavior: "smooth" });
         return;
       }
 
