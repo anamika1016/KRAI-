@@ -74,11 +74,39 @@ class FcoDirectory
   # The spellings equivalent to one filter value. Returns [] for a value that is
   # not a configured office, so callers fall back to their own handling.
   def self.aliases_for(value)
-    bare = bare_name(value).downcase
-    office = offices.find do |candidate|
-      [candidate[:name], candidate[:afl_name], candidate[:id]].compact.any? { |other| bare_name(other).downcase == bare }
-    end
+    office = office_for(value)
     office ? aliases_for_office(office) : []
+  end
+
+  # Return the configured Office Setup FCO-C behind any of its stored forms.
+  # For example, a row stored as `1095` or `Pavijetpur` can still belong to the
+  # `Direct to HO` FCO-C card.  This keeps the display label and the data source
+  # separate instead of hardcoding a special case for one office.
+  def self.office_for(value)
+    bare = bare_name(value).downcase
+    return nil if bare.blank?
+
+    offices.find do |candidate|
+      aliases_for_office(candidate).any? { |other| bare_name(other).downcase == bare }
+    end
+  end
+
+  # The label the dashboard/API should expose for a value filed under an FCO.
+  # Unconfigured values retain their original name so new AFL FCOs continue to
+  # show automatically.
+  def self.display_name_for(value)
+    office_for(value)&.dig(:name).presence || bare_name(value)
+  end
+
+  # The data name used by an Office Setup FCO-C. Kept public for dashboard
+  # queries which must count the mapped sub-office rows.
+  def self.canonical_name(value)
+    office = office_for(value)
+    return nil unless office
+
+    office[:afl_name] if [office[:name], office[:raw_name]].compact.any? do |name|
+      bare_name(name).casecmp?(bare_name(value))
+    end
   end
 
   def self.aliases_for_office(office)
@@ -179,9 +207,19 @@ class FcoDirectory
     name = bare_name(raw)
     return nil if junk?(name)
 
-    # An office named after a real FCO resolves to itself; otherwise it reports
-    # through whichever sub office it was mapped to.
-    afl_name = id_by_name.key?(name.downcase) ? name : sub_offices[name.downcase]
+    # Prefer an explicit FCO id when Office Setup supplied one and it exists in
+    # the farmer/target data. Otherwise an FCO-C reports through its mapped TO
+    # office. This makes a future 0195 mapping live without a code release,
+    # while the current Direct-to-HO -> TO-Pavijetpur mapping still counts 1095.
+    configured_id = %w[fco_id fcoc_id office_id].filter_map { |key| data[key].to_s.strip.presence }.first
+    explicit_name = configured_id.present? ? name_for(configured_id) : nil
+    afl_name = if configured_id.present? && name_by_id.key?(configured_id)
+                 explicit_name
+               elsif id_by_name.key?(name.downcase)
+                 name
+               else
+                 sub_offices[name.downcase]
+               end
     { id: afl_name.present? ? id_for(afl_name).to_s : "", name: name, raw_name: raw, afl_name: afl_name }
   end
   private_class_method :build_office

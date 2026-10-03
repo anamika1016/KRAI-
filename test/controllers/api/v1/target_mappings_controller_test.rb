@@ -88,12 +88,18 @@ class Api::V1::TargetMappingsControllerTest < ActionDispatch::IntegrationTest
 
   test "raw mode remains available for consumers that need individual mappings" do
     mapping = create_mapping(main: "Farmers' Training", sub: "Soil", farmers: [@farmer_1])
+    @vrp.update!(cluster_incharge: "Mapping CC")
+    mapping.update!(cc_target: 7)
 
     get "/api/v1/target-mappings/recent", params: { month: "August", summary_mode: "raw" }, headers: @headers, as: :json
 
     assert_response :success
     assert_equal "raw", response.parsed_body["summary_mode"]
-    assert_equal mapping.id, response.parsed_body["records"].first["id"]
+    record = response.parsed_body["records"].first
+    assert_equal mapping.id, record["id"]
+    assert_equal "Mapping CC", record["cc_name"]
+    assert_equal "Mapping CC", record["cluster_incharge"]
+    assert_equal 7, record["cc_target"]
   end
 
   test "raw recent list treats All month as every visible saved mapping" do

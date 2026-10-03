@@ -95,15 +95,20 @@ class OfficeDashboardCalculator < ModulesController
   end
 
   def dashboard_report_fco_names(vrps, targets)
-    names = dashboard_fco_names(vrps)
+    # Office Setup is the source of the card label. A Direct-to-HO FCO-C can
+    # report through Pavijetpur's numeric rows, but it must be shown as Direct
+    # to HO in the API instead of creating a duplicate Pavijetpur card.
+    names = FcoDirectory.names + dashboard_fco_names(vrps)
     Array(targets).each do |target|
       name = target.fco_name.to_s.squish.presence || target.fco_id.to_s.squish.presence || target.vrp&.fcoc.to_s.squish.presence
       next if name.blank?
 
-      name = name.sub(/\Afco\s*(?:-\s*c)?\s*[-:]?\s*/i, "").squish
+      name = FcoDirectory.display_name_for(name)
       names << name if name.present?
     end
-    names.uniq { |name| normalize_dashboard_text(name) }.sort_by { |name| normalize_dashboard_text(name) }
+    names.map { |name| FcoDirectory.display_name_for(name) }
+      .uniq { |name| normalize_dashboard_text(name) }
+      .sort_by { |name| normalize_dashboard_text(name) }
   end
 
   # AFL uses numeric IDs/plain names, while JJ records also use FCO-Pavijetpur.

@@ -4420,16 +4420,10 @@ class ModulesController < ApplicationController
     return 0 if fco_name_or_id.blank?
 
     selected_month = month_name.presence || "August"
-    normalized = normalize_dashboard_text(fco_name_or_id)
-    fco_conditions = if normalized.include?("1004") || normalized.include?("sausar")
-                       "(LOWER(TRIM(t.fco_id)) IN ('1004', 'sausar') OR LOWER(TRIM(t.fco_name)) LIKE '%sausar%')"
-                     elsif normalized.include?("1006") || normalized.include?("turekela")
-                       "(LOWER(TRIM(t.fco_id)) IN ('1006', 'turekela') OR LOWER(TRIM(t.fco_name)) LIKE '%turekela%')"
-                     elsif normalized.include?("1095") || normalized.include?("pavijetpur")
-                       "(LOWER(TRIM(t.fco_id)) IN ('1095', 'pavijetpur') OR LOWER(TRIM(t.fco_name)) LIKE '%pavijetpur%')"
-                     else
-                       "(LOWER(TRIM(t.fco_id)) = :norm OR LOWER(TRIM(t.fco_name)) = :norm)"
-                     end
+    fco_values = training_fcoc_filter_values(fco_name_or_id)
+    fco_values << normalize_dashboard_text(fco_name_or_id)
+    fco_values = fco_values.compact_blank.uniq
+    fco_conditions = "(LOWER(TRIM(t.fco_id)) IN (:fco_values) OR LOWER(TRIM(t.fco_name)) IN (:fco_values))"
 
     sql = <<~SQL.squish
       SELECT COUNT(DISTINCT t.vrp_id) AS active_vrp_count
@@ -4439,7 +4433,7 @@ class ModulesController < ApplicationController
         AND t.vrp_id IS NOT NULL AND TRIM(t.vrp_id::text) != '';
     SQL
 
-    binds = { norm: normalized, month_name: selected_month.strip.downcase }
+    binds = { fco_values: fco_values, month_name: selected_month.strip.downcase }
     res = ActiveRecord::Base.connection.exec_query(
       ActiveRecord::Base.send(:sanitize_sql_array, [sql, binds])
     ).first
@@ -4479,16 +4473,10 @@ class ModulesController < ApplicationController
     return [] if fco_name_or_id.blank?
 
     selected_month = month_name.presence || "August"
-    normalized = normalize_dashboard_text(fco_name_or_id)
-    fco_conditions = if normalized.include?("1004") || normalized.include?("sausar")
-                       "(LOWER(TRIM(t.fco_id)) IN ('1004', 'sausar') OR LOWER(TRIM(t.fco_name)) LIKE '%sausar%')"
-                     elsif normalized.include?("1006") || normalized.include?("turekela")
-                       "(LOWER(TRIM(t.fco_id)) IN ('1006', 'turekela') OR LOWER(TRIM(t.fco_name)) LIKE '%turekela%')"
-                     elsif normalized.include?("1095") || normalized.include?("pavijetpur")
-                       "(LOWER(TRIM(t.fco_id)) IN ('1095', 'pavijetpur') OR LOWER(TRIM(t.fco_name)) LIKE '%pavijetpur%')"
-                     else
-                       "(LOWER(TRIM(t.fco_id)) = :norm OR LOWER(TRIM(t.fco_name)) = :norm)"
-                     end
+    fco_values = training_fcoc_filter_values(fco_name_or_id)
+    fco_values << normalize_dashboard_text(fco_name_or_id)
+    fco_values = fco_values.compact_blank.uniq
+    fco_conditions = "(LOWER(TRIM(t.fco_id)) IN (:fco_values) OR LOWER(TRIM(t.fco_name)) IN (:fco_values))"
 
     sql = <<~SQL.squish
       SELECT DISTINCT t.vrp_id
@@ -4498,7 +4486,7 @@ class ModulesController < ApplicationController
         AND t.vrp_id IS NOT NULL AND TRIM(t.vrp_id::text) != ''
     SQL
     ids = ActiveRecord::Base.connection.exec_query(
-      ActiveRecord::Base.send(:sanitize_sql_array, [sql, { norm: normalized, month_name: selected_month.strip.downcase }])
+      ActiveRecord::Base.send(:sanitize_sql_array, [sql, { fco_values: fco_values, month_name: selected_month.strip.downcase }])
     ).rows.flatten.compact
 
     if ids.present?
@@ -4521,7 +4509,7 @@ class ModulesController < ApplicationController
 
   def dashboard_jj_requirement_items(fco_name, vrps, targets = nil)
     normalized_fco = normalize_dashboard_text(fco_name)
-    fco_id = if normalized_fco.include?("1004") || normalized_fco.include?("sausar")
+    fco_id = FcoDirectory.office_for(fco_name)&.dig(:id).presence || FcoDirectory.id_for(fco_name).presence || if normalized_fco.include?("1004") || normalized_fco.include?("sausar")
                "1004"
              elsif normalized_fco.include?("1006") || normalized_fco.include?("turekela")
                "1006"
@@ -4539,7 +4527,12 @@ class ModulesController < ApplicationController
     elsif normalized_fco.include?("turekela") || fco_id == "1006"
       required_count = [24, active_count].max
     else
-      fco_targets    = Array(targets).select { |t| normalize_dashboard_text(t.fco_name).include?(normalized_fco) }
+      fco_aliases = FcoDirectory.aliases_for(fco_name).map { |value| normalize_dashboard_text(value) }
+      fco_aliases << normalized_fco
+      fco_targets = Array(targets).select do |target|
+        target_values = [target.fco_name, target.fco_id, target.vrp&.fcoc].compact.map { |value| normalize_dashboard_text(value) }
+        target_values.any? { |value| fco_aliases.include?(value) }
+      end
       req            = fco_targets.map { |t| normalize_dashboard_text(t.village_name) }.reject(&:blank?).uniq.size
       required_count = [req, active_count].max
     end

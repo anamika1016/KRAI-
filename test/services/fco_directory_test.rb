@@ -90,6 +90,19 @@ class FcoDirectoryTest < ActiveSupport::TestCase
     assert_nil FcoDirectory.canonical_name("1095")
   end
 
+  test "mapped sub-office values retain the Direct-to-HO dashboard label" do
+    farmer("1095", "Pavijetpur")
+    ModuleRecord.create!(module_slug: "office-mapping-add", data: {
+      "parent_category" => "FCO-C", "office_name" => "Direct to HO",
+      "sub_office_name" => "TO-Pavijetpur", "status" => "Active"
+    })
+    FcoDirectory.reset_cache!
+
+    assert_equal "Direct to HO", FcoDirectory.display_name_for("1095")
+    assert_equal "Direct to HO", FcoDirectory.display_name_for("Pavijetpur")
+    assert_includes FcoDirectory.aliases_for("Direct to HO"), "1095"
+  end
+
   test "an office mapped to something that is not an FCO is left alone" do
     farmer("1095", "Pavijetpur")
     ModuleRecord.create!(module_slug: "office-mapping-add", data: {
