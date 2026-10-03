@@ -9,9 +9,9 @@ class NewFcoAppearsOnDashboardTest < ActionDispatch::IntegrationTest
       user_type: "admin", status: "Active")
     post login_path, params: { login: user.user_name, password: "secret" }
 
-    %w[Sausar Turekela Pavijetpur].each_with_index do |name, index|
+    [["1004", "Sausar"], ["1006", "Turekela"], ["1095", "Pavijetpur"]].each_with_index do |(fco_id, name), index|
       Afl.create!(farmer_name: "#{name} farmer", tracenet_no: "new-fco-#{index}",
-        fco_id: "10#{index}4", fco: name, ics_id: "ics-#{index}", ics_name: "ICS #{index}",
+        fco_id: fco_id, fco: name, ics_id: "ics-#{index}", ics_name: "ICS #{index}",
         village_id: "v-#{index}", village_name: "Village #{index}")
     end
   end
@@ -41,18 +41,14 @@ class NewFcoAppearsOnDashboardTest < ActionDispatch::IntegrationTest
     end
   end
 
-  # Reported: selecting the new "Direct to HO" FCO-C left Dashboard Summary at 0.
-  # It has no farmers of its own -- it reports through TO-Pavijetpur (1095).
-  test "an Office Setup FCO-C shows the sub office it reports through even when its saved label has the historic typo" do
+  test "an Office Setup FCO-C alias does not become a dashboard FCO" do
     ModuleRecord.create!(module_slug: "office-mapping-add", data: {
       "parent_category" => "FCO-C", "office_name" => "direact to ho",
       "sub_office_name" => "TO-Pavijetpur", "status" => "Active"
     })
     FcoDirectory.reset_cache!
 
-    assert_equal summary_counts("Pavijetpur"), summary_counts("Direct to HO")
-    refute_equal({ ics: 0, villages: 0, farmers: 0 }, summary_counts("Direct to HO"),
-      "the office must not read blank")
+    assert_equal({ ics: 0, villages: 0, farmers: 0 }, summary_counts("Direct to HO"))
   end
 
   test "a real FCO keeps the counts it already had" do

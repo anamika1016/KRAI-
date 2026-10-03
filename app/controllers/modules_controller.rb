@@ -9880,6 +9880,10 @@ class ModulesController < ApplicationController
 
     return true if target_record_created_by_current_user?(record)
 
+    # Historical training rows do not always retain a VRP id.  An FCOC must
+    # still see every training record saved for that FCO, across all months.
+    return true if dashboard_source_fcoc_login? && target_record_fco_visible?(record)
+
     vrp = target_record_vrp_for_visibility(record)
     if vrp
       return true if jeevika_bill_vrp_registered_by_current_user?(vrp)
@@ -9890,6 +9894,20 @@ class ModulesController < ApplicationController
     return false unless module_mapped_vrp_scope_active?
 
     module_cluster_visible_vrps.any? { |visible_vrp| target_record_matches_vrp?(record, visible_vrp) }
+  end
+
+  def target_record_fco_visible?(record)
+    record_values = normalized_visibility_values(
+      record.data["fco_id"], record.data["fco_name"], record.data["fcoc"],
+      record.data["fcoc_name"], record.data["fco"], record.data["trainee_department"]
+    )
+    return false if record_values.blank?
+
+    user = current_app_user || {}
+    user_values = normalized_visibility_values(
+      user["fcoc"], user["fcoc_name"], user["office_name"], user["parent_office"], user["office"]
+    )
+    (record_values & user_values).any?
   end
 
   def target_record_vrp_for_visibility(record)
@@ -10222,10 +10240,18 @@ class ModulesController < ApplicationController
   end
 
   def module_record_attachment_files(record)
-    fields = %w[training_register_upload training_photo_upload_with_geo_tag]
+    fields = %w[
+      training_register_upload
+      training_photo_upload_with_geo_tag
+      photo_front_view
+      photo_back_view
+      photo_close_up_view
+      photo_long_shot
+    ]
 
     fields.flat_map do |field|
-      module_upload_public_urls(record.data[field]).filter_map do |url|
+      value = field == "photo_close_up_view" ? (record.data[field].presence || record.data["photo_close-up_view"]) : record.data[field]
+      module_upload_public_urls(value).filter_map do |url|
         module_upload_attachment_file(url)
       end
     end

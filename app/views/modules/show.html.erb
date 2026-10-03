@@ -1368,9 +1368,13 @@
             <input type="file" accept=".csv,.xlsx,.xls" data-import-file hidden>
           </label>
           <button type="button" class="list-btn upload" data-upload-selected>Upload</button>
-          <button type="button" class="list-btn export" data-export-table="<%= table_id %>">Export</button>
           <% if @slug == "training-form-list" %>
-            <%= link_to "Download Attachments", export_module_path(@slug, format: :zip), class: "list-btn export" %>
+            <%= link_to "Export", export_module_path(@slug, request.query_parameters.merge(format: :xlsx)), class: "list-btn export" %>
+          <% else %>
+            <button type="button" class="list-btn export" data-export-table="<%= table_id %>">Export</button>
+          <% end %>
+          <% if @slug == "training-form-list" %>
+            <%= link_to "Download Attachments", export_module_path(@slug, request.query_parameters.merge(format: :zip)), class: "list-btn export" %>
           <% end %>
         </div>
       </div>
@@ -2035,9 +2039,13 @@
             <input type="file" accept=".csv,.xlsx,.xls" data-import-file hidden>
           </label>
           <button type="button" class="list-btn upload" data-upload-selected>Upload</button>
-          <button type="button" class="list-btn export" data-export-table="<%= table_id %>">Export</button>
           <% if @slug == "training-form-list" %>
-            <%= link_to "Download Attachments", export_module_path(@slug, format: :zip), class: "list-btn export" %>
+            <%= link_to "Export", export_module_path(@slug, request.query_parameters.merge(format: :xlsx)), class: "list-btn export" %>
+          <% else %>
+            <button type="button" class="list-btn export" data-export-table="<%= table_id %>">Export</button>
+          <% end %>
+          <% if @slug == "training-form-list" %>
+            <%= link_to "Download Attachments", export_module_path(@slug, request.query_parameters.merge(format: :zip)), class: "list-btn export" %>
           <% end %>
         </div>
       </div>
@@ -2065,20 +2073,10 @@
             </tr>
           </thead>
           <tbody>
-            <% list_record_groups = if @slug == "training-form-list"
-              @records.group_by do |training_record|
-                training_data = training_record.data
-                farmer_ids = Array(training_data["selected_farmer_ids"]).map(&:to_s).reject(&:blank?).uniq.sort
-                [
-                  training_data["month"], training_data["ics_block"].presence || training_data["ics"],
-                  training_data["gram_name"].presence || training_data["village"], training_data["trainer_name"],
-                  training_data["training_date"], training_data["training_location"],
-                  farmer_ids
-                ].map { |item| item.is_a?(Array) ? item : item.to_s.strip.downcase }
-              end.values
-            else
-              @records.map { |list_record| [list_record] }
-            end %>
+            <% # Each saved training form is a separate record. Grouping sessions
+               # here hid hundreds of records behind one table row and made the
+               # pagination/export totals disagree with the saved-record count. %>
+            <% list_record_groups = @records.map { |list_record| [list_record] } %>
             <% if list_record_groups.any? %>
               <% list_record_groups.each do |group_records| %>
                 <% record = group_records.first %>

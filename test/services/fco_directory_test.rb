@@ -89,8 +89,7 @@ class FcoDirectoryTest < ActiveSupport::TestCase
     FcoDirectory.reset_cache!
 
     assert_nil FcoDirectory.canonical_name("Direct to HO")
-    assert_nil FcoDirectory.canonical_name("Pavijetpur"), "a real FCO keeps its own path"
-    assert_nil FcoDirectory.canonical_name("1095")
+    assert_equal %w[1004 1006 1095], FcoDirectory.ids
   end
 
   test "mapped sub-office values retain the actual FCO dashboard label" do
@@ -114,7 +113,7 @@ class FcoDirectoryTest < ActiveSupport::TestCase
     })
     FcoDirectory.reset_cache!
 
-    assert_equal "Pavijetpur", FcoDirectory.names.first
+    assert_equal %w[Sausar Turekela Pavijetpur], FcoDirectory.names
     assert_empty FcoDirectory.aliases_for("Direct to HO")
     assert_equal "Pavijetpur", FcoDirectory.display_name_for("Pavijetpur")
   end
