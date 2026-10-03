@@ -42,7 +42,10 @@ class FcoDirectory
   SUB_OFFICE_PREFIX = /\Ato\s*[-: ]\s*/i
 
   def self.bare_name(value)
-    value.to_s.squish.sub(PREFIX, "").squish
+    # Office Mapping has existing records saved as "direact to ho". Treat that
+    # historic typo as the same FCO as the user-facing "direct to ho" value,
+    # otherwise the filter produces an empty FCO scope and every count is 0.
+    value.to_s.squish.sub(PREFIX, "").gsub(/\bdireact\b/i, "direct").squish
   end
 
   # --- The dashboard list: Office Setup FCO-C offices -----------------------

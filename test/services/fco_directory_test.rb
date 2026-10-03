@@ -103,6 +103,19 @@ class FcoDirectoryTest < ActiveSupport::TestCase
     assert_includes FcoDirectory.aliases_for("Direct to HO"), "1095"
   end
 
+  test "historic Direct-to-HO spelling resolves from the correctly spelled filter" do
+    farmer("1095", "Pavijetpur")
+    ModuleRecord.create!(module_slug: "office-mapping-add", data: {
+      "parent_category" => "FCO-C", "office_name" => "direact to ho",
+      "sub_office_name" => "TO-Pavijetpur", "status" => "Active"
+    })
+    FcoDirectory.reset_cache!
+
+    assert_equal "direct to ho", FcoDirectory.names.first
+    assert_includes FcoDirectory.aliases_for("Direct to HO"), "1095"
+    assert_equal "direct to ho", FcoDirectory.display_name_for("Pavijetpur")
+  end
+
   test "an office mapped to something that is not an FCO is left alone" do
     farmer("1095", "Pavijetpur")
     ModuleRecord.create!(module_slug: "office-mapping-add", data: {
