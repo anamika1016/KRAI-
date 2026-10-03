@@ -14,13 +14,15 @@
 # office it is mapped to, so "direact to  ho" shows 1095 Pavijetpur's farmers
 # under its own label.
 class FcoDirectory
-  # Only used when nothing is configured, so a broken lookup cannot blank out
-  # every dashboard number.
+  # These are the only FCOs allowed to create dashboard boxes. Office Setup,
+  # AFL imports and target rows may contain PAPL, TO offices or other projects;
+  # those values are valid elsewhere but are not dashboard FCO cards.
   FALLBACK = [
     { id: "1004", name: "Sausar" },
     { id: "1006", name: "Turekela" },
     { id: "1095", name: "Pavijetpur" }
   ].freeze
+  DASHBOARD_FCO_IDS = FALLBACK.map { |row| row[:id] }.freeze
 
   # Memoised per request. CurrentAttributes resets between requests, so a newly
   # added office is live on the next page load. A shared Rails.cache was wrong
@@ -53,7 +55,11 @@ class FcoDirectory
   # [{ id: "1095", name: "Pavijetpur", raw_name: "direact to ho" }, ...]
   # A Direct-to-HO/TO mapping is a filter alias, not a second FCO card.
   def self.offices
-    Store.offices ||= load_offices
+    Store.offices ||= FALLBACK.map do |row|
+      source = afl_rows.find { |candidate| candidate[:id] == row[:id] }
+      name = source&.dig(:name).presence || row[:name]
+      { id: row[:id], name: name, raw_name: name, afl_name: name }
+    end
   end
 
   # Box labels, e.g. ["Sausar", "Turekela", "Pavijetpur"].

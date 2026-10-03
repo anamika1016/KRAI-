@@ -76,7 +76,8 @@ class CcTargetStatusReport
       }
     end
 
-    results.select { |row| @fco.blank? || row["fco_id"] == @fco }
+    results.select { |row| FcoDirectory.ids.include?(row["fco_id"].to_s) }
+      .select { |row| @fco.blank? || row["fco_id"] == @fco }
       .sort_by { |row| [row["fco_id"].to_s, row["cluster_incharge"].to_s] }
   end
 
@@ -125,6 +126,8 @@ class CcTargetStatusReport
       next if cc_val <= 0
 
       fco_id  = normalize_fco_id(fco_id_raw, fco_name_raw, fcoc_raw)
+      next unless FcoDirectory.ids.include?(fco_id.to_s)
+
       @fco_names[fco_id] = fco_name_raw.to_s.strip.presence || fcoc_raw.to_s.strip
       cc_name = cluster_incharge.to_s.strip
       next if cc_name.blank?

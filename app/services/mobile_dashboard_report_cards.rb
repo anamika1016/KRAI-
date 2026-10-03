@@ -16,7 +16,7 @@ class MobileDashboardReportCards
   end
 
   def self.cc_jj_rows(rows)
-    rows.map do |row|
+    rows.select { |row| FcoDirectory.ids.include?(row["fco_id"].to_s) }.map do |row|
       row.merge("fco_name" => FcoDirectory.name_by_id[row["fco_id"].to_s],
         "total_cc" => row["toatl_cc"].to_i, "total_jj" => row["toatl_jj"].to_i)
     end

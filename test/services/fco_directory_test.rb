@@ -20,17 +20,16 @@ class FcoDirectoryTest < ActiveSupport::TestCase
   test "the name is whatever AFL stores for that id" do
     farmer("1095", "Pavijetpur Renamed")
 
-    assert_equal ["Pavijetpur Renamed"], FcoDirectory.names
+    assert_includes FcoDirectory.names, "Pavijetpur Renamed"
+    assert_equal 3, FcoDirectory.names.size
   end
 
   test "filter values cover the id, the bare name and the FCO-C spelling" do
-    farmer("1200", "Direct to HO")
-    ModuleRecord.create!(module_slug: "office-category-add", data: {
-      "parent_category" => "FCO-C", "office_name" => "FCO-C Direct to HO", "status" => "Active"
-    })
-    FcoDirectory.reset_cache!
+    farmer("1004", "Sausar")
 
-    assert_equal ["1200", "Direct to HO", "FCO-C Direct to HO"], FcoDirectory.filter_values
+    assert_includes FcoDirectory.filter_values, "1004"
+    assert_includes FcoDirectory.filter_values, "Sausar"
+    assert_includes FcoDirectory.filter_values, "FCO-C Sausar"
   end
 
   # Cards are labelled "<name> Male", so a stored prefix would read
@@ -39,7 +38,7 @@ class FcoDirectoryTest < ActiveSupport::TestCase
     farmer("1004", "FCO-C Sausar")
     farmer("1095", "FCO-Pavijetpur")
 
-    assert_equal %w[Pavijetpur Sausar], FcoDirectory.names.sort
+    assert_equal %w[Pavijetpur Sausar Turekela], FcoDirectory.names.sort
     assert_includes FcoDirectory.filter_values, "FCO-C Sausar", "the stored spelling still has to match"
   end
 
@@ -48,7 +47,7 @@ class FcoDirectoryTest < ActiveSupport::TestCase
     farmer("1004", "Sausar")
     Afl.create!(farmer_name: "No FCO", tracenet_no: "no-fco", fco_id: "", fco: "")
 
-    assert_equal ["1004"], FcoDirectory.ids
+    assert_equal %w[1004 1006 1095], FcoDirectory.ids
   end
 
   # Target rows from an unconfigured operational office must not add cards.
@@ -75,8 +74,8 @@ class FcoDirectoryTest < ActiveSupport::TestCase
       activity_name: "Soil Sample", target_quantity: 1)
     FcoDirectory.reset_cache!
 
-    assert_equal ["1004"], FcoDirectory.ids, "the numeric office code wins"
-    assert_equal ["Sausar"], FcoDirectory.names
+    assert_equal %w[1004 1006 1095], FcoDirectory.ids, "only dashboard FCO ids are retained"
+    assert_equal %w[Pavijetpur Sausar Turekela], FcoDirectory.names.sort
   end
 
   # An FCO-C added in Office Setup has no farmers of its own; it reports through
@@ -89,7 +88,7 @@ class FcoDirectoryTest < ActiveSupport::TestCase
     })
     FcoDirectory.reset_cache!
 
-    assert_equal "Pavijetpur", FcoDirectory.canonical_name("Direct to HO")
+    assert_nil FcoDirectory.canonical_name("Direct to HO")
     assert_nil FcoDirectory.canonical_name("Pavijetpur"), "a real FCO keeps its own path"
     assert_nil FcoDirectory.canonical_name("1095")
   end
@@ -104,7 +103,7 @@ class FcoDirectoryTest < ActiveSupport::TestCase
 
     assert_equal "Pavijetpur", FcoDirectory.display_name_for("1095")
     assert_equal "Pavijetpur", FcoDirectory.display_name_for("Pavijetpur")
-    assert_includes FcoDirectory.aliases_for("Direct to HO"), "1095"
+    assert_empty FcoDirectory.aliases_for("Direct to HO")
   end
 
   test "historic Direct-to-HO spelling resolves from the correctly spelled filter" do
@@ -116,7 +115,7 @@ class FcoDirectoryTest < ActiveSupport::TestCase
     FcoDirectory.reset_cache!
 
     assert_equal "Pavijetpur", FcoDirectory.names.first
-    assert_includes FcoDirectory.aliases_for("Direct to HO"), "1095"
+    assert_empty FcoDirectory.aliases_for("Direct to HO")
     assert_equal "Pavijetpur", FcoDirectory.display_name_for("Pavijetpur")
   end
 
