@@ -40,35 +40,16 @@ class OfficeDashboardCalculator < ModulesController
     office_dashboard_roles.any? { |role| role.include?("manager") }
   end
 
-  # API-only dynamic FCO source. The web controller remains unchanged.
+  # Use the configured FCO-C list only. Raw AFL/VRP data contains other
+  # operational offices such as Bhabra and PAPL; those must not create cards.
   def dashboard_fco_names(vrps = nil)
-    values = {}
-    add_name = lambda do |raw_name, raw_id = nil|
-      name = raw_name.to_s.squish.presence || raw_id.to_s.squish.presence
-      next if name.blank?
-
-      name = name.sub(/\Afco\s*(?:-\s*c)?\s*[-:]?\s*/i, "").squish
-      values[normalize_dashboard_text(name)] ||= name if name.present?
-    end
-
-    Array(vrps || @office_authorized_vrps || dashboard_vrps).each { |vrp| add_name.call(vrp.fcoc) }
-    dashboard_visible_target_scope.distinct.pluck(:fco_name, :fco_id).each { |name, id| add_name.call(name, id) }
-    dashboard_visible_farmer_scope.distinct.pluck(:fco, :fco_id).each { |name, id| add_name.call(name, id) }
-    if dashboard_global_view_user?
-      VrpIcsMapping.distinct.pluck(:fco_name, :fco_id).each { |name, id| add_name.call(name, id) }
-      ModuleRecord.where(module_slug: "add-fco").find_each do |record|
-        data = record.data
-        add_name.call(data["fco_name"].presence || data["fcoc_name"].presence || data["office_name"].presence || data["name"], data["fco_id"])
-      end
-    end
-
-    names = values.values
+    names = FcoDirectory.names
     selected = dashboard_filter_param(:fcoc, :fco)
     names.select! { |name| training_fcoc_text_matches?(name, selected) } if selected.present?
     names.sort_by { |name| normalize_dashboard_text(name) }
   rescue StandardError => error
     Rails.logger.warn("Dynamic API FCO names failed: #{error.class}: #{error.message}")
-    values.to_h.values.sort_by { |name| normalize_dashboard_text(name) }
+    FcoDirectory.names
   end
 
   def dashboard_cards
@@ -95,20 +76,7 @@ class OfficeDashboardCalculator < ModulesController
   end
 
   def dashboard_report_fco_names(vrps, targets)
-    # Office Setup is the source of the card label. A Direct-to-HO FCO-C can
-    # report through Pavijetpur's numeric rows, but it must be shown as Direct
-    # to HO in the API instead of creating a duplicate Pavijetpur card.
-    names = FcoDirectory.names + dashboard_fco_names(vrps)
-    Array(targets).each do |target|
-      name = target.fco_name.to_s.squish.presence || target.fco_id.to_s.squish.presence || target.vrp&.fcoc.to_s.squish.presence
-      next if name.blank?
-
-      name = FcoDirectory.display_name_for(name)
-      names << name if name.present?
-    end
-    names.map { |name| FcoDirectory.display_name_for(name) }
-      .uniq { |name| normalize_dashboard_text(name) }
-      .sort_by { |name| normalize_dashboard_text(name) }
+    dashboard_fco_names(vrps)
   end
 
   # AFL uses numeric IDs/plain names, while JJ records also use FCO-Pavijetpur.

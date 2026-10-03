@@ -7,14 +7,14 @@ class FcoDirectoryTest < ActiveSupport::TestCase
   setup { FcoDirectory.reset_cache! }
   teardown { FcoDirectory.reset_cache! }
 
-  test "ids and names come from AFL, including a newly added FCO" do
+  test "raw AFL-only offices do not create extra dashboard cards" do
     farmer("1004", "Sausar")
     farmer("1006", "Turekela")
     farmer("1095", "Pavijetpur")
     farmer("1200", "Direct to HO")
 
-    assert_equal %w[1004 1006 1095 1200].sort, FcoDirectory.ids.sort
-    assert_includes FcoDirectory.names, "Direct to HO", "a new FCO must appear without a code change"
+    assert_equal %w[1004 1006 1095].sort, FcoDirectory.ids.sort
+    refute_includes FcoDirectory.names, "Direct to HO"
   end
 
   test "the name is whatever AFL stores for that id" do
@@ -25,6 +25,10 @@ class FcoDirectoryTest < ActiveSupport::TestCase
 
   test "filter values cover the id, the bare name and the FCO-C spelling" do
     farmer("1200", "Direct to HO")
+    ModuleRecord.create!(module_slug: "office-category-add", data: {
+      "parent_category" => "FCO-C", "office_name" => "FCO-C Direct to HO", "status" => "Active"
+    })
+    FcoDirectory.reset_cache!
 
     assert_equal ["1200", "Direct to HO", "FCO-C Direct to HO"], FcoDirectory.filter_values
   end
@@ -47,8 +51,8 @@ class FcoDirectoryTest < ActiveSupport::TestCase
     assert_equal ["1004"], FcoDirectory.ids
   end
 
-  # A just-created office has no farmers yet; it only exists on a JJ mapping.
-  test "an FCO known only to a target mapping still appears" do
+  # Target rows from an unconfigured operational office must not add cards.
+  test "an FCO known only to a target mapping does not appear" do
     farmer("1004", "Sausar")
     vrp = create_vrp(fcoc: "FCO-C Direct to HO")
     TargetMapping.create!(vrp: vrp, fco_id: "1200", fco_name: "FCO-C Direct to HO",
@@ -56,8 +60,8 @@ class FcoDirectoryTest < ActiveSupport::TestCase
       main_activity_name: "Other", activity_name: "Soil Sample", target_quantity: 1)
     FcoDirectory.reset_cache!
 
-    assert_includes FcoDirectory.ids, "1200"
-    assert_includes FcoDirectory.names, "Direct to HO"
+    refute_includes FcoDirectory.ids, "1200"
+    refute_includes FcoDirectory.names, "Direct to HO"
   end
 
   # Imported AFL rows carry the string "NULL", and some target rows put the name
@@ -90,7 +94,7 @@ class FcoDirectoryTest < ActiveSupport::TestCase
     assert_nil FcoDirectory.canonical_name("1095")
   end
 
-  test "mapped sub-office values retain the Direct-to-HO dashboard label" do
+  test "mapped sub-office values retain the actual FCO dashboard label" do
     farmer("1095", "Pavijetpur")
     ModuleRecord.create!(module_slug: "office-mapping-add", data: {
       "parent_category" => "FCO-C", "office_name" => "Direct to HO",
@@ -98,8 +102,8 @@ class FcoDirectoryTest < ActiveSupport::TestCase
     })
     FcoDirectory.reset_cache!
 
-    assert_equal "Direct to HO", FcoDirectory.display_name_for("1095")
-    assert_equal "Direct to HO", FcoDirectory.display_name_for("Pavijetpur")
+    assert_equal "Pavijetpur", FcoDirectory.display_name_for("1095")
+    assert_equal "Pavijetpur", FcoDirectory.display_name_for("Pavijetpur")
     assert_includes FcoDirectory.aliases_for("Direct to HO"), "1095"
   end
 
@@ -111,9 +115,9 @@ class FcoDirectoryTest < ActiveSupport::TestCase
     })
     FcoDirectory.reset_cache!
 
-    assert_equal "direct to ho", FcoDirectory.names.first
+    assert_equal "Pavijetpur", FcoDirectory.names.first
     assert_includes FcoDirectory.aliases_for("Direct to HO"), "1095"
-    assert_equal "direct to ho", FcoDirectory.display_name_for("Pavijetpur")
+    assert_equal "Pavijetpur", FcoDirectory.display_name_for("Pavijetpur")
   end
 
   test "an office mapped to something that is not an FCO is left alone" do
@@ -132,7 +136,7 @@ class FcoDirectoryTest < ActiveSupport::TestCase
     assert_equal %w[Sausar Turekela Pavijetpur], FcoDirectory.names
   end
 
-  test "the dashboard default FCO scope follows the directory" do
+  test "the dashboard default FCO scope excludes an unconfigured AFL office" do
     farmer("1200", "Direct to HO")
 
     controller = ModulesController.new
@@ -141,8 +145,8 @@ class FcoDirectoryTest < ActiveSupport::TestCase
     controller.define_singleton_method(:current_app_user) { { "user_type" => "admin" } }
 
     values = controller.send(:dashboard_summary_fco_filter_values)
-    assert_includes values, "1200"
-    assert_includes values, "direct to ho", "the new FCO must be inside the default scope"
+    refute_includes values, "1200"
+    refute_includes values, "direct to ho"
   end
 
   private

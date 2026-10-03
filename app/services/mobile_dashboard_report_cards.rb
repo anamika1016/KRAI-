@@ -23,9 +23,11 @@ class MobileDashboardReportCards
   end
 
   def self.cc_jj_groups(rows)
-    # Reads the configured FCOs, so an office added later gets its own group
-    # instead of being dropped from the mobile report.
-    FcoDirectory.name_by_id.map do |id, name|
+    # The farmer master includes operational FCOs such as Bhabra. Dashboard
+    # groups must show only the configured FCO-C card list.
+    FcoDirectory.offices.map do |office|
+      id = office[:id]
+      name = office[:name]
       statuses = %w[Red Completed].to_h do |status|
         row = rows.find { |item| item["fco_id"].to_s == id && item["status"].to_s.casecmp?(status) } || {}
         [status.downcase.to_sym, { cc: row["toatl_cc"].to_i, jj: row["toatl_jj"].to_i }]

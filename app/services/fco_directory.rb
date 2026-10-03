@@ -50,12 +50,13 @@ class FcoDirectory
 
   # --- The dashboard list: Office Setup FCO-C offices -----------------------
 
-  # [{ id: "1095", name: "direact to  ho", afl_name: "Pavijetpur" }, ...]
+  # [{ id: "1095", name: "Pavijetpur", raw_name: "direact to ho" }, ...]
+  # A Direct-to-HO/TO mapping is a filter alias, not a second FCO card.
   def self.offices
     Store.offices ||= load_offices
   end
 
-  # Box labels, e.g. ["Sausar", "Turekela", "direact to  ho"].
+  # Box labels, e.g. ["Sausar", "Turekela", "Pavijetpur"].
   def self.names
     offices.filter_map { |office| office[:name].presence }.presence || FALLBACK.map { |row| row[:name] }
   end
@@ -223,7 +224,11 @@ class FcoDirectory
                else
                  sub_offices[name.downcase]
                end
-    { id: afl_name.present? ? id_for(afl_name).to_s : "", name: name, raw_name: raw, afl_name: afl_name }
+    # Keep the raw office name as an alias, but use its mapped actual FCO as
+    # the card label. Otherwise 1095 gets both "Pavijetpur" and "Direct to
+    # HO" boxes for the same data.
+    display_name = afl_name.presence || name
+    { id: afl_name.present? ? id_for(afl_name).to_s : "", name: display_name, raw_name: raw, afl_name: afl_name }
   end
   private_class_method :build_office
 

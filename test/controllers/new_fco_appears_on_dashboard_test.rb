@@ -1,8 +1,7 @@
 require "test_helper"
 
-# Reported: an FCO-C added in Office Setup ("Direct to HO") never showed up on
-# the dashboard, because the FCO list was hardcoded to 1004/1006/1095 in a dozen
-# places. The list now comes from FcoDirectory, so a new office reaches every box.
+# Dashboard cards show the configured FCO-C list, never every office found in
+# the raw AFL import.
 class NewFcoAppearsOnDashboardTest < ActionDispatch::IntegrationTest
   setup do
     user = User.create!(first_name: "New", last_name: "Fco", user_name: "new_fco_admin",
@@ -17,7 +16,7 @@ class NewFcoAppearsOnDashboardTest < ActionDispatch::IntegrationTest
     end
   end
 
-  test "an FCO added to the farmer master reaches the dashboard boxes" do
+  test "an unconfigured FCO added to the farmer master does not reach dashboard boxes" do
     get "/dashboard", params: { month: "September", main_activity: "Farmers' Training" }
     assert_response :success
     assert_select ".cc-jj-status-fco-name", text: "Direct to HO", count: 0, message: "not configured yet"
@@ -28,10 +27,9 @@ class NewFcoAppearsOnDashboardTest < ActionDispatch::IntegrationTest
 
     get "/dashboard", params: { month: "September", main_activity: "Farmers' Training" }
     assert_response :success
-    # The prefix is stripped, so the card reads "Direct to HO", not "FCO-C Direct to HO".
-    assert_select ".cc-jj-status-fco-name", text: "Direct to HO", count: 1
-    assert_select ".metric-card-group-item span", text: "Direct to HO Male", count: 1
-    assert_select ".metric-card-group-item span", text: "Direct to HO Active", count: 1
+    assert_select ".cc-jj-status-fco-name", text: "Direct to HO", count: 0
+    assert_select ".metric-card-group-item span", text: "Direct to HO Male", count: 0
+    assert_select ".metric-card-group-item span", text: "Direct to HO Active", count: 0
   end
 
   test "the three existing FCOs keep their boxes" do
