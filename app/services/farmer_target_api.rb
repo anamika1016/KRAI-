@@ -816,6 +816,12 @@ class FarmerTargetApi
   # forms.  `staff_by_fco` lets a client refresh its dropdown when the FCO is
   # changed, while the flat aliases keep existing clients simple.
   def target_form_staff_options(mappings)
+    # A JJ cannot choose any staff member in the FCO.  The web form assigns the
+    # JJ's own Cluster Incharge and the User who registered that JJ. Mirror that
+    # rule in the API so Pinki, for example, receives only her mapped CC and
+    # Agronomist instead of the complete Sausar staff directory.
+    return mapped_vrp_staff_options(current_vrp_record) if vrp_login_user? && current_vrp_record.present?
+
     offices = Array(mappings).filter_map do |mapping|
       mapping[:fco_name].presence || mapping[:department].presence || mapping[:fpo_name].presence
     end
@@ -848,6 +854,36 @@ class FarmerTargetApi
   rescue StandardError => error
     Rails.logger.warn("Target form staff options failed: #{error.class}: #{error.message}")
     { cc_names: ["N/A"], cluster_coordinator_names: ["N/A"], agronomist_names: ["N/A"], staff_by_fco: [] }
+  end
+
+  def mapped_vrp_staff_options(vrp)
+    office = vrp.fcoc.presence || training_trainee_department_default
+    cc_names = staff_option_values(vrp.cluster_incharge)
+    agronomist_names = staff_option_values(mapped_vrp_agronomist_name(vrp))
+
+    {
+      cc_names: cc_names,
+      cluster_coordinator_names: cc_names,
+      agronomist_names: agronomist_names,
+      staff_by_fco: [{
+        fco: office,
+        fco_name: office,
+        cc_names: cc_names,
+        cluster_coordinator_names: cc_names,
+        agronomist_names: agronomist_names
+      }]
+    }
+  end
+
+  def mapped_vrp_agronomist_name(vrp)
+    return if vrp.created_by_id.blank? || !model_ready?(:User)
+
+    user = User.find_by(id: vrp.created_by_id)
+    TrainingStaffScope.name(user.attributes) if user
+  end
+
+  def staff_option_values(value)
+    ["N/A", value].compact_blank.uniq { |name| TrainingStaffScope.normalize(name) }
   end
 
   # Accept either the mobile field names or the legacy web field names and

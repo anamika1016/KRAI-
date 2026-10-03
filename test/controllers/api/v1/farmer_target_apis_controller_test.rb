@@ -93,6 +93,26 @@ class Api::V1::FarmerTargetApisControllerTest < ActionDispatch::IntegrationTest
     assert_includes response.parsed_body.dig("options", "agronomist_names"), agronomist.full_name
   end
 
+  test "JJ training options contain only that JJ mapped CC and agronomist" do
+    agronomist = create_admin_user(first_name: "Assigned", last_name: "Agronomist", user_name: "assigned_agronomist",
+      stakeholder_role: "Agronomist", office_name: "FCO-C Sausar")
+    create_admin_user(first_name: "Unassigned", last_name: "Agronomist", user_name: "unassigned_agronomist",
+      stakeholder_role: "Agronomist", office_name: "FCO-C Sausar")
+    jj = create_vrp(name: "Scoped JJ", user_name: "scoped_jj", password: "secret", agreement_accepted_at: Time.current,
+      fcoc: "FCO-C Sausar", cluster_incharge: "Assigned CC", created_by_id: agronomist.id)
+
+    post "/api/v1/jeevika-jankar-login", params: { login: jj.user_name, password: "secret" }, as: :json
+    assert_response :success
+    headers = { "Authorization" => "Bearer #{response.parsed_body.fetch("token")}" }
+
+    get "/api/v1/farmer-trainings/form-options", headers: headers, as: :json
+    assert_response :success
+    options = response.parsed_body.fetch("options")
+    assert_equal ["N/A", "Assigned CC"], options.fetch("cc_names")
+    assert_equal ["N/A", agronomist.full_name], options.fetch("agronomist_names")
+    assert_equal ["FCO-C Sausar"], options.fetch("staff_by_fco").map { |row| row["fco_name"] }
+  end
+
   test "seed distribution list and form options work" do
     ModuleRecord.create!(
       module_slug: "seed-distribution-target",
