@@ -45,9 +45,9 @@ class NewFcoAppearsOnDashboardTest < ActionDispatch::IntegrationTest
 
   # Reported: selecting the new "Direct to HO" FCO-C left Dashboard Summary at 0.
   # It has no farmers of its own -- it reports through TO-Pavijetpur (1095).
-  test "an Office Setup FCO-C shows the sub office it reports through" do
+  test "an Office Setup FCO-C shows the sub office it reports through even when its saved label has the historic typo" do
     ModuleRecord.create!(module_slug: "office-mapping-add", data: {
-      "parent_category" => "FCO-C", "office_name" => "Direct to HO",
+      "parent_category" => "FCO-C", "office_name" => "direact to ho",
       "sub_office_name" => "TO-Pavijetpur", "status" => "Active"
     })
     FcoDirectory.reset_cache!
