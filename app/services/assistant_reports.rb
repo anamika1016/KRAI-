@@ -27,7 +27,7 @@ class AssistantReports
     values = page_filters.to_h.stringify_keys.slice(*FILTERS).transform_values { |v| v.to_s.first(100) }.reject { |_, v| v.blank? }
     month = Date::MONTHNAMES.compact.find { |name| question.match?(/\b#{name}\b/i) }
     values.merge!("month" => month, "training_month" => month) if month
-    { "sausar" => "1004", "turekela" => "1006", "pavijetpur" => "1095" }.each do |name, id|
+    FcoDirectory.id_by_name.each do |name, id|
       values.merge!("fcoc" => name, "fco_id" => id) if question.match?(/\b(?:#{name}|#{id})\b/i)
     end
     values

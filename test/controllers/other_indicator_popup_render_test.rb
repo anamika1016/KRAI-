@@ -10,6 +10,13 @@ class OtherIndicatorPopupRenderTest < ActionDispatch::IntegrationTest
       user_type: "admin", status: "Active")
     post login_path, params: { login: user.user_name, password: "secret" }
 
+    # The box is scoped to the configured FCOs, so both offices need a farmer.
+    %w[Sausar Turekela].each_with_index do |name, index|
+      Afl.create!(farmer_name: "#{name} farmer", tracenet_no: "popup-#{index}",
+        fco_id: "100#{index + 4}", fco: name, ics_id: "ics-#{index}", ics_name: "ICS #{index}")
+    end
+    FcoDirectory.reset_cache!
+
     ModuleRecord.create!(module_slug: "other-target", data: {
       "fcoc_name" => "Sausar", "month" => "September", "main_activity" => "Internal Inspection",
       "sub_activity" => "Documentation", "target" => "36", "achievement" => "30"

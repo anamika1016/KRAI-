@@ -1,5 +1,5 @@
 class CcJjWorkStatusReport
-  FCO_IDS = %w[1004 1006 1095].freeze
+  # FCO list comes from the farmer master so a new FCO is covered here too.
   HEADERS = ["month", "fco_id", "fpo_id", "fpo_name", "cluster_incharge", "vrp_name", "total_farmer", "No Activity Mapping", "No Training Mapping", "Training Mapped But No Entry", "Training Entry Done", "Red", "Completed", "Cluster Coordinator Involved", "Agronomist Involved"].freeze
 
   def initialize(calculator:, month: nil, fco: nil)
@@ -8,9 +8,9 @@ class CcJjWorkStatusReport
     @month = (month || (filters.key?(:month) ? filters[:month] : DashboardDefaults.month)).to_s.strip
     @fco = (fco || filters[:fcoc] || filters[:fco] || filters[:fco_id]).to_s.strip
     @fco = "" if @fco.downcase.start_with?("all")
-    @fco = "1004" if @fco.downcase.include?("sausar")
-    @fco = "1006" if @fco.downcase.include?("turekela")
-    @fco = "1095" if @fco.downcase.include?("pavijetpur")
+    # A selected FCO can arrive as a name ("FCO-C Sausar") or an id. Resolve
+    # through the directory so a later-added office is recognised too.
+    @fco = FcoDirectory.id_for(@fco) || @fco unless @fco.match?(/\A\d+\z/)
   end
 
   def summary
@@ -33,7 +33,7 @@ class CcJjWorkStatusReport
   end
 
   def caption
-    "#{all_months? ? 'All Months' : @month} · #{{ '1004' => 'Sausar', '1006' => 'Turekela', '1095' => 'Pavijetpur' }.fetch(@fco, 'Sausar, Turekela and Pavijetpur')}"
+    "#{all_months? ? 'All Months' : @month} · #{FcoDirectory.name_by_id.fetch(@fco, FcoDirectory.names.to_sentence)}"
   end
 
   private
@@ -45,7 +45,8 @@ class CcJjWorkStatusReport
   def execute(kind)
     sql = Rails.root.join("app/queries/cc_jj_work_status", "#{kind}.sql").read
     connection = ActiveRecord::Base.connection
-    selected_fcos = @fco.blank? ? FCO_IDS : FCO_IDS & [@fco]
+    fco_ids = FcoDirectory.ids
+    selected_fcos = @fco.blank? ? fco_ids : fco_ids & [@fco]
     fcos = selected_fcos.map { |id| connection.quote(id) }.join(", ")
     assignment_scope = if @calculator.send(:dashboard_global_view_user?)
       "TRUE"

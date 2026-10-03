@@ -52,6 +52,8 @@ class ModulesController < ApplicationController
   }.freeze
   # FCO offices shown in the dashboard's Gender Count and FCO-wise JJ Requirement
   # cards. Add a new office here and its boxes appear in both automatically.
+  # Legacy fallback only. Read the live list via dashboard_fco_names /
+  # FcoDirectory so an FCO added in Office Setup appears in every box.
   DASHBOARD_FCO_NAMES = %w[Sausar Turekela Pavijetpur].freeze
   # Modules whose show page is an entry form only -- no Saved Records table.
   # Keep in sync with entry_only_slugs in show.html.erb.
@@ -2158,8 +2160,10 @@ class ModulesController < ApplicationController
     achievement = rows.sum { |row| row["achievement"].to_f }
     activities = rows.filter_map { |row| row["main_activity"].presence }.uniq
     by_fco = {}
+    row_fco_names = {}
     rows.each do |row|
       key = dashboard_bare_fco_name(row["fco_name"])
+      row_fco_names[key] ||= row["fco_name"].to_s.sub(/\Afco\s*-?\s*c?\s*/i, "").strip
       totals = by_fco[key] ||= [0.0, 0.0]
       totals[0] += row["target"].to_f
       totals[1] += row["achievement"].to_f
@@ -2167,9 +2171,19 @@ class ModulesController < ApplicationController
 
     # The breakdown always lists every project FCO, including ones with nothing
     # recorded yet. Grouping only what exists made "All FCO" show a single FCO,
-    # which reads as a filter bug rather than as missing data.
+    # which reads as a filter bug rather than as missing data. Any FCO that does
+    # have rows is added too, so the box total always has a popup line behind it
+    # -- an office with entries but no farmers loaded yet would otherwise be
+    # counted in the total and missing from the breakdown.
     selected_fco = dashboard_filter_param(:fcoc, :fco)
-    listed_fcos = selected_fco.present? ? [selected_fco.to_s.sub(/\Afco\s*-?\s*c?\s*/i, "").strip] : DASHBOARD_FCO_NAMES
+    listed_fcos =
+      if selected_fco.present?
+        [selected_fco.to_s.sub(/\Afco\s*-?\s*c?\s*/i, "").strip]
+      else
+        known = dashboard_fco_names
+        extra = row_fco_names.reject { |key, _| known.any? { |name| dashboard_bare_fco_name(name) == key } }
+        (known + extra.values.compact_blank).uniq
+      end
 
     {
       main_major_work_indicator: activities.size,
@@ -2209,10 +2223,9 @@ class ModulesController < ApplicationController
       binds[:month] = month
     end
 
-    # Always limited to the three project FCOs -- 1004 Sausar, 1006 Turekela,
-    # 1095 Pavijetpur -- and narrowed to one when the dashboard has an FCO
-    # selected. The name is stored both as "Sausar" and "FCO-C Sausar", so match
-    # the prefix-stripped form as well as the raw one.
+    # Limited to the configured FCOs (FcoDirectory) and narrowed to one when the
+    # dashboard has an FCO selected. The name is stored both as "Sausar" and
+    # "FCO-C Sausar", so match the prefix-stripped form as well as the raw one.
     selected_fco = dashboard_filter_param(:fcoc, :fco).presence || @dashboard_fcoc_filter_value
     conditions << <<~COND.squish
       (LOWER(BTRIM(REGEXP_REPLACE(COALESCE(data::jsonb->>'fcoc_name', ''), '^fco[- ]*c?[- ]*', '', 'i'))) IN (:fco_values)
@@ -2261,7 +2274,7 @@ class ModulesController < ApplicationController
         "1095" => text.include?("1095") || text.include?("pavijetpur")
       }.filter_map { |id, matches| id if matches }
     end
-    fco_ids = selected_fco.present? ? fco_ids_for_values.call(selected_fco) : %w[1004 1006 1095]
+    fco_ids = selected_fco.present? ? fco_ids_for_values.call(selected_fco) : FcoDirectory.ids
     selected_month = normalize_dashboard_text(@dashboard_month_filter_value)
     selected_ics = dashboard_filter_param(:ics, :ics_name)
     selected_cluster = dashboard_filter_param(:cluster_incharge)
@@ -3837,7 +3850,7 @@ class ModulesController < ApplicationController
       ], style: "registration"),
       dashboard_group_card("Jeevika Jankar Billing", billing_items, style: "billing")
     ]
-    fco_names = DASHBOARD_FCO_NAMES
+    fco_names = dashboard_fco_names
     gender_month = params[:month].presence || params[:training_month].presence || "August"
     gender_items = fco_names.flat_map do |fco_name|
       # Same JJ set as the FCO-wise JJ Requirement "Active" box, split by gender.
@@ -4389,12 +4402,18 @@ class ModulesController < ApplicationController
     scope
   end
 
+  # FCO names as the farmer master spells them, so Gender Count, FCO-wise JJ
+  # Requirement and the Other breakdown all gain a new FCO automatically.
+  def dashboard_fco_names
+    @dashboard_fco_names ||= FcoDirectory.names
+  end
+
   def dashboard_summary_fco_filter_values(fcoc_value = nil)
     fcoc_value = nil if normalize_dashboard_text(fcoc_value) == "all fco"
     selected_values = training_fcoc_filter_values(fcoc_value)
     return selected_values if selected_values.any?
 
-    training_fcoc_filter_values("1004", "1006", "1095", "Sausar", "Turekela", "Pavijetpur", "FCO-C Sausar", "FCO-C Turekela", "FCO-C Pavijetpur")
+    training_fcoc_filter_values(*FcoDirectory.filter_values)
   end
 
   def dashboard_fco_active_vrp_count(fco_name_or_id, month_name = "August", vrps = nil)
@@ -4695,7 +4714,7 @@ class ModulesController < ApplicationController
         "fcoc" => @dashboard_fcoc_filter_value
       )
       .compact_blank
-      target_params["fco_id"] = %w[1004 1006 1095] if target_params["fcoc"].blank?
+      target_params["fco_id"] = FcoDirectory.ids if target_params["fcoc"].blank?
       target_params
     end
   end
@@ -4716,7 +4735,7 @@ class ModulesController < ApplicationController
       ics: dashboard_filter_param(:ics, :ics_name),
       format: format
     }.compact_blank
-    params_hash[:fco_id] = %w[1004 1006 1095] if params_hash[:training_fcoc].blank?
+    params_hash[:fco_id] = FcoDirectory.ids if params_hash[:training_fcoc].blank?
     params_hash
   end
 
@@ -4726,7 +4745,7 @@ class ModulesController < ApplicationController
     if fcoc_value.present?
       params_hash[:fcoc] = fcoc_value
     else
-      params_hash[:fco_id] = %w[1004 1006 1095]
+      params_hash[:fco_id] = FcoDirectory.ids
     end
     params_hash[:ics] = dashboard_filter_param(:ics, :ics_name) if dashboard_filter_param(:ics, :ics_name).present?
     params_hash
@@ -5006,7 +5025,7 @@ class ModulesController < ApplicationController
       post: params[:post].presence,
       vrp_id: params[:vrp_id].presence
     }.compact_blank
-    params_hash[:fco_id] = %w[1004 1006 1095] if params_hash[:training_fcoc].blank?
+    params_hash[:fco_id] = FcoDirectory.ids if params_hash[:training_fcoc].blank?
     params_hash
   end
 
@@ -5953,7 +5972,7 @@ class ModulesController < ApplicationController
 
   def training_fcoc_ids_from_param(fcoc_name)
     raw_values = Array(fcoc_name).flatten.map(&:to_s).reject(&:blank?)
-    return %w[1004 1006 1095] if raw_values.blank?
+    return FcoDirectory.ids if raw_values.blank?
 
     ids = []
     raw_values.each do |val|
@@ -5972,7 +5991,7 @@ class ModulesController < ApplicationController
       end
     end
     ids = ids.uniq
-    ids.presence || %w[1004 1006 1095]
+    ids.presence || FcoDirectory.ids
   end
 
   def farmer_training_mapped_farmer_count_and_popups(month_name:, fcoc_name:)
@@ -6164,7 +6183,7 @@ class ModulesController < ApplicationController
 
   def format_red_fco_popups(rows, fco_ids)
     fco_name_map = { "1004" => "Sausar", "1006" => "Turekela", "1095" => "Pavijetpur" }
-    target_ids = Array(fco_ids).presence || %w[1004 1006 1095]
+    target_ids = Array(fco_ids).presence || FcoDirectory.ids
     rows_by_id = Array(rows).index_by { |r| r["fco_id"].to_s.strip.downcase }
 
     target_ids.flat_map do |id|
@@ -6188,7 +6207,7 @@ class ModulesController < ApplicationController
 
   def format_red_fco_details(rows, fco_ids)
     fco_name_map = { "1004" => "Sausar", "1006" => "Turekela", "1095" => "Pavijetpur" }
-    target_ids = Array(fco_ids).presence || %w[1004 1006 1095]
+    target_ids = Array(fco_ids).presence || FcoDirectory.ids
     rows_by_id = Array(rows).index_by { |r| r["fco_id"].to_s.strip.downcase }
 
     target_ids.map do |id|
@@ -6284,7 +6303,7 @@ class ModulesController < ApplicationController
 
   def format_fco_popups(rows, fco_ids, count_key)
     fco_name_map = { "1004" => "Sausar", "1006" => "Turekela", "1095" => "Pavijetpur" }
-    target_ids = Array(fco_ids).presence || %w[1004 1006 1095]
+    target_ids = Array(fco_ids).presence || FcoDirectory.ids
     rows_by_id = Array(rows).index_by { |r| r["fco_id"].to_s.strip.downcase }
 
     target_ids.map do |id|
@@ -6829,7 +6848,10 @@ class ModulesController < ApplicationController
       # FCO-scoped dashboard boxes silently returned 0 for Pavijetpur. Make the "C"
       # optional so both naming styles strip to the same office name.
       short_name = text.sub(/\Afco\s*-\s*(c\s+)?/i, "").strip
-      [text, short_name]
+      # An Office Setup FCO-C keeps its own label but reports on the sub office
+      # it is mapped to, so "direact to  ho" also has to match rows filed under
+      # 1095 / Pavijetpur. Returns [] for anything that is not such an office.
+      [text, short_name] + FcoDirectory.aliases_for(text)
     end.flatten.map { |value| normalize_dashboard_text(value) }.reject(&:blank?).uniq
   end
 

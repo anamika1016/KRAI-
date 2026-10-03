@@ -1,5 +1,4 @@
 class CcTargetStatusReport
-  FCO_IDS = %w[1004 1006 1095].freeze
   CC_NAME_KEYS = %w[cluster_coordinator_name cluster_incharge cluster_coordinator].freeze
   # "N/A" is a real option in the Cluster Coordinator dropdown, so selecting it
   # means "no Cluster Coordinator" exactly like clearing the field does.
@@ -13,9 +12,9 @@ class CcTargetStatusReport
     @month = (month || (filters.key?(:month) ? filters[:month] : DashboardDefaults.month)).to_s.strip
     @fco = (fco || filters[:fcoc] || filters[:fco] || filters[:fco_id]).to_s.strip
     @fco = "" if @fco.downcase.start_with?("all")
-    @fco = "1004" if @fco.downcase.include?("sausar")
-    @fco = "1006" if @fco.downcase.include?("turekela")
-    @fco = "1095" if @fco.downcase.include?("pavijetpur")
+    # A selected FCO can arrive as a name ("FCO-C Sausar") or an id. Resolve
+    # through the directory so a later-added office is recognised too.
+    @fco = FcoDirectory.id_for(@fco) || @fco unless @fco.match?(/\A\d+\z/)
   end
 
   def summary
@@ -27,7 +26,7 @@ class CcTargetStatusReport
   end
 
   def caption
-    "#{all_months? ? 'All Months' : @month} · #{{ '1004' => 'Sausar', '1006' => 'Turekela', '1095' => 'Pavijetpur' }.fetch(@fco, @fco.presence || 'All FCOs')}"
+    "#{all_months? ? 'All Months' : @month} · #{FcoDirectory.name_by_id.fetch(@fco, @fco.presence || 'All FCOs')}"
   end
 
   private
@@ -63,12 +62,7 @@ class CcTargetStatusReport
         "Green"
       end
 
-      fpo_name = case fco_id
-      when "1004" then "Sausar"
-      when "1006" then "Turekela"
-      when "1095" then "Pavijetpur"
-      else @fco_names[fco_id].presence || fco_id
-      end
+      fpo_name = FcoDirectory.name_by_id[fco_id].presence || @fco_names[fco_id].presence || fco_id
 
       {
         "month"            => all_months? ? "All Months" : @month,
@@ -279,9 +273,9 @@ class CcTargetStatusReport
     return explicit_id if explicit_id.match?(/\A\d+\z/)
 
     combined = vals.compact.map(&:to_s).join(" ").strip.downcase
-    return "1004" if combined.include?("sausar") || combined.include?("1004")
-    return "1006" if combined.include?("turekela") || combined.include?("1006")
-    return "1095" if combined.include?("pavijetpur") || combined.include?("1095")
+    FcoDirectory.id_by_name.each do |name, id|
+      return id if combined.include?(name) || combined.include?(id.downcase)
+    end
 
     vals.map { |value| value.to_s.strip.split("||").first.to_s }.find { |value| value.match?(/\A\d+\z/) } ||
       vals.map { |value| value.to_s.strip }.find(&:present?).to_s

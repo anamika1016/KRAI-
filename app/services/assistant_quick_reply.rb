@@ -35,7 +35,7 @@ class AssistantQuickReply
       data = @context.call(messages)
       return unless data[:jj_gender_by_fco]
       rows = data[:jj_gender_by_fco]
-      fco = { "1004" => "sausar", "1006" => "turekela", "1095" => "pavijetpur" }.find { |id, name| question.match?(/\b(?:#{id}|#{name})\b/i) }&.last
+      fco = FcoDirectory.id_by_name.find { |name, id| question.match?(/\b(?:#{Regexp.escape(id)}|#{Regexp.escape(name)})\b/i) }&.first
       rows = rows.select { |row| row[:fco].downcase.include?(fco) } if fco
       # Asking for a "gender count" means both; naming one gender narrows to it.
       genders = %w[male female].select { |g| question.match?(/\b#{g}\b/i) }

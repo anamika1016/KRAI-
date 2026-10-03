@@ -68,7 +68,11 @@ module Api
             villages: option_values(mappings, :village),
             main_activities: option_values(mappings, :main_activity),
             sub_activities: option_values(mappings, :sub_activity),
-            training_methods: options[:training_methods]
+            training_methods: options[:training_methods],
+            cc_names: options[:cc_names],
+            cluster_coordinator_names: options[:cluster_coordinator_names],
+            agronomist_names: options[:agronomist_names],
+            staff_by_fco: options[:staff_by_fco]
           },
           target_mappings: mappings,
           farmers: farmers,

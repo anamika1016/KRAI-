@@ -61,6 +61,38 @@ class Api::V1::FarmerTargetApisControllerTest < ActionDispatch::IntegrationTest
     assert response.parsed_body["options"].key?("autofill")
   end
 
+  test "training and other target form options include FCO CC and agronomist names" do
+    cc = User.create!(first_name: "Sausar", last_name: "CC", user_name: "sausar_cc",
+      email: "sausar-cc@example.test", mobile_no: "9876500111", password: "secret",
+      stakeholder_role: "Cluster Coordinator", office_name: "FCO-C Sausar", status: "Active")
+    agronomist = User.create!(first_name: "Sausar", last_name: "Agronomist", user_name: "sausar_agronomist",
+      email: "sausar-agronomist@example.test", mobile_no: "9876500112", password: "secret",
+      stakeholder_role: "Agronomist", office_name: "FCO-C Sausar", status: "Active")
+    vrp = create_vrp(fcoc: "FCO-C Sausar")
+    ModuleRecord.create!(module_slug: "add-activity-group", data: { main_activity_name: "Training", main_activity_type: "Training" })
+    ModuleRecord.create!(module_slug: "add-activity-group", data: { main_activity_name: "Seed", main_activity_type: "Other" })
+    TargetMapping.create!(vrp: vrp, fco_id: "1004", fco_name: "FCO-C Sausar", ics_id: "ICS-1", ics_name: "ICS One",
+      village_id: "V-1", village_name: "Village One", month_name: "October", main_activity_name: "Training", activity_name: "Meeting")
+    TargetMapping.create!(vrp: vrp, fco_id: "1004", fco_name: "FCO-C Sausar", ics_id: "ICS-1", ics_name: "ICS One",
+      village_id: "V-1", village_name: "Village One", month_name: "October", main_activity_name: "Seed", activity_name: "Distribution")
+
+    ["farmer-trainings", "other-targets"].each do |path|
+      get "/api/v1/#{path}/form-options", headers: auth_headers
+      assert_response :success
+      options = response.parsed_body.fetch("options")
+      assert_includes options.fetch("cc_names"), cc.full_name
+      assert_includes options.fetch("agronomist_names"), agronomist.full_name
+      fco_staff = options.fetch("staff_by_fco").find { |row| row["fco_name"] == "FCO-C Sausar" }
+      assert_includes fco_staff.fetch("cc_names"), cc.full_name
+      assert_includes fco_staff.fetch("agronomist_names"), agronomist.full_name
+    end
+
+    get "/api/v1/farmer-trainings/form-data", headers: auth_headers
+    assert_response :success
+    assert_includes response.parsed_body.dig("options", "cc_names"), cc.full_name
+    assert_includes response.parsed_body.dig("options", "agronomist_names"), agronomist.full_name
+  end
+
   test "seed distribution list and form options work" do
     ModuleRecord.create!(
       module_slug: "seed-distribution-target",

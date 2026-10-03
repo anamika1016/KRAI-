@@ -109,13 +109,11 @@ class OfficeDashboardCalculator < ModulesController
   # AFL uses numeric IDs/plain names, while JJ records also use FCO-Pavijetpur.
   # Expand equivalent labels only; the existing authorized JJ scope still decides
   # which offices the caller may see.
-  OFFICE_FCO_NAMES = { "1004" => "sausar", "1006" => "turekela", "1095" => "pavijetpur" }.freeze
-
   def training_fcoc_filter_values(*values)
     super + Array(values).flatten.flat_map do |value|
       text = normalize_dashboard_text(value)
       short_name = text.sub(/\Afco(?:\s*[- ]?\s*c)?\s*[-:]?\s*/i, "").strip
-      id, name = OFFICE_FCO_NAMES.find { |id, name| [id, name].include?(short_name) }
+      id, name = FcoDirectory.id_by_name.invert.find { |id, name| [id, name].include?(short_name) }
       id ? [id, name, "fco-c #{name}", "fco-#{name}"] : [short_name]
     end.reject(&:blank?).uniq
   end

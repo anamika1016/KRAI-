@@ -62,14 +62,17 @@ class FarmerTargetApi
         current_vrp: current_seed_target_vrp_option,
         months: master_month_options(mappings.map { |mapping| mapping[:month] }),
         target_mappings: mappings,
-        training_methods: ["General Training/Meeting", "Input Demo INM", "Input Demo PM", "FFS"]
+        training_methods: ["General Training/Meeting", "Input Demo INM", "Input Demo PM", "FFS"],
+        **target_form_staff_options(mappings)
       }
     when *OTHER_TARGET_SLUGS
+      mappings = seed_distribution_target_mappings
       {
         autofill: target_form_autofill,
-        months: master_month_options(seed_distribution_target_mappings.map { |m| m[:month] }),
-        target_mappings: seed_distribution_target_mappings,
-        current_vrp: current_seed_target_vrp_option
+        months: master_month_options(mappings.map { |mapping| mapping[:month] }),
+        target_mappings: mappings,
+        current_vrp: current_seed_target_vrp_option,
+        **target_form_staff_options(mappings)
       }
     when "add-farmer-form"
       {
@@ -444,6 +447,7 @@ class FarmerTargetApi
 
   def normalize_training_form_data(data)
     stamp_target_record_creator!(data)
+    normalize_target_form_staff_fields!(data)
     trainer_name, trainer_contact = training_trainer_defaults
     data["trainer_name"] = trainer_name if trainer_name.present?
     data["trainer_contact"] = trainer_contact if trainer_contact.present?
@@ -481,6 +485,7 @@ class FarmerTargetApi
 
   def normalize_seed_distribution_target_data(data)
     stamp_target_record_creator!(data)
+    normalize_target_form_staff_fields!(data)
     data["main_activity_type"] = "Other"
     data["training_topic"] = data["training_topic"].presence || data["main_activity"].presence
     data["training_subject"] = data["training_subject"].presence || data["sub_activity"].presence
@@ -804,6 +809,56 @@ class FarmerTargetApi
       trainer_name: vrp&.name.presence || current_app_user["name"].to_s,
       trainer_contact: (vrp&.mobile_no.presence || current_app_user["mobile_no"]).to_s.gsub(/\D/, "").last(10)
     }
+  end
+
+  # The web forms select a CC and an Agronomist from the FCO staff directory.
+  # Return that same dynamic catalogue to both Training and Other Target mobile
+  # forms.  `staff_by_fco` lets a client refresh its dropdown when the FCO is
+  # changed, while the flat aliases keep existing clients simple.
+  def target_form_staff_options(mappings)
+    offices = Array(mappings).filter_map do |mapping|
+      mapping[:fco_name].presence || mapping[:department].presence || mapping[:fpo_name].presence
+    end
+    offices.concat([
+      current_app_user["fcoc"], current_app_user["fcoc_name"],
+      current_app_user["office_name"], training_trainee_department_default
+    ])
+    offices = offices.compact_blank.uniq { |office| TrainingStaffScope.normalize(office) }
+    catalogue = TrainingStaffScope.staff_catalogue
+    staff_by_fco = offices.map do |office|
+      cc_names = TrainingStaffScope.options(office, :cluster_coordinator, catalogue: catalogue)
+      agronomist_names = TrainingStaffScope.options(office, :agronomist, catalogue: catalogue)
+      {
+        fco: office,
+        fco_name: office,
+        cc_names: cc_names,
+        cluster_coordinator_names: cc_names,
+        agronomist_names: agronomist_names
+      }
+    end
+
+    cc_names = staff_by_fco.flat_map { |row| row[:cc_names] }.uniq { |name| TrainingStaffScope.normalize(name) }
+    agronomist_names = staff_by_fco.flat_map { |row| row[:agronomist_names] }.uniq { |name| TrainingStaffScope.normalize(name) }
+    {
+      cc_names: cc_names,
+      cluster_coordinator_names: cc_names,
+      agronomist_names: agronomist_names,
+      staff_by_fco: staff_by_fco
+    }
+  rescue StandardError => error
+    Rails.logger.warn("Target form staff options failed: #{error.class}: #{error.message}")
+    { cc_names: ["N/A"], cluster_coordinator_names: ["N/A"], agronomist_names: ["N/A"], staff_by_fco: [] }
+  end
+
+  # Accept either the mobile field names or the legacy web field names and
+  # persist both canonical values.  Reports therefore work for data saved from
+  # either client without requiring any web form changes.
+  def normalize_target_form_staff_fields!(data)
+    cc_name = data["cc_name"].presence || data["cluster_coordinator_name"].presence || data["internal_trainer_name_1"].presence
+    agronomist_name = data["agronomist_name"].presence || data["internal_trainer_name_2"].presence
+    data["cc_name"] = cc_name if cc_name.present?
+    data["cluster_coordinator_name"] = cc_name if cc_name.present?
+    data["agronomist_name"] = agronomist_name if agronomist_name.present?
   end
 
   def training_target_match(data)

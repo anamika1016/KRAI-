@@ -24,7 +24,7 @@ class AssistantContext
     policy.params = ActionController::Parameters.new(@filters.merge("month" => month, "fcoc" => fco_param).compact)
     vrps = policy.send(:dashboard_vrps)
     visible_ids = vrps.map(&:id)
-    gender = ModulesController::DASHBOARD_FCO_NAMES.map do |fco|
+    gender = FcoDirectory.names.map do |fco|
       # The dashboard helper can fetch additional VRPs. Intersect again to
       # prevent those records crossing the current user's visibility boundary.
       records = policy.send(:dashboard_fco_active_vrp_records, fco, month, vrps).select { |vrp| visible_ids.include?(vrp.id) }
@@ -33,8 +33,7 @@ class AssistantContext
     end
     fco = @filters["fco_id"].presence || @filters["fcoc"].presence
     if fco.present? && !fco.downcase.start_with?("all")
-      known_fcos = { "1004" => "sausar", "1006" => "turekela", "1095" => "pavijetpur" }
-      canonical = known_fcos[fco] || fco.sub(/\Afco\s*-\s*c\s+/i, "").downcase
+      canonical = FcoDirectory.name_by_id[fco]&.downcase || fco.sub(/\Afco\s*-\s*c\s+/i, "").downcase
       gender = gender.select { |row| policy.send(:training_fcoc_text_matches?, row[:fco], canonical) }
     end
     {
