@@ -4,6 +4,8 @@ require "csv"
 require "set"
 
 class ModulesController < ApplicationController
+  # Read-only location data does not need an Active Record object per row.
+  LocationRecord = Struct.new(:id, :data)
   before_action :authorize_farmer_target_access
   before_action :authorize_jeevika_payment_module_access
 
@@ -9559,15 +9561,25 @@ class ModulesController < ApplicationController
     vrp = cached_vrps_by_id[key]
     unless vrp
       normalized_vrp = normalize_dashboard_text(vrp_id)
-      vrp = cached_vrps_by_id.values.find do |candidate|
-        candidate.name.to_s == vrp_id.to_s ||
-          candidate.user_name.to_s == vrp_id.to_s ||
-          candidate.mobile_no.to_s == vrp_id.to_s ||
-          candidate.name.to_s.downcase == normalized_vrp.downcase
-      end
+      exact, names = cached_vrp_label_indexes
+      matches = [exact[key], names[normalized_vrp.downcase]].compact
+      vrp = matches.min_by(&:first)&.last
     end
 
     @cached_vrp_lookup[key] = vrp
+  end
+
+  def cached_vrp_label_indexes
+    @cached_vrp_label_indexes ||= begin
+      exact = {}
+      names = {}
+      cached_vrps_by_id.each_value.with_index do |vrp, position|
+        entry = [position, vrp]
+        [vrp.name, vrp.user_name, vrp.mobile_no].each { |label| exact[label.to_s] ||= entry }
+        names[vrp.name.to_s.downcase] ||= entry
+      end
+      [exact, names]
+    end
   end
 
   def user_dashboard_identity(user)
@@ -12430,18 +12442,26 @@ class ModulesController < ApplicationController
     block = normalize_dashboard_text(first_present_data(record, "block", "block_name", "cd_block_name"))
     return "" if state.blank? || district.blank? || block.blank?
 
-    gram_panchayat_location_records.find do |candidate|
-        code_matches = %w[gp_code gram_code gram_panchayat_code gram_panchayat_id gram_panchayat gram_panchayat_name gp_name gram_name name].any? do |key|
-          normalize_dashboard_text(candidate.data[key]) == normalized_code
-        end
+    gram_panchayat_names_by_location[[state, district, block, normalized_code]]
+  end
 
-        code_matches &&
-        normalize_dashboard_text(first_present_data(candidate, "state", "state_name")) == state &&
-          normalize_dashboard_text(first_present_data(candidate, "district", "district_name")) == district &&
-          normalize_dashboard_text(first_present_data(candidate, "block", "block_name", "cd_block_name")) == block &&
-          !code_like_location_value?(gram_panchayat_name_from_record(candidate))
+  def gram_panchayat_names_by_location
+    @gram_panchayat_names_by_location ||= gram_panchayat_location_records.each_with_object({}) do |candidate, index|
+      label = gram_panchayat_name_from_record(candidate)
+      next if code_like_location_value?(label)
+
+      location = [
+        normalize_dashboard_text(first_present_data(candidate, "state", "state_name")),
+        normalize_dashboard_text(first_present_data(candidate, "district", "district_name")),
+        normalize_dashboard_text(first_present_data(candidate, "block", "block_name", "cd_block_name"))
+      ]
+      %w[gp_code gram_code gram_panchayat_code gram_panchayat_id gram_panchayat gram_panchayat_name gp_name gram_name name].each do |key|
+        code = normalize_dashboard_text(candidate.data[key])
+        # Keep the first match, including a blank label, just as Array#find did.
+        index_key = [*location, code]
+        index[index_key] = label unless index.key?(index_key)
       end
-      &.then { |candidate| gram_panchayat_name_from_record(candidate) }
+    end
   end
 
   def module_field_aliases(field)
@@ -13516,10 +13536,11 @@ class ModulesController < ApplicationController
     return [] unless record
 
     data = record.data
-    ModuleRecord
+    @approval_channel_records ||= ModuleRecord
       .where(module_slug: "approval-master")
       .order(created_at: :asc)
-      .select { |approval_record| same_approval_channel?(approval_record.data, data) }
+      .to_a
+    @approval_channel_records.select { |approval_record| same_approval_channel?(approval_record.data, data) }
   end
 
   def same_approval_channel?(left_data, right_data)
@@ -14781,6 +14802,7 @@ class ModulesController < ApplicationController
   end
 
   def location_hierarchy_mappings
+    return @location_hierarchy_mappings if defined?(@location_hierarchy_mappings)
     return [] unless model_ready?(:ModuleRecord)
 
     states = active_records_for_location("state-master").map do |record|
@@ -14826,13 +14848,16 @@ class ModulesController < ApplicationController
         village: first_present_data(record, "village", "village_name"))
     end
 
-    states + districts + blocks + gram_panchayats + villages + lg_directory_rows
+    @location_hierarchy_mappings = states + districts + blocks + gram_panchayats + villages + lg_directory_rows
   end
 
   def active_records_for_location(module_slug)
-    ModuleRecord
+    @active_records_for_location ||= {}
+    @active_records_for_location[module_slug] ||= ModuleRecord
       .where(module_slug: module_slug)
       .order(created_at: :desc)
+      .pluck(:id, :data)
+      .map { |id, data| LocationRecord.new(id, data) }
       .select { |record| active_module_record?(record) }
   end
 
@@ -15179,6 +15204,10 @@ class ModulesController < ApplicationController
   end
 
   def approver_options
+    @approver_options ||= build_approver_options
+  end
+
+  def build_approver_options
     user_options = []
     if model_ready?(:User)
       user_options = User.order(created_at: :desc).filter_map do |user|
