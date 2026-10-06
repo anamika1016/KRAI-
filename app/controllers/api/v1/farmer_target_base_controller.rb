@@ -43,6 +43,7 @@ module Api
         result = farmer_target_api.create(attrs)
 
         unless result[:success]
+          Rails.logger.warn("[farmer_target_api] module=#{self.class::MODULE_SLUG} save_failed errors=#{result[:errors].to_json}")
           return render json: {
             success: false,
             message: "#{self.class::RESOURCE_TITLE} save failed.",

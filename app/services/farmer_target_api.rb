@@ -990,9 +990,10 @@ class FarmerTargetApi
     selected_main_activity = normalize_text(data["main_activity"])
     selected_sub_activity = normalize_text(data["sub_activity"])
     activity_settings = main_activity_settings
+    sub_activity_settings = sub_activity_settings_for(activity_settings)
 
     training_target_scope.each_with_object([]) do |target, ids|
-      activity_setting = activity_settings[normalize_text(target.main_activity_name)]
+      activity_setting = activity_setting_for(target, activity_settings, sub_activity_settings)
       next if activity_setting.blank? || !training_main_activity_type?(activity_setting[:main_activity_type])
 
       target_main_activity_type = normalize_text(activity_setting[:main_activity_type].presence || "Training")
