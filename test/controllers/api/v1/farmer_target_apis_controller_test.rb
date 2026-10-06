@@ -293,6 +293,39 @@ class Api::V1::FarmerTargetApisControllerTest < ActionDispatch::IntegrationTest
     assert_includes response.parsed_body.dig("options", "training_methods"), "General Training/Meeting"
   end
 
+  test "training API saves farmers offered through ICS and location fallback and excludes completed farmers" do
+    vrp = create_vrp
+    ModuleRecord.create!(module_slug: "add-activity-group", data: { main_activity_name: "Training", main_activity_type: "Training" })
+    farmer = Afl.create!(farmer_name: "Fallback farmer", fco_id: "demo", ics_id: "1", village_id: "1")
+    TargetMapping.create!(vrp: vrp, fco_id: "demo", ics_id: "1", village_id: "1", village_name: "Village", ics_name: "ICS",
+      month_name: "September", main_activity_name: "Training", activity_name: "Demo", target_quantity: 1, afl_ids: [])
+    attrs = { month: "September", ics_block: "ICS", gram_name: "Village", fco_name: "Demo",
+      training_date: "2026-09-16", training_location: "Village", main_activity: "Training", sub_activity: "Demo",
+      training_method: "General Training/Meeting", training_description: "Meeting", male_count: 1, female_count: 0,
+      selected_farmer_ids: [farmer.id.to_s], next_farmer_training_date: "2026-09-20",
+      training_register_upload: "/uploads/module_records/register.jpg", photo_front_view: "/uploads/module_records/front.jpg" }
+
+    2.times do |index|
+      if index == 1
+        VrpIcsMapping.create!(vrp: vrp, fco_id: "demo", ics_id: "1", village_id: "1", afl_ids: [farmer.id.to_s])
+        farmer.update!(village_id: "elsewhere")
+      end
+      get "/api/v1/farmer-trainings/farmers", params: { month: "September", main_activity: "Training", sub_activity: "Demo" }, headers: auth_headers
+      assert_response :success
+      assert_includes response.parsed_body["farmers"].map { |row| row["id"].to_s }, farmer.id.to_s
+
+      post "/api/v1/farmer-trainings", params: { farmer_training: attrs }, headers: auth_headers, as: :json
+      assert_response :created
+      record_id = response.parsed_body.dig("farmer_training", "id")
+      assert_equal [farmer.id.to_s], response.parsed_body.dig("farmer_training", "data", "selected_farmer_ids")
+
+      post "/api/v1/farmer-trainings", params: { farmer_training: attrs }, headers: auth_headers, as: :json
+      assert_response :unprocessable_entity
+      assert_includes response.parsed_body["errors"], "Target Farmers select karein."
+      ModuleRecord.find(record_id).destroy!
+    end
+  end
+
   test "JJ token cannot access other JJ target forms or demonstration rows" do
     own = create_vrp(name: "Own JJ")
     other = create_vrp(name: "Other JJ")

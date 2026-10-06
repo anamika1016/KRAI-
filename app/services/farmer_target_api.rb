@@ -1003,7 +1003,7 @@ class FarmerTargetApi
       next if normalize_text(target.main_activity_name) != selected_main_activity
       next if normalize_text(target.activity_name) != selected_sub_activity
 
-      farmer_ids = Array(target.afl_ids).map(&:to_s).reject(&:blank?).uniq
+      farmer_ids = training_target_farmer_ids(target)
       ids.concat(farmer_ids - completed_training_farmer_ids_for(target, farmer_ids))
     end.uniq
   end
