@@ -470,10 +470,6 @@ class FarmerTargetApi
     end
 
     selected_farmer_ids = Array(data["selected_farmer_ids"]).map(&:to_s).reject(&:blank?).uniq
-    if selected_farmer_ids.any? && training_form_activity_scope_present?(data)
-      pending_farmer_ids = pending_training_farmer_ids_for(data)
-      selected_farmer_ids &= pending_farmer_ids unless pending_farmer_ids.nil?
-    end
     data["selected_farmer_ids"] = selected_farmer_ids
     data["selected_farmer_names"] = training_farmer_names(selected_farmer_ids)
     data["farmer_count"] = selected_farmer_ids.size.to_s
@@ -579,6 +575,7 @@ class FarmerTargetApi
     total_farmer_count = whole_number_value(data["total_farmer_count"].presence || training_total_farmer_count(data).to_s)
 
     errors << "Target Farmers select karein." if selected_farmer_ids.blank?
+    errors.concat(training_farmer_selection_errors(data, selected_farmer_ids)) if selected_farmer_ids.any? && training_form_activity_scope_present?(data)
     errors << "Farmer Count valid whole number hona chahiye." if farmer_count.nil?
     errors << "Male Count valid whole number hona chahiye." if male_count.nil?
     errors << "Female Count valid whole number hona chahiye." if female_count.nil?
@@ -980,7 +977,25 @@ class FarmerTargetApi
     data["month"].present? && data["gram_name"].present? && data["main_activity"].present? && data["sub_activity"].present?
   end
 
-  def pending_training_farmer_ids_for(data)
+  def training_farmer_selection_errors(data, selected_farmer_ids)
+    pending_ids = pending_training_farmer_ids_for(data)
+    return [] if pending_ids.nil? || (selected_farmer_ids - pending_ids).empty?
+
+    mapped_ids = pending_training_farmer_ids_for(data, include_completed: true)
+    unmapped_ids = selected_farmer_ids - mapped_ids
+    completed_ids = (selected_farmer_ids & mapped_ids) - pending_ids
+    errors = []
+    if unmapped_ids.any?
+      errors << "#{unmapped_ids.size} selected farmer(s) is training target mein mapped nahi hain. Farmer list refresh karke dobara select karein."
+    end
+    if completed_ids.any?
+      errors << "#{completed_ids.size} selected farmer(s) ki training is month aur activity ke liye pehle se saved hai. Farmer list refresh karke available farmers select karein."
+    end
+    Rails.logger.warn("[farmer_target_api] training_selection_rejected target_mapping_id=#{data['target_mapping_id']} selected_count=#{selected_farmer_ids.size} pending_count=#{pending_ids.size} unmapped_count=#{unmapped_ids.size} completed_count=#{completed_ids.size}")
+    errors
+  end
+
+  def pending_training_farmer_ids_for(data, include_completed: false)
     return nil unless model_ready?(:TargetMapping)
 
     selected_month = normalize_text(data["month"])
@@ -1005,7 +1020,7 @@ class FarmerTargetApi
       next if normalize_text(target.activity_name) != selected_sub_activity
 
       farmer_ids = training_target_farmer_ids(target)
-      ids.concat(farmer_ids - completed_training_farmer_ids_for(target, farmer_ids))
+      ids.concat(include_completed ? farmer_ids : farmer_ids - completed_training_farmer_ids_for(target, farmer_ids))
     end.uniq
   end
 

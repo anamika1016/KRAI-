@@ -314,14 +314,25 @@ class Api::V1::FarmerTargetApisControllerTest < ActionDispatch::IntegrationTest
       assert_response :success
       assert_includes response.parsed_body["farmers"].map { |row| row["id"].to_s }, farmer.id.to_s
 
-      post "/api/v1/farmer-trainings", params: { farmer_training: attrs }, headers: auth_headers, as: :json
+      if index.zero?
+        post "/api/v1/farmer-trainings", params: attrs.merge(
+          farmer_ids: [farmer.id.to_s], selected_farmers: { "0" => { id: farmer.id.to_s } }
+        ), headers: auth_headers
+      else
+        post "/api/v1/farmer-trainings", params: { farmer_training: attrs }, headers: auth_headers, as: :json
+      end
       assert_response :created
       record_id = response.parsed_body.dig("farmer_training", "id")
       assert_equal [farmer.id.to_s], response.parsed_body.dig("farmer_training", "data", "selected_farmer_ids")
 
       post "/api/v1/farmer-trainings", params: { farmer_training: attrs }, headers: auth_headers, as: :json
       assert_response :unprocessable_entity
-      assert_includes response.parsed_body["errors"], "Target Farmers select karein."
+      assert response.parsed_body["errors"].any? { |error| error.include?("pehle se saved hai") }
+      assert_no_difference("ModuleRecord.where(module_slug: 'training-form').count") do
+        post "/api/v1/farmer-trainings", params: { farmer_training: attrs.merge(selected_farmer_ids: [farmer.id.to_s, "999999999"]) }, headers: auth_headers, as: :json
+        assert_response :unprocessable_entity
+        assert response.parsed_body["errors"].any? { |error| error.include?("mapped nahi hain") }
+      end
       ModuleRecord.find(record_id).destroy!
     end
   end
