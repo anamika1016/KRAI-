@@ -63,6 +63,8 @@ Rails.application.routes.draw do
       get "access-controls", to: "access_controls#index"
       get "access-controls/:id", to: "access_controls#show"
       get "target-mappings/recent", to: "target_mappings#recent"
+      get "target-mappings/mapped-farmers", to: "target_mappings#mapped_farmers"
+      get "target-mappings/mapped-farmers/export", to: "target_mappings#mapped_farmers_export"
       delete "logout", to: "sessions#destroy"
 
       # Jeevika Jankar (VRP) — React Native APIs; web /vrps routes unchanged

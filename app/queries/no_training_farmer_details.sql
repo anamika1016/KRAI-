@@ -14,7 +14,7 @@ WITH august_any_mapping AS (
         t.afl_ids::jsonb
     ) AS v(afl_id)
 
-    WHERE LOWER(TRIM(t.month_name)) = :month_name
+    WHERE %{target_month_filter}
 
     GROUP BY
         t.fco_id,
@@ -37,7 +37,7 @@ august_training_mapping AS (
         t.afl_ids::jsonb
     ) AS v(afl_id)
 
-    WHERE LOWER(TRIM(t.month_name)) = :month_name
+    WHERE %{target_month_filter}
       AND LOWER(COALESCE(t.main_activity_name, ''))
           LIKE '%farmers'' training%'
 
@@ -63,11 +63,7 @@ training_records AS MATERIALIZED (
         COALESCE(mr.data::jsonb -> 'selected_farmer_ids', '[]'::jsonb) AS farmer_ids
     FROM public.module_records mr
     WHERE mr.module_slug = 'training-form'
-      AND LOWER(
-            TRIM(
-                mr.data::jsonb ->> 'month'
-            )
-          ) = :month_name
+      AND %{entry_month_filter}
       AND LOWER(TRIM(COALESCE(mr.data::jsonb ->> 'main_activity', ''))) LIKE '%farmers'' training%'
 
 ),

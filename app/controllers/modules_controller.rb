@@ -336,7 +336,6 @@ class ModulesController < ApplicationController
       fields: [
         "Jeevika Jankar Name",
         "Contact Number",
-        "Department",
         "FCO Name",
         "Month",
         "ICS",
@@ -6129,16 +6128,38 @@ class ModulesController < ApplicationController
     [0, format_fco_popups([], fco_ids, "red_farmer_count"), []]
   end
 
-  # "All Months" red count: a farmer is red here only when they have never been
-  # entered into any Farmers' Training record, across any month -- the simpler
-  # all-months definition (no per-month mapping breakdown, since mapping is tied
-  # to one month and "all months" has no single month to break it down against).
+  # "All Months" red count and its hover breakdown. Same shape as the
+  # month-specific query above, with every month filter dropped so mapping and
+  # training entries are matched across all months. The FCO filter and the
+  # login's own visibility scope still apply, so picking Sausar or Turekela
+  # narrows this exactly like it does for a single month.
   def compute_farmer_training_no_training_count_and_popups_all_months(fcoc_name:)
     fco_ids = training_fcoc_ids_from_param(fcoc_name)
     fco_filter_sql = "AND LOWER(BTRIM(a.fco_id)) IN (:fco_ids)"
 
     sql = <<~SQL.squish
-      WITH august_training_done AS (
+      WITH august_any_mapping AS (
+          SELECT DISTINCT t.fco_id, v.afl_id
+          FROM public.target_mappings t
+          CROSS JOIN LATERAL jsonb_array_elements_text(
+              CASE
+                WHEN jsonb_typeof(t.afl_ids::jsonb) = 'array' THEN t.afl_ids::jsonb
+                ELSE jsonb_build_array(t.afl_ids::jsonb)
+              END
+          ) AS v(afl_id)
+      ),
+      august_training_mapping AS (
+          SELECT DISTINCT t.fco_id, v.afl_id
+          FROM public.target_mappings t
+          CROSS JOIN LATERAL jsonb_array_elements_text(
+              CASE
+                WHEN jsonb_typeof(t.afl_ids::jsonb) = 'array' THEN t.afl_ids::jsonb
+                ELSE jsonb_build_array(t.afl_ids::jsonb)
+              END
+          ) AS v(afl_id)
+          WHERE LOWER(COALESCE(t.main_activity_name, '')) LIKE '%farmers'' training%'
+      ),
+      august_training_done AS (
           SELECT DISTINCT sf.farmer_id
           FROM public.module_records mr
           CROSS JOIN LATERAL jsonb_array_elements_text(
@@ -6153,10 +6174,17 @@ class ModulesController < ApplicationController
       SELECT
           a.fco_id,
           COALESCE(MAX(NULLIF(BTRIM(a.fco), '')), a.fco_id) AS fco_name,
-          COUNT(DISTINCT a.id) AS red_farmer_count
+          COUNT(DISTINCT a.id) AS total_farmer_count,
+          COUNT(DISTINCT CASE WHEN am.afl_id IS NOT NULL THEN a.id END) AS total_mapped_farmer_count,
+          COUNT(DISTINCT CASE WHEN am.afl_id IS NULL THEN a.id END) AS no_activity_mapping_count,
+          COUNT(DISTINCT CASE WHEN am.afl_id IS NOT NULL AND tm.afl_id IS NULL THEN a.id END) AS no_training_mapping_count,
+          COUNT(DISTINCT CASE WHEN tm.afl_id IS NOT NULL AND td.farmer_id IS NULL THEN a.id END) AS training_mapped_but_no_entry_count,
+          COUNT(DISTINCT CASE WHEN td.farmer_id IS NULL THEN a.id END) AS red_farmer_count
       FROM public.afls a
+      LEFT JOIN august_any_mapping am ON am.fco_id = a.fco_id AND am.afl_id = a.id::text
+      LEFT JOIN august_training_mapping tm ON tm.fco_id = a.fco_id AND tm.afl_id = a.id::text
       LEFT JOIN august_training_done td ON td.farmer_id = a.id::text
-      WHERE td.farmer_id IS NULL
+      WHERE 1=1
         #{fco_filter_sql}
       GROUP BY a.fco_id
       ORDER BY a.fco_id;
@@ -6168,7 +6196,7 @@ class ModulesController < ApplicationController
     ).to_a
 
     total_count = rows.sum { |r| r["red_farmer_count"].to_i }
-    popups = format_fco_popups(rows, fco_ids, "red_farmer_count")
+    popups = format_red_fco_popups(rows, fco_ids)
     details = format_red_fco_details(rows, fco_ids)
 
     [total_count, popups, details]
@@ -6341,9 +6369,15 @@ class ModulesController < ApplicationController
   end
 
   def farmer_training_participation_rows_from_sql(status, month_name:, fcoc_name:, week_number: nil)
+    # "All Months" selected: drop the month filter (and the week filter, which
+    # only means anything inside one month) so every list below spans all
+    # months. Picking a specific month keeps the original behaviour untouched.
+    all_months = month_name.blank?
     selected_month = month_name.presence || "August"
     fco_ids = training_fcoc_ids_from_param(fcoc_name)
-    week_filter = training_participation_week_filter_sql(week_number || selected_participation_sql_week)
+    week_filter = all_months ? "" : training_participation_week_filter_sql(week_number || selected_participation_sql_week)
+    entry_month_filter = all_months ? "" : "AND LOWER(TRIM(mr.data::jsonb ->> 'month')) = :month_name"
+    month_label = all_months ? "All Months" : selected_month
 
     if status.to_s == "green" || status.to_s == "1_plus_trainings" || status.to_s == "more_than_1"
       fco_filter_sql = "AND LOWER(BTRIM(a.fco_id)) IN (:fco_ids)"
@@ -6361,7 +6395,7 @@ class ModulesController < ApplicationController
                 COALESCE(mr.data::jsonb -> 'selected_farmer_ids', '[]'::jsonb) AS farmer_ids
             FROM public.module_records mr
             WHERE mr.module_slug = 'training-form'
-              AND LOWER(TRIM(mr.data::jsonb ->> 'month')) = :month_name
+              #{entry_month_filter}
               AND LOWER(COALESCE(mr.data::jsonb ->> 'main_activity', '')) LIKE '%farmers'' training%'
               #{week_filter}
         ), august_training AS (
@@ -6417,7 +6451,8 @@ class ModulesController < ApplicationController
             a.farmer_name;
       SQL
 
-      binds = { month_name: selected_month.strip.downcase, fco_ids: fco_ids.map(&:downcase) }
+      binds = { fco_ids: fco_ids.map(&:downcase) }
+      binds[:month_name] = selected_month.strip.downcase unless all_months
       raw_rows = ActiveRecord::Base.connection.exec_query(
         ActiveRecord::Base.send(:sanitize_sql_array, [dashboard_scoped_training_sql(sql), binds])
       )
@@ -6436,7 +6471,7 @@ class ModulesController < ApplicationController
           jeevika_jankar_name: row["trainer_name"].to_s.presence || "-",
           vrp: row["trainer_name"].to_s.presence || "-",
           registered_by: row["trainer_name"].to_s.presence || "-",
-          months: selected_month,
+          months: month_label,
           main_activities: "Farmers' Training",
           sub_activities: row["sub_activity"].to_s.presence || "-",
           training_method: row["training_method"].to_s.presence || "-",
@@ -6466,7 +6501,7 @@ class ModulesController < ApplicationController
                 COALESCE(mr.data::jsonb -> 'selected_farmer_ids', '[]'::jsonb) AS farmer_ids
             FROM public.module_records mr
             WHERE mr.module_slug = 'training-form'
-              AND LOWER(TRIM(mr.data::jsonb ->> 'month')) = :month_name
+              #{entry_month_filter}
               AND LOWER(COALESCE(mr.data::jsonb ->> 'main_activity', '')) LIKE '%farmers'' training%'
               #{week_filter}
         ), august_training AS (
@@ -6522,7 +6557,8 @@ class ModulesController < ApplicationController
             a.farmer_name;
       SQL
 
-      binds = { month_name: selected_month.strip.downcase, fco_ids: fco_ids.map(&:downcase) }
+      binds = { fco_ids: fco_ids.map(&:downcase) }
+      binds[:month_name] = selected_month.strip.downcase unless all_months
       raw_rows = ActiveRecord::Base.connection.exec_query(
         ActiveRecord::Base.send(:sanitize_sql_array, [dashboard_scoped_training_sql(sql), binds])
       )
@@ -6541,7 +6577,7 @@ class ModulesController < ApplicationController
           jeevika_jankar_name: row["trainer_name"].to_s.presence || "-",
           vrp: row["trainer_name"].to_s.presence || "-",
           registered_by: row["trainer_name"].to_s.presence || "-",
-          months: selected_month,
+          months: month_label,
           main_activities: "Farmers' Training",
           sub_activities: row["sub_activity"].to_s.presence || "-",
           training_method: row["training_method"].to_s.presence || "-",
@@ -6655,6 +6691,14 @@ class ModulesController < ApplicationController
       Rails.root.join("app/queries/no_training_farmer_details.sql").read
     end
 
+    # The red list's SQL file carries month placeholders so "All Months" can drop
+    # the month predicates without duplicating the whole query. Files without
+    # placeholders (e.g. mapped_farmer_details.sql) are left untouched.
+    month_predicates = {
+      "target_month_filter" => all_months ? "TRUE" : "LOWER(TRIM(t.month_name)) = :month_name",
+      "entry_month_filter" => all_months ? "TRUE" : "LOWER(TRIM(mr.data::jsonb ->> 'month')) = :month_name"
+    }
+    sql = sql.gsub(/%\{(\w+)\}/) { month_predicates.fetch(Regexp.last_match(1)) }
     sql = sql.gsub("WHERE mr.module_slug = 'training-form'", "WHERE mr.module_slug = 'training-form' #{week_filter}")
 
     if %w[unique mapped red pending total_red].include?(status.to_s)
@@ -6670,7 +6714,7 @@ class ModulesController < ApplicationController
         { farmer_id: row["id"].to_s, farmer_name: row["farmer_name"], father_name: row["father_name"],
           mobile_no: row["mobile_no"], tracenet_no: row["tracenet_no"], ics: row["ics_name"],
           village: row["village_name"], fcoc: row["fco"], cluster_incharge: row["cluster_incharge"],
-          vrp: row["vrp_name"], months: selected_month, status_label: row["status"],
+          vrp: row["vrp_name"], months: month_label, status_label: row["status"],
           training_register_urls: module_upload_public_urls(row["training_register_urls"]),
           training_photo_urls: module_upload_public_urls(row["training_photo_urls"]) }
       end
@@ -6695,7 +6739,7 @@ class ModulesController < ApplicationController
         jeevika_jankar_name: "-",
         vrp: "-",
         registered_by: "-",
-        months: selected_month,
+        months: month_label,
         main_activities: "Farmers' Training",
         sub_activities: "-",
         attendance_count: 0,

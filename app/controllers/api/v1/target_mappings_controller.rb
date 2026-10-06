@@ -37,14 +37,141 @@ module Api
         }, status: :ok
       end
 
+      # Target Mapping > Jeevika Jankar Mapped Farmers.  One row is returned
+      # for each farmer assigned to a target mapping, with both the complete
+      # target context and the farmer master data the web page uses.
+      # `web_filtered_mappings` applies the exact web visibility policy: an
+      # admin receives all mappings, while a JJ receives only their own.
+      def mapped_farmers
+        rows = filtered_mapped_farmer_rows
+        page, per_page = pagination_values
+        paged_rows = rows.slice((page - 1) * per_page, per_page) || []
+
+        render json: {
+          success: true,
+          message: "Jeevika Jankar mapped farmers fetched successfully.",
+          records: paged_rows,
+          mapped_farmers: paged_rows,
+          count: rows.size,
+          filters: mapped_farmer_filter_payload,
+          export_endpoint: "#{request.base_url}/api/v1/target-mappings/mapped-farmers/export",
+          pagination: pagination_payload(rows.size, page, per_page)
+        }, status: :ok
+      end
+
+      def mapped_farmers_export
+        rows = filtered_mapped_farmer_rows
+        headers = mapped_farmer_export_headers
+        file = XlsxExporter.generate(
+          headers: headers,
+          rows: rows.map { |row| headers.map { |header| export_value(row[header]) } },
+          sheet_name: "JJ Mapped Farmers"
+        )
+        send_data file,
+          filename: "jeevika-jankar-mapped-farmers-#{Date.current}.xlsx",
+          type: XlsxExporter::MIME_TYPE,
+          disposition: "attachment"
+      end
+
       private
 
-      def web_filtered_mappings
+      def web_filtered_mappings(apply_search: true)
         controller = web_target_mappings_controller
         scope = controller.send(:filtered_visible_target_mappings)
         scope = merge_hierarchy_target_mappings(scope, controller)
-        scope = apply_search(scope) if params[:search].present?
+        scope = apply_search(scope) if apply_search && params[:search].present?
         scope.includes(:vrp, :vrp_ics_mapping).order("target_mappings.updated_at DESC").to_a
+      end
+
+      def filtered_mapped_farmer_rows
+        mappings = web_filtered_mappings(apply_search: false)
+        farmer_ids = mappings.flat_map { |mapping| Array(mapping.afl_ids) }.map(&:to_s).compact_blank.uniq
+        farmers_by_id = Afl.where(id: farmer_ids).index_by { |farmer| farmer.id.to_s }
+        rows = mappings.flat_map do |mapping|
+          Array(mapping.afl_ids).map(&:to_s).compact_blank.uniq.map do |farmer_id|
+            mapped_farmer_payload(mapping, farmers_by_id[farmer_id], farmer_id)
+          end
+        end
+        search_mapped_farmer_rows(rows)
+      end
+
+      def mapped_farmer_payload(mapping, farmer, farmer_id)
+        weekly_targets = mapping.weekly_target_values
+        farmer_data = farmer ? farmer.attributes.except("qrcode") : {}
+        {
+          id: "#{mapping.id}-#{farmer_id}",
+          target_mapping_id: mapping.id.to_s,
+          jeevika_jankar_id: mapping.vrp_id.to_s,
+          jeevika_jankar_name: mapping.vrp&.name.presence || mapping.vrp&.user_name,
+          jeevika_jankar_mobile_no: mapping.vrp&.mobile_no,
+          cc_name: mapping.vrp&.cluster_incharge,
+          fco_id: mapping.fco_id,
+          fco_name: mapping.fco_name.presence || mapping.vrp&.fcoc,
+          ics_id: mapping.ics_id,
+          ics_name: mapping.ics_name,
+          village_id: mapping.village_id,
+          village_name: mapping.village_name,
+          month: mapping.month_name,
+          completion_date: mapping.completion_date&.iso8601,
+          main_activity: mapping.main_activity_name,
+          sub_activity: mapping.activity_name,
+          main_activity_type: target_main_activity_type(mapping),
+          farmer_target: mapping.target_quantity,
+          cc_target: mapping.cc_target,
+          opg_training_target: mapping.opg_training_target,
+          general_training_meeting_target: mapping.week_wise_opg_target,
+          input_demo_inm_target: mapping.input_demo_inm_target,
+          input_demo_pm_target: mapping.input_demo_pm_target,
+          ffs_target: mapping.ffs_target,
+          week_1_target: weekly_targets[0], week_2_target: weekly_targets[1],
+          week_3_target: weekly_targets[2], week_4_target: weekly_targets[3],
+          farmer_id: farmer_id,
+          farmer_name: farmer&.farmer_name,
+          father_name: farmer&.father_name,
+          tracenet_no: farmer&.tracenet_no,
+          mobile_no: farmer&.mobile_no,
+          farmer_fco_id: farmer&.fco_id,
+          farmer_fco_name: farmer&.fco,
+          farmer_ics_id: farmer&.ics_id,
+          farmer_ics_name: farmer&.ics_name,
+          farmer_village_id: farmer&.village_id,
+          farmer_village_name: farmer&.village_name,
+          farmer_details: farmer_data,
+          created_at: mapping.created_at&.iso8601,
+          updated_at: mapping.updated_at&.iso8601
+        }
+      end
+
+      def search_mapped_farmer_rows(rows)
+        term = params[:search].to_s.strip.downcase
+        return rows if term.blank?
+
+        rows.select { |row| row.values.any? { |value| value.to_s.downcase.include?(term) } }
+      end
+
+      def mapped_farmer_filter_payload
+        %w[month main_activity sub_activity fco fco_id fcoc ics ics_id village village_id vrp_id search]
+          .each_with_object({}) { |key, result| result[key] = params[key] if params[key].present? }
+      end
+
+      def pagination_payload(total_count, page, per_page)
+        { page: page, per_page: per_page, total_count: total_count, total_pages: (total_count.to_f / per_page).ceil }
+      end
+
+      def mapped_farmer_export_headers
+        %w[
+          target_mapping_id jeevika_jankar_id jeevika_jankar_name jeevika_jankar_mobile_no cc_name
+          fco_id fco_name ics_id ics_name village_id village_name month completion_date
+          main_activity sub_activity main_activity_type farmer_target cc_target
+          opg_training_target general_training_meeting_target input_demo_inm_target input_demo_pm_target ffs_target
+          week_1_target week_2_target week_3_target week_4_target
+          farmer_id farmer_name father_name tracenet_no mobile_no
+          farmer_fco_id farmer_fco_name farmer_ics_id farmer_ics_name farmer_village_id farmer_village_name
+        ]
+      end
+
+      def export_value(value)
+        value.is_a?(Array) || value.is_a?(Hash) ? value.to_json : value
       end
 
       def web_target_mappings_controller
