@@ -641,7 +641,7 @@ module Api
         user_key = current_api_user_payload.slice("id", "user_id", "username", "user_name", "user_type").sort.to_h
         # Keep the API cache namespace aligned with dashboard scope changes so
         # an old zero-result response is never returned after deployment.
-        ["api-v1-admin-dashboard-work-status-v13", Date.current.to_s, suffix, user_key, filters, version_parts].to_json
+        ["api-v1-admin-dashboard-work-status-v14", Date.current.to_s, suffix, user_key, filters, version_parts].to_json
       end
 
       def admin_dashboard_cache_filters
@@ -701,6 +701,20 @@ module Api
         end
 
         options = {}
+        # Build every cascading option from the selected month, exactly as the
+        # web dashboard does. Previously the Admin API populated activities
+        # from all months and only applied month at the end; office APIs did
+        # the reverse. That made the same September/October request expose a
+        # different (and sometimes incomplete) set of dropdown values.
+        options[:months] = (targets.map(&:month_name) + web.send(:month_master_month_options)).compact_blank.uniq
+          .sort_by { |month| web.send(:dashboard_month_index, month) || 0 }
+        selected_month = params.key?(:month) ? filter_param(:month) : DashboardDefaults.month
+        if selected_month.present?
+          targets.select! { |target| same_text?(target.month_name, selected_month) }
+          vrp_ids = id_lookup(targets, :vrp_id)
+          vrps.select! { |vrp| vrp_ids.key?(vrp.id.to_s) }
+        end
+
         options[:main_activities] = targets.map(&:main_activity_name).compact_blank.uniq.sort
         options[:activities] = options[:main_activities]
         selected_main_activity = params.key?(:main_activity) ? filter_param(:main_activity) : default_farmer_activity_filter(web, options[:main_activities])
@@ -748,15 +762,6 @@ module Api
         selected_ics = filter_param(:ics, :ics_name)
         if selected_ics.present?
           targets.select! { |target| same_text?(target.ics_name.presence || target.ics_id, selected_ics) }
-          vrp_ids = id_lookup(targets, :vrp_id)
-          vrps.select! { |vrp| vrp_ids.key?(vrp.id.to_s) }
-        end
-
-        options[:months] = (targets.map(&:month_name) + web.send(:month_master_month_options)).compact_blank.uniq
-          .sort_by { |month| web.send(:dashboard_month_index, month) || 0 }
-        selected_month = params.key?(:month) ? filter_param(:month) : DashboardDefaults.month
-        if selected_month.present?
-          targets.select! { |target| same_text?(target.month_name, selected_month) }
           vrp_ids = id_lookup(targets, :vrp_id)
           vrps.select! { |vrp| vrp_ids.key?(vrp.id.to_s) }
         end
@@ -868,6 +873,9 @@ module Api
           demonstration_method: DemonstrationMethodReport.new(targets: targets, month: params.key?(:month) ? filter_param(:month) : DashboardDefaults.month).summary,
           sections: card_data,
           cards: card_data.values_at(:registration, :target_assignment, :billing).reduce({}, &:merge),
+          dashboard_summary: admin_dashboard_summary_payload(
+            web_summary_cards, participation_counts, weekly_summary_totals
+          ),
           mobile_widget_values: mobile_widget_values,
           list_endpoints: admin_dashboard_list_catalog.to_h do |type, title|
             [type, { title: title, endpoint: "#{request.base_url}/api/v1/admin-dashboard/lists/#{type}" }]
@@ -904,6 +912,33 @@ module Api
           monthly_target_summary: monthly_progress_summary(target_progress),
           recent_target_progress: target_progress.first(100)
         }
+      end
+
+      def admin_dashboard_summary_payload(summary_cards, participation, weekly)
+        cards = Array(summary_cards).map do |card|
+          key = OfficeDashboardSections::SUMMARY[card[:title]]
+          next unless key
+
+          { key: key, title: card[:title], value: card[:value],
+            list_endpoint: "/api/v1/admin-dashboard/lists/#{key}",
+            export_endpoint: "/api/v1/admin-dashboard/lists/#{key}/export" }
+        end.compact
+        counts = cards.to_h { |card| [card[:key], card[:value]] }
+        mapped = participation[:target_map_total].presence || participation[:total].to_i
+        achieved = participation[:completed_target_map_total].presence || participation[:green].to_i
+        values = {
+          total_mapped_villages: counts["summary_villages"].to_i,
+          targeted_farmers: participation[:total].to_i,
+          total_mapped_main_activities: counts["total_mapped_main_activities"].to_i,
+          total_mapped_sub_activities: counts["total_mapped_sub_activities"].to_i,
+          farmer_wise_target_mapping: mapped.to_i,
+          farmer_wise_achievement: achieved.to_i,
+          farmer_wise_pending_achievement: [mapped.to_i - achieved.to_i, 0].max,
+          activity_wise_target_mapping: number(weekly[:target]),
+          activity_wise_achievement: number(weekly[:completed]),
+          activity_wise_pending_achievement: number(weekly[:pending])
+        }
+        { cards: cards, counts: counts, values: values }
       end
 
       def admin_dashboard_progress(web, targets, vrps)

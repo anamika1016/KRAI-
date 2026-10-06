@@ -101,6 +101,9 @@ class Api::V1::JeevikaJankarDashboardControllerTest < ActionDispatch::Integratio
 
     assert_response :success
     assert_equal "admin", response.parsed_body["dashboard_type"]
-    assert response.parsed_body.key?("dashboard_summary")
+    summary = response.parsed_body.fetch("dashboard_summary")
+    assert_equal 5, summary.fetch("cards").size
+    assert_equal summary.fetch("cards").to_h { |card| [card["key"], card["value"]] }, summary.fetch("counts")
+    assert summary.fetch("values").key?("total_mapped_main_activities")
   end
 end

@@ -275,6 +275,27 @@ class Api::V1::OfficeDashboardControllerTest < ActionDispatch::IntegrationTest
     end
   end
 
+  test "manager ICS receives every authorized main activity for the selected month" do
+    training = @first_target.dup
+    training.month_name = "September"
+    training.save!
+    inspection = @first_target.dup
+    inspection.month_name = "September"
+    inspection.main_activity_name = "Internal Inspection"
+    inspection.activity_name = "Internal Inspection Documentation"
+    inspection.save!
+
+    query = { month: "September", main_activity: "All", sub_activity: "All", fco: "All", ics: "All" }
+    get "/api/v1/user-dashboard/filters", params: query, headers: headers(@manager)
+    assert_response :success
+    main_filter = response.parsed_body.fetch("filters").find { |filter| filter["key"] == "main_activity" }
+    assert_equal ["Farmers' Training", "Internal Inspection"], main_filter.fetch("options")
+
+    get "/api/v1/user-dashboard", params: query, headers: headers(@manager)
+    assert_response :success
+    assert_equal ["Farmers' Training", "Internal Inspection"], response.parsed_body.dig("filter_options", "main_activities")
+  end
+
   test "cached summary immediately reflects committed target edits" do
     old_cache = Rails.cache
     Rails.cache = ActiveSupport::Cache::MemoryStore.new
