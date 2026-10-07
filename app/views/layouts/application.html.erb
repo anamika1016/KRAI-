@@ -71,5 +71,13 @@
 
       <%= render "shared/assistant" %>
     <% end %>
+
+    <dialog class="vrp-confirm-dialog" data-vrp-confirm-dialog>
+      <p data-vrp-confirm-message></p>
+      <div class="vrp-confirm-dialog-actions">
+        <button type="button" class="btn btn-secondary" data-vrp-confirm-cancel>Cancel</button>
+        <button type="button" class="btn btn-primary" data-vrp-confirm-ok>OK</button>
+      </div>
+    </dialog>
   </body>
 </html>

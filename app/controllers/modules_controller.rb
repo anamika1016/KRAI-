@@ -5998,7 +5998,10 @@ class ModulesController < ApplicationController
   end
 
   def compute_farmer_training_mapped_farmer_count_and_popups(month_name:, fcoc_name:)
+    # Extend only user All Months; preserve the admin and monthly queries.
     selected_month = month_name.presence || "August"
+    user_all_months = month_name.blank? && !admin_dashboard_user?
+    month_filter_sql = user_all_months ? "TRUE" : "LOWER(BTRIM(t.month_name)) = :month_name"
     fco_ids = training_fcoc_ids_from_param(fcoc_name)
     fco_filter_sql = "AND LOWER(BTRIM(t.fco_id)) IN (:fco_ids)"
 
@@ -6014,13 +6017,14 @@ class ModulesController < ApplicationController
             ELSE jsonb_build_array(t.afl_ids::jsonb)
           END
       ) AS v(afl_id)
-      WHERE LOWER(BTRIM(t.month_name)) = :month_name
+      WHERE #{month_filter_sql}
         #{fco_filter_sql}
       GROUP BY t.fco_id
       ORDER BY t.fco_id;
     SQL
 
-    binds = { month_name: selected_month.strip.downcase, fco_ids: fco_ids.map(&:downcase) }
+    binds = { fco_ids: fco_ids.map(&:downcase) }
+    binds[:month_name] = selected_month.strip.downcase unless user_all_months
     rows = ActiveRecord::Base.connection.exec_query(
       ActiveRecord::Base.send(:sanitize_sql_array, [dashboard_scoped_training_sql(sql), binds])
     ).to_a
@@ -6609,7 +6613,7 @@ class ModulesController < ApplicationController
                   ELSE jsonb_build_array(t.afl_ids::jsonb)
                 END
             ) AS v(afl_id)
-            WHERE LOWER(TRIM(t.month_name)) = :month_name
+            WHERE %{target_month_filter}
               #{fco_filter_t}
         )
         SELECT a.id, a.fco_id, a.fco, a.fpo_id, a.fpo_name, a.ics_id, a.ics_name, a.village_id, a.village_name, a.tracenet_no, a.farmer_name, a.father_name, a.mobile_no
@@ -6629,7 +6633,7 @@ class ModulesController < ApplicationController
                   ELSE jsonb_build_array(t.afl_ids::jsonb)
                 END
             ) AS v(afl_id)
-            WHERE LOWER(TRIM(t.month_name)) = :month_name
+            WHERE %{target_month_filter}
               #{fco_filter_t}
         ),
         august_training_mapping AS (
@@ -6641,7 +6645,7 @@ class ModulesController < ApplicationController
                   ELSE jsonb_build_array(t.afl_ids::jsonb)
                 END
             ) AS v(afl_id)
-            WHERE LOWER(TRIM(t.month_name)) = :month_name
+            WHERE %{target_month_filter}
               #{fco_filter_t}
               AND LOWER(COALESCE(t.main_activity_name, '')) LIKE '%farmers'' training%'
         )
@@ -6663,7 +6667,7 @@ class ModulesController < ApplicationController
                   ELSE jsonb_build_array(t.afl_ids::jsonb)
                 END
             ) AS v(afl_id)
-            WHERE LOWER(TRIM(t.month_name)) = :month_name
+            WHERE %{target_month_filter}
               #{fco_filter_t}
               AND LOWER(COALESCE(t.main_activity_name, '')) LIKE '%farmers'' training%'
         ),
@@ -6677,7 +6681,7 @@ class ModulesController < ApplicationController
                 )
             ) AS sf(farmer_id)
             WHERE mr.module_slug = 'training-form'
-              AND LOWER(TRIM(mr.data::jsonb ->> 'month')) = :month_name
+              AND %{entry_month_filter}
               AND LOWER(COALESCE(mr.data::jsonb ->> 'main_activity', '')) LIKE '%farmers'' training%'
         )
         SELECT a.id, a.fco_id, a.fco, a.fpo_id, a.fpo_name, a.ics_id, a.ics_name, a.village_id, a.village_name, a.tracenet_no, a.farmer_name, a.father_name, a.mobile_no
@@ -6691,12 +6695,15 @@ class ModulesController < ApplicationController
       Rails.root.join("app/queries/no_training_farmer_details.sql").read
     end
 
-    # The red list's SQL file carries month placeholders so "All Months" can drop
-    # the month predicates without duplicating the whole query. Files without
-    # placeholders (e.g. mapped_farmer_details.sql) are left untouched.
+    # Lists and popup breakdowns share the same all-month predicates while
+    # dashboard_scoped_training_sql retains the login's authorized scope.
+    # These lists previously defaulted to August for a blank month. Keep
+    # that admin behavior; only user All Months gains the expanded lists.
+    extended_status = %w[unique mapped no_activity no_training_mapping no_training training_mapped_no_entry no_entry].include?(status.to_s)
+    use_all_month_predicates = all_months && (!extended_status || !admin_dashboard_user?)
     month_predicates = {
-      "target_month_filter" => all_months ? "TRUE" : "LOWER(TRIM(t.month_name)) = :month_name",
-      "entry_month_filter" => all_months ? "TRUE" : "LOWER(TRIM(mr.data::jsonb ->> 'month')) = :month_name"
+      "target_month_filter" => use_all_month_predicates ? "TRUE" : "LOWER(TRIM(t.month_name)) = :month_name",
+      "entry_month_filter" => use_all_month_predicates ? "TRUE" : "LOWER(TRIM(mr.data::jsonb ->> 'month')) = :month_name"
     }
     sql = sql.gsub(/%\{(\w+)\}/) { month_predicates.fetch(Regexp.last_match(1)) }
     sql = sql.gsub("WHERE mr.module_slug = 'training-form'", "WHERE mr.module_slug = 'training-form' #{week_filter}")
@@ -10412,6 +10419,7 @@ class ModulesController < ApplicationController
     @jeevika_jankar_target_summary ||= jeevika_jankar_target_summary_from_rows(@jeevika_jankar_bill_rows)
     @jeevika_jankar_saved_items = jeevika_jankar_saved_items
     @jeevika_jankar_existing_bills = jeevika_jankar_existing_bill_keys
+    @jeevika_jankar_achievement_keys = jeevika_jankar_achievement_keys
   end
 
   def prepare_jeevika_jankar_bill_list
@@ -11353,6 +11361,27 @@ class ModulesController < ApplicationController
       label = vrp.name.presence || vrp.user_name.presence
       [label.presence || "VRP ##{vrp.id}", vrp.id.to_s]
     end
+  end
+
+  # "vrp_id|month" keys for every JJ that has achieved something against a
+  # target that month -- even one farmer out of a hundred counts. A JJ whose
+  # targets are all still fully pending has nothing to bill, so the bill form's
+  # JJ dropdown leaves them out for that month.
+  #
+  # Built from the bill's own totals so the dropdown and the bill it opens can
+  # never disagree about whether there is anything to bill.
+  def jeevika_jankar_achievement_keys
+    return [] unless model_ready?(:TargetMapping)
+
+    jeevika_jankar_bill_rows(totals_only: true).filter_map do |row|
+      next unless dashboard_numeric(row[:achievement_count]).positive?
+
+      vrp_id = row[:vrp_id].to_s.strip
+      month = row[:month_name].to_s.strip.downcase
+      next if vrp_id.blank? || month.blank?
+
+      "#{vrp_id}|#{month}"
+    end.uniq
   end
 
   def module_cluster_incharge_login?

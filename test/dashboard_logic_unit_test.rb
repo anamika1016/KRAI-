@@ -3,6 +3,54 @@ require "minitest/autorun"
 require "ostruct"
 
 class DashboardLogicUnitTest < Minitest::Test
+  def test_all_month_participation_lists_keep_user_scope_without_august_fallback
+    %w[FCOC CC Agronomist admin].each do |role|
+      [nil, "September"].each do |month|
+        c = controller(month: month.to_s)
+        c.define_singleton_method(:current_app_user) { { "role" => role, "user_type" => role == "admin" ? "admin" : "user" } }
+        c.define_singleton_method(:training_fcoc_ids_from_param) { |_| ["1004"] }
+        c.define_singleton_method(:dashboard_visible_target_scope) { OpenStruct.new(to_sql: "SELECT * FROM target_mappings WHERE vrp_id = 987654") }
+        c.define_singleton_method(:dashboard_visible_farmer_scope) { OpenStruct.new(to_sql: "SELECT * FROM afls WHERE id = 987654") }
+        c.define_singleton_method(:selected_participation_sql_week) { nil }
+        sql_queries = []
+        connection = ActiveRecord::Base.connection
+        original_sanitize = ActiveRecord::Base.method(:sanitize_sql_array)
+        ActiveRecord::Base.define_singleton_method(:sanitize_sql_array) do |statement|
+          sql, binds = statement
+          sql.gsub(/(?<!:):([a-z_]+)/) do
+            Array(binds.fetch(Regexp.last_match(1).to_sym)).map { |value| "'#{value}'" }.join(", ")
+          end
+        end
+        original_exec_query = connection.method(:exec_query)
+        connection.define_singleton_method(:exec_query) { |sql| sql_queries << sql; [] }
+        begin
+          c.send(:compute_farmer_training_mapped_farmer_count_and_popups, month_name: month, fcoc_name: "Sausar")
+          %w[unique no_activity no_training_mapping training_mapped_no_entry red green yellow].each do |status|
+            c.send(:farmer_training_participation_rows_from_sql, status, month_name: month, fcoc_name: "Sausar")
+          end
+        ensure
+          connection.define_singleton_method(:exec_query, original_exec_query)
+          ActiveRecord::Base.define_singleton_method(:sanitize_sql_array, original_sanitize)
+        end
+        assert_equal 8, sql_queries.size, role
+        sql_queries.each_with_index do |sql, index|
+          assert_includes sql, "987654", role unless role == "admin"
+          refute_includes sql, "%{", role
+          if role == "admin" && month.nil? && index < 5
+            assert_includes sql, "'august'", role
+            next
+          end
+          refute_match(/month.*= 'august'/i, sql, role)
+          if month.nil?
+            refute_match(/(?:month_name|->> 'month')\s*\)?\s*= /, sql, role)
+          else
+            assert_includes sql, "'september'", role
+          end
+        end
+      end
+    end
+  end
+
   def test_other_target_lookup_keeps_aliases_order_and_scope_changes
     c = controller
     first = OpenStruct.new(id: 1, vrp_id: 7, month_name: " August ", vrp: OpenStruct.new(name: "JJ Name", user_name: "jj-login"))

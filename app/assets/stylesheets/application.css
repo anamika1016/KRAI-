@@ -3769,6 +3769,33 @@ body {
   min-width: 820px;
 }
 
+/* Delete/bulk-action confirmation. A <dialog> instead of window.confirm() --
+   a native confirm() blocks the whole tab and some browsers let a person
+   silently suppress every future one after a page fires several, which made
+   Delete look like it did nothing. */
+.vrp-confirm-dialog {
+  width: min(360px, calc(100% - 32px));
+  border: 0;
+  border-radius: 8px;
+  padding: 20px;
+  box-shadow: 0 24px 60px rgba(16, 28, 35, 0.28);
+}
+
+.vrp-confirm-dialog::backdrop {
+  background: rgba(15, 24, 31, 0.52);
+}
+
+.vrp-confirm-dialog p {
+  margin: 0 0 18px;
+  font-size: 1.05rem;
+}
+
+.vrp-confirm-dialog-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+}
+
 .module-form-grid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));

@@ -1,3 +1,40 @@
+// A native window.confirm() blocks the whole tab, and Chrome lets a person
+// silently suppress every future one on a page after a few fire in a row --
+// after that, every Delete button looks like it does nothing. This dialog
+// replaces it everywhere: Turbo's own data-turbo-confirm forms (wired below)
+// and the two manual window.confirm() call sites in this file.
+const vrpConfirm = (message) => {
+  const dialog = document.querySelector("[data-vrp-confirm-dialog]");
+  if (!dialog || typeof dialog.showModal !== "function") return Promise.resolve(window.confirm(message));
+
+  return new Promise((resolve) => {
+    dialog.querySelector("[data-vrp-confirm-message]").textContent = message;
+    const okButton = dialog.querySelector("[data-vrp-confirm-ok]");
+    const cancelButton = dialog.querySelector("[data-vrp-confirm-cancel]");
+    const finish = (result) => {
+      okButton.removeEventListener("click", onOk);
+      cancelButton.removeEventListener("click", onCancel);
+      dialog.removeEventListener("cancel", onCancel);
+      dialog.close();
+      resolve(result);
+    };
+    const onOk = () => finish(true);
+    const onCancel = (event) => {
+      event?.preventDefault?.();
+      finish(false);
+    };
+    okButton.addEventListener("click", onOk);
+    cancelButton.addEventListener("click", onCancel);
+    dialog.addEventListener("cancel", onCancel, { once: true });
+    dialog.showModal();
+  });
+};
+
+if (window.Turbo) window.Turbo.config.forms.confirm = vrpConfirm;
+document.addEventListener("turbo:load", () => {
+  if (window.Turbo) window.Turbo.config.forms.confirm = vrpConfirm;
+}, { once: true });
+
 // Delegation keeps Delete available after Turbo navigation and table updates.
 document.addEventListener("click", async (event) => {
   const button = event.target.closest?.("[data-module-delete-selected]");
@@ -13,7 +50,7 @@ document.addEventListener("click", async (event) => {
     return paths.map((path) => path.replace(/\/edit$/, ""));
   }))];
   if (!paths.length) return window.alert("Please select at least one record");
-  if (!window.confirm("Delete selected record(s)?")) return;
+  if (!(await vrpConfirm("Delete selected record(s)?"))) return;
   button.dataset.deleting = "true";
   button.disabled = true;
   const label = button.textContent;
@@ -37,6 +74,69 @@ document.addEventListener("click", async (event) => {
     button.disabled = false;
     button.textContent = label;
   }
+});
+
+// These three were bound inside initDeferredLayoutPage, which only runs after
+// a requestIdleCallback/setTimeout fires for each page. A click that lands
+// before that callback runs found no listener and silently did nothing --
+// this was the "Bill List delete button doesn't work" report. Delegation
+// here needs no per-page init at all, so the buttons work immediately.
+const billRowSelector = "[data-module-row-select]:checked";
+const selectedBillPaths = (datasetKey) => Array.from(document.querySelectorAll(billRowSelector))
+  .map((checkbox) => checkbox.dataset[datasetKey])
+  .filter(Boolean);
+
+const patchSelectedBillRows = async (paths, emptyMessage) => {
+  if (!paths.length) return window.alert(emptyMessage);
+
+  const responses = await Promise.all(paths.map((path) => fetch(path, {
+    method: "PATCH",
+    credentials: "same-origin",
+    headers: {
+      "X-CSRF-Token": document.querySelector("meta[name='csrf-token']")?.content || "",
+      "Accept": "text/vnd.turbo-stream.html, text/html, application/xhtml+xml"
+    }
+  })));
+
+  if (responses.some((response) => !(response.ok || response.redirected))) {
+    return window.alert("Some selected bill(s) could not be updated.");
+  }
+
+  window.location.reload();
+};
+
+document.addEventListener("click", (event) => {
+  if (!event.target.closest?.("[data-bill-send-selected]")) return;
+  patchSelectedBillRows(selectedBillPaths("billSendPath"), "Please select at least one bill");
+});
+
+document.addEventListener("click", (event) => {
+  const button = event.target.closest?.("[data-bill-state-selected]");
+  if (!button) return;
+  const key = button.dataset.billStateSelected === "Inactive" ? "billInactivePath" : "billActivePath";
+  patchSelectedBillRows(selectedBillPaths(key), "Please select at least one bill");
+});
+
+document.addEventListener("click", async (event) => {
+  if (!event.target.closest?.("[data-bill-delete-selected]")) return;
+  const paths = selectedBillPaths("billDeletePath");
+  if (!paths.length) return window.alert("Please select at least one bill");
+  if (!(await vrpConfirm("Delete selected bill(s)?"))) return;
+
+  const responses = await Promise.all(paths.map((path) => fetch(path, {
+    method: "DELETE",
+    credentials: "same-origin",
+    headers: {
+      "X-CSRF-Token": document.querySelector("meta[name='csrf-token']")?.content || "",
+      "Accept": "text/vnd.turbo-stream.html, text/html, application/xhtml+xml"
+    }
+  })));
+
+  if (responses.some((response) => !(response.ok || response.redirected))) {
+    return window.alert("Some selected bill(s) could not be deleted.");
+  }
+
+  window.location.reload();
 });
 
 const closeOpenChipMultiControls = (event) => {
@@ -880,7 +980,7 @@ function initDeferredLayoutPage() {
       return;
     }
 
-    if (!window.confirm(message)) return;
+    if (!(await vrpConfirm(message))) return;
 
     const responses = await Promise.all(paths.map((path) => {
       return fetch(path, {
@@ -1044,7 +1144,7 @@ function initDeferredLayoutPage() {
       const bulkSelectAll = sessionStorage.getItem(aflSelectAllKey()) === "1";
 
       if (bulkSelectAll) {
-        if (!window.confirm("Delete all selected AFL records across every page?")) return;
+        if (!(await vrpConfirm("Delete all selected AFL records across every page?"))) return;
 
         const url = new URL(aflDeleteButton.dataset.aflBulkDestroyUrl, window.location.origin);
         const query = aflQueryInput?.value?.trim();
@@ -1127,51 +1227,10 @@ function initDeferredLayoutPage() {
     });
   }
 
-  const selectedBillRows = () => Array.from(document.querySelectorAll("[data-module-row-select]:checked"))
-    .filter((checkbox) => checkbox.dataset.billSendPath || checkbox.dataset.billDeletePath);
-
-  const patchBillRows = async (paths, emptyMessage) => {
-    if (!paths.length) {
-      window.alert(emptyMessage);
-      return;
-    }
-
-    const responses = await Promise.all(paths.map((path) => fetch(path, {
-      method: "PATCH",
-      credentials: "same-origin",
-      headers: {
-        "X-CSRF-Token": csrfToken,
-        "Accept": "text/vnd.turbo-stream.html, text/html, application/xhtml+xml"
-      }
-    })));
-
-    if (responses.some((response) => !(response.ok || response.redirected))) {
-      window.alert("Some selected bill(s) could not be updated.");
-      return;
-    }
-
-    window.location.reload();
-  };
-
-  document.querySelector("[data-bill-send-selected]")?.addEventListener("click", () => {
-    const paths = selectedBillRows().map((checkbox) => checkbox.dataset.billSendPath).filter(Boolean);
-    patchBillRows(paths, "Please select at least one bill");
-  });
-
-  document.querySelectorAll("[data-bill-state-selected]").forEach((button) => {
-    button.addEventListener("click", () => {
-      const state = button.dataset.billStateSelected;
-      const paths = selectedBillRows()
-        .map((checkbox) => state === "Inactive" ? checkbox.dataset.billInactivePath : checkbox.dataset.billActivePath)
-        .filter(Boolean);
-      patchBillRows(paths, "Please select at least one bill");
-    });
-  });
-
-  document.querySelector("[data-bill-delete-selected]")?.addEventListener("click", () => {
-    const paths = selectedBillRows().map((checkbox) => checkbox.dataset.billDeletePath).filter(Boolean);
-    deleteSelected(paths, "Delete selected bill(s)?");
-  });
+  // Send/Active/Inactive/Delete on the bill list are bound as top-level
+  // delegated listeners further up this file (not here), so they work the
+  // instant the page loads instead of waiting on this function's deferred
+  // (requestIdleCallback) scheduling -- see the comment there for why.
 
   document.querySelectorAll("[data-module-status-selected]").forEach((button) => {
     button.addEventListener("click", async () => {
@@ -5872,6 +5931,7 @@ function initDeferredLayoutPage() {
     let existingBills = [];
     let achievementSummary = {};
     let targetSummary = {};
+    let achievementKeys = new Set();
     const billRowsCache = new Map();
     let activeBillRowsKey = "";
     const initialVrpValue = String(vrpSelect?.value || "");
@@ -5882,12 +5942,14 @@ function initDeferredLayoutPage() {
       existingBills = JSON.parse(billForm.dataset.existingBills || "[]");
       achievementSummary = JSON.parse(billForm.dataset.achievementSummary || "{}");
       targetSummary = JSON.parse(billForm.dataset.targetSummary || "{}");
+      achievementKeys = new Set(JSON.parse(billForm.dataset.achievementKeys || "[]"));
     } catch (_error) {
       billRows = [];
       savedItems = [];
       existingBills = [];
       achievementSummary = {};
       targetSummary = {};
+      achievementKeys = new Set();
     }
 
     const escapeHtml = (value) => String(value ?? "")
@@ -5968,9 +6030,23 @@ function initDeferredLayoutPage() {
         return;
       }
 
+      // A JJ who completed no activity that month has nothing to bill, so keep
+      // them out of the list -- even one farmer out of a hundred qualifies.
+      // The JJ already on a saved bill always stays.
+      // selectedMonth is the raw option text ("September"); the server builds
+      // its keys lower-cased, so normalise before looking the key up or nothing
+      // ever matches.
+      const hasAchievement = (vrpId) => {
+        if (!achievementKeys.size) return true;
+        return achievementKeys.has(`${String(vrpId || "").trim()}|${normalizedMonth(selectedMonth)}`);
+      };
+
+      // Nobody qualifying this month is a real answer, so the list is allowed to
+      // come out empty. hasAchievement only waves everyone through when the
+      // index itself is missing, never when it simply has no match.
       const availableOptions = originalVrpOptions.filter((option) => {
         if (initialVrpValue && String(option.value) === initialVrpValue) return true;
-        return !billExistsFor(option.value, selectedMonth);
+        return !billExistsFor(option.value, selectedMonth) && hasAchievement(option.value);
       });
       availableOptions.forEach((optionData) => {
         const option = document.createElement("option");
@@ -5990,7 +6066,10 @@ function initDeferredLayoutPage() {
       }
 
       if (!availableOptions.length) {
-        blank.textContent = "Selected month ke liye sabhi bills ban chuke hain";
+        const anyUnbilled = originalVrpOptions.some((option) => !billExistsFor(option.value, selectedMonth));
+        blank.textContent = anyUnbilled
+          ? "Is month me kisi Jeevika Jankar ne koi target complete nahi kiya"
+          : "Selected month ke liye sabhi bills ban chuke hain";
       }
     };
 
