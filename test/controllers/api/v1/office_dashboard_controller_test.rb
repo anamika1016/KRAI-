@@ -296,6 +296,51 @@ class Api::V1::OfficeDashboardControllerTest < ActionDispatch::IntegrationTest
     assert_equal ["Farmers' Training", "Internal Inspection"], response.parsed_body.dig("filter_options", "main_activities")
   end
 
+  test "admin October dashboard and list expose Other indicator data independently of Training filter" do
+    other_target = @first_target.dup
+    other_target.month_name = "October"
+    other_target.main_activity_name = "Internal Inspection"
+    other_target.activity_name = "Internal Inspection Documentation"
+    other_target.save!
+    ModuleRecord.create!(module_slug: "other-target", data: {
+      "jeevika_jankar_id" => @first.id.to_s,
+      "jeevika_jankar_name" => @first.name,
+      "fcoc_name" => @first.fcoc,
+      "month" => "October",
+      "main_activity" => "Internal Inspection",
+      "sub_activity" => "Internal Inspection Documentation",
+      "target" => "8",
+      "achievement" => "3",
+      "selected_farmer_ids" => @first_target.afl_ids.map(&:to_s),
+      "target_mapping_id" => other_target.id.to_s
+    })
+    admin = User.create!(first_name: "Other", last_name: "Admin", user_name: "other_admin_#{SecureRandom.hex(3)}",
+      password: "secret", user_type: "admin", status: "Active")
+    query = { month: "October", main_activity: "Farmers' Training", sub_activity: "All", fco: "All", ics: "All" }
+
+    get "/api/v1/user-dashboard", params: query, headers: headers(admin)
+    assert_response :success
+    other = response.parsed_body.fetch("main_major_work_indicator_other")
+    assert_equal 1, other.dig("values", "main_major_work_indicator")
+    assert_equal 8, other.dig("values", "mapped_farmer")
+    assert_equal 3, other.dig("values", "achievement_farmer")
+    assert_equal 5, other.dig("values", "pending_farmer")
+    assert_equal 8, response.parsed_body.dig("mobile_widget_values", "Targeted Farmer")
+
+    get "/api/v1/admin-dashboard/lists/other_activities", params: query, headers: headers(admin)
+    assert_response :success
+    assert_equal 1, response.parsed_body["count"]
+    assert_equal "Internal Inspection", response.parsed_body.dig("records", 0, "main_activity_name")
+
+    get "/api/v1/user-dashboard/lists/other_activities", params: query, headers: headers(admin)
+    assert_response :success
+    assert_equal 1, response.parsed_body["count"]
+
+    get "/api/v1/admin-dashboard/lists/other_activities/export", params: query, headers: headers(admin)
+    assert_response :success
+    assert_equal XlsxExporter::MIME_TYPE, response.media_type
+  end
+
   test "cached summary immediately reflects committed target edits" do
     old_cache = Rails.cache
     Rails.cache = ActiveSupport::Cache::MemoryStore.new

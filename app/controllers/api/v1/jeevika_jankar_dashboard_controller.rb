@@ -264,6 +264,11 @@ module Api
           "without_target" => { heading: "Without Target", path: %i[sections target_assignment without_target] },
           "activities_assigned" => { heading: "Activities Assigned", path: %i[sections target_assignment activities_assigned] },
           "without_activity" => { heading: "Without Activity", path: %i[sections target_assignment without_activity] },
+          "other_main_major_work_indicator" => { heading: "Main Major Work Indicator", path: %i[main_major_work_indicator_other values main_major_work_indicator] },
+          "other_mapped_farmer" => { heading: "Targeted Farmer", path: %i[main_major_work_indicator_other values mapped_farmer] },
+          "other_achievement_farmer" => { heading: "Achievement Farmer", path: %i[main_major_work_indicator_other values achievement_farmer] },
+          "other_pending_farmer" => { heading: "Pending Farmer", path: %i[main_major_work_indicator_other values pending_farmer] },
+          "other_achieved" => { heading: "Achieved", path: %i[main_major_work_indicator_other values achieved] },
           "level_2_users" => { heading: "Level 2 Users", path: %i[sections billing level_2_users] },
           "bill_approved" => { heading: "Bill Approved", path: %i[sections billing bill_approved] },
           "bill_pending" => { heading: "Bill Pending", path: %i[sections billing bill_pending] },
@@ -641,7 +646,7 @@ module Api
         user_key = current_api_user_payload.slice("id", "user_id", "username", "user_name", "user_type").sort.to_h
         # Keep the API cache namespace aligned with dashboard scope changes so
         # an old zero-result response is never returned after deployment.
-        ["api-v1-admin-dashboard-work-status-v14", Date.current.to_s, suffix, user_key, filters, version_parts].to_json
+        ["api-v1-admin-dashboard-work-status-v15", Date.current.to_s, suffix, user_key, filters, version_parts].to_json
       end
 
       def admin_dashboard_cache_filters
@@ -848,8 +853,11 @@ module Api
           participation_counts, month_name: participation_month, fcoc_name: participation_fcoc,
           week_number: dashboard_list_week_number)
         web_group_items = web.send(:dashboard_cards).flat_map { |card| Array(card[:items]) }
+        other_totals = web.send(:dashboard_other_activity_totals, targets)
+        other_section = admin_other_activity_section(other_totals)
         mobile_widget_values = (web_summary_cards + web_demo_cards + web_training_cards + web_group_items)
           .each_with_object({}) { |card, values| values[card[:title].to_s] = card[:value] }
+        other_section[:cards].each { |card| mobile_widget_values[card[:title]] = card[:value] }
         mobile_widget_values["OPG Training Achievement"] = web.send(:dashboard_opg_achievement_count)
         @admin_dashboard_api_context = {
           web: web,
@@ -871,8 +879,9 @@ module Api
           filter_options: options,
           cc_jj_work_status: CcJjWorkStatusReport.new(calculator: web).summary,
           demonstration_method: DemonstrationMethodReport.new(targets: targets, month: params.key?(:month) ? filter_param(:month) : DashboardDefaults.month).summary,
-          sections: card_data,
+          sections: card_data.merge(main_major_work_indicator_other: other_section),
           cards: card_data.values_at(:registration, :target_assignment, :billing).reduce({}, &:merge),
+          main_major_work_indicator_other: other_section,
           dashboard_summary: admin_dashboard_summary_payload(
             web_summary_cards, participation_counts, weekly_summary_totals
           ),
@@ -912,6 +921,26 @@ module Api
           monthly_target_summary: monthly_progress_summary(target_progress),
           recent_target_progress: target_progress.first(100)
         }
+      end
+
+      def admin_other_activity_section(totals)
+        values = {
+          main_major_work_indicator: totals[:main_major_work_indicator].to_i,
+          mapped_farmer: number(totals[:mapped_farmer]),
+          achievement_farmer: number(totals[:achievement_farmer]),
+          pending_farmer: number(totals[:pending_farmer]),
+          achieved: totals[:achieved].to_f
+        }
+        cards = OfficeDashboardSections::OTHER.map do |key, title|
+          { key: "other_#{key}", title: title, value: values.fetch(key),
+            unit: key == :achieved ? "percent" : "count",
+            list_endpoint: "/api/v1/admin-dashboard/lists/other_activities",
+            export_endpoint: "/api/v1/admin-dashboard/lists/other_activities/export" }
+        end
+        { key: "other", title: "Main Major Work Indicator - Other", values: values,
+          cards: cards, popup_items: Array(totals[:main_major_work_indicator_popups]),
+          list_endpoint: "/api/v1/admin-dashboard/lists/other_activities",
+          export_endpoint: "/api/v1/admin-dashboard/lists/other_activities/export" }
       end
 
       def admin_dashboard_summary_payload(summary_cards, participation, weekly)
@@ -1035,6 +1064,7 @@ module Api
           "final_approved" => "Final Approved Jeevika Jankar List",
           "pending_approval" => "Pending Approval Jeevika Jankar List",
           "target_records" => "Jeevika Jankar Target Records List",
+          "other_activities" => "Main Major Work Indicator - Other View List",
           "total_ics_count" => "Total ICS List",
           "total_mapped_villages" => "Total Mapped Villages List",
           "targeted_farmers" => "Targeted Farmers List",
@@ -1072,6 +1102,7 @@ module Api
       def lightweight_admin_dashboard_list_type?(list_type)
         %w[
           target_records
+          other_activities
           total_mapped_villages
           targeted_farmers
           total_mapped_main_activities
@@ -1208,6 +1239,8 @@ module Api
           web.send(:dashboard_pending_approval_vrps, vrps).map { |vrp| admin_vrp_list_row(vrp, assigned_ids, activity_ids) }
         when "target_records"
           grouped_admin_targets(targets)
+        when "other_activities"
+          web.send(:dashboard_other_activity_rows, targets)
         when "total_ics_count"
           admin_afl_ics_list_payload[:records]
         when "total_mapped_villages"
