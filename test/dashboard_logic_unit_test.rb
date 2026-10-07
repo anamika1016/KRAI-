@@ -3,6 +3,69 @@ require "minitest/autorun"
 require "ostruct"
 
 class DashboardLogicUnitTest < Minitest::Test
+  def test_agronomist_all_months_rolls_up_assigned_fco_and_preserves_monthly_scope
+    owned = OpenStruct.new(id: 1, fcoc: "FCO-C Turekela")
+    colleague = OpenStruct.new(id: 2, fcoc: "Turekela")
+    unrelated = OpenStruct.new(id: 3, fcoc: "FCO-C Sausar")
+    original_all = Vrp.method(:all)
+    Vrp.define_singleton_method(:all) { [owned, colleague, unrelated] }
+    begin
+      ["", "all", "September", nil].each do |month|
+        filters = month.nil? ? {} : { month: month, fcoc: "FCO-C Sausar" }
+        c = controller(filters)
+        c.define_singleton_method(:current_app_user) { { "role" => "Agronomist", "user_type" => "user" } }
+        c.define_singleton_method(:model_ready?) { |_| true }
+        c.define_singleton_method(:dashboard_own_vrps_list) { [owned] }
+        c.define_singleton_method(:scoped_jeevika_vrp_visible?) { |vrp| vrp.id == owned.id }
+        all_months = ["", "all"].include?(month)
+        assert_equal all_months, c.send(:dashboard_agronomist_all_months?)
+        assert_equal all_months ? [1, 2] : [1], c.send(:dashboard_visible_vrp_ids)
+        assert_equal ["turekela"], c.send(:dashboard_agronomist_all_month_fcos)
+        if all_months
+          assert_equal "all", c.send(:dashboard_summary_target_params)["month"]
+          assert_equal "all", c.send(:dashboard_summary_afl_params)[:month]
+          assert_equal "all", c.send(:dashboard_summary_participation_params, status: "red")[:training_month]
+        end
+      end
+      admin = controller(month: "")
+      admin.define_singleton_method(:current_app_user) { { "user_type" => "admin", "role" => "Agronomist" } }
+      refute admin.send(:dashboard_agronomist_all_months?)
+    ensure
+      Vrp.define_singleton_method(:all, original_all)
+    end
+  end
+
+  def test_agronomist_all_month_farmer_scope_includes_unmapped_farmers
+    captured = []
+    original_where = Afl.method(:where)
+    Afl.define_singleton_method(:where) do |*arguments|
+      captured << arguments
+      OpenStruct.new(to_sql: "authorized farmer scope")
+    end
+    begin
+      ["", "September"].each do |month|
+        c = controller(month: month)
+        c.define_singleton_method(:current_app_user) { { "role" => "Agronomist", "user_type" => "user" } }
+        c.define_singleton_method(:dashboard_vrps) { [OpenStruct.new(fcoc: "Turekela")] }
+        c.define_singleton_method(:training_fcoc_filter_values) { |_| ["turekela", "1006"] }
+        targets = OpenStruct.new(to_sql: "SELECT afl_ids FROM authorized_targets")
+        targets.define_singleton_method(:select) { |_| self }
+        c.define_singleton_method(:dashboard_visible_target_scope) { targets }
+        c.send(:dashboard_user_visible_farmer_scope)
+        sql, binds = captured.last
+        if month.blank?
+          assert_includes sql, "fco_id"
+          assert_equal ["turekela", "1006"], binds[:values]
+          refute_includes sql, "authorized_targets"
+        else
+          assert_includes sql, "authorized_targets"
+        end
+      end
+    ensure
+      Afl.define_singleton_method(:where, original_where)
+    end
+  end
+
   def test_all_month_participation_lists_keep_user_scope_without_august_fallback
     %w[FCOC CC Agronomist admin].each do |role|
       [nil, "September"].each do |month|

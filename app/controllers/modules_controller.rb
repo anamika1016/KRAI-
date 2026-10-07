@@ -4015,7 +4015,7 @@ class ModulesController < ApplicationController
     elsif vrp_login_user? && current_vrp_record.present?
       conditions << "#{target_alias}.vrp_id = :summary_vrp_id"
       binds[:summary_vrp_id] = current_vrp_record.id
-    elsif dashboard_agronomics_login?
+    elsif dashboard_agronomics_login? && !dashboard_agronomist_all_months?
       conditions << "#{target_alias}.vrp_id IN (:summary_registered_vrp_ids)"
       binds[:summary_registered_vrp_ids] = dashboard_registered_vrp_ids_for_current_user
     elsif dashboard_cc_vrp_scope_active?
@@ -4162,7 +4162,7 @@ class ModulesController < ApplicationController
     elsif vrp_login_user? && current_vrp_record.present?
       training_conditions << "mr.data::jsonb ->> 'created_by_id' = :created_by_id"
       training_binds[:created_by_id] = current_vrp_record.id.to_s
-    elsif dashboard_agronomics_login?
+    elsif dashboard_agronomics_login? && !dashboard_agronomist_all_months?
       training_conditions << "COALESCE(mr.data::jsonb ->> 'created_by_id', '') IN (:created_by_ids)"
       training_binds[:created_by_ids] = dashboard_registered_vrp_ids_for_current_user.map(&:to_s)
     elsif dashboard_cc_vrp_scope_active?
@@ -4223,7 +4223,7 @@ class ModulesController < ApplicationController
     elsif vrp_login_user? && current_vrp_record.present?
       target_conditions << "t.vrp_id = :target_vrp_id"
       target_binds[:target_vrp_id] = current_vrp_record.id
-    elsif dashboard_agronomics_login?
+    elsif dashboard_agronomics_login? && !dashboard_agronomist_all_months?
       target_conditions << "t.vrp_id IN (:target_registered_vrp_ids)"
       target_binds[:target_registered_vrp_ids] = dashboard_registered_vrp_ids_for_current_user
     elsif dashboard_cc_vrp_scope_active?
@@ -4250,7 +4250,7 @@ class ModulesController < ApplicationController
     elsif vrp_login_user? && current_vrp_record.present?
       training_conditions << "mr.data::jsonb ->> 'created_by_id' = :created_by_id"
       training_binds[:created_by_id] = current_vrp_record.id.to_s
-    elsif dashboard_agronomics_login?
+    elsif dashboard_agronomics_login? && !dashboard_agronomist_all_months?
       training_conditions << "COALESCE(mr.data::jsonb ->> 'created_by_id', '') IN (:created_by_ids)"
       training_binds[:created_by_ids] = dashboard_registered_vrp_ids_for_current_user.map(&:to_s)
     end
@@ -4709,6 +4709,7 @@ class ModulesController < ApplicationController
         "fcoc" => @dashboard_fcoc_filter_value
       )
       .compact_blank
+      target_params["month"] = "all" if dashboard_agronomist_all_months?
       target_params["fco_id"] = FcoDirectory.ids if target_params["fcoc"].blank?
       target_params
     end
@@ -4730,12 +4731,14 @@ class ModulesController < ApplicationController
       ics: dashboard_filter_param(:ics, :ics_name),
       format: format
     }.compact_blank
+    params_hash[:training_month] = "all" if dashboard_agronomist_all_months?
     params_hash[:fco_id] = FcoDirectory.ids if params_hash[:training_fcoc].blank?
     params_hash
   end
 
   def dashboard_summary_afl_params
     params_hash = {}
+    params_hash[:month] = "all" if dashboard_agronomist_all_months?
     fcoc_value = @dashboard_fcoc_filter_value.presence || dashboard_filter_param(:fcoc, :fco)
     if fcoc_value.present?
       params_hash[:fcoc] = fcoc_value
@@ -5564,13 +5567,16 @@ class ModulesController < ApplicationController
       vrp_login_user?,
       module_mapped_vrp_scope_active? ? module_cluster_visible_vrp_id_strings.sort.join(",") : nil
     ].join(":")
+    if dashboard_agronomist_all_months?
+      scope_signature += ":fcos:#{dashboard_agronomist_all_month_fcos.sort.join(',')}"
+    end
     target_version = dashboard_table_version(TargetMapping)
     training_version = dashboard_module_record_version("training-form")
     afl_version = dashboard_table_version(Afl)
     vrp_version = dashboard_table_version(Vrp)
 
     [
-      "dashboard/training-participation-counts/v7",
+      dashboard_agronomist_all_months? ? "dashboard/training-participation-counts/agronomist-fco-v1" : "dashboard/training-participation-counts/v7",
       normalize_dashboard_text(dashboard_filter_param(:ics, :ics_name)),
       normalize_dashboard_text(month_name),
       normalize_dashboard_text(fcoc_name),
@@ -5736,7 +5742,7 @@ class ModulesController < ApplicationController
     if vrp_login_user? && current_vrp_record.present?
       target_conditions << "t.vrp_id = :participation_vrp_id"
       target_binds[:participation_vrp_id] = current_vrp_record.id
-    elsif dashboard_agronomics_login?
+    elsif dashboard_agronomics_login? && !dashboard_agronomist_all_months?
       target_conditions << "t.vrp_id IN (:participation_vrp_ids)"
       target_binds[:participation_vrp_ids] = dashboard_registered_vrp_ids_for_current_user
     end
@@ -5859,7 +5865,7 @@ class ModulesController < ApplicationController
   def dashboard_participation_completion_creator_ids
     if vrp_login_user?
       dashboard_current_app_user_ids.map(&:to_s)
-    elsif dashboard_agronomics_login?
+    elsif dashboard_agronomics_login? && !dashboard_agronomist_all_months?
       dashboard_registered_vrp_ids_for_current_user.map(&:to_s)
     else
       []
@@ -6810,6 +6816,7 @@ class ModulesController < ApplicationController
     %w[red yellow green].map do |status|
       path_params = { status: status, ics: dashboard_filter_param(:ics, :ics_name) }.compact_blank
       path_params[:training_month] = month_name if month_name.present?
+      path_params[:training_month] = "all" if month_name.blank? && dashboard_agronomist_all_months?
       path_params[:training_fcoc] = fcoc_name if fcoc_name.present?
       path_params[:week] = week_number if week_number.present?
       {
@@ -8981,10 +8988,33 @@ class ModulesController < ApplicationController
     normalized.blank? || normalized == "all" || normalized.start_with?("all ")
   end
 
+  # All Months rolls up the agronomist's assigned FCOs, including farmers
+  # without target mappings. Never derive authorization from the selected FCO.
+  def dashboard_agronomist_all_months?
+    return false if dashboard_global_view_user? || !dashboard_agronomics_login?
+    return false unless params.key?(:month) || params.key?(:training_month)
+
+    @dashboard_agronomist_all_months = dashboard_filter_param(:training_month, :month).blank?
+  end
+
+  def dashboard_agronomist_all_month_fcos
+    @dashboard_agronomist_all_month_fcos ||= begin
+      assigned = dashboard_own_vrps_list.map(&:fcoc)
+      user = current_app_user || {}
+      assigned += [user["fcoc"], user["fcoc_name"], user["parent_office"], user["office_name"]]
+      assigned.filter_map { |value| normalized_bill_fco(value).presence }.uniq
+    end
+  end
+
   def dashboard_vrps
     return @dashboard_vrps if defined?(@dashboard_vrps)
     return @dashboard_vrps = [] unless model_ready?(:Vrp)
     return @dashboard_vrps = Vrp.all.to_a if current_app_user.blank? || dashboard_global_view_user?
+
+    if dashboard_agronomist_all_months?
+      fcos = dashboard_agronomist_all_month_fcos.to_set
+      return @dashboard_vrps = Vrp.all.select { |vrp| fcos.include?(normalized_bill_fco(vrp.fcoc)) }
+    end
 
     @dashboard_vrps = Vrp.all.select { |vrp| scoped_jeevika_vrp_visible?(vrp) }
   end
@@ -9011,7 +9041,7 @@ class ModulesController < ApplicationController
 
   def dashboard_user_visible_farmer_scope
     return Afl.all if dashboard_global_view_user?
-    if dashboard_source_fcoc_login?
+    if dashboard_source_fcoc_login? || dashboard_agronomist_all_months?
       fco_values = dashboard_vrps.map(&:fcoc).compact_blank.uniq.flat_map { |fcoc| training_fcoc_filter_values(fcoc) }.map(&:downcase).uniq
       return Afl.where("LOWER(BTRIM(fco_id)) IN (:values) OR LOWER(BTRIM(fco)) IN (:values)", values: fco_values)
     end
