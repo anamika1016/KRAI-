@@ -88,8 +88,13 @@ class TargetMappingsController < ApplicationController
   end
 
   def destroy
-    visible_target_mappings.find(params[:id]).destroy
-    redirect_to target_mappings_path, notice: admin_login? ? "Target mapping deleted successfully." : "Target mapping removed successfully."
+    target = visible_target_mappings.find(params[:id])
+    TargetMapping.transaction do
+      editable_targets_for_payload(target).each(&:destroy!)
+    end
+    redirect_to target_mappings_path, notice: admin_login? ? "Target mapping deleted successfully." : "Target mapping removed successfully.", status: :see_other
+  rescue ActiveRecord::RecordNotDestroyed
+    redirect_to target_mappings_path, alert: "Target mapping could not be deleted. Please try again.", status: :see_other
   end
 
   def vrp_mappings
@@ -1489,8 +1494,11 @@ class TargetMappingsController < ApplicationController
   def editable_targets_for_payload(target)
     return [] unless target
 
-    target_group = visible_target_mappings.select do |row|
-      target_group_signature(row) == target_group_signature(target)
+    targets = visible_target_mappings.to_a
+    group_key_counts = target_mapping_group_key_counts(targets)
+    signature = target_group_signature(target, group_key_counts)
+    target_group = targets.select do |row|
+      target_group_signature(row, group_key_counts) == signature
     end
     target_group.presence || [target]
   end

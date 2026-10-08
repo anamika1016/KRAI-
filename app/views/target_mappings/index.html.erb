@@ -543,10 +543,10 @@
 	                      <div class="table-actions">
 	                        <% if @admin_mapping_actions %>
 	                          <%= link_to "Edit", target_mappings_path(edit_id: target.id), class: "table-action" %>
-	                          <%= button_to "Delete", target_mapping_path(target), method: :delete, class: "table-action danger", form: { data: { turbo: false } }, onclick: "return confirm('Delete this target mapping?')" %>
+	                          <%= button_to "Delete", target_mapping_path(target), method: :delete, class: "table-action danger", form: { data: { turbo_confirm: "Delete this target mapping and all its grouped activities?" } } %>
 	                        <% elsif @remove_mapping_actions %>
 	                          <%= link_to "Edit", target_mappings_path(edit_id: target.id), class: "table-action" %>
-	                          <%= button_to "Remove", target_mapping_path(target), method: :delete, class: "table-action danger", form: { data: { turbo: false } }, onclick: "return confirm('Remove this target mapping?')" %>
+	                          <%= button_to "Remove", target_mapping_path(target), method: :delete, class: "table-action danger", form: { data: { turbo_confirm: "Remove this target mapping and all its grouped activities?" } } %>
 	                        <% end %>
 	                      </div>
 	                    </td>
