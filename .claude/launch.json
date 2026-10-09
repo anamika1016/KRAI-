@@ -4,7 +4,7 @@
     {
       "name": "rails-dev",
       "runtimeExecutable": "bash",
-      "runtimeArgs": ["-c", "LD_PRELOAD=/lib/x86_64-linux-gnu/libjemalloc.so.2 bin/rails server -p $PORT"],
+      "runtimeArgs": ["-c", "LD_PRELOAD=/lib/x86_64-linux-gnu/libjemalloc.so.2 bin/rails server -p $PORT --pid tmp/pids/preview.pid"],
       "port": 3001
     }
   ]

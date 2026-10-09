@@ -4100,7 +4100,6 @@ class ModulesController < ApplicationController
       month: params.key?(:month) ? dashboard_filter_param(:month) : DashboardDefaults.month)
 
     summary_rows = report.summary
-    opg_val = dashboard_quantity(summary_rows.sum { |r| r["OPG Target"].to_f })
 
     gen_target = summary_rows.sum { |r| r["General Training/Meeting Target"].to_f }.to_i
     gen_done   = summary_rows.sum { |r| r["General Training/Meeting Done"].to_f }.to_i
@@ -4117,6 +4116,13 @@ class ModulesController < ApplicationController
     ffs_target = summary_rows.sum { |r| r["FFS Target"].to_f }.to_i
     ffs_done   = summary_rows.sum { |r| r["FFS Done"].to_f }.to_i
     ffs_val    = "#{ffs_target} / #{ffs_done}"
+
+    # OPG Training Target's own count stays the Target half; its Achievement
+    # half is the sum of what the other four Demonstration Method boxes have
+    # already achieved, not a separately tracked OPG achievement figure.
+    opg_target = dashboard_quantity(summary_rows.sum { |r| r["OPG Target"].to_f })
+    opg_achievement = gen_done + inm_done + pm_done + ffs_done
+    opg_val = "#{opg_target} / #{opg_achievement}"
 
     # Use exactly the same JJ-level CC calculation as the Demonstration Method
     # View List, then aggregate it for the active FCO/month dashboard filters.
