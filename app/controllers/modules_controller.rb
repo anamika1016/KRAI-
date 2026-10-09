@@ -7,6 +7,7 @@ class ModulesController < ApplicationController
   before_action :authorize_farmer_target_access
   before_action :authorize_jeevika_payment_module_access
 
+  helper_method :jeevika_jankar_transfer_office_keys
   helper_method :module_field_options, :module_select_field?, :static_field_options, :role_management_mappings,
                 :access_control_role_mappings, :access_control_field_options,
                 :location_hierarchy_mappings, :office_category_mappings, :training_target_mappings,
@@ -583,6 +584,18 @@ class ModulesController < ApplicationController
       purpose: "Registered users dekhne ke liye.",
       fields: ["Stakeholder Category", "Stakeholder Role", "Role", "User Management Role", "Person Type", "State", "District", "Block", "Gram Panchayat", "Village", "Office Name", "Sub Office Name", "Full Address", "Pincode", "First Name", "Last Name", "Gender", "Email", "Password", "Confirmed Password", "User Name", "Mobile No", "User Type", "Status"]
     },
+    "jeevika-jankar-transfer" => {
+      title: "Jeevika Jankar Transfer",
+      group: "User Mapping",
+      purpose: "Apne registered Jeevika Jankar kisi doosre user ko transfer karne ke liye, taaki wo unka target map kar sake.",
+      fields: ["Sidebar Menu", "Stakeholder Category", "FCOC", "User Name", "Jeevika Jankar Names", "Status"]
+    },
+    "jeevika-jankar-transfer-list" => {
+      title: "Jeevika Jankar Transfer List",
+      group: "User Mapping",
+      purpose: "Saved Jeevika Jankar transfer mappings dekhne ke liye.",
+      fields: ["Sidebar Menu", "Stakeholder Category", "FCOC", "User Name", "Jeevika Jankar Names", "Status"]
+    },
     "user-hierarchy-mapping" => {
       title: "User Hierarchy Mapping",
       group: "User Mapping",
@@ -654,6 +667,7 @@ class ModulesController < ApplicationController
     "seed-distribution-target-list" => "seed-distribution-target",
     "papl360-target-list" => "papl360-target",
     "other-target-list" => "other-target",
+    "jeevika-jankar-transfer-list" => "jeevika-jankar-transfer",
     "user-hierarchy-list" => "user-hierarchy-mapping",
     "all-user" => "new-user"
   }.freeze
@@ -11460,18 +11474,66 @@ class ModulesController < ApplicationController
     return [] unless model_ready?(:Vrp)
     return @module_cluster_visible_vrps if defined?(@module_cluster_visible_vrps)
 
-    return @module_cluster_visible_vrps = [] if current_cluster_incharge_labels.blank?
+    transferred_vrps = jeevika_jankar_transferred_vrps
+    if current_cluster_incharge_labels.blank?
+      return @module_cluster_visible_vrps = transferred_vrps
+    end
 
     directly_mapped_vrps = Vrp
       .where.not(cluster_incharge: [nil, ""])
       .order(:name, :id)
       .select { |vrp| module_cluster_vrp_visible?(vrp) }
 
-    visible_vrps = directly_mapped_vrps
+    hierarchy_mapped_vrps = module_cluster_incharge_login? ? dashboard_hierarchy_vrps : []
 
-    @module_cluster_visible_vrps = visible_vrps.uniq(&:id).sort_by do |vrp|
+    # An empty cluster mapping stays empty. Falling back to "every VRP that has
+    # a target mapping" showed one cluster incharge the whole organisation.
+    # Transferred Jeevika Jankars are added on top -- a transfer only ever grants
+    # access, it never takes any away.
+    visible_vrps = directly_mapped_vrps + hierarchy_mapped_vrps + transferred_vrps
+
+    @module_cluster_visible_vrps = visible_vrps.compact.uniq(&:id).sort_by do |vrp|
       [vrp.name.to_s, vrp.id]
     end
+  end
+
+  # Jeevika Jankars handed to the signed-in user through the transfer form, for
+  # the screen they are currently on.
+  def normalize_approver_label(value)
+    value.to_s.sub(/\s*\([^)]*\)\s*\z/, "").gsub(/[^a-z0-9]+/i, " ").squish.downcase
+  end
+
+  def jeevika_jankar_transferred_vrps
+    return @jeevika_jankar_transferred_vrps if defined?(@jeevika_jankar_transferred_vrps)
+    return @jeevika_jankar_transferred_vrps = [] unless model_ready?(:ModuleRecord) && model_ready?(:Vrp)
+    return @jeevika_jankar_transferred_vrps = [] if vrp_login_user?
+
+    labels = current_cluster_incharge_labels.map { |label| normalize_approver_label(label) }.compact_blank
+    return @jeevika_jankar_transferred_vrps = [] if labels.blank?
+
+    menu = current_sidebar_menu_title
+    ids = ModuleRecord
+      .where(module_slug: "jeevika-jankar-transfer")
+      .select { |record| active_module_record?(record) }
+      .select { |record| labels.include?(normalize_approver_label(record.data["user_name"])) }
+      .select { |record| menu.blank? || record.data["sidebar_menu"].to_s.strip.casecmp(menu).zero? }
+      .flat_map { |record| Array(record.data["jeevika_jankar_names"]) }
+      .filter_map { |label| label.to_s[/-\s*(\d+)\s*\z/, 1] }
+      .uniq
+
+    @jeevika_jankar_transferred_vrps = ids.any? ? Vrp.where(id: ids).order(:name, :id).to_a : []
+  end
+
+  # The sidebar label of the screen being rendered, so a transfer made for one
+  # menu does not leak access into another.
+  def current_sidebar_menu_title
+    slug = (@slug || current_slug).to_s
+    return "" if slug.blank?
+
+    ApplicationHelper::SIDEBAR_SECTIONS
+      .flat_map { |section| Array(section[:links]) }
+      .find { |_label, kind, link_slug| kind == :module && link_slug.to_s == slug }
+      &.first.to_s
   end
 
   def current_cluster_incharge_labels
@@ -12478,6 +12540,10 @@ class ModulesController < ApplicationController
 
   def module_record_field_value(record, field)
     return nil if field.blank?
+    if record.module_slug == "jeevika-jankar-transfer" && field == "Jeevika Jankar Names"
+      return Array(record.data["jeevika_jankar_names"]).map { |label| helpers.jeevika_jankar_transfer_display(label) }.join(", ")
+    end
+
     return village_master_gram_panchayat_name(record) if record.module_slug == "village-master" && field == "Gram Panchayat"
 
     if record.module_slug == "training-form"
@@ -13760,6 +13826,8 @@ class ModulesController < ApplicationController
 
   def module_data_error_messages(data)
     case record_source_slug
+    when "jeevika-jankar-transfer"
+      jeevika_jankar_transfer_error_messages(data)
     when "new-user"
       data["password"].to_s == data["confirmed_password"].to_s ? [] : ["Password and Confirmed Password must match."]
     when "training-form"
@@ -13962,7 +14030,132 @@ class ModulesController < ApplicationController
     "/uploads/module_records/#{filename}"
   end
 
+  def jeevika_jankar_transfer_error_messages(data)
+    errors = missing_required_data_errors(data, "fcoc" => "FCOC", "user_name" => "User Name", "sidebar_menu" => "Sidebar Menu")
+    names = Array(data["jeevika_jankar_names"]).compact_blank
+    errors << "Jeevika Jankar Names select karein." if names.empty?
+    office = transfer_user_office_keys[data["user_name"]]
+    errors << "Selected user ka FCOC posting required hai." if office.blank?
+    errors << "Selected user selected FCOC se related nahi hai." if office.present? && transfer_office_key(data["fcoc"]) != office
+    if names.any? { |name| office.blank? || transfer_jeevika_jankar_office_keys[name] != office }
+      errors << "Selected user ke FCOC ke Jeevika Jankar hi select karein."
+    end
+    errors
+  end
+
+  def jeevika_jankar_transfer_field?(field)
+    record_source_slug == "jeevika-jankar-transfer" &&
+      ["Sidebar Menu", "FCOC", "User Name", "Jeevika Jankar Names"].include?(field)
+  end
+
+  def jeevika_jankar_transfer_field_options(field)
+    case field
+    when "Sidebar Menu" then transferable_sidebar_menu_options
+    when "FCOC" then transfer_user_office_keys.values.compact_blank.uniq.sort.map { |key| "FCOC #{key.titleize}" }
+    when "User Name" then approver_options
+    when "Jeevika Jankar Names" then transferable_jeevika_jankar_options
+    else []
+    end
+  end
+
+  # Only the screens where a transferred Jeevika Jankar is actually worked on.
+  # Matched by sidebar label because these sit behind both module and route
+  # links -- Target Mapping Master, the main case, is a route.
+  TRANSFERABLE_MENU_LABELS = [
+    "Target Mapping Master",
+    "Training Form",
+    "Training Form List",
+    "Other Target",
+    "Other Target List",
+    "Bill Process",
+    "Bill List"
+  ].freeze
+
+  def transferable_sidebar_menu_options
+    labels = ApplicationHelper::SIDEBAR_SECTIONS
+      .flat_map { |section| Array(section[:links]) }
+      .map { |label, _kind, _target| label.to_s }
+    TRANSFERABLE_MENU_LABELS.select { |label| labels.include?(label) }
+  end
+
+  # The Jeevika Jankars the signed-in user can hand over: the ones they can
+  # already see, which is exactly what "Registered By" shows them in the list.
+  def transferable_jeevika_jankar_options
+    return [] unless model_ready?(:Vrp)
+
+    transferable_jeevika_jankar_vrps.filter_map { |vrp| jeevika_jankar_transfer_label(vrp) }.uniq
+  end
+
+  def transferable_jeevika_jankar_vrps
+    return @transferable_jeevika_jankar_vrps if defined?(@transferable_jeevika_jankar_vrps)
+    return @transferable_jeevika_jankar_vrps = [] unless model_ready?(:Vrp)
+
+    scope = Vrp.order(:name).where(is_active: [true, nil], is_deleted: [false, nil])
+    @transferable_jeevika_jankar_vrps = scope.to_a
+  end
+
+  # The picker narrows Jeevika Jankars to the chosen user's FCO, so both
+  # dropdowns publish the same office key for the browser to compare.
+  def jeevika_jankar_transfer_office_keys(field)
+    case field
+    when "User Name" then transfer_user_office_keys
+    when "Jeevika Jankar Names" then transfer_jeevika_jankar_office_keys
+    else {}
+    end
+  end
+
+  def transfer_office_key(value)
+    text = value.to_s.split("||").last.to_s.downcase.gsub(/[^a-z0-9]+/, " ").squish
+    text.sub(/\A(?:fcoc|fco(?:\s+c)?)(?:\s+|\z)/, "").sub(/\s+fco(?:\s+c)?\z/, "").strip
+  end
+
+  def transfer_user_office_keys
+    return @transfer_user_office_keys if defined?(@transfer_user_office_keys)
+    return @transfer_user_office_keys = {} unless model_ready?(:User)
+
+    @transfer_user_office_keys = User.order(created_at: :desc).each_with_object({}) do |user, map|
+      full_name = user.full_name.presence || user.user_name.presence
+      next if full_name.blank?
+
+      label = user.role.present? ? "#{full_name} (#{user.role})" : full_name
+      legacy = transfer_legacy_user_data[user.user_name.to_s] || {}
+      candidates = [legacy["fcoc"], legacy["fcoc_name"], user.office_name, legacy["office_name"], legacy["office"], user.role, legacy["role"]].compact_blank
+      posting = candidates.find { |value| value.to_s.match?(/\bfco(?:c)?\b/i) } || candidates.first
+      key = transfer_office_key(posting)
+      map[label] ||= key if key.present?
+    end
+  end
+
+  def transfer_legacy_user_data
+    @transfer_legacy_user_data ||= if model_ready?(:ModuleRecord)
+      ModuleRecord.where(module_slug: "new-user").order(updated_at: :desc).each_with_object({}) do |record, result|
+        result[record.data["user_name"].to_s] ||= record.data if active_module_record?(record)
+      end
+    else
+      {}
+    end
+  end
+
+  def transfer_jeevika_jankar_office_keys
+    @transfer_jeevika_jankar_office_keys ||= transferable_jeevika_jankar_vrps.each_with_object({}) do |vrp, map|
+      label = jeevika_jankar_transfer_label(vrp)
+      key = transfer_office_key(vrp.fcoc)
+      map[label] = key if label.present? && key.present?
+    end
+  end
+
+  # jeevika_jankar_transferred_vrps reads the trailing id back out of the saved
+  # value, so it stays here. The mobile number sits in front of it to tell two
+  # Jeevika Jankars with the same name apart; the form hides the id itself.
+  def jeevika_jankar_transfer_label(vrp)
+    name = vrp.name.presence || vrp.user_name.presence
+    return nil if name.blank?
+
+    [name, vrp.mobile_no.presence, vrp.id].compact.join(" - ")
+  end
+
   def module_select_field?(field)
+    return true if jeevika_jankar_transfer_field?(field)
     return false if current_slug == "training-topic-mapping" && ["Department", "Training Topic", "Training Subject"].include?(field)
     return false if record_source_slug == "training-form" && ["Trainee Department", "FCO Name", "External Input", "PAPL Staff Name"].include?(field)
     return false if other_target_record_source? && field == "Department"
@@ -13977,6 +14170,7 @@ class ModulesController < ApplicationController
   end
 
   def module_field_options(field)
+    return jeevika_jankar_transfer_field_options(field) if jeevika_jankar_transfer_field?(field)
     return parent_office_parent_options if current_slug == "parent-office-add" && field == "Parent Office"
     return training_target_field_options(field) if training_target_field?(field)
     return training_people_field_options(field) if training_people_field?(field)

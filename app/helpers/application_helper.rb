@@ -1,4 +1,8 @@
 module ApplicationHelper
+  def jeevika_jankar_transfer_display(label)
+    label.to_s.sub(/\s*-\s*\d+\s*\z/, "").strip.presence || label.to_s
+  end
+
   # Section headings used by the Training Form (show.html.erb). The edit-request
   # page reuses them so a reviewer sees the changes laid out exactly like the
   # form they were made on.
@@ -194,6 +198,8 @@ module ApplicationHelper
       title: "User Mapping",
       icon: "▧",
       links: [
+        ["Jeevika Jankar Transfer", :module, "jeevika-jankar-transfer"],
+        ["Jeevika Jankar Transfer List", :module, "jeevika-jankar-transfer-list"],
         ["User Hierarchy Mapping", :module, "user-hierarchy-mapping"],
         ["Cluster Incharge Under Jeevika Jankar User", :module, "user-hierarchy-list"]
       ]

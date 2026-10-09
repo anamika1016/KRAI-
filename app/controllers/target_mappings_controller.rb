@@ -478,15 +478,64 @@ class TargetMappingsController < ApplicationController
 
   def own_registered_vrps
     ids = current_app_user_ids
-    return Vrp.none if ids.blank?
+    transferred_ids = transferred_vrp_ids
+    return Vrp.where(id: transferred_ids) if ids.blank?
 
     scope = Vrp.none
     if ids.any?
       scope = scope.or(Vrp.where(created_by_id: ids))
       scope = scope.or(Vrp.where(user_id: ids)) if Vrp.column_names.include?("user_id")
     end
+    # Jeevika Jankars handed over through the transfer form are worked on here
+    # too, so they join the user's own registrations rather than replacing them.
+    scope = scope.where.not(id: target_mapping_transfer_recipients.keys)
+    scope = scope.or(Vrp.where(id: transferred_ids)) if transferred_ids.any?
 
     scope
+  end
+
+  # Ids transferred to the signed-in user for the Target Mapping screen.
+  def transferred_vrp_ids
+    return @transferred_vrp_ids if defined?(@transferred_vrp_ids)
+    return @transferred_vrp_ids = [] unless defined?(ModuleRecord) && ModuleRecord.table_exists?
+
+    labels = [
+      current_app_user&.dig("name"),
+      current_app_user&.dig("username"),
+      current_app_user&.dig("user_name")
+    ].compact_blank.map { |label| normalize_transfer_label(label) }
+    return @transferred_vrp_ids = [] if labels.blank?
+
+    @transferred_vrp_ids = target_mapping_transfer_recipients.select do |_id, recipient|
+      labels.include?(normalize_transfer_label(recipient))
+    end.keys
+  end
+
+  # The latest active handover owns access; original registration stays intact.
+  def target_mapping_transfer_recipients
+    return @target_mapping_transfer_recipients if defined?(@target_mapping_transfer_recipients)
+    return @target_mapping_transfer_recipients = {} unless defined?(ModuleRecord) && ModuleRecord.table_exists?
+
+    @target_mapping_transfer_recipients = ModuleRecord.where(module_slug: "jeevika-jankar-transfer")
+      .order(updated_at: :desc, id: :desc).each_with_object({}) do |record, recipients|
+        next unless transfer_record_active?(record)
+        next unless ["target mapping", "target mapping master"].include?(record.data["sidebar_menu"].to_s.strip.downcase)
+        next if record.data["user_name"].blank?
+
+        Array(record.data["jeevika_jankar_names"]).each do |label|
+          id = label.to_s[/-\s*(\d+)\s*\z/, 1]
+          recipients[id] ||= record.data["user_name"] if id
+        end
+      end
+  end
+
+  def transfer_record_active?(record)
+    %w[deleted is_deleted discarded].none? { |flag| %w[1 true yes deleted].include?(record.data[flag].to_s.strip.downcase) } &&
+      (record.data["status"].to_s.strip.blank? || record.data["status"].to_s.strip.casecmp("Active").zero?)
+  end
+
+  def normalize_transfer_label(value)
+    value.to_s.sub(/\s*\([^)]*\)\s*\z/, "").gsub(/[^a-z0-9]+/i, " ").squish.downcase
   end
 
   def assign_afl_location_names(target_mapping)

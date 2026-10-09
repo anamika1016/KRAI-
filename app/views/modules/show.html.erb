@@ -13,7 +13,7 @@
   <% end %>
 
   <% list_only_slugs = ["activity-group-list", "vrp-activity-list", "task-completion-indicator-list", "approval-list", "access-control-list", "vrp-bill-list", "jeevika-jankar-bill-list", "jeevika-jankar-observation-list", "jeevika-jankar-payment-list", "jeevika-jankar-payment-list-detail", "jeevika-jankar-completed-payment-list", "training-form-list", "seed-distribution-target-list", "papl360-target-list", "other-target-list"] %>
-  <% entry_only_slugs = ["add-activity-group", "add-vrp-activity", "task-completion-indicator", "approval-master", "access-control", "vrp-bill-add", "jeevika-jankar-bill-process", "training-form"] %>
+  <% entry_only_slugs = ["add-activity-group", "add-vrp-activity", "task-completion-indicator", "approval-master", "access-control", "vrp-bill-add", "jeevika-jankar-bill-process", "training-form", "jeevika-jankar-transfer"] %>
 
   <% if @slug == "jeevika-jankar-bill-list" && (@bill_print_mode || @bill_detail_record.present?) %>
     <% detail_record = @record || @bill_detail_record %>
@@ -362,7 +362,7 @@
               <% if step_history %>
                 <small><%= step_history.data["action"] %> at <%= step_history.data["action_at"] %></small>
                 <% if step_history.data["remarks"].present? %>
-                  <p><strong>Remarks:</strong> <%= step_history.data["remarks"] %></p>
+                  <div class="bill-approval-remarks"><strong>Remarks</strong><p><%= step_history.data["remarks"] %></p></div>
                 <% end %>
               <% end %>
             </div>
@@ -2259,6 +2259,7 @@
     <% other_target_form = ["seed-distribution-target", "papl360-target", "other-target"].include?(@slug) %>
     <% add_farmer_form = @slug == "add-farmer-form" %>
     <% seed_target_form = @slug == "seed-distribution-target" %>
+    <% unless @slug == "jeevika-jankar-transfer-list" %>
     <section class="module-card" id="module-form" <% if ["role-management", "role-name", "user-management-role", "person-type"].include?(@slug) %>data-user-role-form data-role-map="<%= json_escape(role_management_mappings.to_json) %>"<% end %> <% if @slug == "parent-office-add" %>data-parent-office-form data-parent-office-map="<%= json_escape(parent_office_mappings.to_json) %>"<% end %> <% if has_location_fields %>data-location-form data-location-map="<%= json_escape(location_hierarchy_mappings.to_json) %>"<% end %> <% if @slug == "training-form" %>data-training-target-form data-training-target-map="<%= json_escape(training_target_mappings.to_json) %>" data-training-activity-map="<%= json_escape(training_activity_setup_mappings.to_json) %>" data-training-month-options="<%= json_escape(training_target_month_options.to_json) %>" data-training-farmers-url="<%= training_target_farmers_module_path(@slug) %>"<% end %> <% if other_target_form %>data-seed-target-form data-seed-target-map="<%= json_escape(seed_distribution_target_mappings.to_json) %>" data-seed-month-options="<%= json_escape(seed_distribution_target_month_options.to_json) %>" data-seed-current-vrp-option="<%= json_escape(current_seed_target_vrp_option.to_json) %>" data-seed-farmers-url="<%= seed_target_farmers_module_path(@slug) %>"<% end %> <% if add_farmer_form %>data-add-farmer-form data-add-farmer-map="<%= json_escape(add_farmer_form_mappings.to_json) %>"<% end %>>
       <div class="module-card-header">
         <% unless @slug == "training-form" %>
@@ -2449,6 +2450,17 @@
                 <% end %>
               <% elsif @slug == "training-topic-mapping" && field == "Department" %>
                 <input name="module_record[<%= field_key %>]" type="text" placeholder="Enter <%= resource_person_label(field) %>" value="<%= field_value %>">
+              <% elsif @slug == "jeevika-jankar-transfer" && ["FCOC", "User Name", "Jeevika Jankar Names"].include?(field) %>
+                <% multi = field == "Jeevika Jankar Names" %>
+                <% office_keys = jeevika_jankar_transfer_office_keys(field) %>
+                <% selected = Array(raw_field_value).map(&:to_s) %>
+                <select name="module_record[<%= field_key %>]<%= "[]" if multi %>" required <%= 'multiple data-chip-multiselect data-placeholder="Select Jeevika Jankar"'.html_safe if multi %> <%= { "FCOC" => "data-jj-transfer-fcoc", "User Name" => "data-jj-transfer-user", "Jeevika Jankar Names" => "data-jj-transfer-jj" }[field] %>>
+                  <% unless multi %><option value="">Select <%= field %></option><% end %>
+                  <% module_field_options(field).each do |option| %>
+                    <option value="<%= option %>" data-office="<%= office_keys[option] %>" <%= "selected" if selected.include?(option) %>><%= multi ? jeevika_jankar_transfer_display(option) : option %></option>
+                  <% end %>
+                </select>
+                <% if multi %><small class="field-hint" data-jj-transfer-hint>Select FCOC and User Name first.</small><% end %>
               <% elsif module_select_field?(field) %>
                 <% options = (module_field_options(field) + static_field_options(field)).compact_blank.uniq %>
                 <% if @slug == "training-form" && ["Cluster Coordinator Name", "Agronomist Name"].include?(field) %>
@@ -2662,10 +2674,11 @@
       <% end %>
     </section>
 
+    <% end %>
     <% unless @slug == "new-user" || entry_only_slugs.include?(@slug) || other_target_form %>
       <% saved_record_fields = @module[:fields].reject { |field| field == "Status" } %>
       <% full_saved_record_slugs = ["state-master", "district-master", "block-master", "gram-panchayat-master", "village-master", "person-type"] %>
-      <% saved_record_fields = saved_record_fields.first(4) unless full_saved_record_slugs.include?(@slug) %>
+      <% saved_record_fields = saved_record_fields.first(4) unless full_saved_record_slugs.include?(@slug) || @slug == "jeevika-jankar-transfer-list" %>
       <section class="module-card">
         <div class="module-card-header">
           <h2>Saved Records</h2>

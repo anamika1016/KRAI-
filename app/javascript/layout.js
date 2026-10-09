@@ -5304,6 +5304,68 @@ function initDeferredLayoutPage() {
     });
   });
 
+  // Jeevika Jankar Transfer: the Jeevika Jankar list follows the FCO of the
+  // selected user, so you only ever hand over someone from that office.
+  document.querySelectorAll("[data-jj-transfer-jj]").forEach((jjSelect) => {
+    if (jjSelect.dataset.jjTransferBound === "true") return;
+
+    const userSelect = jjSelect.form?.querySelector("[data-jj-transfer-user]") ||
+      document.querySelector("[data-jj-transfer-user]");
+    if (!userSelect) return;
+
+    jjSelect.dataset.jjTransferBound = "true";
+    const officeSelect = jjSelect.form?.querySelector("[data-jj-transfer-fcoc]");
+    const officeKey = (value) => String(value || "").toLowerCase().replace(/[^a-z0-9]+/g, " ").trim().replace(/^(?:fcoc|fco(?:\s+c)?)(?:\s+|$)/, "").replace(/\s+fco(?:\s+c)?$/, "").trim();
+    const filterUsers = () => {
+      if (!officeSelect) return;
+      const office = officeKey(officeSelect.value);
+      Array.from(userSelect.options).forEach((option) => {
+        if (!option.value) return;
+        const matches = Boolean(office) && option.dataset.office === office;
+        option.hidden = !matches;
+        option.disabled = !matches;
+        if (!matches && option.selected) userSelect.value = "";
+      });
+      userSelect.disabled = !office;
+    };
+    // Older saved transfers may lack FCOC; infer it from the recipient.
+    if (officeSelect && !officeSelect.value && userSelect.value) {
+      const savedOffice = userSelect.selectedOptions?.[0]?.dataset.office;
+      officeSelect.value = Array.from(officeSelect.options).find((option) => savedOffice && officeKey(option.value) === savedOffice)?.value || "";
+    }
+    filterUsers();
+
+    const applyOfficeFilter = () => {
+      const office = userSelect.selectedOptions?.[0]?.dataset.office || "";
+      Array.from(jjSelect.options).forEach((option) => {
+        if (!option.value) return;
+        // Choose a posted user before selecting Jeevika Jankars.
+        const matches = Boolean(office) && option.dataset.office === office;
+        option.hidden = !matches;
+        if (!matches) option.selected = false;
+      });
+      const hint = jjSelect.parentElement?.querySelector("[data-jj-transfer-hint]");
+      const visibleCount = Array.from(jjSelect.options).filter((option) => option.value && !option.hidden).length;
+      if (hint) hint.textContent = !userSelect.value
+        ? "Pehle User Name select karein."
+        : !office
+          ? "Selected user ki FCOC posting nahi mili. User ki Office Name/FCOC posting update karein."
+          : visibleCount === 0
+            ? "Selected user ke FCOC mein koi active Jeevika Jankar nahi mila."
+            : `${visibleCount} Jeevika Jankar available. Multiple names select kar sakte hain.`;
+      jjSelect.dispatchEvent(new Event("chip:refresh"));
+    };
+
+    officeSelect?.addEventListener("change", () => {
+      userSelect.value = "";
+      Array.from(jjSelect.options).forEach((option) => { option.selected = false; });
+      filterUsers();
+      applyOfficeFilter();
+    });
+    userSelect.addEventListener("change", applyOfficeFilter);
+    applyOfficeFilter();
+  });
+
   document.querySelectorAll("[data-chip-multiselect]").forEach((select) => {
     if (select.nextElementSibling?.classList.contains("chip-multi-control")) return;
 
@@ -5495,6 +5557,8 @@ function initDeferredLayoutPage() {
     control.addEventListener("click", (event) => {
       if (select.disabled) return;
       if (event.target.closest(".chip-multi-dropdown")) return;
+      event.preventDefault();
+      event.stopPropagation();
 
       document.querySelectorAll(".chip-multi-control.open").forEach((openControl) => {
         if (openControl !== control) openControl.classList.remove("open");
@@ -5503,11 +5567,8 @@ function initDeferredLayoutPage() {
       else control.classList.toggle("open");
     });
 
-    control.addEventListener("focus", () => {
-      if (select.disabled) return;
-
-      control.classList.add("open");
-    });
+    // No open-on-focus: a mouse click would immediately toggle it closed.
+    // Keyboard users open the picker with Enter or Space.
 
     if (select.dataset.chipHoverOpen === "true") {
       control.addEventListener("pointerenter", () => {
