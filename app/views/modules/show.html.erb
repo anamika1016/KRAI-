@@ -65,7 +65,12 @@
             </tr>
           </thead>
           <tbody>
-            <% jeevika_bill_time_slot_rows(detail_record).each_with_index do |row, index| %>
+            <%# The invoice lists only the dates work was actually recorded on, so
+                rows with a zero achievement are left out and the remaining rows are
+                renumbered. The helper itself is untouched -- the payments API still
+                receives every row. %>
+            <% worksheet_rows = jeevika_bill_time_slot_rows(detail_record).reject { |row| row[:number].to_i.zero? } %>
+            <% worksheet_rows.each_with_index do |row, index| %>
               <tr>
                 <td><%= index + 1 %></td>
                 <td><%= row[:working_date] %></td>
@@ -74,6 +79,9 @@
                 <td><%= row[:tci] %></td>
                 <td><%= row[:number] %></td>
               </tr>
+            <% end %>
+            <% if worksheet_rows.empty? %>
+              <tr><td colspan="6">No achievement recorded for this bill month.</td></tr>
             <% end %>
           </tbody>
         </table>
