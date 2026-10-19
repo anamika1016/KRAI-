@@ -47,7 +47,9 @@ class CcJjWorkStatusReport
     connection = ActiveRecord::Base.connection
     fco_ids = FcoDirectory.ids
     selected_fcos = @fco.blank? ? fco_ids : fco_ids & [@fco]
+    stored_fco_ids = selected_fcos.flat_map { |id| FcoDirectory.aliases_for(id).grep(/\A\d+\z/) }.uniq
     fcos = selected_fcos.map { |id| connection.quote(id) }.join(", ")
+    stored_fcos = stored_fco_ids.map { |id| connection.quote(id) }.join(", ")
     assignment_scope = if @calculator.send(:dashboard_global_view_user?)
       "TRUE"
     else
@@ -57,7 +59,7 @@ class CcJjWorkStatusReport
     replacements = {
       assignment_visibility_filter: assignment_scope,
       summary_fco_filter: selected_fcos.empty? ? "FALSE" : "LOWER(TRIM(fvm.fco_id)) IN (#{fcos})",
-      list_fco_filter: selected_fcos.empty? ? "FALSE" : "LOWER(TRIM(a.fco_id)) IN (#{fcos})",
+      list_fco_filter: selected_fcos.empty? ? "FALSE" : "LOWER(TRIM(a.fco_id)) IN (#{stored_fcos})",
       month_label: connection.quote(all_months? ? "All Months" : @month),
       target_month_filter: all_months? ? "TRUE" : "LOWER(TRIM(t.month_name)) = #{connection.quote(@month.downcase)}",
       entry_month_filter: all_months? ? "TRUE" : "LOWER(TRIM(COALESCE(mr.data::jsonb ->> 'month', ''))) = #{connection.quote(@month.downcase)}"

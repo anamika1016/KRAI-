@@ -27,7 +27,7 @@ class FcoDirectory
   # Some saved records have the short FCO-prefixed form. It is the same 1094
   # office and must resolve to the Direct to HO dashboard label.
   FIXED_ALIASES = {
-    "1094" => ["FCO-Direct to HO"]
+    "1094" => ["1095", "FCO-Direct to HO"]
   }.freeze
 
   # Memoised per request. CurrentAttributes resets between requests, so a newly
@@ -76,6 +76,12 @@ class FcoDirectory
   # The numeric office codes behind those labels, e.g. ["1004", "1006", "1094"].
   def self.ids
     offices.filter_map { |office| office[:id].presence }.presence || FALLBACK.map { |row| row[:id] }
+  end
+
+  # Codes used in stored farmer/import rows. The dashboard continues to expose
+  # just 1094; this list is used only when reading historical records.
+  def self.data_ids
+    ids.flat_map { |id| aliases_for(id).grep(/\A\d+\z/) }.uniq
   end
 
   # Every spelling a stored value might use for the configured offices: the

@@ -2290,7 +2290,7 @@ class ModulesController < ApplicationController
         "1094" => text.include?("1094") || text.include?("direct to ho")
       }.filter_map { |id, matches| id if matches }
     end
-    fco_ids = selected_fco.present? ? fco_ids_for_values.call(selected_fco) : FcoDirectory.ids
+    fco_ids = selected_fco.present? ? fco_ids_for_values.call(selected_fco) : FcoDirectory.data_ids
     selected_month = normalize_dashboard_text(@dashboard_month_filter_value)
     selected_ics = dashboard_filter_param(:ics, :ics_name)
     selected_cluster = dashboard_filter_param(:cluster_incharge)
@@ -5993,26 +5993,14 @@ class ModulesController < ApplicationController
 
   def training_fcoc_ids_from_param(fcoc_name)
     raw_values = Array(fcoc_name).flatten.map(&:to_s).reject(&:blank?)
-    return FcoDirectory.ids if raw_values.blank?
+    return FcoDirectory.data_ids if raw_values.blank?
 
-    ids = []
-    raw_values.each do |val|
-      normalized = val.to_s.downcase.strip
-      if normalized.include?("1004") || normalized.include?("sausar")
-        ids << "1004"
-      end
-      if normalized.include?("1006") || normalized.include?("turekela")
-        ids << "1006"
-      end
-      if normalized.include?("1094") || normalized.include?("direct to ho")
-        ids << "1094"
-      end
-      if normalized.match?(/\A\d+\z/)
-        ids << normalized
-      end
+    ids = raw_values.flat_map do |value|
+      aliases = FcoDirectory.aliases_for(value).grep(/\A\d+\z/)
+      aliases.presence || [value.to_s.strip]
     end
     ids = ids.uniq
-    ids.presence || FcoDirectory.ids
+    ids.presence || FcoDirectory.data_ids
   end
 
   def farmer_training_mapped_farmer_count_and_popups(month_name:, fcoc_name:)
@@ -6236,12 +6224,12 @@ class ModulesController < ApplicationController
   end
 
   def format_red_fco_popups(rows, fco_ids)
-    fco_name_map = { "1004" => "Sausar", "1006" => "Turekela", "1094" => "Direct to HO" }
-    target_ids = Array(fco_ids).presence || FcoDirectory.ids
-    rows_by_id = Array(rows).index_by { |r| r["fco_id"].to_s.strip.downcase }
+    fco_name_map = { "1004" => "Sausar", "1006" => "Turekela", "1094" => "Direct to HO", "1095" => "Direct to HO" }
+    target_ids = dashboard_display_fco_ids(fco_ids)
+    rows_by_id = Array(rows).index_by { |row| dashboard_display_fco_id(row["fco_id"]) }
 
     target_ids.flat_map do |id|
-      row = rows_by_id[id.to_s.strip.downcase]
+      row = rows_by_id[dashboard_display_fco_id(id)]
       raw_name = row&.dig("fco_name").presence || fco_name_map[id.to_s] || "FCO #{id}"
       # Show the plain FCO name (e.g. "Sausar") without the "(1004)" id suffix.
       name = fco_name_map[id.to_s] || raw_name.to_s.sub(/\s*\(\s*\d+\s*\)\s*/, " ").squish.titleize
@@ -6260,12 +6248,12 @@ class ModulesController < ApplicationController
   end
 
   def format_red_fco_details(rows, fco_ids)
-    fco_name_map = { "1004" => "Sausar", "1006" => "Turekela", "1094" => "Direct to HO" }
-    target_ids = Array(fco_ids).presence || FcoDirectory.ids
-    rows_by_id = Array(rows).index_by { |r| r["fco_id"].to_s.strip.downcase }
+    fco_name_map = { "1004" => "Sausar", "1006" => "Turekela", "1094" => "Direct to HO", "1095" => "Direct to HO" }
+    target_ids = dashboard_display_fco_ids(fco_ids)
+    rows_by_id = Array(rows).index_by { |row| dashboard_display_fco_id(row["fco_id"]) }
 
     target_ids.map do |id|
-      row = rows_by_id[id.to_s.strip.downcase]
+      row = rows_by_id[dashboard_display_fco_id(id)]
       raw_name = row&.dig("fco_name").presence || fco_name_map[id.to_s] || "FCO #{id}"
       # Show the plain FCO name (e.g. "Sausar") without the "(1004)" id suffix.
       name = fco_name_map[id.to_s] || raw_name.to_s.sub(/\s*\(\s*\d+\s*\)\s*/, " ").squish.titleize
@@ -6356,18 +6344,28 @@ class ModulesController < ApplicationController
   end
 
   def format_fco_popups(rows, fco_ids, count_key)
-    fco_name_map = { "1004" => "Sausar", "1006" => "Turekela", "1094" => "Direct to HO" }
-    target_ids = Array(fco_ids).presence || FcoDirectory.ids
-    rows_by_id = Array(rows).index_by { |r| r["fco_id"].to_s.strip.downcase }
+    fco_name_map = { "1004" => "Sausar", "1006" => "Turekela", "1094" => "Direct to HO", "1095" => "Direct to HO" }
+    target_ids = dashboard_display_fco_ids(fco_ids)
+    rows_by_id = Array(rows).index_by { |row| dashboard_display_fco_id(row["fco_id"]) }
 
     target_ids.map do |id|
-      row = rows_by_id[id.to_s.strip.downcase]
+      row = rows_by_id[dashboard_display_fco_id(id)]
       count = row ? row[count_key].to_i : 0
       raw_name = row&.dig("fco_name").presence || fco_name_map[id.to_s] || "FCO #{id}"
       # Plain FCO name (e.g. "Sausar"), no "(1004)" id suffix.
       name = fco_name_map[id.to_s] || raw_name.to_s.sub(/\s*\(\s*\d+\s*\)\s*/, " ").squish.titleize
       "#{name}: #{count}"
     end
+  end
+
+  def dashboard_display_fco_ids(fco_ids)
+    (Array(fco_ids).presence || FcoDirectory.ids)
+      .map { |id| dashboard_display_fco_id(id) }
+      .uniq
+  end
+
+  def dashboard_display_fco_id(id)
+    FcoDirectory.id_for(id).presence || id.to_s.strip.downcase
   end
 
   # Mirrors training_record_week_number in SQL so the participation list can filter
