@@ -55,7 +55,7 @@ class OfficeDashboardCalculator < ModulesController
   def dashboard_cards
     cards = super.reject { |group| ["Gender Count", "FCO-wise JJ Requirement"].include?(group[:title]) }
     # These two dashboard groups are organisation-wide reference data.  A CC,
-    # Agronomist or FCO-C user must see Sausar, Turekela, Pavijetpur and any
+    # Agronomist or FCO-C user must see Sausar, Turekela, Direct to HO and any
     # later configured FCO in the cards; their Target Mapping/API lists remain
     # constrained by the normal authorised JJ scope.
     vrps = model_ready?(:Vrp) ? Vrp.where.not(fcoc: [nil, ""]).to_a : Array(@office_authorized_vrps || dashboard_vrps)

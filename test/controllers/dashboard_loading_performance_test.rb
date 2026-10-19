@@ -65,10 +65,10 @@ class DashboardLoadingPerformanceTest < ActiveSupport::TestCase
     ActiveSupport::Notifications.unsubscribe(subscriber) if subscriber
   end
 
-  test "SQL group totals preserve nulls, duplicate locations and visible scope" do
+  test "summary totals count unique ICS and village codes within visible scope" do
     rows = [
-      { fco_id: "1004", ics_id: "A", village_id: "V", tracenet_no: "one" },
-      { fco_id: "1004", ics_id: "A", village_id: "V", tracenet_no: "two" },
+      { fco_id: "1004", fpo_id: "F1", ics_id: "A", ics_name: "ICS A", village_id: "V", village_name: "Village", tracenet_no: "one" },
+      { fco_id: "1004", fpo_id: "F2", ics_id: " a ", ics_name: "ICS A renamed", village_id: " v ", village_name: "Village renamed", tracenet_no: "two" },
       { fco_id: "1006", ics_id: "A", village_id: "V", tracenet_no: " " },
       { fco_id: "1004", ics_id: nil, village_id: "V", tracenet_no: nil },
       { fco_id: "1004", ics_id: "", village_id: "", tracenet_no: "three" }
@@ -76,11 +76,8 @@ class DashboardLoadingPerformanceTest < ActiveSupport::TestCase
     scope = Afl.where(id: rows.map(&:id))
     controller = ModulesController.new
     controller.define_singleton_method(:dashboard_total_afl_farmer_scope) { scope }
-    columns = %i[fco_id fco fpo_id fpo_name ics_id ics_name]
-    expected_ics = scope.where.not(ics_id: [nil, ""]).group(*columns).count.size
-    expected_villages = scope.where.not(village_id: [nil, ""]).group(*columns, :village_id, :village_name).count.size
-    assert_equal expected_ics, controller.send(:dashboard_total_afl_ics_count)
-    assert_equal expected_villages, controller.send(:dashboard_total_afl_village_count)
+    assert_equal 1, controller.send(:dashboard_total_afl_ics_count)
+    assert_equal 1, controller.send(:dashboard_total_afl_village_count)
     assert_equal 3, controller.send(:dashboard_total_afl_farmer_count)
     controller.define_singleton_method(:dashboard_total_afl_farmer_scope) { Afl.none }
     assert_equal 0, controller.send(:dashboard_total_afl_ics_count)

@@ -167,13 +167,13 @@ module Api
             scope.where("NULLIF(BTRIM(tracenet_no), '') IS NOT NULL")
               .order(:fco_id, :ics_id, :id)
               .pluck(:id, :farmer_name, :father_name, :mobile_no, :tracenet_no, *columns, :village_id, :village_name)
-              .map { |row| (%i[id farmer_name father_name mobile_no tracenet_no] + columns + %i[village_id village_name]).zip(row).to_h }
+              .map { |row| dashboard_fco_display_row((%i[id farmer_name father_name mobile_no tracenet_no] + columns + %i[village_id village_name]).zip(row).to_h) }
           else
             columns += %i[village_id village_name] if type == "summary_villages"
             scope.where.not((type == "summary_villages" ? :village_id : :ics_id) => [nil, ""])
               .group(*columns).order(*columns)
               .pluck(*columns, Arel.sql("COUNT(tracenet_no)"))
-              .map { |row| (columns + [:farmer_count]).zip(row).to_h }
+              .map { |row| dashboard_fco_display_row((columns + [:farmer_count]).zip(row).to_h) }
           end
         elsif type == "other_activities"
           OfficeDashboardSections.new(calculator: calculator, targets: targets,
@@ -193,6 +193,14 @@ module Api
           end
         end
         { title: office_section_list_catalog.fetch(type), records: records }
+      end
+
+      # Imported farmer rows still carry the historic FCO name. Dashboard
+      # responses must use the configured label while retaining the raw row for
+      # matching and filtering.
+      def dashboard_fco_display_row(row)
+        key = row[:fco_id].presence || row[:fco]
+        row.merge(fco: FcoDirectory.display_name_for(key))
       end
 
       def report_widget_response(widget, config, dashboard_type)

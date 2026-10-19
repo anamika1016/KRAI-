@@ -55,7 +55,7 @@ class ModulesController < ApplicationController
   # cards. Add a new office here and its boxes appear in both automatically.
   # Legacy fallback only. Read the live list via dashboard_fco_names /
   # FcoDirectory so an FCO added in Office Setup appears in every box.
-  DASHBOARD_FCO_NAMES = %w[Sausar Turekela Pavijetpur].freeze
+  DASHBOARD_FCO_NAMES = ["Sausar", "Turekela", "Direct to HO"].freeze
   # Modules whose show page is an entry form only -- no Saved Records table.
   # Keep in sync with entry_only_slugs in show.html.erb.
   SHOW_ENTRY_ONLY_SLUGS = [
@@ -2287,7 +2287,7 @@ class ModulesController < ApplicationController
       {
         "1004" => text.include?("1004") || text.include?("sausar"),
         "1006" => text.include?("1006") || text.include?("turekela"),
-        "1095" => text.include?("1095") || text.include?("pavijetpur")
+        "1094" => text.include?("1094") || text.include?("direct to ho") || text.include?("pavijetpur")
       }.filter_map { |id, matches| id if matches }
     end
     fco_ids = selected_fco.present? ? fco_ids_for_values.call(selected_fco) : FcoDirectory.ids
@@ -4350,15 +4350,15 @@ class ModulesController < ApplicationController
 
     case kind
     when :village
-      # Matches: SELECT fco_id, fco, fpo_id, fpo_name, ics_id, ics_name, village_id, village_name, COUNT(tracenet_no) FROM afls WHERE fco_id = '1004' OR fco_id = '1006' GROUP BY fco_id, fco, fpo_id, fpo_name, ics_id, ics_name, village_id, village_name
+      # A village is identified by its code. Names and FPO/ICS labels can vary
+      # between imported farmer rows and must not turn one village into several.
       scope = dashboard_total_afl_farmer_scope.where.not(village_id: [nil, ""])
-      groups = scope.select(:fco_id, :fco, :fpo_id, :fpo_name, :ics_id, :ics_name, :village_id, :village_name).distinct
-      Afl.unscoped.from(groups, :afl_groups).count
+      scope.distinct.count(Arel.sql("LOWER(BTRIM(village_id))"))
     when :ics
-      # Matches: SELECT fco_id, fco, fpo_id, fpo_name, ics_id, ics_name, COUNT(tracenet_no) FROM afls WHERE fco_id = '1004' OR fco_id = '1006' GROUP BY fco_id, fco, fpo_id, fpo_name, ics_id, ics_name
+      # An ICS is identified by its code. Do not count duplicate spellings of
+      # its name, or the same ICS repeated under imported FPO metadata.
       scope = dashboard_total_afl_farmer_scope.where.not(ics_id: [nil, ""])
-      groups = scope.select(:fco_id, :fco, :fpo_id, :fpo_name, :ics_id, :ics_name).distinct
-      Afl.unscoped.from(groups, :afl_groups).count
+      scope.distinct.count(Arel.sql("LOWER(BTRIM(ics_id))"))
     else
       # Farmer count: COUNT(tracenet_no) using fco_id ONLY — no name matching
       # Matches: SELECT COUNT(tracenet_no) FROM afls WHERE (fco_id = '1004' OR fco_id = '1006')
@@ -4535,8 +4535,8 @@ class ModulesController < ApplicationController
                "1004"
              elsif normalized_fco.include?("1006") || normalized_fco.include?("turekela")
                "1006"
-             elsif normalized_fco.include?("1095") || normalized_fco.include?("pavijetpur")
-               "1095"
+             elsif normalized_fco.include?("1094") || normalized_fco.include?("direct to ho") || normalized_fco.include?("pavijetpur")
+               "1094"
              else
                nil
              end
@@ -6004,8 +6004,8 @@ class ModulesController < ApplicationController
       if normalized.include?("1006") || normalized.include?("turekela")
         ids << "1006"
       end
-      if normalized.include?("1095") || normalized.include?("pavijetpur")
-        ids << "1095"
+      if normalized.include?("1094") || normalized.include?("direct to ho") || normalized.include?("pavijetpur")
+        ids << "1094"
       end
       if normalized.match?(/\A\d+\z/)
         ids << normalized
@@ -6236,7 +6236,7 @@ class ModulesController < ApplicationController
   end
 
   def format_red_fco_popups(rows, fco_ids)
-    fco_name_map = { "1004" => "Sausar", "1006" => "Turekela", "1095" => "Pavijetpur" }
+    fco_name_map = { "1004" => "Sausar", "1006" => "Turekela", "1094" => "Direct to HO" }
     target_ids = Array(fco_ids).presence || FcoDirectory.ids
     rows_by_id = Array(rows).index_by { |r| r["fco_id"].to_s.strip.downcase }
 
@@ -6260,7 +6260,7 @@ class ModulesController < ApplicationController
   end
 
   def format_red_fco_details(rows, fco_ids)
-    fco_name_map = { "1004" => "Sausar", "1006" => "Turekela", "1095" => "Pavijetpur" }
+    fco_name_map = { "1004" => "Sausar", "1006" => "Turekela", "1094" => "Direct to HO" }
     target_ids = Array(fco_ids).presence || FcoDirectory.ids
     rows_by_id = Array(rows).index_by { |r| r["fco_id"].to_s.strip.downcase }
 
@@ -6356,7 +6356,7 @@ class ModulesController < ApplicationController
   end
 
   def format_fco_popups(rows, fco_ids, count_key)
-    fco_name_map = { "1004" => "Sausar", "1006" => "Turekela", "1095" => "Pavijetpur" }
+    fco_name_map = { "1004" => "Sausar", "1006" => "Turekela", "1094" => "Direct to HO" }
     target_ids = Array(fco_ids).presence || FcoDirectory.ids
     rows_by_id = Array(rows).index_by { |r| r["fco_id"].to_s.strip.downcase }
 
@@ -6924,7 +6924,7 @@ class ModulesController < ApplicationController
       short_name = text.sub(/\Afco\s*-\s*(c\s+)?/i, "").strip
       # An Office Setup FCO-C keeps its own label but reports on the sub office
       # it is mapped to, so "direact to  ho" also has to match rows filed under
-      # 1095 / Pavijetpur. Returns [] for anything that is not such an office.
+      # 1094 / Pavijetpur. Returns [] for anything that is not such an office.
       [text, short_name] + FcoDirectory.aliases_for(text)
     end.flatten.map { |value| normalize_dashboard_text(value) }.reject(&:blank?).uniq
   end

@@ -5,7 +5,7 @@ class Api::V1::JeevikaJankarDashboardControllerTest < ActionDispatch::Integratio
     user = User.create!(first_name: "ICS", last_name: "Admin", user_name: "ics_admin",
       password: "secret", user_type: "admin", status: "Active")
     headers = { "Authorization" => "Bearer #{ApiAuthToken.encode(user)}" }
-    { "1004" => ["Sausar", 11], "1006" => ["Turekela", 8], "1095" => ["Pavijetpur", 4] }.each do |id, (name, count)|
+    { "1004" => ["Sausar", 11], "1006" => ["Turekela", 8], "1094" => ["Pavijetpur", 4] }.each do |id, (name, count)|
       count.times do |index|
         Afl.create!(farmer_name: "ICS farmer", fco_id: id, fco: name, fpo_id: "FPO-#{id}",
           fpo_name: "FPO #{name}", ics_id: "#{id}-#{index}", ics_name: "ICS #{id} #{index}", tracenet_no: "T-#{id}-#{index}")
@@ -17,9 +17,9 @@ class Api::V1::JeevikaJankarDashboardControllerTest < ActionDispatch::Integratio
     body = response.parsed_body
     assert_equal "admin", body["dashboard_type"]
     assert_equal 23, body["count"]
-    assert_equal 4, body["records"].count { |row| row["fco_id"] == "1095" }
+    assert_equal 4, body["records"].count { |row| row["fco_id"] == "1094" }
     assert body["records"].all? { |row| row["fpo_id"].present? && row["farmer_count"] == 1 }
-    get "/api/v1/admin-dashboard/lists/total_ics_count", params: query.merge(fco: "1095"), headers: headers
+    get "/api/v1/admin-dashboard/lists/total_ics_count", params: query.merge(fco: "1094"), headers: headers
     assert_response :success
     assert_equal 4, response.parsed_body["count"]
     get "/api/v1/admin-dashboard/lists/total_ics_count/export", params: query, headers: headers

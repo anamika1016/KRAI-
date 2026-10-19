@@ -19,12 +19,30 @@ class SidebarRoleLabelTest < ActionDispatch::IntegrationTest
     assert_select ".side-user small", text: "Agronomist"
   end
 
+  test "generic User role is skipped when an actual designation exists" do
+    sign_in_as(role: "User", stakeholder_role: "Cluster Coordinator")
+
+    get "/dashboard"
+    assert_response :success
+    assert_select ".side-user small", text: "Cluster Coordinator"
+    assert_select ".side-user small", text: "User", count: 0
+  end
+
   test "an account with no role at all keeps showing its account type" do
     sign_in_as(role: nil, stakeholder_role: nil, user_type: "Admin")
 
     get "/dashboard"
     assert_response :success
     assert_select ".side-user small", text: "Admin"
+  end
+
+  test "a regular account without a role never shows generic User" do
+    sign_in_as(role: nil, stakeholder_role: nil)
+
+    get "/dashboard"
+    assert_response :success
+    assert_select ".side-user small", text: "Role not assigned"
+    assert_select ".side-user small", text: "User", count: 0
   end
 
   private

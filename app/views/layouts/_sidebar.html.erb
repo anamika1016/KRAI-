@@ -42,10 +42,8 @@
         <span class="side-user-avatar"><%= current_app_user["name"].presence&.first || current_app_user["username"].presence&.first || "U" %></span>
         <span>
           <strong><%= current_app_user["name"].presence || current_app_user["username"].presence || "User" %></strong>
-          <%# The line under the name is the person's role ("Cluster Incharge"),
-              not the account type -- every non-admin login read a flat "User".
-              Admin and JJ logins have no role of their own, so they keep the
-              account type rather than showing nothing. %>
+          <%# The line under the name is the person's actual role/designation,
+              never the generic non-admin account type "User". %>
           <small><%= sidebar_user_role_label %></small>
         </span>
       </div>

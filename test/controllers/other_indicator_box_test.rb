@@ -25,9 +25,9 @@ class OtherIndicatorBoxTest < ActiveSupport::TestCase
   end
 
   test "the popup lists every project FCO, zero included" do
-    assert_equal ["Sausar = 30/36", "Turekela = 40/100", "Pavijetpur = 0/0"],
+    assert_equal ["Sausar = 30/36", "Turekela = 40/100", "Direct to HO = 0/0"],
                  totals(month: "September")[:main_major_work_indicator_popups],
-                 "All FCO must list 1004, 1006 and 1095 even when one has no entries"
+                 "All FCO must list 1004, 1006 and 1094 even when one has no entries"
   end
 
   test "selecting one FCO shows only that FCO in the popup" do
@@ -50,7 +50,7 @@ class OtherIndicatorBoxTest < ActiveSupport::TestCase
     entry("Pavijetpur", "Compost", "Pit Making", 20, 5)
     t = totals(month: "September")
 
-    assert_equal 156, t[:mapped_farmer], "Pavijetpur (1095) must be counted too"
+    assert_equal 156, t[:mapped_farmer], "Pavijetpur (1094) must be counted too"
     assert_equal 75,  t[:achievement_farmer]
   end
 

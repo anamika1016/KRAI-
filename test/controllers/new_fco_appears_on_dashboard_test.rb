@@ -9,7 +9,7 @@ class NewFcoAppearsOnDashboardTest < ActionDispatch::IntegrationTest
       user_type: "admin", status: "Active")
     post login_path, params: { login: user.user_name, password: "secret" }
 
-    [["1004", "Sausar"], ["1006", "Turekela"], ["1095", "Pavijetpur"]].each_with_index do |(fco_id, name), index|
+    [["1004", "Sausar"], ["1006", "Turekela"], ["1094", "Pavijetpur"]].each_with_index do |(fco_id, name), index|
       Afl.create!(farmer_name: "#{name} farmer", tracenet_no: "new-fco-#{index}",
         fco_id: fco_id, fco: name, ics_id: "ics-#{index}", ics_name: "ICS #{index}",
         village_id: "v-#{index}", village_name: "Village #{index}")
@@ -19,24 +19,24 @@ class NewFcoAppearsOnDashboardTest < ActionDispatch::IntegrationTest
   test "an unconfigured FCO added to the farmer master does not reach dashboard boxes" do
     get "/dashboard", params: { month: "September", main_activity: "Farmers' Training" }
     assert_response :success
-    assert_select ".cc-jj-status-fco-name", text: "Direct to HO", count: 0, message: "not configured yet"
+    assert_select ".cc-jj-status-fco-name", text: "New Valley", count: 0, message: "not configured yet"
 
     Afl.create!(farmer_name: "HO farmer", tracenet_no: "new-fco-ho", fco_id: "1200",
-      fco: "FCO-C Direct to HO", ics_id: "ics-ho", ics_name: "ICS HO")
+      fco: "FCO-C New Valley", ics_id: "ics-ho", ics_name: "ICS HO")
     FcoDirectory.reset_cache!
 
     get "/dashboard", params: { month: "September", main_activity: "Farmers' Training" }
     assert_response :success
-    assert_select ".cc-jj-status-fco-name", text: "Direct to HO", count: 0
-    assert_select ".metric-card-group-item span", text: "Direct to HO Male", count: 0
-    assert_select ".metric-card-group-item span", text: "Direct to HO Active", count: 0
+    assert_select ".cc-jj-status-fco-name", text: "New Valley", count: 0
+    assert_select ".metric-card-group-item span", text: "New Valley Male", count: 0
+    assert_select ".metric-card-group-item span", text: "New Valley Active", count: 0
   end
 
   test "the three existing FCOs keep their boxes" do
     get "/dashboard", params: { month: "September", main_activity: "Farmers' Training" }
     assert_response :success
 
-    %w[Sausar Turekela Pavijetpur].each do |name|
+    ["Sausar", "Turekela", "Direct to HO"].each do |name|
       assert_select ".cc-jj-status-fco-name", text: name, count: 1, message: name
     end
   end
@@ -45,7 +45,7 @@ class NewFcoAppearsOnDashboardTest < ActionDispatch::IntegrationTest
   # scope the Dashboard Summary cards to the sub office it reports on. It used
   # to scope them to nothing -- the filter value matched no farmer and no FCO
   # code, so all five cards read wrong for a Direct-to-HO login.
-  test "an Office Setup FCO-C alias does not become a dashboard FCO" do
+  test "an Office Setup FCO-C alias does not create a duplicate dashboard FCO" do
     ModuleRecord.create!(module_slug: "office-mapping-add", data: {
       "parent_category" => "FCO-C", "office_name" => "direact to ho",
       "sub_office_name" => "TO-Pavijetpur", "status" => "Active"
@@ -54,7 +54,7 @@ class NewFcoAppearsOnDashboardTest < ActionDispatch::IntegrationTest
 
     get "/dashboard", params: { month: "September", main_activity: "Farmers' Training" }
     assert_response :success
-    assert_select ".cc-jj-status-fco-name", text: "Direct to HO", count: 0
+    assert_select ".cc-jj-status-fco-name", text: "Direct to HO", count: 1
 
     assert_equal summary_counts("Pavijetpur"), summary_counts("Direct to HO")
     assert_equal({ ics: 1, villages: 1, farmers: 1 }, summary_counts("Direct to HO"))
@@ -69,8 +69,8 @@ class NewFcoAppearsOnDashboardTest < ActionDispatch::IntegrationTest
 
     assert_equal({ ics: 1, villages: 1, farmers: 1 }, summary_counts("Sausar"))
     assert_equal({ ics: 1, villages: 1, farmers: 1 }, summary_counts("Turekela"))
-    assert_equal %w[Sausar Turekela Pavijetpur], FcoDirectory.names
-    assert_equal %w[1004 1006 1095], FcoDirectory.ids
+    assert_equal ["Sausar", "Turekela", "Direct to HO"], FcoDirectory.names
+    assert_equal %w[1004 1006 1094], FcoDirectory.ids
   end
 
   test "an unmapped office name stays unresolved" do

@@ -1,8 +1,8 @@
 require "test_helper"
 
-# The FCO list used to be hardcoded as 1004/1006/1095 in a dozen places, so an
+# The FCO list used to be hardcoded as 1004/1006/1094 in a dozen places, so an
 # FCO added in Office Setup never appeared on the dashboard. It now comes from
-# the farmer master, under whatever name AFL stores.
+# the farmer master, while keeping the configured user-facing labels.
 class FcoDirectoryTest < ActiveSupport::TestCase
   setup { FcoDirectory.reset_cache! }
   teardown { FcoDirectory.reset_cache! }
@@ -10,35 +10,39 @@ class FcoDirectoryTest < ActiveSupport::TestCase
   test "raw AFL-only offices do not create extra dashboard cards" do
     farmer("1004", "Sausar")
     farmer("1006", "Turekela")
-    farmer("1095", "Pavijetpur")
-    farmer("1200", "Direct to HO")
+    farmer("1094", "Pavijetpur")
+    farmer("1200", "New Valley")
 
-    assert_equal %w[1004 1006 1095].sort, FcoDirectory.ids.sort
-    refute_includes FcoDirectory.names, "Direct to HO"
+    assert_equal %w[1004 1006 1094].sort, FcoDirectory.ids.sort
+    refute_includes FcoDirectory.names, "New Valley"
   end
 
-  test "the name is whatever AFL stores for that id" do
-    farmer("1095", "Pavijetpur Renamed")
+  test "the 1094 label stays Direct to HO when AFL uses a legacy name" do
+    farmer("1094", "Pavijetpur Renamed")
 
-    assert_includes FcoDirectory.names, "Pavijetpur Renamed"
+    assert_includes FcoDirectory.names, "Direct to HO"
+    refute_includes FcoDirectory.names, "Pavijetpur Renamed"
     assert_equal 3, FcoDirectory.names.size
   end
 
   test "filter values cover the id, the bare name and the FCO-C spelling" do
     farmer("1004", "Sausar")
+    farmer("1094", "Pavijetpur")
 
     assert_includes FcoDirectory.filter_values, "1004"
     assert_includes FcoDirectory.filter_values, "Sausar"
     assert_includes FcoDirectory.filter_values, "FCO-C Sausar"
+    assert_includes FcoDirectory.filter_values, "Direct to HO"
+    assert_includes FcoDirectory.filter_values, "Pavijetpur"
   end
 
   # Cards are labelled "<name> Male", so a stored prefix would read
   # "FCO-C Sausar Male" on the web while the mobile API read "Sausar Male".
   test "the FCO-C prefix AFL sometimes stores is dropped from the name" do
     farmer("1004", "FCO-C Sausar")
-    farmer("1095", "FCO-Pavijetpur")
+    farmer("1094", "FCO-Pavijetpur")
 
-    assert_equal %w[Pavijetpur Sausar Turekela], FcoDirectory.names.sort
+    assert_equal ["Direct to HO", "Sausar", "Turekela"].sort, FcoDirectory.names.sort
     assert_includes FcoDirectory.filter_values, "FCO-C Sausar", "the stored spelling still has to match"
   end
 
@@ -47,20 +51,20 @@ class FcoDirectoryTest < ActiveSupport::TestCase
     farmer("1004", "Sausar")
     Afl.create!(farmer_name: "No FCO", tracenet_no: "no-fco", fco_id: "", fco: "")
 
-    assert_equal %w[1004 1006 1095], FcoDirectory.ids
+    assert_equal %w[1004 1006 1094], FcoDirectory.ids
   end
 
   # Target rows from an unconfigured operational office must not add cards.
   test "an FCO known only to a target mapping does not appear" do
     farmer("1004", "Sausar")
-    vrp = create_vrp(fcoc: "FCO-C Direct to HO")
-    TargetMapping.create!(vrp: vrp, fco_id: "1200", fco_name: "FCO-C Direct to HO",
+    vrp = create_vrp(fcoc: "FCO-C New Valley")
+    TargetMapping.create!(vrp: vrp, fco_id: "1200", fco_name: "FCO-C New Valley",
       ics_id: "HO", ics_name: "HO", village_id: "v1", village_name: "Village", month_name: "August",
       main_activity_name: "Other", activity_name: "Soil Sample", target_quantity: 1)
     FcoDirectory.reset_cache!
 
     refute_includes FcoDirectory.ids, "1200"
-    refute_includes FcoDirectory.names, "Direct to HO"
+    refute_includes FcoDirectory.names, "New Valley"
   end
 
   # Imported AFL rows carry the string "NULL", and some target rows put the name
@@ -74,14 +78,14 @@ class FcoDirectoryTest < ActiveSupport::TestCase
       activity_name: "Soil Sample", target_quantity: 1)
     FcoDirectory.reset_cache!
 
-    assert_equal %w[1004 1006 1095], FcoDirectory.ids, "only dashboard FCO ids are retained"
-    assert_equal %w[Pavijetpur Sausar Turekela], FcoDirectory.names.sort
+    assert_equal %w[1004 1006 1094], FcoDirectory.ids, "only dashboard FCO ids are retained"
+    assert_equal ["Direct to HO", "Sausar", "Turekela"].sort, FcoDirectory.names.sort
   end
 
   # An FCO-C added in Office Setup has no farmers of its own; it reports through
   # the sub office it is mapped to.
   test "an Office Setup FCO-C resolves to the sub office it reports through" do
-    farmer("1095", "Pavijetpur")
+    farmer("1094", "Pavijetpur")
     ModuleRecord.create!(module_slug: "office-mapping-add", data: {
       "parent_category" => "FCO-C", "office_name" => "Direct to HO",
       "sub_office_name" => "TO-Pavijetpur", "status" => "Active"
@@ -89,42 +93,43 @@ class FcoDirectoryTest < ActiveSupport::TestCase
     FcoDirectory.reset_cache!
 
     assert_nil FcoDirectory.canonical_name("Direct to HO")
-    assert_equal %w[1004 1006 1095], FcoDirectory.ids
+    assert_equal %w[1004 1006 1094], FcoDirectory.ids
   end
 
   test "mapped sub-office values retain the actual FCO dashboard label" do
-    farmer("1095", "Pavijetpur")
+    farmer("1094", "Pavijetpur")
     ModuleRecord.create!(module_slug: "office-mapping-add", data: {
       "parent_category" => "FCO-C", "office_name" => "Direct to HO",
       "sub_office_name" => "TO-Pavijetpur", "status" => "Active"
     })
     FcoDirectory.reset_cache!
 
-    assert_equal "Pavijetpur", FcoDirectory.display_name_for("1095")
-    assert_equal "Pavijetpur", FcoDirectory.display_name_for("Pavijetpur")
+    assert_equal "Direct to HO", FcoDirectory.display_name_for("1094")
+    assert_equal "Direct to HO", FcoDirectory.display_name_for("Pavijetpur")
     # The label stays the mapped FCO's, and so does the data the office reports
-    # on: a filter set to the office name has to reach 1095's rows.
-    assert_equal %w[1095 Pavijetpur], FcoDirectory.aliases_for("Direct to HO").first(2)
+    # on: a filter set to the office name has to reach 1094's rows.
+    assert_equal ["1094", "Direct to HO"], FcoDirectory.aliases_for("Direct to HO").first(2)
+    assert_includes FcoDirectory.aliases_for("Direct to HO"), "Pavijetpur"
   end
 
   test "historic Direct-to-HO spelling resolves from the correctly spelled filter" do
-    farmer("1095", "Pavijetpur")
+    farmer("1094", "Pavijetpur")
     ModuleRecord.create!(module_slug: "office-mapping-add", data: {
       "parent_category" => "FCO-C", "office_name" => "direact to ho",
       "sub_office_name" => "TO-Pavijetpur", "status" => "Active"
     })
     FcoDirectory.reset_cache!
 
-    assert_equal %w[Sausar Turekela Pavijetpur], FcoDirectory.names
+    assert_equal ["Sausar", "Turekela", "Direct to HO"], FcoDirectory.names
     # Saved as "direact to ho", picked from the dropdown as "Direct to HO" --
     # both spellings have to land on the FCO the office reports through.
-    assert_equal %w[1095 Pavijetpur], FcoDirectory.aliases_for("Direct to HO").first(2)
-    assert_equal %w[1095 Pavijetpur], FcoDirectory.aliases_for("direact to  ho").first(2)
-    assert_equal "Pavijetpur", FcoDirectory.display_name_for("Pavijetpur")
+    assert_equal ["1094", "Direct to HO"], FcoDirectory.aliases_for("Direct to HO").first(2)
+    assert_equal ["1094", "Direct to HO"], FcoDirectory.aliases_for("direact to  ho").first(2)
+    assert_equal "Direct to HO", FcoDirectory.display_name_for("Pavijetpur")
   end
 
   test "an office mapped to something that is not an FCO is left alone" do
-    farmer("1095", "Pavijetpur")
+    farmer("1094", "Pavijetpur")
     ModuleRecord.create!(module_slug: "office-mapping-add", data: {
       "parent_category" => "FCO-C", "office_name" => "Direct to HO",
       "sub_office_name" => "TO-Nowhere", "status" => "Active"
@@ -135,12 +140,12 @@ class FcoDirectoryTest < ActiveSupport::TestCase
   end
 
   test "falls back to the original three when AFL has nothing" do
-    assert_equal %w[1004 1006 1095], FcoDirectory.ids
-    assert_equal %w[Sausar Turekela Pavijetpur], FcoDirectory.names
+    assert_equal %w[1004 1006 1094], FcoDirectory.ids
+    assert_equal ["Sausar", "Turekela", "Direct to HO"], FcoDirectory.names
   end
 
   test "the dashboard default FCO scope excludes an unconfigured AFL office" do
-    farmer("1200", "Direct to HO")
+    farmer("1200", "New Valley")
 
     controller = ModulesController.new
     controller.request = ActionDispatch::TestRequest.create
@@ -149,7 +154,7 @@ class FcoDirectoryTest < ActiveSupport::TestCase
 
     values = controller.send(:dashboard_summary_fco_filter_values)
     refute_includes values, "1200"
-    refute_includes values, "direct to ho"
+    refute_includes values, "new valley"
   end
 
   private

@@ -39,7 +39,7 @@ class AssistantService
     - Jeevika Jankar (JJ) = VRP = a field worker mapped to villages and farmers.
     - Cluster Coordinator (CC) / Cluster Incharge = supervises a group of JJs.
     - FCO = a field/cluster office region. Example FCO codes: 1004 = Sausar,
-      1006 = Turekela, 1009 = Bhabra.
+      1006 = Turekela, 1094 = Direct to HO (legacy data may say Pavijetpur).
     - Farmers are the end beneficiaries; each is identified by an AFL id.
     - Target Mapping = assigning a JJ a set of villages/farmers and targets for a
       period (e.g. OPG training target, week-wise OPG target, FFS target,

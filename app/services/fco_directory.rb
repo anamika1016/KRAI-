@@ -11,7 +11,7 @@
 #              an office to its numeric code and name, not to draw boxes.
 #
 # An office carries its own display name but reports on the data of the sub
-# office it is mapped to, so "direact to  ho" shows 1095 Pavijetpur's farmers
+# office it is mapped to, so "direact to  ho" shows 1094 Pavijetpur's farmers
 # under its own label.
 class FcoDirectory
   # These are the only FCOs allowed to create dashboard boxes. Office Setup,
@@ -20,7 +20,7 @@ class FcoDirectory
   FALLBACK = [
     { id: "1004", name: "Sausar" },
     { id: "1006", name: "Turekela" },
-    { id: "1095", name: "Pavijetpur" }
+    { id: "1094", name: "Direct to HO" }
   ].freeze
   DASHBOARD_FCO_IDS = FALLBACK.map { |row| row[:id] }.freeze
 
@@ -52,22 +52,22 @@ class FcoDirectory
 
   # --- The dashboard list: Office Setup FCO-C offices -----------------------
 
-  # [{ id: "1095", name: "Pavijetpur", raw_name: "direact to ho" }, ...]
+  # [{ id: "1094", name: "Pavijetpur", raw_name: "direact to ho" }, ...]
   # A Direct-to-HO/TO mapping is a filter alias, not a second FCO card.
   def self.offices
     Store.offices ||= FALLBACK.map do |row|
       source = afl_rows.find { |candidate| candidate[:id] == row[:id] }
-      name = source&.dig(:name).presence || row[:name]
-      { id: row[:id], name: name, raw_name: name, afl_name: name }
+      afl_name = source&.dig(:name).presence || row[:name]
+      { id: row[:id], name: row[:name], raw_name: row[:name], afl_name: afl_name }
     end
   end
 
-  # Box labels, e.g. ["Sausar", "Turekela", "Pavijetpur"].
+  # Box labels, e.g. ["Sausar", "Turekela", "Direct to HO"].
   def self.names
     offices.filter_map { |office| office[:name].presence }.presence || FALLBACK.map { |row| row[:name] }
   end
 
-  # The numeric office codes behind those labels, e.g. ["1004", "1006", "1095"].
+  # The numeric office codes behind those labels, e.g. ["1004", "1006", "1094"].
   def self.ids
     offices.filter_map { |office| office[:id].presence }.presence || FALLBACK.map { |row| row[:id] }
   end
@@ -75,7 +75,7 @@ class FcoDirectory
   # Every spelling a stored value might use for the configured offices: the
   # office's own name, its "FCO-C" form, and the code and name of the sub office
   # it reports through -- that last part is what lets "direact to  ho" match
-  # rows filed under 1095 / Pavijetpur.
+  # rows filed under 1094 / Pavijetpur.
   def self.filter_values
     offices.flat_map { |office| aliases_for_office(office) }
       .map { |value| value.to_s.strip }.reject(&:blank?).uniq
@@ -95,19 +95,19 @@ class FcoDirectory
 
   # An Office Setup FCO-C that is not itself a dashboard FCO still reports on
   # the data of the sub office it is mapped to: "direact to  ho" -> "TO-
-  # Pavijetpur" -> 1095. It deliberately gets no box of its own (`offices`,
+  # Pavijetpur" -> 1094. It deliberately gets no box of its own (`offices`,
   # `names` and `ids` stay the configured list), but picking its name in the FCO
   # filter has to scope the cards to the FCO whose rows it owns. Without the
   # alias the filter value matched no farmer and no numeric code, so every
   # Dashboard Summary card fell back to name-only matching and read wrong.
   #
-  # { "direct to ho" => { id: "1095", name: "Pavijetpur" } }
+  # { "direct to ho" => { id: "1094", name: "Pavijetpur" } }
   def self.office_aliases
     Store.office_aliases ||= load_office_aliases
   end
 
   # Return the configured Office Setup FCO-C behind any of its stored forms.
-  # For example, a row stored as `1095` or `Pavijetpur` can still belong to the
+  # For example, a row stored as `1094` or `Pavijetpur` can still belong to the
   # `Direct to HO` FCO-C card.  This keeps the display label and the data source
   # separate instead of hardcoding a special case for one office.
   def self.office_for(value)
@@ -295,7 +295,7 @@ class FcoDirectory
     # Prefer an explicit FCO id when Office Setup supplied one and it exists in
     # the farmer/target data. Otherwise an FCO-C reports through its mapped TO
     # office. This makes a future 0195 mapping live without a code release,
-    # while the current Direct-to-HO -> TO-Pavijetpur mapping still counts 1095.
+    # while the current Direct-to-HO -> TO-Pavijetpur mapping still counts 1094.
     configured_id = %w[fco_id fcoc_id office_id].filter_map { |key| data[key].to_s.strip.presence }.first
     explicit_name = configured_id.present? ? name_for(configured_id) : nil
     afl_name = if configured_id.present? && name_by_id.key?(configured_id)
@@ -306,9 +306,9 @@ class FcoDirectory
                  sub_offices[name.downcase]
                end
     # Keep the raw office name as an alias, but use its mapped actual FCO as
-    # the card label. Otherwise 1095 gets both "Pavijetpur" and "Direct to
+    # the card label. Otherwise 1094 gets both "Pavijetpur" and "Direct to
     # HO" boxes for the same data.
-    display_name = afl_name.presence || name
+    display_name = name
     { id: afl_name.present? ? id_for(afl_name).to_s : "", name: display_name, raw_name: raw, afl_name: afl_name }
   end
   private_class_method :build_office
@@ -316,7 +316,10 @@ class FcoDirectory
   def self.fallback_offices
     rows = afl_rows.presence || FALLBACK
     scoped = rows.select { |row| FALLBACK.any? { |known| known[:id] == row[:id] } }.presence || rows
-    scoped.map { |row| { id: row[:id], name: row[:name], raw_name: row[:name], afl_name: row[:name] } }
+    scoped.map do |row|
+      configured = FALLBACK.find { |known| known[:id] == row[:id] }
+      { id: row[:id], name: configured&.dig(:name).presence || row[:name], raw_name: row[:name], afl_name: row[:name] }
+    end
   end
   private_class_method :fallback_offices
 

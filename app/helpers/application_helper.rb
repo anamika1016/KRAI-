@@ -347,15 +347,22 @@ module ApplicationHelper
 
   # The caption under the signed-in name. User Setup spells a person's role in
   # "role"; the other keys are the spellings older records and JJ logins use.
-  # The account type is the last resort, not the first, because "User" says
-  # nothing about who is signed in.
-  SIDEBAR_ROLE_KEYS = %w[role role_name stakeholder_role user_management_role person_type user_type].freeze
+  # Generic "User" is an account type, not a useful designation, so skip it.
+  SIDEBAR_ROLE_KEYS = %w[role role_name stakeholder_role user_management_role person_type].freeze
 
   def sidebar_user_role_label
     user = current_app_user
-    return "User" if user.blank?
+    return "Role not assigned" if user.blank?
 
-    SIDEBAR_ROLE_KEYS.filter_map { |key| user[key].to_s.strip.presence }.first || "User"
+    role = SIDEBAR_ROLE_KEYS
+      .filter_map { |key| user[key].to_s.strip.presence }
+      .find { |value| !value.casecmp("User").zero? }
+    return role if role.present?
+
+    account_type = user["user_type"].to_s.strip
+    return account_type if account_type.present? && !account_type.casecmp("User").zero?
+
+    "Role not assigned"
   end
 
   def sidebar_access_key(link)

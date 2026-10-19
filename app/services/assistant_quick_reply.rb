@@ -31,7 +31,7 @@ class AssistantQuickReply
     end
 
     # Only a tightly bounded gender query can bypass the language model.
-    if question.match?(/\A(?:(?:sausar|turekela|pavijetpur|1004|1006|1095|male|female|gender|jj|vrp|active|count|kitne|hai|hain|total|in|ke|ka|ki|and|aur|\s|[?.,])|(?:#{Date::MONTHNAMES.compact.join('|')}))+\z/i) && question.match?(/\b(male|female|gender)\b/i)
+    if question.match?(/\A(?:(?:sausar|turekela|direct|to|ho|pavijetpur|1004|1006|1094|male|female|gender|jj|vrp|active|count|kitne|hai|hain|total|in|ke|ka|ki|and|aur|\s|[?.,])|(?:#{Date::MONTHNAMES.compact.join('|')}))+\z/i) && question.match?(/\b(male|female|gender)\b/i)
       data = @context.call(messages)
       return unless data[:jj_gender_by_fco]
       rows = data[:jj_gender_by_fco]
@@ -45,7 +45,7 @@ class AssistantQuickReply
       return { reply: "Active JJ / VRP gender count — #{data[:month]}\n#{text}\nSirf aapke visible JJ records. Yeh farmer gender count nahi hai." }
     end
 
-    if question.match?(/\A(?:(?:sausar|turekela|pavijetpur|1004|1006|1095|total|farmer|farmers|village|villages|ics|count|kitne|hai|hain|in|ke|ka|ki|\s|[?.,]))+\z/i)
+    if question.match?(/\A(?:(?:sausar|turekela|direct|to|ho|pavijetpur|1004|1006|1094|total|farmer|farmers|village|villages|ics|count|kitne|hai|hain|in|ke|ka|ki|\s|[?.,]))+\z/i)
       metric = if question.match?(/\b(farmer|farmers)\b/i) then :farmers
                elsif question.match?(/\b(village|villages)\b/i) then :villages
                elsif question.match?(/\bics\b/i) then :ics end
