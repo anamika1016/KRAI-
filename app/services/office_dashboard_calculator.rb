@@ -79,7 +79,7 @@ class OfficeDashboardCalculator < ModulesController
     dashboard_fco_names(vrps)
   end
 
-  # AFL uses numeric IDs/plain names, while JJ records also use FCO-Pavijetpur.
+  # AFL uses numeric IDs/plain names, while JJ records also use FCO-Direct to HO.
   # Expand equivalent labels only; the existing authorized JJ scope still decides
   # which offices the caller may see.
   def training_fcoc_filter_values(*values)

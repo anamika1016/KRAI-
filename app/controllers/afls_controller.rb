@@ -195,7 +195,7 @@ class AflsController < ApplicationController
 
   # The FCO filter arrives as whatever the dashboard dropdown held, which may be
   # an Office Setup office that reports on another FCO's rows ("Direct to HO" ->
-  # 1094 Pavijetpur). The summary card already counts through those aliases, so
+  # 1094 Direct to HO). The summary card already counts through those aliases, so
   # the View List behind it has to match on them too or the two disagree. Only
   # the FCO filter resolves aliases -- ICS and village names keep plain matching.
   def afl_fco_filter_values(value)

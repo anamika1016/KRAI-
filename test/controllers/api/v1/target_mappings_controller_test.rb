@@ -68,7 +68,7 @@ class Api::V1::TargetMappingsControllerTest < ActionDispatch::IntegrationTest
     %w[Soil Water Seed Compost Irrigation Induction].each_with_index do |sub, index|
       create_mapping(main: "Farmers' Training", sub: sub, farmers: [@farmer_1],
         fco_id: %w[1004 1006 1094][index % 3],
-        fco_name: %w[Sausar Turekela Pavijetpur][index % 3])
+        fco_name: %w[Sausar Turekela Direct to HO][index % 3])
     end
 
     get "/api/v1/target-mappings/recent", params: {

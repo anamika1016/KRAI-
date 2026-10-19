@@ -39,9 +39,9 @@ FPO details are `null`, since target mappings do not store FPO IDs.
 Grouped activity rows expose `fco_ids`, `ics_ids`, and `village_ids` arrays because
 one activity can span several locations.
 
-FCO filters accept `1095`, `Pavijetpur`, `FCO-Pavijetpur`, and
-`FCO-C Pavijetpur` as the same office. Use `fco=All` to include Sausar,
-Turekela, and Pavijetpur when all three are authorized for the login.
+FCO filters accept `1094`, `Direct to HO`, `FCO-Direct to HO`, and
+`FCO-C Direct to HO` as the same office. Use `fco=All` to include Sausar,
+Turekela, and Direct to HO when all three are authorized for the login.
 Selecting `fco=FCO-C Turekela` intentionally returns only Turekela.
 Summary ICS/farmer lists include authorized AFL records even when that office
 has no target mappings for the selected month.

@@ -436,18 +436,18 @@ class Api::V1::OfficeDashboardControllerTest < ActionDispatch::IntegrationTest
     assert_nil row["fpo_id"]
   end
 
-  test "Pavijetpur FCO aliases return all four ICS without target mappings" do
-    pavijetpur_user = create_user("FCO-Pavijetpur", "FCO-Pavijetpur")
-    create_vrp(pavijetpur_user, "Pavijetpur CC", "FCO-Pavijetpur")
+  test "Direct to HO FCO aliases return all four ICS without target mappings" do
+    direct to ho_user = create_user("FCO-Direct to HO", "FCO-Direct to HO")
+    create_vrp(direct to ho_user, "Direct to HO CC", "FCO-Direct to HO")
     4.times do |index|
-      Afl.create!(farmer_name: "Pavijetpur farmer #{index}", fco_id: "1094", fco: "Pavijetpur",
-        ics_id: "PAVI-#{index}", ics_name: "Pavijetpur ICS #{index}",
-        village_id: "PAVI-V-#{index}", village_name: "Pavijetpur village #{index}", tracenet_no: "PAVI-T-#{index}")
+      Afl.create!(farmer_name: "Direct to HO farmer #{index}", fco_id: "1094", fco: "Direct to HO",
+        ics_id: "PAVI-#{index}", ics_name: "Direct to HO ICS #{index}",
+        village_id: "PAVI-V-#{index}", village_name: "Direct to HO village #{index}", tracenet_no: "PAVI-T-#{index}")
     end
-    ["All", "1094", "Pavijetpur", "FCO-Pavijetpur", "FCO-C Pavijetpur"].each do |fco|
+    ["All", "1094", "Direct to HO", "FCO-Direct to HO", "FCO-C Direct to HO"].each do |fco|
       %w[summary_ics summary_villages summary_farmers].each do |type|
         get "/api/v1/user-dashboard/lists/#{type}",
-          params: { month: "June", fco: fco, ics: "All" }, headers: headers(pavijetpur_user)
+          params: { month: "June", fco: fco, ics: "All" }, headers: headers(direct to ho_user)
         assert_response :success
         assert_equal 4, response.parsed_body.fetch("count"), "#{type}: #{fco}"
         assert_equal ["1094"], response.parsed_body.fetch("records").map { |row| row["fco_id"] }.uniq
@@ -462,7 +462,7 @@ class Api::V1::OfficeDashboardControllerTest < ActionDispatch::IntegrationTest
   test "zero-data Direct to HO remains present in gender requirement cards and empty lists" do
     admin = User.create!(first_name: "Zero", last_name: "Admin", user_name: "zero_admin_#{SecureRandom.hex(3)}",
       password: "secret", user_type: "admin", status: "Active")
-    ModuleRecord.create!(module_slug: "add-fco", data: { "fco_id" => "1094", "fco_name" => "Pavijetpur", "status" => "Active" })
+    ModuleRecord.create!(module_slug: "add-fco", data: { "fco_id" => "1094", "fco_name" => "Direct to HO", "status" => "Active" })
     filters = { month: "August", main_activity: @first_target.main_activity_name, sub_activity: "All", fco: "All", ics: "All" }
 
     get "/api/v1/user-dashboard", params: filters, headers: headers(admin)
@@ -485,9 +485,9 @@ class Api::V1::OfficeDashboardControllerTest < ActionDispatch::IntegrationTest
   test "FCO requirement gender cards and lists include Direct to HO and new backend FCOs dynamically" do
     admin = User.create!(first_name: "Dynamic", last_name: "Admin", user_name: "dynamic_admin_#{SecureRandom.hex(3)}",
       password: "secret", user_type: "admin", status: "Active")
-    pavijetpur = create_vrp(admin, "Pavijetpur CC", "FCO-Pavijetpur")
-    pavijetpur.update_column(:gender, Vrp.genders.fetch("female"))
-    create_target(pavijetpur, "1094", "Pavijetpur ICS")
+    direct to ho = create_vrp(admin, "Direct to HO CC", "FCO-Direct to HO")
+    direct to ho.update_column(:gender, Vrp.genders.fetch("female"))
+    create_target(direct to ho, "1094", "Direct to HO ICS")
     new_fco = create_vrp(admin, "New Valley CC", "FCO-C New Valley")
     create_target(new_fco, "2000", "New Valley ICS")
 
@@ -503,7 +503,7 @@ class Api::V1::OfficeDashboardControllerTest < ActionDispatch::IntegrationTest
     assert_equal 1, fco_cards.fetch("fco_requirement_new_valley_active")["value"]
     assert_equal 1, gender_cards.fetch("gender_new_valley_male")["value"]
 
-    { "gender_direct_to_ho_female" => pavijetpur.id, "fco_requirement_direct_to_ho_active" => pavijetpur.id,
+    { "gender_direct_to_ho_female" => direct to ho.id, "fco_requirement_direct_to_ho_active" => direct to ho.id,
       "gender_new_valley_male" => new_fco.id, "fco_requirement_new_valley_active" => new_fco.id }.each do |list, expected_id|
       get "/api/v1/user-dashboard/lists/#{list}", params: filters, headers: headers(admin)
       assert_response :success
@@ -511,15 +511,15 @@ class Api::V1::OfficeDashboardControllerTest < ActionDispatch::IntegrationTest
     end
   end
 
-  test "authorized all FCO summary includes Pavijetpur alongside Sausar and Turekela" do
+  test "authorized all FCO summary includes Direct to HO alongside Sausar and Turekela" do
     calculator = OfficeDashboardCalculator.new
     calculator.request = ActionDispatch::TestRequest.create
     calculator.params = ActionController::Parameters.new(fco: "All", ics: "All")
     calculator.instance_variable_set(:@dashboard_source_fcoc_login, true)
     calculator.instance_variable_set(:@current_app_user, { "user_type" => "User", "role" => "FCO" })
-    pavijetpur = create_vrp(@other_fco, "Pavijetpur CC", "FCO-Pavijetpur")
-    calculator.apply_dashboard_scope(vrps: [@first, @second, pavijetpur], targets: [], bills: [])
-    Afl.create!(farmer_name: "Pavijetpur farmer", fco_id: "1094", fco: "Pavijetpur", ics_id: "PAVI", ics_name: "PAVI")
+    direct to ho = create_vrp(@other_fco, "Direct to HO CC", "FCO-Direct to HO")
+    calculator.apply_dashboard_scope(vrps: [@first, @second, direct to ho], targets: [], bills: [])
+    Afl.create!(farmer_name: "Direct to HO farmer", fco_id: "1094", fco: "Direct to HO", ics_id: "PAVI", ics_name: "PAVI")
     assert_equal %w[1004 1006 1094], calculator.send(:dashboard_total_afl_farmer_scope).distinct.pluck(:fco_id).sort
   end
 

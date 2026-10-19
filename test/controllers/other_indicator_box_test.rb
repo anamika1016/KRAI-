@@ -47,10 +47,10 @@ class OtherIndicatorBoxTest < ActiveSupport::TestCase
   end
 
   test "all three project FCOs are included when none is selected" do
-    entry("Pavijetpur", "Compost", "Pit Making", 20, 5)
+    entry("Direct to HO", "Compost", "Pit Making", 20, 5)
     t = totals(month: "September")
 
-    assert_equal 156, t[:mapped_farmer], "Pavijetpur (1094) must be counted too"
+    assert_equal 156, t[:mapped_farmer], "Direct to HO (1094) must be counted too"
     assert_equal 75,  t[:achievement_farmer]
   end
 
@@ -58,12 +58,12 @@ class OtherIndicatorBoxTest < ActiveSupport::TestCase
     entry("Elsewhere", "Compost", "Pit Making", 999, 999)
     t = totals(month: "September")
 
-    assert_equal 136, t[:mapped_farmer], "only Sausar, Turekela and Pavijetpur belong here"
+    assert_equal 136, t[:mapped_farmer], "only Sausar, Turekela and Direct to HO belong here"
     assert_equal 70,  t[:achievement_farmer]
   end
 
   test "an FCO-C prefixed entry is counted without a filter" do
-    entry("FCO-C Pavijetpur", "Compost", "Pit Making", 20, 5)
+    entry("FCO-C Direct to HO", "Compost", "Pit Making", 20, 5)
     t = totals(month: "September")
 
     assert_equal 156, t[:mapped_farmer]

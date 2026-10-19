@@ -9,7 +9,7 @@ class NewFcoAppearsOnDashboardTest < ActionDispatch::IntegrationTest
       user_type: "admin", status: "Active")
     post login_path, params: { login: user.user_name, password: "secret" }
 
-    [["1004", "Sausar"], ["1006", "Turekela"], ["1094", "Pavijetpur"]].each_with_index do |(fco_id, name), index|
+    [["1004", "Sausar"], ["1006", "Turekela"], ["1094", "Direct to HO"]].each_with_index do |(fco_id, name), index|
       Afl.create!(farmer_name: "#{name} farmer", tracenet_no: "new-fco-#{index}",
         fco_id: fco_id, fco: name, ics_id: "ics-#{index}", ics_name: "ICS #{index}",
         village_id: "v-#{index}", village_name: "Village #{index}")
@@ -48,7 +48,7 @@ class NewFcoAppearsOnDashboardTest < ActionDispatch::IntegrationTest
   test "an Office Setup FCO-C alias does not create a duplicate dashboard FCO" do
     ModuleRecord.create!(module_slug: "office-mapping-add", data: {
       "parent_category" => "FCO-C", "office_name" => "direact to ho",
-      "sub_office_name" => "TO-Pavijetpur", "status" => "Active"
+      "sub_office_name" => "TO-Direct to HO", "status" => "Active"
     })
     FcoDirectory.reset_cache!
 
@@ -56,14 +56,14 @@ class NewFcoAppearsOnDashboardTest < ActionDispatch::IntegrationTest
     assert_response :success
     assert_select ".cc-jj-status-fco-name", text: "Direct to HO", count: 1
 
-    assert_equal summary_counts("Pavijetpur"), summary_counts("Direct to HO")
+    assert_equal summary_counts("Direct to HO"), summary_counts("Direct to HO")
     assert_equal({ ics: 1, villages: 1, farmers: 1 }, summary_counts("Direct to HO"))
   end
 
   test "an Office Setup FCO-C alias leaves the other FCOs alone" do
     ModuleRecord.create!(module_slug: "office-mapping-add", data: {
       "parent_category" => "FCO-C", "office_name" => "direact to ho",
-      "sub_office_name" => "TO-Pavijetpur", "status" => "Active"
+      "sub_office_name" => "TO-Direct to HO", "status" => "Active"
     })
     FcoDirectory.reset_cache!
 

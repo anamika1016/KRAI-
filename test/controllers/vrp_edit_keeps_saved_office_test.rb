@@ -10,7 +10,7 @@ class VrpEditKeepsSavedOfficeTest < ActiveSupport::TestCase
       email: "office-edit@example.test", mobile_no: "9876500401", password: "secret",
       user_type: "admin", status: "Active")
 
-    # Masters know about Sausar only -- Pavijetpur is missing, the state the
+    # Masters know about Sausar only -- Direct to HO is missing, the state the
     # Edit Jeevika Jankar screen was reported in.
     ModuleRecord.create!(module_slug: "office-mapping-add", data: {
       "office_category" => "FCO-C Sausar", "sub_office_name" => "TO-Sausar"
@@ -18,23 +18,23 @@ class VrpEditKeepsSavedOfficeTest < ActiveSupport::TestCase
 
     @vrp = Vrp.new(name: "Rathva Ramanbhai", father_husband_name: "vichhiyabhai", gender: :male,
       date_of_birth: Date.new(1977, 1, 6), date_of_joining: Date.current,
-      aadhar_no: "950671848449", account_no: "30785013150", branch: "Pavijetpur Gujrat",
-      ifsc_code: "SBIN0000561", address: "Pavijetpur", mobile_no: "8980976162",
+      aadhar_no: "950671848449", account_no: "30785013150", branch: "Direct to HO Gujrat",
+      ifsc_code: "SBIN0000561", address: "Direct to HO", mobile_no: "8980976162",
       email: "rramanbhai737@example.test", experience_in_years: 3,
       office_detail_id: 0, to_office_detail_id: 0,
-      fcoc: "FCO-C Pavijetpur", to_name: "TO-Pavijetpur")
+      fcoc: "FCO-C Direct to HO", to_name: "TO-Direct to HO")
     @vrp.save!(validate: false)
   end
 
   test "the edit form offers the FCO-C the record is actually saved against" do
     values = option_values(edit_assigns[:fcoc])
 
-    assert_includes values, "FCO-C Pavijetpur", "saved FCO-C disappeared from the dropdown"
+    assert_includes values, "FCO-C Direct to HO", "saved FCO-C disappeared from the dropdown"
     assert_includes values, "FCO-C Sausar", "mapped offices must still be offered"
   end
 
   test "the edit form offers the TO the record is actually saved against" do
-    assert_includes option_values(edit_assigns[:to]), "TO-Pavijetpur", "saved TO disappeared from the dropdown"
+    assert_includes option_values(edit_assigns[:to]), "TO-Direct to HO", "saved TO disappeared from the dropdown"
   end
 
   test "a record whose office is still mapped gains no duplicate entry" do

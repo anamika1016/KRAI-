@@ -5,7 +5,7 @@ class Api::V1::JeevikaJankarDashboardControllerTest < ActionDispatch::Integratio
     user = User.create!(first_name: "ICS", last_name: "Admin", user_name: "ics_admin",
       password: "secret", user_type: "admin", status: "Active")
     headers = { "Authorization" => "Bearer #{ApiAuthToken.encode(user)}" }
-    { "1004" => ["Sausar", 11], "1006" => ["Turekela", 8], "1094" => ["Pavijetpur", 4] }.each do |id, (name, count)|
+    { "1004" => ["Sausar", 11], "1006" => ["Turekela", 8], "1094" => ["Direct to HO", 4] }.each do |id, (name, count)|
       count.times do |index|
         Afl.create!(farmer_name: "ICS farmer", fco_id: id, fco: name, fpo_id: "FPO-#{id}",
           fpo_name: "FPO #{name}", ics_id: "#{id}-#{index}", ics_name: "ICS #{id} #{index}", tracenet_no: "T-#{id}-#{index}")

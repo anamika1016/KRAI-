@@ -22,7 +22,7 @@ not a controlled production benchmark.
 
 No pagination, authorization, status, payment, filter or business rules were
 intentionally changed. No persistent cross-request cache was added. Existing
-1095/Pavijetpur changes were preserved.
+1094/Direct to HO changes were preserved.
 
 ## Validation
 

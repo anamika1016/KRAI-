@@ -2287,7 +2287,7 @@ class ModulesController < ApplicationController
       {
         "1004" => text.include?("1004") || text.include?("sausar"),
         "1006" => text.include?("1006") || text.include?("turekela"),
-        "1094" => text.include?("1094") || text.include?("direct to ho") || text.include?("pavijetpur")
+        "1094" => text.include?("1094") || text.include?("direct to ho")
       }.filter_map { |id, matches| id if matches }
     end
     fco_ids = selected_fco.present? ? fco_ids_for_values.call(selected_fco) : FcoDirectory.ids
@@ -4535,7 +4535,7 @@ class ModulesController < ApplicationController
                "1004"
              elsif normalized_fco.include?("1006") || normalized_fco.include?("turekela")
                "1006"
-             elsif normalized_fco.include?("1094") || normalized_fco.include?("direct to ho") || normalized_fco.include?("pavijetpur")
+             elsif normalized_fco.include?("1094") || normalized_fco.include?("direct to ho")
                "1094"
              else
                nil
@@ -6004,7 +6004,7 @@ class ModulesController < ApplicationController
       if normalized.include?("1006") || normalized.include?("turekela")
         ids << "1006"
       end
-      if normalized.include?("1094") || normalized.include?("direct to ho") || normalized.include?("pavijetpur")
+      if normalized.include?("1094") || normalized.include?("direct to ho")
         ids << "1094"
       end
       if normalized.match?(/\A\d+\z/)
@@ -6916,15 +6916,15 @@ class ModulesController < ApplicationController
       next if text.blank?
 
       # Office names are inconsistent: Sausar/Turekela are stored as "FCO-C Sausar"
-      # but Pavijetpur is stored as "FCO-Pavijetpur" (no "C"). The "C" used to be
-      # required, so "FCO-Pavijetpur" never stripped down to "Pavijetpur" and could
-      # never match the plain "Pavijetpur" filter value -- Gender Count and other
-      # FCO-scoped dashboard boxes silently returned 0 for Pavijetpur. Make the "C"
+      # but Direct to HO is stored as "FCO-Direct to HO" (no "C"). The "C" used to be
+      # required, so "FCO-Direct to HO" never stripped down to "Direct to HO" and could
+      # never match the plain "Direct to HO" filter value -- Gender Count and other
+      # FCO-scoped dashboard boxes silently returned 0 for Direct to HO. Make the "C"
       # optional so both naming styles strip to the same office name.
       short_name = text.sub(/\Afco\s*-\s*(c\s+)?/i, "").strip
       # An Office Setup FCO-C keeps its own label but reports on the sub office
       # it is mapped to, so "direact to  ho" also has to match rows filed under
-      # 1094 / Pavijetpur. Returns [] for anything that is not such an office.
+      # 1094 / Direct to HO. Returns [] for anything that is not such an office.
       [text, short_name] + FcoDirectory.aliases_for(text)
     end.flatten.map { |value| normalize_dashboard_text(value) }.reject(&:blank?).uniq
   end
