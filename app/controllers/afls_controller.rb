@@ -108,7 +108,7 @@ class AflsController < ApplicationController
     scope = scope.merge(policy.send(:dashboard_visible_farmer_scope))
     @fco_filter = FcoDirectory.ids if @fco_filter.to_s.strip.casecmp("All FCO").zero?
     if @fco_filter.present?
-      fco_values = afl_filter_values(@fco_filter)
+      fco_values = afl_fco_filter_values(@fco_filter)
       scope = scope.where(
         "LOWER(BTRIM(COALESCE(fco, ''))) IN (:fco_values) OR LOWER(BTRIM(COALESCE(fco_id, ''))) IN (:fco_values)",
         fco_values: fco_values
@@ -144,7 +144,7 @@ class AflsController < ApplicationController
 
     target_scope = TargetMapping.all
     if @fco_filter.present?
-      fco_values = afl_filter_values(@fco_filter)
+      fco_values = afl_fco_filter_values(@fco_filter)
       target_scope = target_scope.where(
         "LOWER(BTRIM(COALESCE(fco_name, ''))) IN (:fco_values) OR LOWER(BTRIM(COALESCE(fco_id, ''))) IN (:fco_values)",
         fco_values: fco_values
@@ -191,6 +191,17 @@ class AflsController < ApplicationController
     else
       scope
     end
+  end
+
+  # The FCO filter arrives as whatever the dashboard dropdown held, which may be
+  # an Office Setup office that reports on another FCO's rows ("Direct to HO" ->
+  # 1095 Pavijetpur). The summary card already counts through those aliases, so
+  # the View List behind it has to match on them too or the two disagree. Only
+  # the FCO filter resolves aliases -- ICS and village names keep plain matching.
+  def afl_fco_filter_values(value)
+    Array(value).flatten.flat_map do |entry|
+      afl_filter_values(entry) + FcoDirectory.aliases_for(entry).map { |alias_value| alias_value.to_s.downcase }
+    end.reject(&:blank?).uniq
   end
 
   def afl_filter_values(value)

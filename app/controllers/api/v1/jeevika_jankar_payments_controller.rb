@@ -8,6 +8,7 @@ module Api
       def bills
         records = bill_records.select { |record| calculator.send(:jeevika_jankar_bill_record_visible?, record) }
         set_calculator_visible_bill_ids(records)
+        calculator.send(:preload_jeevika_bill_process_totals, records)
         all_rows = records.map { |record| bill_payload_for(record) }
         rows = filter_month(all_rows)
 
@@ -158,6 +159,11 @@ module Api
 
       def calculator
         @calculator ||= ModulesController.new.tap do |controller|
+          # Without a request, params is nil and anything downstream that reads
+          # the URL slug (current_slug, current_sidebar_menu_title) raises
+          # NoMethodError on 'filtered_parameters' -- this crashed the mobile
+          # Bill/Payment lists with a 500 on every call.
+          controller.request = request
           controller.instance_variable_set(:@current_app_user, current_api_user_payload)
         end
       end

@@ -102,7 +102,9 @@ class FcoDirectoryTest < ActiveSupport::TestCase
 
     assert_equal "Pavijetpur", FcoDirectory.display_name_for("1095")
     assert_equal "Pavijetpur", FcoDirectory.display_name_for("Pavijetpur")
-    assert_empty FcoDirectory.aliases_for("Direct to HO")
+    # The label stays the mapped FCO's, and so does the data the office reports
+    # on: a filter set to the office name has to reach 1095's rows.
+    assert_equal %w[1095 Pavijetpur], FcoDirectory.aliases_for("Direct to HO").first(2)
   end
 
   test "historic Direct-to-HO spelling resolves from the correctly spelled filter" do
@@ -114,7 +116,10 @@ class FcoDirectoryTest < ActiveSupport::TestCase
     FcoDirectory.reset_cache!
 
     assert_equal %w[Sausar Turekela Pavijetpur], FcoDirectory.names
-    assert_empty FcoDirectory.aliases_for("Direct to HO")
+    # Saved as "direact to ho", picked from the dropdown as "Direct to HO" --
+    # both spellings have to land on the FCO the office reports through.
+    assert_equal %w[1095 Pavijetpur], FcoDirectory.aliases_for("Direct to HO").first(2)
+    assert_equal %w[1095 Pavijetpur], FcoDirectory.aliases_for("direact to  ho").first(2)
     assert_equal "Pavijetpur", FcoDirectory.display_name_for("Pavijetpur")
   end
 

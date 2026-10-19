@@ -41,6 +41,10 @@ class NewFcoAppearsOnDashboardTest < ActionDispatch::IntegrationTest
     end
   end
 
+  # The alias gets no box of its own, but picking it in the FCO filter has to
+  # scope the Dashboard Summary cards to the sub office it reports on. It used
+  # to scope them to nothing -- the filter value matched no farmer and no FCO
+  # code, so all five cards read wrong for a Direct-to-HO login.
   test "an Office Setup FCO-C alias does not become a dashboard FCO" do
     ModuleRecord.create!(module_slug: "office-mapping-add", data: {
       "parent_category" => "FCO-C", "office_name" => "direact to ho",
@@ -48,7 +52,34 @@ class NewFcoAppearsOnDashboardTest < ActionDispatch::IntegrationTest
     })
     FcoDirectory.reset_cache!
 
-    assert_equal({ ics: 0, villages: 0, farmers: 0 }, summary_counts("Direct to HO"))
+    get "/dashboard", params: { month: "September", main_activity: "Farmers' Training" }
+    assert_response :success
+    assert_select ".cc-jj-status-fco-name", text: "Direct to HO", count: 0
+
+    assert_equal summary_counts("Pavijetpur"), summary_counts("Direct to HO")
+    assert_equal({ ics: 1, villages: 1, farmers: 1 }, summary_counts("Direct to HO"))
+  end
+
+  test "an Office Setup FCO-C alias leaves the other FCOs alone" do
+    ModuleRecord.create!(module_slug: "office-mapping-add", data: {
+      "parent_category" => "FCO-C", "office_name" => "direact to ho",
+      "sub_office_name" => "TO-Pavijetpur", "status" => "Active"
+    })
+    FcoDirectory.reset_cache!
+
+    assert_equal({ ics: 1, villages: 1, farmers: 1 }, summary_counts("Sausar"))
+    assert_equal({ ics: 1, villages: 1, farmers: 1 }, summary_counts("Turekela"))
+    assert_equal %w[Sausar Turekela Pavijetpur], FcoDirectory.names
+    assert_equal %w[1004 1006 1095], FcoDirectory.ids
+  end
+
+  test "an unmapped office name stays unresolved" do
+    ModuleRecord.create!(module_slug: "office-category-add", data: {
+      "parent_category" => "FCO-C", "office_name" => "Nowhere Office", "status" => "Active"
+    })
+    FcoDirectory.reset_cache!
+
+    assert_empty FcoDirectory.aliases_for("Nowhere Office")
   end
 
   test "a real FCO keeps the counts it already had" do

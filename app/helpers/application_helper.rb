@@ -345,6 +345,19 @@ module ApplicationHelper
     section[:links].any? { |link| sidebar_link_active?(link) }
   end
 
+  # The caption under the signed-in name. User Setup spells a person's role in
+  # "role"; the other keys are the spellings older records and JJ logins use.
+  # The account type is the last resort, not the first, because "User" says
+  # nothing about who is signed in.
+  SIDEBAR_ROLE_KEYS = %w[role role_name stakeholder_role user_management_role person_type user_type].freeze
+
+  def sidebar_user_role_label
+    user = current_app_user
+    return "User" if user.blank?
+
+    SIDEBAR_ROLE_KEYS.filter_map { |key| user[key].to_s.strip.presence }.first || "User"
+  end
+
   def sidebar_access_key(link)
     label, _type, _target = link
     {

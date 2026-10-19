@@ -29,7 +29,7 @@ class FcoDirectory
   # here: it outlived the data it described, which made the dashboard answer
   # depend on whatever happened to populate the cache first.
   class Store < ActiveSupport::CurrentAttributes
-    attribute :afl_rows, :offices
+    attribute :afl_rows, :offices, :office_aliases
   end
 
   # Imported rows carry the string "NULL" where the source file had no value.
@@ -85,7 +85,25 @@ class FcoDirectory
   # not a configured office, so callers fall back to their own handling.
   def self.aliases_for(value)
     office = office_for(value)
-    office ? aliases_for_office(office) : []
+    return aliases_for_office(office) if office
+
+    mapped = office_aliases[bare_name(value).downcase]
+    return [] unless mapped
+
+    [mapped[:id], mapped[:name], "FCO-C #{mapped[:name]}"].compact_blank.uniq
+  end
+
+  # An Office Setup FCO-C that is not itself a dashboard FCO still reports on
+  # the data of the sub office it is mapped to: "direact to  ho" -> "TO-
+  # Pavijetpur" -> 1095. It deliberately gets no box of its own (`offices`,
+  # `names` and `ids` stay the configured list), but picking its name in the FCO
+  # filter has to scope the cards to the FCO whose rows it owns. Without the
+  # alias the filter value matched no farmer and no numeric code, so every
+  # Dashboard Summary card fell back to name-only matching and read wrong.
+  #
+  # { "direct to ho" => { id: "1095", name: "Pavijetpur" } }
+  def self.office_aliases
+    Store.office_aliases ||= load_office_aliases
   end
 
   # Return the configured Office Setup FCO-C behind any of its stored forms.
@@ -155,6 +173,7 @@ class FcoDirectory
   def self.reset_cache!
     Store.afl_rows = nil
     Store.offices = nil
+    Store.office_aliases = nil
   end
 
   # --- Loading --------------------------------------------------------------
@@ -178,6 +197,62 @@ class FcoDirectory
     found.presence || FALLBACK.map { |row| row.merge(raw_name: row[:name]) }
   end
   private_class_method :load_afl_rows
+
+  # Resolve every Office Setup FCO-C that is not already one of the dashboard
+  # FCOs to the office whose data it reports on. Three sources, in the order
+  # Office Setup itself prefers: an explicit FCO code on the record, the office
+  # name when the farmer master already knows it, and finally the sub office it
+  # is mapped to ("TO-Pavijetpur"). An office that resolves to nothing is simply
+  # left out, so callers keep their existing name-only behaviour for it.
+  def self.load_office_aliases
+    return {} unless defined?(ModuleRecord) && ModuleRecord.table_exists?
+
+    records = ModuleRecord.where(module_slug: %w[office-category-add office-mapping-add])
+      .filter_map { |record| record.data if record.data.is_a?(Hash) }
+    return {} if records.blank?
+
+    sub_offices = records.each_with_object({}) do |data, map|
+      office = bare_name(data["office_name"]).downcase
+      sub = bare_name(data["sub_office_name"].to_s.sub(SUB_OFFICE_PREFIX, ""))
+      map[office] ||= sub if office.present? && sub.present? && id_by_name.key?(sub.downcase)
+    end
+
+    records.select { |data| fco_office?(data) }.each_with_object({}) do |data, map|
+      key = bare_name(data["office_name"]).downcase
+      next if junk?(key) || map.key?(key) || configured_office?(key)
+
+      resolved = resolve_office_alias(data, key, sub_offices)
+      map[key] = resolved if resolved
+    end
+  rescue StandardError => e
+    Rails.logger.warn("FcoDirectory office alias lookup failed: #{e.class} - #{e.message}")
+    {}
+  end
+  private_class_method :load_office_aliases
+
+  # A name that already belongs to a dashboard FCO needs no alias -- resolving
+  # it a second time could only disagree with the box it is drawn under.
+  def self.configured_office?(bare_key)
+    offices.any? { |office| aliases_for_office(office).any? { |value| bare_name(value).downcase == bare_key } }
+  end
+  private_class_method :configured_office?
+
+  def self.resolve_office_alias(data, bare_key, sub_offices)
+    configured_id = %w[fco_id fcoc_id office_id].filter_map { |key| data[key].to_s.strip.presence }.first
+    sub_office = sub_offices[bare_key]
+
+    id, name =
+      if configured_id.present? && name_by_id.key?(configured_id)
+        [configured_id, name_for(configured_id)]
+      elsif id_by_name.key?(bare_key)
+        [id_by_name[bare_key], bare_name(data["office_name"])]
+      elsif sub_office.present?
+        [id_for(sub_office).to_s, sub_office]
+      end
+
+    { id: id, name: name } if id.present? && name.present?
+  end
+  private_class_method :resolve_office_alias
 
   # Office Setup drives the dashboard list. Each FCO-C office is resolved to a
   # numeric code through the sub office it is mapped to; an office that resolves
