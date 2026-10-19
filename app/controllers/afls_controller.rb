@@ -167,17 +167,32 @@ class AflsController < ApplicationController
   def grouped_afl_scope(scope)
     case @summary_mode
     when "ics"
+      # This must mirror `dashboard_total_afl_ics_count`: one row per ICS ID.
+      # Imported AFL data may repeat the same ICS under several FPO IDs/names;
+      # grouping by FPO made the drill-down show hundreds of rows for a card
+      # that correctly showed only one ICS.
       scope.where.not(ics_id: [nil, ""])
-        .group(:fco_id, :fco, :fpo_id, :fpo_name, :ics_id, :ics_name)
-        .order(:fco_id, :ics_id)
-        .pluck(:fco_id, :fco, :fpo_id, :fpo_name, :ics_id, :ics_name, Arel.sql("COUNT(tracenet_no)"))
-        .map { |fco_id, fco, fpo_id, fpo_name, ics_id, ics_name, farmer_count| { fco_id: fco_id, fco: fco, fpo_id: fpo_id, fpo_name: fpo_name, ics_id: ics_id, ics_name: ics_name, farmer_count: farmer_count } }
+        .group(Arel.sql("LOWER(BTRIM(ics_id))"))
+        .order(Arel.sql("LOWER(BTRIM(ics_id))"))
+        .pluck(
+          Arel.sql("MIN(fco_id)"), Arel.sql("MIN(fco)"), Arel.sql("MIN(fpo_id)"), Arel.sql("MIN(fpo_name)"),
+          Arel.sql("MIN(ics_id)"), Arel.sql("MIN(ics_name)"), Arel.sql("COUNT(DISTINCT id)")
+        )
+        .map { |fco_id, fco, fpo_id, fpo_name, ics_id, ics_name, farmer_count| grouped_afl_row(fco_id, fco, fpo_id, fpo_name, ics_id, ics_name, farmer_count) }
     when "village"
+      # Same parity rule for the Village card: village ID, not FPO/ICS metadata,
+      # determines one list row.
       scope.where.not(village_id: [nil, ""])
-        .group(:fco_id, :fco, :fpo_id, :fpo_name, :ics_id, :ics_name, :village_id, :village_name)
-        .order(:fco_id, :ics_id, :village_id)
-        .pluck(:fco_id, :fco, :fpo_id, :fpo_name, :ics_id, :ics_name, :village_id, :village_name, Arel.sql("COUNT(tracenet_no)"))
-        .map { |fco_id, fco, fpo_id, fpo_name, ics_id, ics_name, village_id, village_name, farmer_count| { fco_id: fco_id, fco: fco, fpo_id: fpo_id, fpo_name: fpo_name, ics_id: ics_id, ics_name: ics_name, village_id: village_id, village_name: village_name, farmer_count: farmer_count } }
+        .group(Arel.sql("LOWER(BTRIM(village_id))"))
+        .order(Arel.sql("LOWER(BTRIM(village_id))"))
+        .pluck(
+          Arel.sql("MIN(fco_id)"), Arel.sql("MIN(fco)"), Arel.sql("MIN(fpo_id)"), Arel.sql("MIN(fpo_name)"),
+          Arel.sql("MIN(ics_id)"), Arel.sql("MIN(ics_name)"), Arel.sql("MIN(village_id)"), Arel.sql("MIN(village_name)"),
+          Arel.sql("COUNT(DISTINCT id)")
+        )
+        .map do |fco_id, fco, fpo_id, fpo_name, ics_id, ics_name, village_id, village_name, farmer_count|
+          grouped_afl_row(fco_id, fco, fpo_id, fpo_name, ics_id, ics_name, farmer_count).merge(village_id: village_id, village_name: village_name)
+        end
     when "farmer"
       # The dashboard "Total Farmer Count" card counts every AFL row with a
       # non-blank tracenet_no (COUNT(NULLIF(BTRIM(tracenet_no), ''))) — duplicates
@@ -191,6 +206,18 @@ class AflsController < ApplicationController
     else
       scope
     end
+  end
+
+  def grouped_afl_row(fco_id, fco, fpo_id, fpo_name, ics_id, ics_name, farmer_count)
+    {
+      fco_id: FcoDirectory.id_for(fco_id).presence || fco_id,
+      fco: FcoDirectory.display_name_for(fco_id).presence || fco,
+      fpo_id: fpo_id,
+      fpo_name: fpo_name,
+      ics_id: ics_id,
+      ics_name: ics_name,
+      farmer_count: farmer_count
+    }
   end
 
   # The FCO filter arrives as whatever the dashboard dropdown held, which may be
