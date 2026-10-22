@@ -98,6 +98,22 @@ class DashboardLoadingPerformanceTest < ActiveSupport::TestCase
     assert_equal 2, controller.send(:dashboard_total_afl_farmer_count)
   end
 
+  test "Direct to HO ICS and village totals use the same AFL scope as its farmer total" do
+    rows = [
+      Afl.create!(fco_id: "1095", fco: "Direct to HO", farmer_name: "First", tracenet_no: "trace-1", ics_id: "I-1", village_id: "V-1"),
+      Afl.create!(fco_id: "1095", fco: "Direct to HO", farmer_name: "Second", tracenet_no: "trace-2", ics_id: "I-2", village_id: "V-2")
+    ]
+    controller = ModulesController.new
+    controller.request = ActionDispatch::TestRequest.create("QUERY_STRING" => "fcoc=Direct+to+HO")
+    controller.params = ActionController::Parameters.new(fcoc: "Direct to HO")
+    controller.define_singleton_method(:dashboard_direct_to_ho_afl_farmer_scope) { Afl.where(id: rows.map(&:id)) }
+    controller.define_singleton_method(:dashboard_total_afl_farmer_scope) { Afl.none }
+
+    assert_equal 2, controller.send(:dashboard_total_afl_ics_count)
+    assert_equal 2, controller.send(:dashboard_total_afl_village_count)
+    assert_equal 2, controller.send(:dashboard_total_afl_farmer_count)
+  end
+
   test "field lookup retains alias precedence and false blank zero handling" do
     controller = ModulesController.new
     record = ModuleRecord.new(module_slug: "training-form", data: {

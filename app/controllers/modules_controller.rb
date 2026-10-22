@@ -4348,16 +4348,26 @@ class ModulesController < ApplicationController
   def dashboard_total_afl_distinct_count(kind)
     return 0 unless model_ready?(:Afl)
 
+    # Dashboard Summary is FCO-wide reference data. For Direct to HO it must
+    # not shrink to an individual role's mapped farmers: Admin, CC,
+    # Agronomist and FCOC must all see the same AFL-derived ICS, village and
+    # farmer totals for the selected FCO.
+    summary_scope = if dashboard_total_farmer_count_for_direct_to_ho?
+                      dashboard_direct_to_ho_afl_farmer_scope
+                    else
+                      dashboard_total_afl_farmer_scope
+                    end
+
     case kind
     when :village
       # A village is identified by its code. Names and FPO/ICS labels can vary
       # between imported farmer rows and must not turn one village into several.
-      scope = dashboard_total_afl_farmer_scope.where.not(village_id: [nil, ""])
+      scope = summary_scope.where.not(village_id: [nil, ""])
       scope.distinct.count(Arel.sql("LOWER(BTRIM(village_id))"))
     when :ics
       # An ICS is identified by its code. Do not count duplicate spellings of
       # its name, or the same ICS repeated under imported FPO metadata.
-      scope = dashboard_total_afl_farmer_scope.where.not(ics_id: [nil, ""])
+      scope = summary_scope.where.not(ics_id: [nil, ""])
       scope.distinct.count(Arel.sql("LOWER(BTRIM(ics_id))"))
     else
       # Farmer count: COUNT(tracenet_no) using fco_id ONLY — no name matching
@@ -4367,10 +4377,9 @@ class ModulesController < ApplicationController
       # scope contains only farmers already mapped to their targets (1788),
       # whereas this summary card must show every Direct to HO AFL farmer
       # (1982). Keep this exception local to this one card.
-      return dashboard_direct_to_ho_afl_farmer_scope.count(:id) if dashboard_total_farmer_count_for_direct_to_ho?
+      return summary_scope.count(:id) if dashboard_total_farmer_count_for_direct_to_ho?
 
-      farmer_scope = dashboard_total_afl_farmer_scope
-      farmer_scope.count("NULLIF(BTRIM(tracenet_no), '')")
+      summary_scope.count("NULLIF(BTRIM(tracenet_no), '')")
     end
   rescue StandardError => e
     Rails.logger.warn("Dashboard total AFL #{kind} count failed: #{e.class} - #{e.message}")
