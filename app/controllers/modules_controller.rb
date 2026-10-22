@@ -2287,7 +2287,7 @@ class ModulesController < ApplicationController
       {
         "1004" => text.include?("1004") || text.include?("sausar"),
         "1006" => text.include?("1006") || text.include?("turekela"),
-        "1094" => text.include?("1094") || text.include?("direct to ho")
+        "1095" => text.include?("1095") || text.include?("direct to ho")
       }.filter_map { |id, matches| id if matches }
     end
     fco_ids = selected_fco.present? ? fco_ids_for_values.call(selected_fco) : FcoDirectory.data_ids
@@ -4385,11 +4385,11 @@ class ModulesController < ApplicationController
 
   def dashboard_total_farmer_count_for_direct_to_ho?
     selected_fco = @dashboard_fcoc_filter_value.presence || dashboard_filter_param(:fcoc, :fco)
-    FcoDirectory.id_for(selected_fco) == "1094"
+    FcoDirectory.id_for(selected_fco) == "1095"
   end
 
   def dashboard_direct_to_ho_afl_farmer_scope
-    stored_ids = FcoDirectory.aliases_for("1094").grep(/\A\d+\z/).map(&:downcase)
+    stored_ids = FcoDirectory.aliases_for("1095").grep(/\A\d+\z/).map(&:downcase)
     scope = Afl.where("LOWER(BTRIM(fco_id)) IN (:stored_ids)", stored_ids: stored_ids)
     dashboard_ics_filtered_scope(scope)
   end
@@ -4559,8 +4559,8 @@ class ModulesController < ApplicationController
                "1004"
              elsif normalized_fco.include?("1006") || normalized_fco.include?("turekela")
                "1006"
-             elsif normalized_fco.include?("1094") || normalized_fco.include?("direct to ho")
-               "1094"
+             elsif normalized_fco.include?("1095") || normalized_fco.include?("direct to ho")
+               "1095"
              else
                nil
              end
@@ -6017,19 +6017,21 @@ class ModulesController < ApplicationController
 
   def training_fcoc_ids_from_param(fcoc_name)
     raw_values = Array(fcoc_name).flatten.map(&:to_s).reject(&:blank?)
-    return FcoDirectory.ids if raw_values.blank?
+    return FcoDirectory.data_ids if raw_values.blank?
 
     ids = raw_values.flat_map do |value|
       normalized = value.downcase.strip
       matches = []
       matches << "1004" if normalized.include?("1004") || normalized.include?("sausar")
       matches << "1006" if normalized.include?("1006") || normalized.include?("turekela")
-      matches << "1094" if normalized.include?("1094") || normalized.include?("direct to ho")
+      if normalized.include?("1095") || normalized.include?("direct to ho")
+        matches.concat(FcoDirectory.aliases_for("1095").grep(/\A\d+\z/))
+      end
       matches << normalized if normalized.match?(/\A\d+\z/)
       matches
     end
     ids = ids.uniq
-    ids.presence || FcoDirectory.ids
+    ids.presence || FcoDirectory.data_ids
   end
 
   def farmer_training_mapped_farmer_count_and_popups(month_name:, fcoc_name:)
@@ -6253,7 +6255,7 @@ class ModulesController < ApplicationController
   end
 
   def format_red_fco_popups(rows, fco_ids)
-    fco_name_map = { "1004" => "Sausar", "1006" => "Turekela", "1094" => "Direct to HO", "1095" => "Direct to HO" }
+    fco_name_map = { "1004" => "Sausar", "1006" => "Turekela", "1095" => "Direct to HO" }
     target_ids = dashboard_display_fco_ids(fco_ids)
     rows_by_id = Array(rows).index_by { |row| dashboard_display_fco_id(row["fco_id"]) }
 
@@ -6277,7 +6279,7 @@ class ModulesController < ApplicationController
   end
 
   def format_red_fco_details(rows, fco_ids)
-    fco_name_map = { "1004" => "Sausar", "1006" => "Turekela", "1094" => "Direct to HO", "1095" => "Direct to HO" }
+    fco_name_map = { "1004" => "Sausar", "1006" => "Turekela", "1095" => "Direct to HO" }
     target_ids = dashboard_display_fco_ids(fco_ids)
     rows_by_id = Array(rows).index_by { |row| dashboard_display_fco_id(row["fco_id"]) }
 
@@ -6373,7 +6375,7 @@ class ModulesController < ApplicationController
   end
 
   def format_fco_popups(rows, fco_ids, count_key)
-    fco_name_map = { "1004" => "Sausar", "1006" => "Turekela", "1094" => "Direct to HO", "1095" => "Direct to HO" }
+    fco_name_map = { "1004" => "Sausar", "1006" => "Turekela", "1095" => "Direct to HO" }
     target_ids = dashboard_display_fco_ids(fco_ids)
     rows_by_id = Array(rows).index_by { |row| dashboard_display_fco_id(row["fco_id"]) }
 
@@ -6951,7 +6953,7 @@ class ModulesController < ApplicationController
       short_name = text.sub(/\Afco\s*-\s*(c\s+)?/i, "").strip
       # An Office Setup FCO-C keeps its own label but reports on the sub office
       # it is mapped to, so "direact to  ho" also has to match rows filed under
-      # 1094 / Direct to HO. Returns [] for anything that is not such an office.
+      # 1095 / Direct to HO. Returns [] for anything that is not such an office.
       [text, short_name] + FcoDirectory.aliases_for(text)
     end.flatten.map { |value| normalize_dashboard_text(value) }.reject(&:blank?).uniq
   end

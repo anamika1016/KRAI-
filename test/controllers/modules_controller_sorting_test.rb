@@ -44,8 +44,9 @@ class ModulesControllerSortingTest < ActiveSupport::TestCase
 
     assert_equal ["1004"], controller.send(:training_fcoc_ids_from_param, "FCO-C Sausar")
     assert_equal ["1006"], controller.send(:training_fcoc_ids_from_param, "FCO-C Turekela")
-    assert_equal ["1094"], controller.send(:training_fcoc_ids_from_param, "Direct to HO")
-    assert_equal %w[1004 1006 1094], controller.send(:training_fcoc_ids_from_param, nil)
+    assert_equal ["1095"], controller.send(:training_fcoc_ids_from_param, "Direct to HO")
+    assert_equal ["1095"], controller.send(:training_fcoc_ids_from_param, "1095")
+    assert_equal %w[1004 1006 1095], controller.send(:training_fcoc_ids_from_param, nil)
   end
 
   test "training dashboard keeps registered AFL count when target memberships are blank" do

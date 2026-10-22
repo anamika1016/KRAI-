@@ -9,7 +9,7 @@ class NewFcoAppearsOnDashboardTest < ActionDispatch::IntegrationTest
       user_type: "admin", status: "Active")
     post login_path, params: { login: user.user_name, password: "secret" }
 
-    [["1004", "Sausar"], ["1006", "Turekela"], ["1094", "Direct to HO"]].each_with_index do |(fco_id, name), index|
+    [["1004", "Sausar"], ["1006", "Turekela"], ["1095", "Direct to HO"]].each_with_index do |(fco_id, name), index|
       Afl.create!(farmer_name: "#{name} farmer", tracenet_no: "new-fco-#{index}",
         fco_id: fco_id, fco: name, ics_id: "ics-#{index}", ics_name: "ICS #{index}",
         village_id: "v-#{index}", village_name: "Village #{index}")
@@ -70,7 +70,7 @@ class NewFcoAppearsOnDashboardTest < ActionDispatch::IntegrationTest
     assert_equal({ ics: 1, villages: 1, farmers: 1 }, summary_counts("Sausar"))
     assert_equal({ ics: 1, villages: 1, farmers: 1 }, summary_counts("Turekela"))
     assert_equal ["Sausar", "Turekela", "Direct to HO"], FcoDirectory.names
-    assert_equal %w[1004 1006 1094], FcoDirectory.ids
+    assert_equal %w[1004 1006 1095], FcoDirectory.ids
   end
 
   test "an unmapped office name stays unresolved" do

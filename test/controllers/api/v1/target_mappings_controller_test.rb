@@ -67,13 +67,13 @@ class Api::V1::TargetMappingsControllerTest < ActionDispatch::IntegrationTest
   test "sub activity summary includes every web row for multiple FCO IDs" do
     %w[Soil Water Seed Compost Irrigation Induction].each_with_index do |sub, index|
       create_mapping(main: "Farmers' Training", sub: sub, farmers: [@farmer_1],
-        fco_id: %w[1004 1006 1094][index % 3],
+        fco_id: %w[1004 1006 1095][index % 3],
         fco_name: %w[Sausar Turekela Direct to HO][index % 3])
     end
 
     get "/api/v1/target-mappings/recent", params: {
       month: "August", summary_mode: "sub_major_work_indicators",
-      fco_id: %w[1004 1006 1094], per_page: 100
+      fco_id: %w[1004 1006 1095], per_page: 100
     }, headers: @headers, as: :json
 
     assert_response :success

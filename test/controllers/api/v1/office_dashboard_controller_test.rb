@@ -440,21 +440,21 @@ class Api::V1::OfficeDashboardControllerTest < ActionDispatch::IntegrationTest
     direct to ho_user = create_user("FCO-Direct to HO", "FCO-Direct to HO")
     create_vrp(direct to ho_user, "Direct to HO CC", "FCO-Direct to HO")
     4.times do |index|
-      Afl.create!(farmer_name: "Direct to HO farmer #{index}", fco_id: "1094", fco: "Direct to HO",
+      Afl.create!(farmer_name: "Direct to HO farmer #{index}", fco_id: "1095", fco: "Direct to HO",
         ics_id: "PAVI-#{index}", ics_name: "Direct to HO ICS #{index}",
         village_id: "PAVI-V-#{index}", village_name: "Direct to HO village #{index}", tracenet_no: "PAVI-T-#{index}")
     end
-    ["All", "1094", "Direct to HO", "FCO-Direct to HO", "FCO-C Direct to HO"].each do |fco|
+    ["All", "1095", "Direct to HO", "FCO-Direct to HO", "FCO-C Direct to HO"].each do |fco|
       %w[summary_ics summary_villages summary_farmers].each do |type|
         get "/api/v1/user-dashboard/lists/#{type}",
           params: { month: "June", fco: fco, ics: "All" }, headers: headers(direct to ho_user)
         assert_response :success
         assert_equal 4, response.parsed_body.fetch("count"), "#{type}: #{fco}"
-        assert_equal ["1094"], response.parsed_body.fetch("records").map { |row| row["fco_id"] }.uniq
+        assert_equal ["1095"], response.parsed_body.fetch("records").map { |row| row["fco_id"] }.uniq
       end
     end
     get "/api/v1/user-dashboard/lists/summary_ics",
-      params: { fco: "1094", ics: "All" }, headers: headers(@fco)
+      params: { fco: "1095", ics: "All" }, headers: headers(@fco)
     assert_response :success
     assert_empty response.parsed_body.fetch("records")
   end
@@ -462,7 +462,7 @@ class Api::V1::OfficeDashboardControllerTest < ActionDispatch::IntegrationTest
   test "zero-data Direct to HO remains present in gender requirement cards and empty lists" do
     admin = User.create!(first_name: "Zero", last_name: "Admin", user_name: "zero_admin_#{SecureRandom.hex(3)}",
       password: "secret", user_type: "admin", status: "Active")
-    ModuleRecord.create!(module_slug: "add-fco", data: { "fco_id" => "1094", "fco_name" => "Direct to HO", "status" => "Active" })
+    ModuleRecord.create!(module_slug: "add-fco", data: { "fco_id" => "1095", "fco_name" => "Direct to HO", "status" => "Active" })
     filters = { month: "August", main_activity: @first_target.main_activity_name, sub_activity: "All", fco: "All", ics: "All" }
 
     get "/api/v1/user-dashboard", params: filters, headers: headers(admin)
@@ -487,7 +487,7 @@ class Api::V1::OfficeDashboardControllerTest < ActionDispatch::IntegrationTest
       password: "secret", user_type: "admin", status: "Active")
     direct to ho = create_vrp(admin, "Direct to HO CC", "FCO-Direct to HO")
     direct to ho.update_column(:gender, Vrp.genders.fetch("female"))
-    create_target(direct to ho, "1094", "Direct to HO ICS")
+    create_target(direct to ho, "1095", "Direct to HO ICS")
     new_fco = create_vrp(admin, "New Valley CC", "FCO-C New Valley")
     create_target(new_fco, "2000", "New Valley ICS")
 
@@ -519,8 +519,8 @@ class Api::V1::OfficeDashboardControllerTest < ActionDispatch::IntegrationTest
     calculator.instance_variable_set(:@current_app_user, { "user_type" => "User", "role" => "FCO" })
     direct to ho = create_vrp(@other_fco, "Direct to HO CC", "FCO-Direct to HO")
     calculator.apply_dashboard_scope(vrps: [@first, @second, direct to ho], targets: [], bills: [])
-    Afl.create!(farmer_name: "Direct to HO farmer", fco_id: "1094", fco: "Direct to HO", ics_id: "PAVI", ics_name: "PAVI")
-    assert_equal %w[1004 1006 1094], calculator.send(:dashboard_total_afl_farmer_scope).distinct.pluck(:fco_id).sort
+    Afl.create!(farmer_name: "Direct to HO farmer", fco_id: "1095", fco: "Direct to HO", ics_id: "PAVI", ics_name: "PAVI")
+    assert_equal %w[1004 1006 1095], calculator.send(:dashboard_total_afl_farmer_scope).distinct.pluck(:fco_id).sort
   end
 
 test "secondary user sections match web cards for CC Agronomist and FCOC" do

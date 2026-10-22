@@ -11,7 +11,7 @@
 #              an office to its numeric code and name, not to draw boxes.
 #
 # An office carries its own display name but reports on the data of the sub
-# office it is mapped to, so "direact to  ho" shows 1094 Direct to HO's farmers
+# office it is mapped to, so "direact to  ho" shows 1095 Direct to HO's farmers
 # under its own label.
 class FcoDirectory
   # These are the only FCOs allowed to create dashboard boxes. Office Setup,
@@ -20,14 +20,14 @@ class FcoDirectory
   FALLBACK = [
     { id: "1004", name: "Sausar" },
     { id: "1006", name: "Turekela" },
-    { id: "1094", name: "Direct to HO" }
+    { id: "1095", name: "Direct to HO" }
   ].freeze
   DASHBOARD_FCO_IDS = FALLBACK.map { |row| row[:id] }.freeze
 
-  # Some saved records have the short FCO-prefixed form. It is the same 1094
+  # Some saved records have the short FCO-prefixed form. It is the same 1095
   # office and must resolve to the Direct to HO dashboard label.
   FIXED_ALIASES = {
-    "1094" => ["1095", "FCO-Direct to HO"]
+    "1095" => ["FCO-Direct to HO"]
   }.freeze
 
   # Memoised per request. CurrentAttributes resets between requests, so a newly
@@ -58,7 +58,7 @@ class FcoDirectory
 
   # --- The dashboard list: Office Setup FCO-C offices -----------------------
 
-  # [{ id: "1094", name: "Direct to HO", raw_name: "direact to ho" }, ...]
+  # [{ id: "1095", name: "Direct to HO", raw_name: "direact to ho" }, ...]
   # A Direct-to-HO/TO mapping is a filter alias, not a second FCO card.
   def self.offices
     Store.offices ||= FALLBACK.map do |row|
@@ -73,13 +73,12 @@ class FcoDirectory
     offices.filter_map { |office| office[:name].presence }.presence || FALLBACK.map { |row| row[:name] }
   end
 
-  # The numeric office codes behind those labels, e.g. ["1004", "1006", "1094"].
+  # The numeric office codes behind those labels, e.g. ["1004", "1006", "1095"].
   def self.ids
     offices.filter_map { |office| office[:id].presence }.presence || FALLBACK.map { |row| row[:id] }
   end
 
-  # Codes used in stored farmer/import rows. The dashboard continues to expose
-  # just 1094; this list is used only when reading historical records.
+  # Codes used in stored farmer/import rows.
   def self.data_ids
     ids.flat_map { |id| aliases_for(id).grep(/\A\d+\z/) }.uniq
   end
@@ -87,7 +86,7 @@ class FcoDirectory
   # Every spelling a stored value might use for the configured offices: the
   # office's own name, its "FCO-C" form, and the code and name of the sub office
   # it reports through -- that last part is what lets "direact to  ho" match
-  # rows filed under 1094 / Direct to HO.
+  # rows filed under 1095 / Direct to HO.
   def self.filter_values
     offices.flat_map { |office| aliases_for_office(office) }
       .map { |value| value.to_s.strip }.reject(&:blank?).uniq
@@ -107,19 +106,19 @@ class FcoDirectory
 
   # An Office Setup FCO-C that is not itself a dashboard FCO still reports on
   # the data of the sub office it is mapped to: "direact to  ho" -> "TO-
-  # Direct to HO" -> 1094. It deliberately gets no box of its own (`offices`,
+  # Direct to HO" -> 1095. It deliberately gets no box of its own (`offices`,
   # `names` and `ids` stay the configured list), but picking its name in the FCO
   # filter has to scope the cards to the FCO whose rows it owns. Without the
   # alias the filter value matched no farmer and no numeric code, so every
   # Dashboard Summary card fell back to name-only matching and read wrong.
   #
-  # { "direct to ho" => { id: "1094", name: "Direct to HO" } }
+  # { "direct to ho" => { id: "1095", name: "Direct to HO" } }
   def self.office_aliases
     Store.office_aliases ||= load_office_aliases
   end
 
   # Return the configured Office Setup FCO-C behind any of its stored forms.
-  # For example, a row stored as `1094` or `Direct to HO` can still belong to the
+  # For example, a row stored as `1095` or `Direct to HO` can still belong to the
   # `Direct to HO` FCO-C card.  This keeps the display label and the data source
   # separate instead of hardcoding a special case for one office.
   def self.office_for(value)
@@ -308,7 +307,7 @@ class FcoDirectory
     # Prefer an explicit FCO id when Office Setup supplied one and it exists in
     # the farmer/target data. Otherwise an FCO-C reports through its mapped TO
     # office. This makes a future 0195 mapping live without a code release,
-    # while the current Direct-to-HO -> TO-Direct to HO mapping still counts 1094.
+    # while the current Direct-to-HO -> TO-Direct to HO mapping still counts 1095.
     configured_id = %w[fco_id fcoc_id office_id].filter_map { |key| data[key].to_s.strip.presence }.first
     explicit_name = configured_id.present? ? name_for(configured_id) : nil
     afl_name = if configured_id.present? && name_by_id.key?(configured_id)
@@ -319,7 +318,7 @@ class FcoDirectory
                  sub_offices[name.downcase]
                end
     # Keep the raw office name as an alias, but use its mapped actual FCO as
-    # the card label. Otherwise 1094 gets both "Direct to HO" and "Direct to
+    # the card label. Otherwise 1095 gets both "Direct to HO" and "Direct to
     # HO" boxes for the same data.
     display_name = name
     { id: afl_name.present? ? id_for(afl_name).to_s : "", name: display_name, raw_name: raw, afl_name: afl_name }

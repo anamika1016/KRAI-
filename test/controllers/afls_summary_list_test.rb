@@ -18,7 +18,7 @@ class AflsSummaryListTest < ActiveSupport::TestCase
     ics_rows = controller.send(:grouped_afl_scope, scope)
 
     assert_equal 2, ics_rows.size
-    assert_equal "1094", ics_rows.first[:fco_id]
+    assert_equal "1095", ics_rows.first[:fco_id]
     assert_equal "Direct to HO", ics_rows.first[:fco]
 
     controller.instance_variable_set(:@summary_mode, "village")
