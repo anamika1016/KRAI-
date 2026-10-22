@@ -4363,11 +4363,21 @@ class ModulesController < ApplicationController
       # Farmer count: COUNT(tracenet_no) using fco_id ONLY — no name matching
       # Matches: SELECT COUNT(tracenet_no) FROM afls WHERE (fco_id = '1004' OR fco_id = '1006')
       farmer_scope = dashboard_total_afl_farmer_scope
+      # Direct to HO's AFL import contains valid farmer rows with no Tracenet
+      # number. Its Total Farmer Count must therefore reflect every AFL farmer
+      # row, as requested, instead of silently excluding those records.
+      return farmer_scope.count(:id) if dashboard_total_farmer_count_for_direct_to_ho?
+
       farmer_scope.count("NULLIF(BTRIM(tracenet_no), '')")
     end
   rescue StandardError => e
     Rails.logger.warn("Dashboard total AFL #{kind} count failed: #{e.class} - #{e.message}")
     0
+  end
+
+  def dashboard_total_farmer_count_for_direct_to_ho?
+    selected_fco = @dashboard_fcoc_filter_value.presence || dashboard_filter_param(:fcoc, :fco)
+    FcoDirectory.id_for(selected_fco) == "1094"
   end
 
   # Farmer-count scope: filter strictly by fco_id (numeric IDs only), not by fco name.
