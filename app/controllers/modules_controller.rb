@@ -4348,10 +4348,8 @@ class ModulesController < ApplicationController
   def dashboard_total_afl_distinct_count(kind)
     return 0 unless model_ready?(:Afl)
 
-    # Dashboard Summary is FCO-wide reference data. For Direct to HO it must
-    # not shrink to an individual role's mapped farmers: Admin, CC,
-    # Agronomist and FCOC must all see the same AFL-derived ICS, village and
-    # farmer totals for the selected FCO.
+    # On role-scoped dashboards, Direct to HO must not shrink to only the
+    # user's mapped farmers. Admin continues to use the original summary scope.
     summary_scope = if dashboard_total_farmer_count_for_direct_to_ho?
                       dashboard_direct_to_ho_afl_farmer_scope
                     else
@@ -4373,10 +4371,9 @@ class ModulesController < ApplicationController
       # Farmer count: COUNT(tracenet_no) using fco_id ONLY — no name matching
       # Matches: SELECT COUNT(tracenet_no) FROM afls WHERE (fco_id = '1004' OR fco_id = '1006')
       # Direct to HO's AFL import contains valid farmer rows with no Tracenet
-      # number. More importantly, an Agricultural Specialist's normal farmer
-      # scope contains only farmers already mapped to their targets (1788),
-      # whereas this summary card must show every Direct to HO AFL farmer
-      # (1982). Keep this exception local to this one card.
+      # number. An Agricultural Specialist's normal farmer scope contains only
+      # farmers already mapped to their targets, whereas the Direct to HO card
+      # must show every Direct to HO AFL farmer for non-admin role dashboards.
       return summary_scope.count(:id) if dashboard_total_farmer_count_for_direct_to_ho?
 
       summary_scope.count("NULLIF(BTRIM(tracenet_no), '')")
