@@ -39,6 +39,15 @@ class ModulesControllerSortingTest < ActiveSupport::TestCase
     assert_equal ["fco-c sausar", "sausar"], controller.send(:training_fcoc_filter_values, "FCO-C Sausar")
   end
 
+  test "participation FCO ids retain existing office conditions" do
+    controller = ModulesController.new
+
+    assert_equal ["1004"], controller.send(:training_fcoc_ids_from_param, "FCO-C Sausar")
+    assert_equal ["1006"], controller.send(:training_fcoc_ids_from_param, "FCO-C Turekela")
+    assert_equal ["1094"], controller.send(:training_fcoc_ids_from_param, "Direct to HO")
+    assert_equal %w[1004 1006 1094], controller.send(:training_fcoc_ids_from_param, nil)
+  end
+
   test "training dashboard keeps registered AFL count when target memberships are blank" do
     controller = ModulesController.new
     controller.define_singleton_method(:training_participation_targets_for_dashboard) { |**| [] }

@@ -6017,14 +6017,19 @@ class ModulesController < ApplicationController
 
   def training_fcoc_ids_from_param(fcoc_name)
     raw_values = Array(fcoc_name).flatten.map(&:to_s).reject(&:blank?)
-    return FcoDirectory.data_ids if raw_values.blank?
+    return FcoDirectory.ids if raw_values.blank?
 
     ids = raw_values.flat_map do |value|
-      aliases = FcoDirectory.aliases_for(value).grep(/\A\d+\z/)
-      aliases.presence || [value.to_s.strip]
+      normalized = value.downcase.strip
+      matches = []
+      matches << "1004" if normalized.include?("1004") || normalized.include?("sausar")
+      matches << "1006" if normalized.include?("1006") || normalized.include?("turekela")
+      matches << "1094" if normalized.include?("1094") || normalized.include?("direct to ho")
+      matches << normalized if normalized.match?(/\A\d+\z/)
+      matches
     end
     ids = ids.uniq
-    ids.presence || FcoDirectory.data_ids
+    ids.presence || FcoDirectory.ids
   end
 
   def farmer_training_mapped_farmer_count_and_popups(month_name:, fcoc_name:)
