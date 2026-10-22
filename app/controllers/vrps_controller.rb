@@ -89,6 +89,7 @@ class VrpsController < ApplicationController
         status_label: vrp_status_label(vrp)
       }
     end
+    @data = sort_pending_rows_first(@data)
   end
 
   def new
@@ -127,7 +128,13 @@ class VrpsController < ApplicationController
       return
     end
 
-    if @vrp.update(vrp_update_params)
+    restart_approval = @vrp.status.to_i != 55 && (@vrp.status.to_i == 99 || approval_rejected?(@vrp))
+    saved = Vrp.transaction do
+      @vrp.update(vrp_update_params).tap do |updated|
+        restart_rejected_approval!(@vrp) if updated && restart_approval
+      end
+    end
+    if saved
       redirect_to vrps_path, notice: "VRP updated successfully."
     else
       @vrp.build_vrp_profile unless @vrp.vrp_profile
@@ -270,6 +277,23 @@ class VrpsController < ApplicationController
 
   private
 
+  # Anything still waiting on somebody belongs at the top of the list -- that is
+  # the only part of it a reviewer has to act on. Same buckets the Jeevika
+  # Jankar Bill List already sorts by, so the two lists read the same way:
+  # waiting first, then rejected/returned, then what is finished. Rows sharing a
+  # bucket keep the order they already had.
+  def sort_pending_rows_first(rows)
+    rows.each_with_index.sort_by { |row, index| [vrp_status_priority(row[:status_label]), index] }.map(&:first)
+  end
+
+  def vrp_status_priority(status_label)
+    status = status_label.to_s.downcase
+    return 0 if status.include?("pending") || status.include?("submitted")
+    return 2 if status.include?("final approved")
+
+    1
+  end
+
   def set_form_dependencies
     set_master_options
   end
@@ -280,6 +304,30 @@ class VrpsController < ApplicationController
     return redirect_to vrps_path, alert: "VRP record not found." unless @vrp
 
     keep_saved_office_options!
+    keep_saved_location_options!
+  end
+
+  def keep_saved_location_options!
+    profile = @vrp.vrp_profile
+    {
+      state: [profile&.state_id], district: [profile&.district_id], block: [profile&.block_id],
+      gram_panchayat: Array(@vrp.gram_panchayat_ids).presence || [profile&.gram_panchayat_id],
+      village: Array(@vrp.village_ids).presence || [profile&.village_id]
+    }.each do |level, ids|
+      variable = "@#{level}_options"
+      options = Array(instance_variable_get(variable)).dup
+      ids.compact_blank.each do |id|
+        next if options.any? { |option| option.last.to_s == id.to_s }
+
+        record = ModuleRecord.find_by(id: id)
+        label = if record
+          level == :gram_panchayat ? gram_panchayat_name_from_record(record) :
+            first_present_data(record, "#{level}_name", level.to_s, "name")
+        end
+        options << [label.presence || id.to_s, id.to_s]
+      end
+      instance_variable_set(variable, options)
+    end
   end
 
   # Office masters drift after a Jeevika Jankar is saved -- an FCO-C or TO gets
@@ -1213,14 +1261,28 @@ class VrpsController < ApplicationController
     @approval_users_by_mobile || {}
   end
 
+  def active_approval_history_for(vrp)
+    history = approval_history_for(vrp)
+    start = history.rindex { |record| record.data["action"] == "Sent for Approval" }
+    start ? history.drop(start) : history
+  end
+
+  def restart_rejected_approval!(vrp)
+    first_step = approval_steps_for(vrp).first
+    update_vrp_status!(vrp, 25)
+    log_approval_history(vrp, first_step, "Sent for Approval", "Resubmitted after correction")
+    @approval_history_for_cache&.delete(vrp.id)
+    @approval_history_records_by_vrp_id = nil
+  end
+
   def approval_sent?(vrp)
-    approval_history_for(vrp).any? do |record|
+    active_approval_history_for(vrp).any? do |record|
       ["Sent for Approval", "Approved", "Rejected"].include?(record.data["action"].to_s)
     end
   end
 
   def approval_rejected?(vrp)
-    approval_history_for(vrp).any? { |record| record.data["action"].to_s == "Rejected" }
+    active_approval_history_for(vrp).any? { |record| record.data["action"].to_s == "Rejected" }
   end
 
   def approval_complete?(vrp)
@@ -1231,7 +1293,7 @@ class VrpsController < ApplicationController
   end
 
   def approved_approval_sequences(vrp)
-    approval_history_for(vrp)
+    active_approval_history_for(vrp)
       .select { |record| record.data["action"].to_s == "Approved" }
       .map { |record| approval_sequence_from_level(record.data["approval_level"]) }
       .uniq
@@ -1245,7 +1307,7 @@ class VrpsController < ApplicationController
     step_sequence = approval_sequence(step)
     step_approver = normalize_approver_label(approval_approver_name(step))
 
-    approval_history_for(vrp).find do |record|
+    active_approval_history_for(vrp).reverse.find do |record|
       ["Approved", "Rejected"].include?(record.data["action"].to_s) &&
         (
           approval_sequence_from_level(record.data["approval_level"]) == step_sequence ||

@@ -831,8 +831,11 @@ module VrpAccess
 
   def active_approval_history_for(vrp)
     history = approval_history_for(vrp)
-    returned_index = history.rindex { |record| record.data["action"].to_s == "Returned" }
-    returned_index ? history.drop(returned_index + 1) : history
+    start = history.rindex { |record| ["Returned", "Sent for Approval"].include?(record.data["action"].to_s) }
+    return history unless start
+
+    start += 1 if history[start].data["action"] == "Returned"
+    history.drop(start)
   end
 
   def approval_complete?(vrp)
@@ -1826,7 +1829,7 @@ module VrpAccess
       state: state,
       action: action,
       action_by: closing&.data&.[]("action_by"),
-      remarks: closing&.data&.[]("remarks"),
+      remarks: (closing || approval_history_for(vrp).reverse.find { |record| ["Approved", "Rejected"].include?(record.data["action"]) && record.data["approval_level"] == step.data["approval_level"] })&.data&.[]("remarks"),
       action_at: closing&.created_at&.iso8601,
       action_date: closing&.created_at&.in_time_zone("Asia/Kolkata")&.strftime("%d-%m-%Y"),
       action_time: closing&.created_at&.in_time_zone("Asia/Kolkata")&.strftime("%I:%M %p"),

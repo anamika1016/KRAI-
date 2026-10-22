@@ -77,8 +77,17 @@ module Api
           }, status: :unprocessable_entity
         end
 
+        restart_approval = vrp.status.to_i != 55 && (vrp.status.to_i == 99 || approval_rejected?(vrp))
         vrp.assign_attributes(attrs)
-        if vrp.save
+        saved = Vrp.transaction do
+          vrp.save.tap do |updated|
+            if updated && restart_approval
+              update_vrp_status!(vrp, 25)
+              log_approval_history(vrp, approval_steps_for(vrp).first, "Sent for Approval", "Resubmitted after correction")
+            end
+          end
+        end
+        if saved
           render json: {
             success: true,
             message: "Jeevika Jankar updated successfully.",

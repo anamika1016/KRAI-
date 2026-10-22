@@ -140,10 +140,8 @@
       <div class="approval-progress-grid">
         <% @approval_steps.each do |step| %>
           <% level = step.data["approval_level"].presence || "Approval" %>
-          <% step_history = @approval_history.select { |history| history.data["approval_level"].to_s == level.to_s } %>
-          <% approved_history = step_history.find { |history| history.data["action"] == "Approved" } %>
-          <% rejected_history = step_history.find { |history| history.data["action"] == "Rejected" } %>
-          <% closing_history = approved_history || rejected_history || closing_approval_history(@vrp, step) %>
+          <% closing_history = closing_approval_history(@vrp, step) %>
+          <% remark_history = closing_history || @approval_history.reverse.find { |history| history.data["approval_level"].to_s == level.to_s && ["Approved", "Rejected"].include?(history.data["action"]) } %>
           <% is_current = @current_approval_step&.id == step.id %>
           <% state = closing_history&.data&.[]("action") == "Rejected" ? "rejected" : (closing_history.present? ? "approved" : (is_current ? "current" : "pending")) %>
           <% approver_name = step.data["approver_approved_by"].presence || "-" %>
@@ -163,8 +161,8 @@
               <p><strong>Waiting</strong></p>
             <% end %>
             <p><%= closing_history&.created_at&.strftime("%d-%m-%Y %I:%M %p") || (is_current ? "Current step" : "Waiting for previous approval") %></p>
-            <% if closing_history&.data&.[]("remarks").present? %>
-              <p><strong>Remarks:</strong> <%= closing_history.data["remarks"] %></p>
+            <% if remark_history&.data&.[]("remarks").present? %>
+              <p><strong>Remarks:</strong> <%= remark_history.data["remarks"] %></p>
             <% end %>
             <% if @can_approve && is_current && state == "current" %>
               <div class="approval-card-actions">

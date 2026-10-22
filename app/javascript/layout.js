@@ -2160,7 +2160,7 @@ function initDeferredLayoutPage() {
     });
   };
 
-  const replaceLocationOptions = (select, originalOptions, allowedRows, level) => {
+  const replaceLocationOptions = (select, originalOptions, allowedRows, level, retainSaved = false) => {
     if (!select) return;
 
     const selectedValues = uniquePresent(locationSelectedValuesFromDataset(select).concat(selectedLocationValues(select)));
@@ -2178,6 +2178,13 @@ function initDeferredLayoutPage() {
     const finalOptions = hasParents && !parentSelected
       ? []
       : (hasParents ? filteredOptions : fallbackOptions);
+    if (retainSaved) {
+      originalOptions.forEach((option) => {
+        if (option.value && selectedValues.includes(option.value) && !finalOptions.includes(option)) {
+          finalOptions.push(option);
+        }
+      });
+    }
     finalOptions.sort((left, right) => left.label.localeCompare(right.label, undefined, { sensitivity: "base" }));
     select.innerHTML = "";
 
@@ -2229,12 +2236,12 @@ function initDeferredLayoutPage() {
       Object.keys(selects).forEach(syncLocationPrimary);
     };
 
-    const refreshLocationLevel = (level) => {
+    const refreshLocationLevel = (level, retainSaved = false) => {
       if (!selects[level]) return;
 
       const key = locationKeys[level];
       const allowedRows = mappings.filter((row) => row[key] && locationRowMatchesParents(row, selects, level));
-      replaceLocationOptions(selects[level], originalOptions[level], allowedRows, level);
+      replaceLocationOptions(selects[level], originalOptions[level], allowedRows, level, retainSaved);
       syncLocationPrimary(level);
     };
 
@@ -2259,7 +2266,7 @@ function initDeferredLayoutPage() {
       });
     });
 
-    locationLevels.slice(1).forEach(refreshLocationLevel);
+    locationLevels.slice(1).forEach((level) => refreshLocationLevel(level, true));
     syncLocationPrimaries();
   });
 
