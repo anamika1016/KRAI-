@@ -159,7 +159,17 @@ module Api
       end
 
       def find_api_visible_vrp(id)
-        (visible_vrps.to_a + approval_queue).uniq.find { |vrp| vrp.id == id.to_i }
+        record = visible_vrps.find_by(id: id.to_i)
+        return record if record
+
+        # Apply the same approval queue rules to this record only. Loading
+        # every JJ and building the entire queue for a detail request caused
+        # repeated approval scans when the app opened several records at once.
+        record = Vrp.find_by(id: id.to_i)
+        return unless record && approval_visible_after_sent?(record)
+        return record if admin_user? || current_user_in_approval_channel?(record)
+
+        nil
       end
 
       def find_api_manageable_vrp(id)

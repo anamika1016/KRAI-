@@ -61,6 +61,25 @@ class Api::V1::FarmerTargetApisControllerTest < ActionDispatch::IntegrationTest
     assert response.parsed_body["options"].key?("autofill")
   end
 
+  test "training list matches the web screen limit and permits the full list" do
+    time = Time.current + 1.day
+    ModuleRecord.insert_all!(801.times.map do |index|
+      { module_slug: "training-form", data: { "trainer_name" => "Trainer #{index}" },
+        created_at: time + index.seconds, updated_at: time + index.seconds }
+    end)
+
+    get "/api/v1/farmer-trainings", headers: auth_headers, as: :json
+    assert_response :success
+    assert_equal 800, response.parsed_body.fetch("count")
+    assert_equal 800, response.parsed_body.fetch("farmer_trainings").size
+    assert_equal "Trainer 800", response.parsed_body.fetch("farmer_trainings").first.dig("data", "trainer_name")
+
+    get "/api/v1/farmer-trainings", params: { all: 1 }, headers: auth_headers, as: :json
+    assert_response :success
+    assert_operator response.parsed_body.fetch("count"), :>=, 801
+    assert response.parsed_body.fetch("farmer_trainings").any? { |row| row.dig("data", "trainer_name") == "Trainer 0" }
+  end
+
   test "training and other target form options include FCO CC and agronomist names" do
     cc = User.create!(first_name: "Sausar", last_name: "CC", user_name: "sausar_cc",
       email: "sausar-cc@example.test", mobile_no: "9876500111", password: "secret",

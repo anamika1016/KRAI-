@@ -9,7 +9,13 @@ module Api
       PARAM_KEY = :farmer_training
 
       def index
-        render_list(RESOURCE_KEY)
+        records = farmer_target_api.training_list(request: request, show_all: params[:all].present?)
+        render json: {
+          success: true,
+          message: "#{RESOURCE_TITLE} list fetched successfully.",
+          RESOURCE_KEY => records,
+          count: records.size
+        }, status: :ok
       end
 
       def show

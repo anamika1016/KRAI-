@@ -104,11 +104,9 @@ class OfficeDashboardCalculator < ModulesController
   end
 
   def dashboard_fco_active_vrp_count(fco, month = nil, vrps = nil)
-    # Sausar's requirement card uses the web dashboard's distinct mapping count.
-    # Keep the other office and gender calculations as they were.
-    return super if FcoDirectory.id_for(fco).to_s == "1004"
-
-    dashboard_fco_active_vrp_records(fco, month, vrps).size
+    # The requirement cards use the web dashboard's distinct target-mapping
+    # count and fallback for every FCO, independently of the gender cards.
+    super
   end
 
   def dashboard_summary_target_sql_filters_base(**_options)

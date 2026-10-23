@@ -29,6 +29,26 @@ class FarmerTargetApi
       .map { |record| record_payload(record) }
   end
 
+  # Match the web Training Form List: select the latest screen window before
+  # applying its role visibility, then put pending edit requests first.
+  # The web's Show all link is available to API clients via all=1.
+  def training_list(request:, show_all: false)
+    scope = ModuleRecord.where(module_slug: "training-form").order(created_at: :desc, id: :desc)
+    scope = scope.limit(ModulesController::SCREEN_RECORD_LIMIT) unless show_all
+    records = scope.to_a
+    web = ModulesController.new
+    web.request = request
+    web.instance_variable_set(:@current_app_user, current_app_user)
+    web.instance_variable_set(:@slug, "training-form-list")
+    records.select! { |record| web.send(:target_record_visible?, record) }
+    pending_ids = TrainingEditApproval.summaries_for(current_app_user, pending_only: true)
+      .map { |revision| revision.data["record_id"].to_s }.to_set
+    records.sort_by! do |record|
+      [pending_ids.include?(record.id.to_s) ? 0 : 1, -(record.created_at || Time.at(0)).to_f, -record.id.to_i]
+    end
+    records.map { |record| record_payload(record) }
+  end
+
   def find(id)
     record = ModuleRecord.find_by(id: id, module_slug: @module_slug)
     return nil unless record && visible?(record)

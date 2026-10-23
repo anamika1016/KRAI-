@@ -120,6 +120,15 @@ class Api::V1::JeevikaJankarsControllerTest < ActionDispatch::IntegrationTest
     assert_equal vrp.id, response.parsed_body.dig("jeevika_jankar", "id")
   end
 
+  test "show does not expose another user's unsent record" do
+    other = create_admin_user(user_name: "other_jj_user", user_type: "user", role: "Agronomist")
+    vrp = create_vrp(name: "Private JJ", user_name: "private_jj", created_by_id: @user.id, status: 10)
+
+    get "/api/v1/jeevika-jankars/#{vrp.id}", headers: { "Authorization" => "Bearer #{ApiAuthToken.encode(other)}" }, as: :json
+
+    assert_response :not_found
+  end
+
   test "update edits manageable jeevika jankar without clearing omitted fields" do
     vrp = create_vrp(
       name: "Old JJ Name",
