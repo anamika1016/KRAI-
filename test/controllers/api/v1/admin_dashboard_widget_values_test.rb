@@ -44,7 +44,7 @@ class Api::V1::AdminDashboardWidgetValuesTest < ActionDispatch::IntegrationTest
       ModuleRecord.create!(module_slug: "jeevika-jankar-bill-process",
         data: { "select_vrp" => @vrp.id.to_s, "status" => "Final Approved" }.merge(flags))
     end
-    filters = @filters.merge(month: "December", main_activity: "No matching targets")
+    filters = @filters.merge(month: "June", main_activity: "No matching targets")
     { "bill_approved" => approved, "bill_pending" => pending }.each do |widget, bill|
       assert_equal 1, widget_value(widget, filters)
       get "/api/v1/admin-dashboard/lists/#{widget}", params: filters, headers: @headers
@@ -57,9 +57,16 @@ class Api::V1::AdminDashboardWidgetValuesTest < ActionDispatch::IntegrationTest
     web = ModulesController.new
     web.request = ActionDispatch::TestRequest.create
     web.params = ActionController::Parameters.new(filters)
+    web.instance_variable_set(:@dashboard_month_filter_value, "June")
     web.define_singleton_method(:current_app_user) { { "user_type" => "admin" } }
     billing = web.send(:dashboard_cards).find { |card| card[:title] == "Jeevika Jankar Billing" }
     assert_equal [1, 1], billing.fetch(:items).map { |item| item.fetch(:value) }
+    %w[bill_approved bill_pending].each do |widget|
+      assert_equal 0, widget_value(widget, filters.merge(month: "December"))
+      get "/api/v1/admin-dashboard/lists/#{widget}", params: filters.merge(month: "December"), headers: @headers
+      assert_response :success
+      assert_empty response.parsed_body.fetch("records")
+    end
   end
 
   test "mapped indicator widgets respect selected month including all months" do
@@ -68,6 +75,13 @@ class Api::V1::AdminDashboardWidgetValuesTest < ActionDispatch::IntegrationTest
         assert_equal expected, widget_value(widget, @filters.merge(month: month)), "#{widget}: #{month}"
       end
     end
+  end
+
+  test "target records list uses the same assignment grouping as the dashboard count" do
+    expected = widget_value("target_records", @filters.merge(month: "August"))
+    get "/api/v1/admin-dashboard/lists/target_records", params: @filters.merge(month: "August"), headers: @headers
+    assert_response :success
+    assert_equal expected, response.parsed_body.fetch("records").size
   end
 
   test "mapped indicator lists return the same row count the widget shows" do

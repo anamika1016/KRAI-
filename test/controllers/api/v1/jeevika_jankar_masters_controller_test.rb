@@ -37,6 +37,21 @@ class Api::V1::JeevikaJankarMastersControllerTest < ActionDispatch::IntegrationT
     assert_equal [ "Patna" ], response.parsed_body["districts"].map { |row| row["district_name"] }
   end
 
+  test "all list preserves active and case insensitive filter behavior" do
+    active = ModuleRecord.create!(module_slug: "lg-directory-list", data: {
+      "state" => " Bihar ", "state_name" => "Bihar", "district_name" => "Patna", "status" => " active "
+    })
+    inactive = ModuleRecord.create!(module_slug: "lg-directory-list", data: {
+      "state" => "Bihar", "state_name" => "Bihar", "district_name" => "Gaya", "status" => "Inactive"
+    })
+    get "/api/v1/jeevika-jankar-masters/all-list", params: { state: "bihar" }, headers: @headers
+    assert_response :success
+    assert_equal [active.id], response.parsed_body.fetch("all_list").map { |row| row["id"] }
+    get "/api/v1/jeevika-jankar-masters/all-list", params: { state: "bihar", include_inactive: true }, headers: @headers
+    assert_response :success
+    assert_equal [active.id, inactive.id].sort, response.parsed_body.fetch("all_list").map { |row| row["id"] }.sort
+  end
+
   test "creates jeevika jankar type without module web action" do
     assert_difference("ModuleRecord.where(module_slug: 'add-vrp-type').count", 1) do
       post "/api/v1/jeevika-jankar-types",

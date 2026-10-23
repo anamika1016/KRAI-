@@ -4,7 +4,14 @@ module Api
       include VrpAccess
 
       def index
-        rows = approval_queue.map { |vrp| approval_queue_row_payload(vrp) }
+        # The queue checks history for every JJ. Read it once per request,
+        # retaining the same ordering and Ruby ID conversion as the web path.
+        @approval_history_for_cache = ModuleRecord.where(module_slug: "vrp-approval-history")
+          .order(created_at: :asc).to_a.group_by { |record| record.data["vrp_id"].to_i }
+        Vrp.pluck(:id).each { |id| @approval_history_for_cache[id] ||= [] }
+        queue = approval_queue
+        preload_vrp_creator_lookup_data!(queue)
+        rows = queue.map { |vrp| approval_queue_row_payload(vrp) }
 
         render json: {
           success: true,

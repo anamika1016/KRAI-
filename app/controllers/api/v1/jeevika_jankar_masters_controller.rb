@@ -122,6 +122,8 @@ module Api
 
       def render_master(resource_name)
         slug, fields = MASTER_CONFIG.fetch(resource_name)
+        return render_all_list(slug, fields) if resource_name == "all_list"
+
         records = ModuleRecord.where(module_slug: slug).order(created_at: :desc)
         records = records.select { |record| active_record?(record) } unless include_inactive?
         records = records.select { |record| matches_filters?(record) }
@@ -137,6 +139,20 @@ module Api
         response[:jeevika_jankar_types] = rows if resource_name == "types"
 
         render json: response, status: :ok
+      end
+
+      def render_all_list(slug, fields)
+        rows = ModuleRecord.where(module_slug: slug).order(created_at: :desc).pluck(:id, :data).filter_map do |id, data|
+          status = data["status"].to_s.strip
+          next unless include_inactive? || status.blank? || status.casecmp("active").zero?
+          next unless filter_keys.all? do |key|
+            requested = params[key].to_s.strip
+            requested.blank? || data[key].to_s.strip.casecmp(requested).zero?
+          end
+
+          fields.each_with_object({ id: id }) { |field, result| result[field] = data[field] }
+        end
+        render json: { success: true, message: "All list fetched successfully.", all_list: rows, count: rows.size }, status: :ok
       end
 
       def record_payload(record, fields)

@@ -214,7 +214,7 @@ module Api
         payload = cache_admin_dashboard_payload(billing ? "billing-widgets" : "fco-gender-widgets") do
           web = mobile_participation_calculator
           if billing
-            bills = web.send(:dashboard_billing_records)
+            bills = admin_dashboard_bills_for_month(web, web.send(:dashboard_billing_records))
             values = {
               "bill_approved" => bills.count { |bill| web.send(:dashboard_bill_approved?, bill) },
               "bill_pending" => bills.count { |bill| web.send(:dashboard_bill_pending?, bill) }
@@ -223,7 +223,7 @@ module Api
             context = prepare_lightweight_admin_dashboard_context
             web = context[:web]
             vrps = web.send(:dashboard_vrps)
-            gender_month = params[:month].presence || params[:training_month].presence || DashboardDefaults.month
+            gender_month = params[:month].presence || params[:training_month].presence || "August"
             items = FcoDirectory.names.flat_map do |fco|
               active = web.send(:dashboard_fco_active_vrp_records, fco, gender_month, vrps)
               web.send(:dashboard_jj_requirement_items, fco, vrps, context[:targets]) + [
@@ -646,7 +646,7 @@ module Api
         user_key = current_api_user_payload.slice("id", "user_id", "username", "user_name", "user_type").sort.to_h
         # Keep the API cache namespace aligned with dashboard scope changes so
         # an old zero-result response is never returned after deployment.
-        ["api-v1-admin-dashboard-work-status-v15", Date.current.to_s, suffix, user_key, filters, version_parts].to_json
+        ["api-v1-admin-dashboard-work-status-v16", Date.current.to_s, suffix, user_key, filters, version_parts].to_json
       end
 
       def admin_dashboard_cache_filters
@@ -800,13 +800,26 @@ module Api
 
         months = web.send(:dashboard_month_options_for_targets, targets)
         default_month = web.send(:default_vrp_dashboard_month, months)
-        participation_value = filter_param(:participation_month, :training_month) || default_month
-        participation_month = participation_value == "all" ? nil : participation_value
-        participation_fcoc = filter_param(:participation_fcoc, :training_fcoc)
+        participation_value = if %i[participation_month training_month month].any? { |key| params.key?(key) }
+          filter_param(:participation_month, :training_month, :month) || "all"
+        else
+          selected_month.presence || default_month
+        end
+        participation_month = participation_value.to_s.casecmp("all").zero? ? nil : participation_value
+        participation_fcoc = if params.key?(:participation_fcoc) || params.key?(:training_fcoc)
+          filter_param(:participation_fcoc, :training_fcoc)
+        else
+          selected_fcoc
+        end
         participation_records = web.send(:dashboard_training_participation_records, month_name: participation_month, fcoc_name: participation_fcoc)
         population = web.send(:training_participation_population_rows,
           month_name: participation_month, fcoc_name: participation_fcoc, records: participation_records)
         participation_counts = web.send(:training_participation_status_counts_from_rows, population)
+        mapped_count, = web.send(:farmer_training_mapped_farmer_count_and_popups, month_name: participation_month, fcoc_name: participation_fcoc)
+        red_count, = web.send(:farmer_training_no_training_count_and_popups, month_name: participation_month, fcoc_name: participation_fcoc)
+        yellow_count, = web.send(:farmer_training_yellow_farmer_count_and_popups, month_name: participation_month, fcoc_name: participation_fcoc)
+        green_count, = web.send(:farmer_training_green_farmer_count_and_popups, month_name: participation_month, fcoc_name: participation_fcoc)
+        participation_counts = participation_counts.merge(total: mapped_count, red: red_count, pending: red_count, yellow: yellow_count, green: green_count)
 
         weekly_value = filter_param(:weekly_target_month) || default_month
         weekly_month = weekly_value == "all" ? nil : weekly_value
@@ -894,7 +907,7 @@ module Api
             selected_fcoc: participation_fcoc,
             month_options: ["all"] + months,
             fco_options: options[:fcos],
-            total_unique_farmers_distinct: web.send(:training_afl_farmer_rows_for_participation, month_name: participation_month, fcoc_name: participation_fcoc).size,
+            total_unique_farmers_distinct: mapped_count,
             total_training_farmer: web.send(:training_total_farmer_count_from_records, participation_records),
             training_unique_farmers: web.send(:training_unique_farmer_count_from_records, participation_records),
             green: participation_counts[:green].to_i,
@@ -1017,6 +1030,16 @@ module Api
         web.send(:dashboard_billing_records)
       end
 
+      def admin_dashboard_bills_for_month(web, bills)
+        month = params.key?(:month) ? filter_param(:month) : DashboardDefaults.month
+        return bills if month.blank?
+
+        bills.select do |bill|
+          web.send(:normalize_dashboard_text, bill.data["bill_month"].presence || bill.data["select_bill_month"]) ==
+            web.send(:normalize_dashboard_text, month)
+        end
+      end
+
       def exact_admin_card_data(web, vrps, targets, all_targets, bills)
         assigned_vrp_ids = all_targets.filter_map { |target| target.vrp_id.to_s.presence }.uniq
         activity_vrp_ids = all_targets.filter_map do |target|
@@ -1025,6 +1048,9 @@ module Api
         activities = targets.map do |target|
           [web.send(:normalize_dashboard_text, target.main_activity_name), web.send(:normalize_dashboard_text, target.activity_name)]
         end.reject { |main, sub| main.blank? && sub.blank? }.uniq.size
+
+        month_bills = admin_dashboard_bills_for_month(web, bills)
+        gender_month = params[:month].presence || params[:training_month].presence || "August"
 
         {
           registration: {
@@ -1040,13 +1066,11 @@ module Api
           },
           billing: {
             level_2_users: web.send(:user_hierarchy_dashboard_summary)[:level_2_total],
-            bill_approved: bills.count { |bill| web.send(:dashboard_bill_approved?, bill) },
-            bill_pending: bills.count { |bill| web.send(:dashboard_bill_pending?, bill) }
+            bill_approved: month_bills.count { |bill| web.send(:dashboard_bill_approved?, bill) },
+            bill_pending: month_bills.count { |bill| web.send(:dashboard_bill_pending?, bill) }
           },
           fco_wise_jeevika_jankar: FcoDirectory.names.map do |fco_name|
-            matching = vrps.select do |vrp|
-              web.send(:normalize_dashboard_text, vrp.fcoc).include?(web.send(:normalize_dashboard_text, fco_name))
-            end
+            matching = web.send(:dashboard_fco_active_vrp_records, fco_name, gender_month, vrps)
             {
               fco: fco_name,
               male: matching.count { |vrp| web.send(:normalize_dashboard_text, vrp.gender) == "male" },
@@ -1238,7 +1262,7 @@ module Api
         when "pending_approval"
           web.send(:dashboard_pending_approval_vrps, vrps).map { |vrp| admin_vrp_list_row(vrp, assigned_ids, activity_ids) }
         when "target_records"
-          grouped_admin_targets(targets)
+          grouped_admin_targets(targets, web)
         when "other_activities"
           web.send(:dashboard_other_activity_rows, targets)
         when "total_ics_count"
@@ -1269,9 +1293,9 @@ module Api
             { id: index + 1, name: row[0], reports_to: row[1], level: row[2], assignment_status: "Mapped" }
           end
         when "bill_approved"
-          bills.select { |bill| web.send(:dashboard_bill_approved?, bill) }.map { |bill| admin_bill_list_row(bill, web) }
+          admin_dashboard_bills_for_month(web, bills).select { |bill| web.send(:dashboard_bill_approved?, bill) }.map { |bill| admin_bill_list_row(bill, web) }
         when "bill_pending"
-          bills.select { |bill| web.send(:dashboard_bill_pending?, bill) }.map { |bill| admin_bill_list_row(bill, web) }
+          admin_dashboard_bills_for_month(web, bills).select { |bill| web.send(:dashboard_bill_pending?, bill) }.map { |bill| admin_bill_list_row(bill, web) }
         when "fco_sausar", "fco_turekela"
           fco_name = list_type.delete_prefix("fco_")
           vrps.select { |vrp| web.send(:normalize_dashboard_text, vrp.fcoc).include?(fco_name) }
@@ -1353,23 +1377,8 @@ module Api
         }
       end
 
-      def grouped_admin_targets(targets)
-        Array(targets).group_by do |target|
-          [
-            target.vrp_id,
-            target.fco_name.presence || target.fco_id,
-            target.ics_name.presence || target.ics_id,
-            target.village_name.presence || target.village_id,
-            target.month_name,
-            target.completion_date,
-            target.opg_training_target.to_s,
-            target.week_wise_opg_target.to_s,
-            target.input_demo_inm_target.to_s,
-            target.input_demo_pm_target.to_s,
-            target.ffs_target.to_s,
-            Array(target.afl_ids).map(&:to_s).reject(&:blank?).sort
-          ]
-        end.values.map do |rows|
+      def grouped_admin_targets(targets, web)
+        web.send(:dashboard_target_assignment_groups, targets).map do |rows|
           first = rows.first
           admin_target_list_row(first).merge(
             target_mapping_ids: rows.map(&:id),
