@@ -17,7 +17,12 @@ module Api
       def recent
         mode = requested_summary_mode
         page, per_page = pagination_values
-        if mode == "raw"
+        if mode == "raw" && admin_recent_grouped?
+          groups = admin_recent_groups
+          total_count = groups.size
+          selected_groups = groups.slice((page - 1) * per_page, per_page) || []
+          paged_records = admin_grouped_records(selected_groups)
+        elsif mode == "raw"
           scope = web_filtered_mappings_scope
           total_count = scope.except(:order).count
           mappings = scope.includes(:vrp, :vrp_ics_mapping).offset((page - 1) * per_page).limit(per_page).to_a
@@ -93,6 +98,43 @@ module Api
       end
 
       private
+
+      # The admin web table groups activity rows into assignments before it
+      # paginates. Keep the same grouping, but load associations and farmer
+      # details only for the requested page.
+      def admin_recent_grouped?
+        params[:summary_mode].blank? && params[:list_type].blank? && web_target_mappings_controller.send(:admin_login?)
+      end
+
+      def admin_recent_groups
+        controller = web_target_mappings_controller
+        columns = %i[id mapping_group_key vrp_id fco_name fco_id ics_name ics_id village_name village_id
+          month_name completion_date opg_training_target week_wise_opg_target input_demo_inm_target
+          input_demo_pm_target ffs_target afl_ids main_activity_name activity_name updated_at]
+        mappings = web_filtered_mappings_scope.select(*columns).to_a
+        counts = controller.send(:target_mapping_group_key_counts, mappings)
+        mappings.group_by { |mapping| controller.send(:target_group_signature, mapping, counts) }.values.map { |group| group.map(&:id) }
+      end
+
+      def admin_grouped_records(groups)
+        mappings = TargetMapping.where(id: groups.flatten).includes(:vrp, :vrp_ics_mapping).index_by(&:id)
+        grouped = groups.map { |ids| ids.filter_map { |id| mappings[id] } }.reject(&:empty?)
+        farmer_ids = grouped.flatten.flat_map { |mapping| Array(mapping.afl_ids) }.map(&:to_s).compact_blank.uniq
+        farmers = Afl.where(id: farmer_ids).index_by { |farmer| farmer.id.to_s }
+        grouped.map do |rows|
+          ids = rows.flat_map { |mapping| Array(mapping.afl_ids) }.map(&:to_s).compact_blank.uniq
+          weeks = rows.map { |mapping| Array(mapping.weekly_target_values).map(&:to_i) }
+          mapping_payload(rows.first, farmers).merge(
+            target_mapping_ids: rows.map(&:id),
+            main_activities: rows.map(&:main_activity_name).compact_blank.uniq,
+            sub_activities: rows.map(&:activity_name).compact_blank.uniq,
+            farmer_target: rows.map { |mapping| mapping.target_quantity.to_f }.max,
+            weekly_targets: 4.times.to_h { |index| ["week_#{index + 1}".to_sym, weeks.map { |values| values[index].to_i }.max] },
+            farmer_count: ids.size,
+            farmers: ids.map { |id| farmer_payload(id, farmers[id]) }
+          )
+        end
+      end
 
       def web_filtered_mappings(apply_search: true)
         web_filtered_mappings_scope(apply_search: apply_search).includes(:vrp, :vrp_ics_mapping).to_a

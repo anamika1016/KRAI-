@@ -499,7 +499,7 @@ module Api
         # Bump this namespace whenever the dashboard scope calculation changes.
         # Otherwise a previously cached empty payload can outlive a deployment
         # even though the underlying TargetMapping records are available.
-        ["api-v1-user-dashboard-office-v15", Date.current.to_s, user_key, filters, version_parts].to_json
+        ["api-v1-user-dashboard-office-v16", Date.current.to_s, user_key, filters, version_parts].to_json
       end
 
       def cache_table_version(model)

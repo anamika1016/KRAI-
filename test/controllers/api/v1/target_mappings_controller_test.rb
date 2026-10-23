@@ -143,6 +143,27 @@ class Api::V1::TargetMappingsControllerTest < ActionDispatch::IntegrationTest
     assert_equal body.fetch("records"), body.fetch("mapped_farmers")
   end
 
+  test "admin recent groups activity mappings like the web list before pagination" do
+    admin = User.create!(first_name: "Mapping", last_name: "Admin", user_name: "mapping_admin",
+      email: "mapping-admin@example.test", mobile_no: "9876500199", password: "secret", user_type: "admin", status: "Active")
+    first = create_mapping(main: "Farmers' Training", sub: "Soil", farmers: [@farmer_1])
+    second = create_mapping(main: "Farmers' Training", sub: "Water", farmers: [@farmer_2])
+    first.update!(mapping_group_key: "same-assignment")
+    second.update!(mapping_group_key: "same-assignment")
+    third = create_mapping(main: "Other", sub: "Other", farmers: [@farmer_3])
+    get "/api/v1/target-mappings/recent", params: { month: "All", per_page: 100 },
+      headers: { "Authorization" => "Bearer #{ApiAuthToken.encode(admin)}" }, as: :json
+
+    assert_response :success
+    body = response.parsed_body
+    assert_equal 2, body.fetch("count")
+    group = body.fetch("records").find { |row| row.fetch("target_mapping_ids").include?(first.id) }
+    assert_equal [first.id, second.id].sort, group.fetch("target_mapping_ids").sort
+    assert_equal %w[Soil Water], group.fetch("sub_activities").sort
+    assert_equal 2, group.fetch("farmer_count")
+    assert body.fetch("records").any? { |row| row.fetch("target_mapping_ids").include?(third.id) }
+  end
+
   private
 
   def create_mapping(main:, sub:, farmers:, month: "August", fco_id: "1006", fco_name: "Turekela")
