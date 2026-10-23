@@ -16,10 +16,17 @@ module Api
       # the same permitted VRPs, FCO/ICS filters and activity grouping.
       def recent
         mode = requested_summary_mode
-        mappings = web_filtered_mappings
-        records = mode == "raw" ? raw_records(mappings) : summary_records(mappings, mode)
         page, per_page = pagination_values
-        paged_records = records.slice((page - 1) * per_page, per_page) || []
+        if mode == "raw"
+          scope = web_filtered_mappings_scope
+          total_count = scope.except(:order).count
+          mappings = scope.includes(:vrp, :vrp_ics_mapping).offset((page - 1) * per_page).limit(per_page).to_a
+          paged_records = raw_records(mappings)
+        else
+          records = summary_records(web_filtered_mappings, mode)
+          total_count = records.size
+          paged_records = records.slice((page - 1) * per_page, per_page) || []
+        end
 
         render json: {
           success: true,
@@ -27,12 +34,12 @@ module Api
           summary_mode: mode,
           target_mappings: paged_records,
           records: paged_records,
-          count: records.size,
+          count: total_count,
           pagination: {
             page: page,
             per_page: per_page,
-            total_count: records.size,
-            total_pages: (records.size.to_f / per_page).ceil
+            total_count: total_count,
+            total_pages: (total_count.to_f / per_page).ceil
           }
         }, status: :ok
       end
@@ -43,19 +50,31 @@ module Api
       # `web_filtered_mappings` applies the exact web visibility policy: an
       # admin receives all mappings, while a JJ receives only their own.
       def mapped_farmers
-        rows = filtered_mapped_farmer_rows
         page, per_page = pagination_values
-        paged_rows = rows.slice((page - 1) * per_page, per_page) || []
+        if params[:search].to_s.strip.present?
+          rows = filtered_mapped_farmer_rows
+          total_count = rows.size
+          paged_rows = rows.slice((page - 1) * per_page, per_page) || []
+        else
+          mappings = web_filtered_mappings(apply_search: false)
+          references = mappings.flat_map do |mapping|
+            Array(mapping.afl_ids).map(&:to_s).compact_blank.uniq.map { |id| [mapping, id] }
+          end
+          total_count = references.size
+          page_references = references.slice((page - 1) * per_page, per_page) || []
+          farmers = Afl.where(id: page_references.map(&:last).uniq).index_by { |farmer| farmer.id.to_s }
+          paged_rows = page_references.map { |mapping, id| mapped_farmer_payload(mapping, farmers[id], id) }
+        end
 
         render json: {
           success: true,
           message: "Jeevika Jankar mapped farmers fetched successfully.",
           records: paged_rows,
           mapped_farmers: paged_rows,
-          count: rows.size,
+          count: total_count,
           filters: mapped_farmer_filter_payload,
           export_endpoint: "#{request.base_url}/api/v1/target-mappings/mapped-farmers/export",
-          pagination: pagination_payload(rows.size, page, per_page)
+          pagination: pagination_payload(total_count, page, per_page)
         }, status: :ok
       end
 
@@ -76,11 +95,15 @@ module Api
       private
 
       def web_filtered_mappings(apply_search: true)
+        web_filtered_mappings_scope(apply_search: apply_search).includes(:vrp, :vrp_ics_mapping).to_a
+      end
+
+      def web_filtered_mappings_scope(apply_search: true)
         controller = web_target_mappings_controller
         scope = controller.send(:filtered_visible_target_mappings)
         scope = merge_hierarchy_target_mappings(scope, controller)
         scope = apply_search(scope) if apply_search && params[:search].present?
-        scope.includes(:vrp, :vrp_ics_mapping).order("target_mappings.updated_at DESC").to_a
+        scope.order("target_mappings.updated_at DESC")
       end
 
       def filtered_mapped_farmer_rows
@@ -222,7 +245,7 @@ module Api
         hierarchy_scope = hierarchy_scope.where("LOWER(BTRIM(fco_id)) IN (:fcoc) OR LOWER(BTRIM(fco_name)) IN (:fcoc)", fcoc: fco_filter_values) if fco_filter_values.any?
         hierarchy_scope = hierarchy_scope.where("LOWER(BTRIM(ics_id)) = :ics OR LOWER(BTRIM(ics_name)) = :ics", ics: values[:ics].to_s.strip.downcase) if values[:ics].present?
 
-        TargetMapping.where(id: own_scope.pluck(:id) + hierarchy_scope.pluck(:id))
+        TargetMapping.where(id: own_scope.select(:id)).or(TargetMapping.where(id: hierarchy_scope.select(:id)))
       end
 
       # The app sends `fco=All` and `ics=All`; the web form omits those values.

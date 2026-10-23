@@ -113,6 +113,36 @@ class Api::V1::TargetMappingsControllerTest < ActionDispatch::IntegrationTest
     assert_equal [august.id, july.id].sort, response.parsed_body["records"].map { |row| row["id"] }.sort
   end
 
+  test "raw recent pagination returns farmers only for the requested page" do
+    first = create_mapping(main: "Farmers' Training", sub: "Soil", farmers: [@farmer_1])
+    second = create_mapping(main: "Farmers' Training", sub: "Water", farmers: [@farmer_2], month: "July")
+    first.update_columns(updated_at: 2.days.ago)
+    second.update_columns(updated_at: 1.day.ago)
+
+    get "/api/v1/target-mappings/recent", params: { month: "All", page: 2, per_page: 1 }, headers: @headers, as: :json
+
+    assert_response :success
+    body = response.parsed_body
+    assert_equal 2, body.fetch("count")
+    assert_equal 2, body.dig("pagination", "total_pages")
+    assert_equal [first.id], body.fetch("records").map { |row| row.fetch("id") }
+    assert_equal [@farmer_1.id.to_s], body.fetch("records").first.fetch("farmers").map { |farmer| farmer.fetch("id") }
+    assert_equal body.fetch("records"), body.fetch("target_mappings")
+  end
+
+  test "mapped farmer pagination preserves total and requested farmer" do
+    mapping = create_mapping(main: "Farmers' Training", sub: "Soil", farmers: [@farmer_1, @farmer_2])
+    get "/api/v1/target-mappings/mapped-farmers", params: { month: "All", page: 2, per_page: 1 }, headers: @headers, as: :json
+
+    assert_response :success
+    body = response.parsed_body
+    assert_equal 2, body.fetch("count")
+    assert_equal 2, body.dig("pagination", "total_pages")
+    assert_equal mapping.id.to_s, body.fetch("records").first.fetch("target_mapping_id")
+    assert_equal @farmer_2.id.to_s, body.fetch("records").first.fetch("farmer_id")
+    assert_equal body.fetch("records"), body.fetch("mapped_farmers")
+  end
+
   private
 
   def create_mapping(main:, sub:, farmers:, month: "August", fco_id: "1006", fco_name: "Turekela")
