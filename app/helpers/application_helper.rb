@@ -172,7 +172,8 @@ module ApplicationHelper
       links: [
         ["Parent Office Add", :module, "parent-office-add"],
         ["Office Category Add", :module, "office-category-add"],
-        ["Sub Office Add", :module, "office-mapping-add"]
+        ["Sub Office Add", :module, "office-mapping-add"],
+        ["ICS TO MAPPING", :module, "ics-to-mapping"]
       ]
     },
     {

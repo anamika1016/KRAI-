@@ -28,6 +28,7 @@ class ModulesController < ApplicationController
                 :jeevika_completed_payment_month_options, :jeevika_completed_payment_date_options,
                 :jeevika_payment_transaction_types,
                 :jeevika_bill_vrp, :bill_display_date, :bill_display_datetime,
+                :ics_to_mapping_rows_json,
                 :approval_sequence_from_level, :module_record_field_value, :module_upload_public_url,
                 :module_upload_public_urls,
                 :approval_level_display_label, :approval_level_label_for_sequence,
@@ -408,6 +409,12 @@ class ModulesController < ApplicationController
       group: "Office Setup",
       purpose: "Office name wise sub office maintain karne ke liye.",
       fields: ["Stakeholder Category", "Parent Category", "Office Name", "Sub Office Name", "Office Level", "Status"]
+    },
+    "ics-to-mapping" => {
+      title: "ICS TO MAPPING",
+      group: "Office Setup",
+      purpose: "ICS Name, FCO Name aur TO Name ki mapping maintain karne ke liye.",
+      fields: ["ICS Name", "FCO Name", "TO Name", "Status"]
     },
     "add-vrp-type" => {
       title: "Add Jeevika Jankar Type",
@@ -14192,6 +14199,7 @@ class ModulesController < ApplicationController
   end
 
   def module_select_field?(field)
+    return true if current_slug == "ics-to-mapping" && ["ICS Name", "FCO Name", "TO Name"].include?(field)
     return true if jeevika_jankar_transfer_field?(field)
     return false if current_slug == "training-topic-mapping" && ["Department", "Training Topic", "Training Subject"].include?(field)
     return false if record_source_slug == "training-form" && ["Trainee Department", "FCO Name", "External Input", "PAPL Staff Name"].include?(field)
@@ -14207,6 +14215,7 @@ class ModulesController < ApplicationController
   end
 
   def module_field_options(field)
+    return ics_to_mapping_field_options(field) if current_slug == "ics-to-mapping"
     return jeevika_jankar_transfer_field_options(field) if jeevika_jankar_transfer_field?(field)
     return parent_office_parent_options if current_slug == "parent-office-add" && field == "Parent Office"
     return training_target_field_options(field) if training_target_field?(field)
@@ -14224,6 +14233,70 @@ class ModulesController < ApplicationController
     end
 
     generic_field_options(field)
+  end
+
+  def ics_to_mapping_field_options(field)
+    rows = afl_ics_to_mapping_rows
+    return rows.filter_map { |row| row[:ics_name].presence }.uniq if field == "ICS Name"
+
+    selected_ics = @record&.data&.[]("ics_name").presence || params.dig(:module_record, :ics_name).presence
+    rows.select! { |row| normalize_dashboard_text(row[:ics_name]) == normalize_dashboard_text(selected_ics) } if selected_ics.present?
+    return rows.filter_map { |row| row[:fco_name].presence }.uniq if field == "FCO Name"
+
+    selected_fco = @record&.data&.[]("fco_name").presence || params.dig(:module_record, :fco_name).presence
+    rows.select! { |row| normalize_dashboard_text(row[:fco_name]) == normalize_dashboard_text(selected_fco) } if selected_fco.present?
+    rows.filter_map { |row| row[:to_name].presence }.uniq
+  end
+
+  def ics_to_mapping_rows_json
+    afl_ics_to_mapping_rows.map do |row|
+      { ics_name: row[:ics_name], fco_name: row[:fco_name], to_name: row[:to_name] }
+    end
+  end
+
+  def afl_ics_to_mapping_rows
+    return [] unless model_ready?(:Afl)
+
+    @afl_ics_to_mapping_rows ||= begin
+      sub_offices = ics_to_mapping_sub_offices
+      Afl.where.not(ics_id: [nil, ""]).where.not(fco_id: [nil, ""])
+        .distinct
+        .pluck(:ics_name, :ics_id, :fco, :fco_id)
+        .map do |ics_name, ics_id, fco_name, fco_id|
+          fco = FcoDirectory.display_name_for(fco_name.presence || fco_id)
+          {
+            ics_name: ics_name.presence || ics_id,
+            fco_name: fco,
+            to_name: sub_offices[normalize_dashboard_text(FcoDirectory.bare_name(fco))]
+          }
+        end
+        .uniq { |row| row.values.map { |value| normalize_dashboard_text(value) } }
+        .sort_by { |row| row.values.map { |value| normalize_dashboard_text(value) } }
+    end
+  end
+
+  def ics_to_mapping_sub_offices
+    return {} unless model_ready?(:ModuleRecord)
+
+    ModuleRecord.where(module_slug: "office-mapping-add").pluck(:data).each_with_object({}) do |raw_data, options|
+      data = raw_data.is_a?(String) ? JSON.parse(raw_data) : raw_data
+      next unless data.is_a?(Hash) && active_module_record_data?(data)
+
+      fco_name = data["office_name"].presence || data["office"].presence || data["parent_category"]
+      to_name = data["sub_office_name"].presence || data["office_mapping"].presence || data["office"]
+      next if fco_name.blank? || to_name.blank?
+
+      key = normalize_dashboard_text(FcoDirectory.bare_name(fco_name))
+      options[key] ||= to_name.to_s.strip
+    rescue JSON::ParserError
+      next
+    end
+  end
+
+  def active_module_record_data?(data)
+    status = data["status"].to_s.strip.downcase
+    !%w[inactive deleted].include?(status) && !%w[1 true yes deleted].include?(data["deleted"].to_s.strip.downcase) &&
+      !%w[1 true yes deleted].include?(data["is_deleted"].to_s.strip.downcase)
   end
 
   def training_target_field?(field)

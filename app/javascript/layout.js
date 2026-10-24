@@ -1357,6 +1357,46 @@ function initDeferredLayoutPage() {
     }
   };
 
+  document.querySelectorAll("[data-ics-to-mapping]").forEach((formShell) => {
+    if (formShell.dataset.icsToMappingReady === "true") return;
+
+    const fcoSelect = formShell.querySelector("[data-ics-to-fco]");
+    const icsSelect = formShell.querySelector("[data-ics-to-ics]");
+    const toSelect = formShell.querySelector("[data-ics-to-to]");
+    if (!fcoSelect || !icsSelect || !toSelect) return;
+
+    let mappings = [];
+    try {
+      mappings = JSON.parse(formShell.dataset.icsToMap || "[]");
+    } catch (_error) {
+      mappings = [];
+    }
+
+    const entriesForIcs = (ics) => mappings.filter((mapping) => normalizeOption(mapping.ics_name) === normalizeOption(ics));
+    const entriesForFco = (fco) => mappings.filter((mapping) => normalizeOption(mapping.fco_name) === normalizeOption(fco));
+    const refreshFco = (selected = "") => {
+      const values = uniquePresent(entriesForIcs(icsSelect.value).map((mapping) => mapping.fco_name))
+        .map((value) => makeOption(value, value));
+      replaceSelectOptions(fcoSelect, values, "Select FCO Name", selected);
+      refreshTo("");
+    };
+    const refreshTo = (selected = "") => {
+      const values = uniquePresent(entriesForFco(fcoSelect.value)
+        .filter((mapping) => normalizeOption(mapping.ics_name) === normalizeOption(icsSelect.value))
+        .map((mapping) => mapping.to_name))
+        .map((value) => makeOption(value, value));
+      replaceSelectOptions(toSelect, values, "Select TO Name", selected);
+    };
+
+    const selectedFco = fcoSelect.value;
+    const selectedTo = toSelect.value;
+    icsSelect.addEventListener("change", () => refreshFco(""));
+    fcoSelect.addEventListener("change", () => refreshTo(""));
+    refreshFco(selectedFco);
+    refreshTo(selectedTo);
+    formShell.dataset.icsToMappingReady = "true";
+  });
+
   document.querySelectorAll("[data-user-role-form]").forEach((formShell) => {
     const stakeholderSelect = formShell.querySelector("[data-role-stakeholder-select]");
     const stakeholderRoleSelect = formShell.querySelector("[data-stakeholder-role-select]");
