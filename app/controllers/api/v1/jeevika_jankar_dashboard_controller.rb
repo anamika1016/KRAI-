@@ -865,7 +865,7 @@ module Api
         web_training_cards = web.send(:training_participation_dashboard_status_cards,
           participation_counts, month_name: participation_month, fcoc_name: participation_fcoc,
           week_number: dashboard_list_week_number)
-        web_group_items = web.send(:dashboard_cards).flat_map { |card| Array(card[:items]) }
+        web_group_items = admin_api_group_items(all_vrps, vrps, all_targets, targets, bills)
         other_totals = web.send(:dashboard_other_activity_totals, targets)
         other_section = admin_other_activity_section(other_totals)
         mobile_widget_values = (web_summary_cards + web_demo_cards + web_training_cards + web_group_items)
@@ -1078,6 +1078,23 @@ module Api
             }
           end
         }
+      end
+
+      # The Admin mobile API uses the API calculator for FCO/JJ groups so its
+      # Active and gender cards share the same approved, active JJ population.
+      # Other Admin dashboard calculations continue through the web calculator.
+      def admin_api_group_items(all_vrps, vrps, all_targets, targets, bills)
+        calculator = OfficeDashboardCalculator.new
+        calculator.request = request
+        calculator.params = params
+        calculator.instance_variable_set(:@current_app_user, current_api_user_payload)
+        calculator.instance_variable_set(:@dashboard_vrps, all_vrps)
+        calculator.instance_variable_set(:@dashboard_visible_vrp_ids, all_vrps.map(&:id))
+        calculator.apply_dashboard_scope(
+          vrps: vrps, targets: targets, bills: bills,
+          summary_vrps: all_vrps, summary_targets: all_targets
+        )
+        calculator.send(:dashboard_cards).flat_map { |card| Array(card[:items]) }
       end
 
       def admin_dashboard_list_catalog

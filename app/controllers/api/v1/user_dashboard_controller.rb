@@ -54,6 +54,9 @@ module Api
         payload = user_dashboard_list_payload(params[:list_type])
         return render json: { success: false, message: "Invalid dashboard list type.", available_list_types: user_dashboard_list_catalog.keys }, status: :unprocessable_entity unless payload
 
+        records = Array(payload[:records])
+        response_meta = payload.slice(:total_count, :page, :per_page)
+
         render json: {
           success: true,
           message: "#{payload[:title]} fetched successfully.",
@@ -61,8 +64,9 @@ module Api
           list_type: params[:list_type],
           title: payload[:title],
           filters: applied_filters,
-          count: payload[:records].size,
-          records: payload[:records],
+          count: response_meta[:total_count] || records.size,
+          records: records,
+          **response_meta,
           generated_at: Time.current.iso8601
         }
       end
@@ -215,23 +219,31 @@ module Api
               .pluck(:id, :farmer_name, :father_name, :mobile_no, :tracenet_no, *columns, :village_id, :village_name)
               .map { |row| dashboard_fco_display_row((%i[id farmer_name father_name mobile_no tracenet_no] + columns + %i[village_id village_name]).zip(row).to_h) }
           else
+            page = api_summary_list_page(type)
             if type == "summary_villages"
-              scope.where.not(village_id: [nil, ""])
+              village_scope = scope.where.not(village_id: [nil, ""])
                 .group(Arel.sql("LOWER(BTRIM(village_id))"))
                 .order(Arel.sql("LOWER(BTRIM(village_id))"))
-                .pluck(Arel.sql("MIN(fco_id)"), Arel.sql("MIN(fco)"), Arel.sql("MIN(fpo_id)"),
+              village_scope = village_scope.limit(page[:per_page]).offset(page[:offset]) if page
+              village_scope.pluck(Arel.sql("MIN(fco_id)"), Arel.sql("MIN(fco)"), Arel.sql("MIN(fpo_id)"),
                   Arel.sql("MIN(fpo_name)"), Arel.sql("MIN(ics_id)"), Arel.sql("MIN(ics_name)"),
                   Arel.sql("MIN(village_id)"), Arel.sql("MIN(village_name)"), Arel.sql("COUNT(tracenet_no)"))
                 .map { |row| dashboard_fco_display_row((%i[fco_id fco fpo_id fpo_name ics_id ics_name village_id village_name farmer_count]).zip(row).to_h) }
             else
-              scope.where.not(ics_id: [nil, ""])
+              ics_scope = scope.where.not(ics_id: [nil, ""])
                 .group(Arel.sql("LOWER(BTRIM(ics_id))"))
                 .order(Arel.sql("LOWER(BTRIM(ics_id))"))
-                .pluck(Arel.sql("MIN(fco_id)"), Arel.sql("MIN(fco)"), Arel.sql("MIN(fpo_id)"),
+              ics_scope = ics_scope.limit(page[:per_page]).offset(page[:offset]) if page
+              ics_scope.pluck(Arel.sql("MIN(fco_id)"), Arel.sql("MIN(fco)"), Arel.sql("MIN(fpo_id)"),
                   Arel.sql("MIN(fpo_name)"), Arel.sql("MIN(ics_id)"), Arel.sql("MIN(ics_name)"),
                   Arel.sql("COUNT(tracenet_no)"))
                 .map { |row| dashboard_fco_display_row((%i[fco_id fco fpo_id fpo_name ics_id ics_name farmer_count]).zip(row).to_h) }
             end
+          end
+          total_count = if type == "summary_ics"
+            calculator.send(:dashboard_total_afl_ics_count)
+          elsif type == "summary_villages"
+            calculator.send(:dashboard_total_afl_village_count)
           end
         elsif type == "other_activities"
           OfficeDashboardSections.new(calculator: calculator, targets: targets,
@@ -251,7 +263,18 @@ module Api
             rows.map { |vrp| admin_vrp_list_row(vrp, targets.map { |target| target.vrp_id.to_s }, []) }
           end
         end
-        { title: office_section_list_catalog.fetch(type), records: records }
+        page = api_summary_list_page(type)
+        { title: office_section_list_catalog.fetch(type), records: records, total_count: total_count || records.size,
+          page: page&.fetch(:page), per_page: page&.fetch(:per_page) }
+      end
+
+      def api_summary_list_page(type)
+        return unless action_name == "list" && %w[summary_ics summary_villages].include?(type)
+        return unless params.key?(:page) || params.key?(:per_page)
+
+        page = [params[:page].to_i, 1].max
+        per_page = [[params[:per_page].to_i.nonzero? || 100, 1].max, 500].min
+        { page: page, per_page: per_page, offset: (page - 1) * per_page }
       end
 
       # Imported farmer rows still carry the historic FCO name. Dashboard

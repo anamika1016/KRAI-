@@ -54,12 +54,11 @@ class OfficeDashboardCalculator < ModulesController
 
   def dashboard_cards
     cards = super.reject { |group| ["Gender Count", "FCO-wise JJ Requirement"].include?(group[:title]) }
-    # These two dashboard groups are organisation-wide reference data.  A CC,
-    # Agronomist or FCO-C user must see Sausar, Turekela, Direct to HO and any
-    # later configured FCO in the cards; their Target Mapping/API lists remain
-    # constrained by the normal authorised JJ scope.
-    vrps = model_ready?(:Vrp) ? Vrp.where.not(fcoc: [nil, ""]).to_a : Array(@office_authorized_vrps || dashboard_vrps)
-    targets = model_ready?(:TargetMapping) ? TargetMapping.includes(:vrp).to_a : Array(@office_summary_targets || @filtered_targets)
+    # Match the web dashboard's authorized JJ scope. Loading every JJ here
+    # inflated API Active counts for office users and made card/list counts
+    # disagree with their web dashboard.
+    vrps = Array(@office_authorized_vrps || @filtered_vrps || dashboard_vrps)
+    targets = Array(@office_summary_targets || @filtered_targets || dashboard_target_mappings)
     fco_names = dashboard_report_fco_names(vrps, targets)
     month = params[:month].presence || params[:training_month].presence || DashboardDefaults.month
     gender_items = fco_names.flat_map do |fco_name|
@@ -100,8 +99,10 @@ class OfficeDashboardCalculator < ModulesController
   # shrinking card values and prevents the SQL helper from exposing other JJs.
   def dashboard_fco_active_vrp_records(fco, month = nil, vrps = nil)
     source = vrps || @office_authorized_vrps
+    allowed_ids = Array(source).map { |vrp| vrp.id.to_s }.to_set
     super(fco, month, source).select do |vrp|
-      (!vrp.respond_to?(:is_active) || vrp.is_active == true || vrp.is_active == 1) &&
+      allowed_ids.include?(vrp.id.to_s) &&
+        (!vrp.respond_to?(:is_active) || vrp.is_active == true || vrp.is_active == 1) &&
         !(vrp.respond_to?(:is_deleted) && (vrp.is_deleted == true || vrp.is_deleted == 1)) &&
         send(:dashboard_vrp_active_for_requirement?, vrp)
     end
