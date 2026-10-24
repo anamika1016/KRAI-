@@ -3921,7 +3921,7 @@ class ModulesController < ApplicationController
   def dashboard_summary_query_counts
     return nil unless model_ready?(:TargetMapping)
 
-    target_conditions, binds = dashboard_summary_target_sql_filters(include_role_scope: false)
+    target_conditions, binds = dashboard_summary_target_sql_filters
     target_where = target_conditions.join(" AND ")
     sql = <<~SQL.squish
       WITH mapped_rows AS (
@@ -3964,9 +3964,7 @@ class ModulesController < ApplicationController
   def dashboard_summary_activity_counts_direct
     return { main_activity_count: 0, sub_activity_count: 0 } unless model_ready?(:TargetMapping)
 
-    target_conditions, binds = dashboard_summary_target_sql_filters_base(
-      include_activity_filters: false, include_role_scope: false
-    )
+    target_conditions, binds = dashboard_summary_target_sql_filters_base(include_activity_filters: false)
     target_where = target_conditions.join(" AND ")
     sql = <<~SQL.squish
       SELECT
@@ -3992,10 +3990,10 @@ class ModulesController < ApplicationController
   # Builds the WHERE clause behind every dashboard summary card. The table
   # aliases are configurable so the same predicate can be reused by the
   # "View List" pages, which join through ActiveRecord's real table names.
-  def dashboard_summary_target_sql_filters_base(include_activity_filters: true, target_alias: "t", vrp_alias: "v", include_role_scope: true)
+  def dashboard_summary_target_sql_filters_base(include_activity_filters: true, target_alias: "t", vrp_alias: "v")
     conditions = ["1=1"]
     binds = {}
-    if include_role_scope && !dashboard_global_view_user?
+    unless dashboard_global_view_user?
       conditions << "#{target_alias}.vrp_id IN (:authorized_vrp_ids)"
       binds[:authorized_vrp_ids] = dashboard_visible_vrp_ids
     end
@@ -4035,13 +4033,13 @@ class ModulesController < ApplicationController
     if selected_vrp_id.present?
       conditions << "#{target_alias}.vrp_id = :summary_vrp_id"
       binds[:summary_vrp_id] = selected_vrp_id.to_i
-    elsif include_role_scope && vrp_login_user? && current_vrp_record.present?
+    elsif vrp_login_user? && current_vrp_record.present?
       conditions << "#{target_alias}.vrp_id = :summary_vrp_id"
       binds[:summary_vrp_id] = current_vrp_record.id
-    elsif include_role_scope && dashboard_agronomics_login? && !dashboard_agronomist_all_months?
+    elsif dashboard_agronomics_login? && !dashboard_agronomist_all_months?
       conditions << "#{target_alias}.vrp_id IN (:summary_registered_vrp_ids)"
       binds[:summary_registered_vrp_ids] = dashboard_registered_vrp_ids_for_current_user
-    elsif include_role_scope && dashboard_cc_vrp_scope_active?
+    elsif dashboard_cc_vrp_scope_active?
       conditions << "#{target_alias}.vrp_id IN (:summary_visible_vrp_ids)"
       binds[:summary_visible_vrp_ids] = module_cluster_visible_vrp_ids
     end
@@ -4056,14 +4054,13 @@ class ModulesController < ApplicationController
     conditions, binds = dashboard_summary_target_sql_filters_base(
       include_activity_filters: include_activity_filters,
       target_alias: "target_mappings",
-      vrp_alias: "vrps",
-      include_role_scope: false
+      vrp_alias: "vrps"
     )
     TargetMapping.left_joins(:vrp).where(conditions.join(" AND "), binds)
   end
 
-  def dashboard_summary_target_sql_filters(include_role_scope: true)
-    conditions, binds = dashboard_summary_target_sql_filters_base(include_role_scope: include_role_scope)
+  def dashboard_summary_target_sql_filters
+    conditions, binds = dashboard_summary_target_sql_filters_base
     [["j.value <> ''"] + conditions[1..-1], binds]
   end
 
@@ -4408,10 +4405,7 @@ class ModulesController < ApplicationController
   # This prevents name-based double-counting when some AFL rows have fco = 'FCO-C Sausar'
   # but a different fco_id, which would inflate the count.
   def dashboard_total_afl_farmer_scope
-    # Dashboard Summary is FCO-C scoped for every dashboard role. Using the
-    # login's assigned farmer set here made the same selected FCO produce a
-    # different result for HO, CC, FCO-C and Agricultural Specialist users.
-    scope = Afl.all.where.not(id: nil)
+    scope = dashboard_visible_farmer_scope.where.not(id: nil)
     fcoc_value = @dashboard_fcoc_filter_value.presence || dashboard_filter_param(:fcoc, :fco)
     fco_values = dashboard_summary_fco_filter_values(fcoc_value)
 
@@ -4721,9 +4715,7 @@ class ModulesController < ApplicationController
   def dashboard_summary_activity_popup_items(summary_mode)
     return [] unless model_ready?(:TargetMapping)
 
-    target_conditions, binds = dashboard_summary_target_sql_filters_base(
-      include_activity_filters: false, include_role_scope: false
-    )
+    target_conditions, binds = dashboard_summary_target_sql_filters_base(include_activity_filters: false)
     select_clause = if summary_mode.to_sym == :main_activity
       "NULLIF(BTRIM(t.main_activity_name), '') AS activity_name, NULL AS parent_activity"
     else

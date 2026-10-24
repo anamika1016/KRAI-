@@ -105,9 +105,7 @@ class AflsController < ApplicationController
     policy = ModulesController.new
     policy.request = request
     policy.instance_variable_set(:@current_app_user, current_app_user)
-    # Dashboard Summary drill-downs use the same FCO-C population as their
-    # cards for every dashboard role. The regular AFL list stays login-scoped.
-    scope = scope.merge(policy.send(:dashboard_visible_farmer_scope)) if @summary_mode.blank?
+    scope = scope.merge(policy.send(:dashboard_visible_farmer_scope))
     @fco_filter = FcoDirectory.ids if @fco_filter.to_s.strip.casecmp("All FCO").zero?
     if @fco_filter.present?
       fco_values = afl_fco_filter_values(@fco_filter)
