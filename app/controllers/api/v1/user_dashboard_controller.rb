@@ -120,6 +120,48 @@ module Api
 
       private
 
+      # Build the mobile mapped-farmer response from the request's already
+      # filtered target rows. Keep this API-local so the web calculators and
+      # their existing list behavior remain untouched.
+      def api_mapped_farmer_rows(calculator, targets, month_name)
+        farmer_ids = calculator.send(:training_participation_valid_farmer_ids_for_targets, targets).map(&:to_s).uniq
+        return [] if farmer_ids.empty?
+
+        columns = %i[id farmer_name father_name mobile_no tracenet_no khasara_no ics_id ics_name village_id village_name]
+        farmers = Afl.where(id: farmer_ids).pluck(*columns).to_h do |values|
+          row = columns.zip(values).to_h
+          [row[:id].to_s, row]
+        end
+        rows = {}
+        targets.each do |target|
+          calculator.send(:training_participation_target_farmer_ids, target).map(&:to_s).each do |farmer_id|
+            next unless farmer_ids.include?(farmer_id)
+
+            farmer = farmers[farmer_id] || {}
+            key = calculator.send(:training_participation_target_farmer_key, farmer_id)
+            row = rows[key] ||= {
+              farmer_key: key, farmer_id: farmer_id, source_farmer_ids: [],
+              farmer_name: farmer[:farmer_name].presence || "Historical mapped farmer ##{farmer_id}",
+              father_name: farmer[:father_name].to_s, mobile_no: farmer[:mobile_no].to_s,
+              tracenet_no: farmer[:tracenet_no].to_s, khasara_no: farmer[:khasara_no].to_s,
+              ics: farmer[:ics_name].presence || farmer[:ics_id].presence || target.ics_name.presence || target.ics_id.presence || "-",
+              village: farmer[:village_name].presence || farmer[:village_id].presence || target.village_name.presence || target.village_id.presence || "-",
+              vrp: "-", months: "-", main_activities: "-", sub_activities: "-",
+              attendance_count: 0, assigned_activity_count: 0, completed_activity_count: 0,
+              status: "unique", status_label: "AFL Farmer", training_dates: "-",
+              last_training_date: "-", training_register_urls: [], training_photo_urls: []
+            }
+            row[:source_farmer_ids] |= [farmer_id]
+            row[:vrp] = ([row[:vrp], target.vrp&.name].reject { |value| value.blank? || value == "-" }.uniq.join(", ").presence || "-")
+            row[:months] = ([row[:months], target.month_name].reject { |value| value.blank? || value == "-" }.uniq.join(", ").presence || month_name.presence || "-")
+            row[:main_activities] = ([row[:main_activities], target.main_activity_name].reject { |value| value.blank? || value == "-" }.uniq.join(", ").presence || "-")
+            row[:sub_activities] = ([row[:sub_activities], target.activity_name].reject { |value| value.blank? || value == "-" }.uniq.join(", ").presence || "-")
+            row[:assigned_activity_count] = calculator.send(:training_participation_target_activity_keys, target).size
+          end
+        end
+        rows.values.sort_by { |row| row[:farmer_name].to_s.downcase }
+      end
+
       def office_ics_report(calculator, targets, records, month, fcoc)
         if params.key?(:ics_report_month)
           month = filter_param(:ics_report_month)
@@ -161,7 +203,11 @@ module Api
 
       def office_section_list_payload(type, calculator, vrps, targets)
         records = if type.start_with?("summary_")
-          scope = calculator.send(:dashboard_total_afl_farmer_scope)
+          scope = if calculator.send(:dashboard_total_farmer_count_for_direct_to_ho?)
+            calculator.send(:dashboard_direct_to_ho_afl_farmer_scope)
+          else
+            calculator.send(:dashboard_total_afl_farmer_scope)
+          end
           columns = %i[fco_id fco fpo_id fpo_name ics_id ics_name]
           if type == "summary_farmers"
             scope.where("NULLIF(BTRIM(tracenet_no), '') IS NOT NULL")
@@ -169,11 +215,23 @@ module Api
               .pluck(:id, :farmer_name, :father_name, :mobile_no, :tracenet_no, *columns, :village_id, :village_name)
               .map { |row| dashboard_fco_display_row((%i[id farmer_name father_name mobile_no tracenet_no] + columns + %i[village_id village_name]).zip(row).to_h) }
           else
-            columns += %i[village_id village_name] if type == "summary_villages"
-            scope.where.not((type == "summary_villages" ? :village_id : :ics_id) => [nil, ""])
-              .group(*columns).order(*columns)
-              .pluck(*columns, Arel.sql("COUNT(tracenet_no)"))
-              .map { |row| dashboard_fco_display_row((columns + [:farmer_count]).zip(row).to_h) }
+            if type == "summary_villages"
+              scope.where.not(village_id: [nil, ""])
+                .group(Arel.sql("LOWER(BTRIM(village_id))"))
+                .order(Arel.sql("LOWER(BTRIM(village_id))"))
+                .pluck(Arel.sql("MIN(fco_id)"), Arel.sql("MIN(fco)"), Arel.sql("MIN(fpo_id)"),
+                  Arel.sql("MIN(fpo_name)"), Arel.sql("MIN(ics_id)"), Arel.sql("MIN(ics_name)"),
+                  Arel.sql("MIN(village_id)"), Arel.sql("MIN(village_name)"), Arel.sql("COUNT(tracenet_no)"))
+                .map { |row| dashboard_fco_display_row((%i[fco_id fco fpo_id fpo_name ics_id ics_name village_id village_name farmer_count]).zip(row).to_h) }
+            else
+              scope.where.not(ics_id: [nil, ""])
+                .group(Arel.sql("LOWER(BTRIM(ics_id))"))
+                .order(Arel.sql("LOWER(BTRIM(ics_id))"))
+                .pluck(Arel.sql("MIN(fco_id)"), Arel.sql("MIN(fco)"), Arel.sql("MIN(fpo_id)"),
+                  Arel.sql("MIN(fpo_name)"), Arel.sql("MIN(ics_id)"), Arel.sql("MIN(ics_name)"),
+                  Arel.sql("COUNT(tracenet_no)"))
+                .map { |row| dashboard_fco_display_row((%i[fco_id fco fpo_id fpo_name ics_id ics_name farmer_count]).zip(row).to_h) }
+            end
           end
         elsif type == "other_activities"
           OfficeDashboardSections.new(calculator: calculator, targets: targets,
@@ -350,18 +408,11 @@ module Api
           participation_month = selected_month(:participation_month, months, calculator, targets)
           participation_fcoc = participation_list_fcoc(calculator, options)
           if list_type == "training_unique_farmers"
-            main_activity = filter_param(:main_activity, :activity)
-            sub_activity = filter_param(:sub_activity)
-            targets = calculator.send(:training_participation_targets_for_dashboard,
-              month_name: participation_month, fcoc_name: participation_fcoc,
-              main_activity_name: main_activity, sub_activity_name: sub_activity)
-            farmer_ids = calculator.send(:training_participation_valid_farmer_ids_for_targets, targets).map(&:to_s).uniq
-            rows = calculator.send(:training_afl_farmer_rows_for_participation,
+            # Match the web Mapped Farmer card: its population is month/FCO/ICS
+            # scoped and deliberately ignores the main/sub activity dropdowns.
+            mapped_targets = calculator.send(:training_participation_targets_for_dashboard,
               month_name: participation_month, fcoc_name: participation_fcoc)
-            rows.select! do |row|
-              row_ids = Array(row[:source_farmer_ids]).map(&:to_s)
-              (row_ids & farmer_ids).any?
-            end
+            rows = api_mapped_farmer_rows(calculator, mapped_targets, participation_month)
             return { title: user_dashboard_list_catalog.fetch(list_type), records: rows }
           end
           status = {

@@ -100,13 +100,15 @@ class OfficeDashboardCalculator < ModulesController
   # shrinking card values and prevents the SQL helper from exposing other JJs.
   def dashboard_fco_active_vrp_records(fco, month = nil, vrps = nil)
     source = vrps || @office_authorized_vrps
-    super(fco, month, source)
+    super(fco, month, source).select do |vrp|
+      (!vrp.respond_to?(:is_active) || vrp.is_active == true || vrp.is_active == 1) &&
+        !(vrp.respond_to?(:is_deleted) && (vrp.is_deleted == true || vrp.is_deleted == 1)) &&
+        send(:dashboard_vrp_active_for_requirement?, vrp)
+    end
   end
 
   def dashboard_fco_active_vrp_count(fco, month = nil, vrps = nil)
-    # The requirement cards use the web dashboard's distinct target-mapping
-    # count and fallback for every FCO, independently of the gender cards.
-    super
+    dashboard_fco_active_vrp_records(fco, month, vrps).size
   end
 
   def dashboard_summary_target_sql_filters_base(**_options)

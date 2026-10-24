@@ -4546,7 +4546,7 @@ class ModulesController < ApplicationController
       by_id = Array(vrps).index_by(&:id)
       missing = ids.map(&:to_i) - by_id.keys
       by_id.merge!(Vrp.where(id: missing).index_by(&:id)) if missing.any? && model_ready?(:Vrp)
-      return ids.filter_map { |id| by_id[id.to_i] }.select { |vrp| dashboard_vrp_active_for_requirement?(vrp) }
+      return ids.filter_map { |id| by_id[id.to_i] }
     end
 
     Array(vrps).select do |vrp|
