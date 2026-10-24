@@ -167,6 +167,8 @@ class Api::V1::OfficeDashboardControllerTest < ActionDispatch::IntegrationTest
       assert_equal 1, cards.find { |card| card["key"] == "gender_sausar_male" }["value"]
       get "/api/v1/user-dashboard/lists/gender_sausar_male", params: { month: "August", main_activity: "All" }, headers: headers(user)
       assert_equal [@first.id], response.parsed_body["records"].map { |row| row["id"] }
+      get "/api/v1/user-dashboard/lists/fco_requirement_sausar_active", params: { month: "August", main_activity: "All" }, headers: headers(user)
+      assert_equal [@first.id], response.parsed_body["records"].map { |row| row["id"] }
     end
   end
 
@@ -392,6 +394,23 @@ class Api::V1::OfficeDashboardControllerTest < ActionDispatch::IntegrationTest
     get "/api/v1/user-dashboard/lists/summary_farmers", params: query, headers: headers(@other_fco)
     assert_response :success
     assert_equal "TEST-FPO", response.parsed_body.fetch("records").first.fetch("fpo_id")
+  end
+
+  test "mapped farmer list follows selected target activity filters and excludes training completion population" do
+    @second_target.update!(month_name: "October", main_activity_name: "Farmers' Training", activity_name: "Soil")
+    extra_farmer = Afl.create!(farmer_name: "Unrelated target farmer", fco_id: "1006", fco: "Turekela",
+      ics_id: "ICS-OTHER", ics_name: "Other ICS", village_id: "V-OTHER", village_name: "Other village")
+    unrelated_target = @second_target.dup
+    unrelated_target.month_name = "October"
+    unrelated_target.main_activity_name = "Other Activity"
+    unrelated_target.activity_name = "Different"
+    unrelated_target.afl_ids = [extra_farmer.id]
+    unrelated_target.save!
+    get "/api/v1/user-dashboard/lists/training_unique_farmers",
+      params: { month: "October", main_activity: "Farmers' Training", sub_activity: "Soil", fco: @second.fcoc, ics: "All" },
+      headers: headers(@other_fco)
+    assert_response :success
+    assert_equal [Afl.find(@second_target.afl_ids.first).id.to_s], response.parsed_body.fetch("records").map { |row| row["farmer_id"] }
   end
 
   test "all month mapped list returns visible farmers instead of an empty list" do

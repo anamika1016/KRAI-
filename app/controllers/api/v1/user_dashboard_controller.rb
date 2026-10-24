@@ -188,6 +188,7 @@ module Api
           else
             month = params.key?(:month) ? filter_param(:month) : DashboardDefaults.month
             rows = calculator.send(:dashboard_fco_active_vrp_records, fco, month, vrps)
+              .select { |vrp| calculator.send(:dashboard_vrp_active_for_requirement?, vrp) }
             rows = rows.select { |vrp| vrp.gender.to_s.casecmp?(kind) } if %w[male female].include?(kind)
             rows.map { |vrp| admin_vrp_list_row(vrp, targets.map { |target| target.vrp_id.to_s }, []) }
           end
@@ -348,6 +349,21 @@ module Api
           months = calculator.send(:dashboard_month_options_for_targets, targets)
           participation_month = selected_month(:participation_month, months, calculator, targets)
           participation_fcoc = participation_list_fcoc(calculator, options)
+          if list_type == "training_unique_farmers"
+            main_activity = filter_param(:main_activity, :activity)
+            sub_activity = filter_param(:sub_activity)
+            targets = calculator.send(:training_participation_targets_for_dashboard,
+              month_name: participation_month, fcoc_name: participation_fcoc,
+              main_activity_name: main_activity, sub_activity_name: sub_activity)
+            farmer_ids = calculator.send(:training_participation_valid_farmer_ids_for_targets, targets).map(&:to_s).uniq
+            rows = calculator.send(:training_afl_farmer_rows_for_participation,
+              month_name: participation_month, fcoc_name: participation_fcoc)
+            rows.select! do |row|
+              row_ids = Array(row[:source_farmer_ids]).map(&:to_s)
+              (row_ids & farmer_ids).any?
+            end
+            return { title: user_dashboard_list_catalog.fetch(list_type), records: rows }
+          end
           status = {
             "training_unique_farmers" => "unique", "training_red" => "red", "training_pending" => "pending",
             "training_yellow" => "yellow", "training_green" => "green"
