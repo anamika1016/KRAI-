@@ -51,6 +51,27 @@ class PendingRowsOnTopTest < ActionDispatch::IntegrationTest
     refute_equal "Final Approved", statuses.first
   end
 
+  test "approval queue groups all pending registrations at the top and preserves that order in the browser" do
+    create_jj("Approved", status: 55)
+    first = create_jj("First Pending", status: 31)
+    create_jj("Rejected", status: 99)
+    second = create_jj("Second Pending", status: 32)
+    [first, second].each do |vrp|
+      ModuleRecord.create!(module_slug: "vrp-approval-history", data: {
+        "vrp_id" => vrp.id, "action" => "Sent for Approval"
+      })
+    end
+
+    get approvals_vrps_path
+    assert_response :success
+
+    rows = Nokogiri::HTML(response.body).css("#vrp_approval_list tbody tr")
+    pending_names = rows.take(2).map { |row| row.css("td")[1].text.strip }
+    assert_equal [first.name, second.name].sort, pending_names.sort
+    assert rows.take(2).all? { |row| row.at_css(".grid-status").text.include?("Pending") }
+    assert_select "#vrp_approval_list[data-preserve-order='true']"
+  end
+
   private
 
   def status_labels

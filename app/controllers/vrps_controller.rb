@@ -207,6 +207,7 @@ class VrpsController < ApplicationController
         can_act: current_user_can_approve?(vrp)
       }
     end
+    @approval_rows = sort_pending_rows_first(@approval_rows)
   end
 
   def send_for_approval
