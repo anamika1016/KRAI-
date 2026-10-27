@@ -14254,13 +14254,17 @@ class ModulesController < ApplicationController
       Afl.where.not(ics_id: [nil, ""]).where.not(fco_id: [nil, ""])
         .distinct
         .pluck(:ics_name, :ics_id, :fco, :fco_id)
-        .map do |ics_name, ics_id, fco_name, fco_id|
+        .flat_map do |ics_name, ics_id, fco_name, fco_id|
           fco = FcoDirectory.display_name_for(fco_name.presence || fco_id)
-          {
-            ics_name: ics_name.presence || ics_id,
-            fco_name: fco,
-            to_name: sub_offices[normalize_dashboard_text(FcoDirectory.bare_name(fco))]
-          }
+          to_names = Array(sub_offices[normalize_dashboard_text(FcoDirectory.bare_name(fco))])
+          to_names = [nil] if to_names.empty?
+          to_names.map do |to_name|
+            {
+              ics_name: ics_name.presence || ics_id,
+              fco_name: fco,
+              to_name: to_name
+            }
+          end
         end
         .uniq { |row| row.values.map { |value| normalize_dashboard_text(value) } }
         .sort_by { |row| row.values.map { |value| normalize_dashboard_text(value) } }
@@ -14279,7 +14283,8 @@ class ModulesController < ApplicationController
       next if fco_name.blank? || to_name.blank?
 
       key = normalize_dashboard_text(FcoDirectory.bare_name(fco_name))
-      options[key] ||= to_name.to_s.strip
+      options[key] ||= []
+      options[key] << to_name.to_s.strip unless options[key].include?(to_name.to_s.strip)
     rescue JSON::ParserError
       next
     end
