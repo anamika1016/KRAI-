@@ -738,12 +738,17 @@ class ModulesController < ApplicationController
           normalize_dashboard_text(activity) == normalize_dashboard_text("Farmers Training")
       end
     normalized_dashboard_main_activity = normalize_dashboard_text(@dashboard_main_activity_filter_value)
+    # A login with no training targets yet used to land on the Other-indicator
+    # view, because nothing matched the find above. The dashboard opens on the
+    # training view for everyone; Other is something the user picks, not a
+    # default they get handed. An explicitly chosen activity still decides.
     @dashboard_farmer_activity_mode = [
       "Farmer Activity",
       "Farmers' Training",
       "Farmers Training"
     ].any? { |value| normalized_dashboard_main_activity == normalize_dashboard_text(value) } ||
-      normalized_dashboard_main_activity.include?(normalize_dashboard_text("Training"))
+      normalized_dashboard_main_activity.include?(normalize_dashboard_text("Training")) ||
+      (dashboard_filter_param(:main_activity).blank? && dashboard_filter_param(:activity).blank?)
     selected_main_activity = @dashboard_main_activity_filter_value
     selected_sub_activity = dashboard_filter_param(:sub_activity)
     legacy_activity = dashboard_filter_param(:activity)
@@ -10087,7 +10092,10 @@ class ModulesController < ApplicationController
   def target_record_created_by_current_user?(record)
     data = record.data
     current_ids = dashboard_current_app_user_ids.map(&:to_s)
-    return true if data["created_by_id"].present? && current_ids.include?(data["created_by_id"].to_s)
+    if data["created_by_id"].present? && current_ids.include?(data["created_by_id"].to_s) &&
+        target_record_creator_type_matches?(data)
+      return true
+    end
 
     current_values = normalized_visibility_values(
       current_app_user&.dig("username"),
@@ -10105,6 +10113,20 @@ class ModulesController < ApplicationController
     )
 
     (current_values & record_values).any?
+  end
+
+  # created_by_id is only unique inside its own table: User 7 and Jeevika Jankar
+  # 7 are two different people. Matching the number alone handed a Jeevika
+  # Jankar's training and Other Target rows to whichever user happened to share
+  # that id -- which is how a Sausar Agronomist ended up reading Turekela
+  # records. The Bill List already compares the type; this is the same rule.
+  # Rows saved before the type was recorded keep the old id-only behaviour, so
+  # nobody loses sight of work they really did create.
+  def target_record_creator_type_matches?(data)
+    stored_type = data["created_by_record_type"].to_s.strip
+    return true if stored_type.blank?
+
+    stored_type.casecmp(current_app_user&.dig("record_type").to_s.strip).zero?
   end
 
   def prepare_lg_directory_data

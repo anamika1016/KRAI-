@@ -190,6 +190,50 @@ class Afl < ApplicationRecord
     where(clauses.join(" OR "), query: pattern)
   end
 
+  # The same four choices the heading filter offers on every other list.
+  COLUMN_FILTER_OPERATORS = %w[contains equals starts ends].freeze
+
+  # Per-heading search: every filled-in heading box narrows the list further,
+  # so "FCO Name = sausar" plus "ICS Name = bastrani" means both, not either.
+  # Only real columns are honoured, so an unknown key in the query string can
+  # never reach SQL -- and a new column becomes filterable with no change here.
+  def self.column_filtered(filters, operators = {})
+    allowed = searchable_columns.map(&:to_s)
+    adapter = connection.adapter_name.to_s.downcase
+    cast_type = adapter.include?("mysql") ? "CHAR" : "TEXT"
+    chosen = column_filter_values(operators)
+
+    column_filter_values(filters).reduce(all) do |scope, (column, term)|
+      next scope unless allowed.include?(column)
+
+      casted = "CAST(#{connection.quote_column_name(column)} AS #{cast_type})"
+      pattern = column_filter_pattern(term, chosen[column])
+      if adapter.include?("postgres")
+        scope.where("#{casted} ILIKE :term", term: pattern)
+      else
+        scope.where("LOWER(#{casted}) LIKE :term", term: pattern.downcase)
+      end
+    end
+  end
+
+  def self.column_filter_pattern(term, operator)
+    escaped = sanitize_sql_like(term)
+    case operator
+    when "equals" then escaped
+    when "starts" then "#{escaped}%"
+    when "ends"   then "%#{escaped}"
+    else "%#{escaped}%"
+    end
+  end
+  private_class_method :column_filter_pattern
+
+  def self.column_filter_values(filters)
+    return {} unless filters.respond_to?(:to_unsafe_h) || filters.is_a?(Hash)
+
+    hash = filters.respond_to?(:to_unsafe_h) ? filters.to_unsafe_h : filters
+    hash.to_h { |column, term| [column.to_s, term.to_s.strip] }.reject { |_, term| term.blank? }
+  end
+
   def self.normalized_coordinate(value)
     return if value.blank?
 

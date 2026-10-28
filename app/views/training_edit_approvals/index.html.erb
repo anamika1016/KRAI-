@@ -1,7 +1,7 @@
 <section class="dashboard-page">
   <div class="dashboard-topbar"><h1>Training Form Edit Approval List</h1>
   </div>
-  <section class="module-card"><table class="module-table">
+  <section class="module-card"><table class="module-table" data-column-filters-enabled>
     <thead><tr><th>Request</th><th>Training Record</th><th>Requested By</th><th>Status</th><th>Pending At</th><th>Review</th></tr></thead>
     <tbody><% @revisions.each do |revision| %><tr>
       <td><%= revision.id %></td><td><%= revision.data["record_id"] %></td>

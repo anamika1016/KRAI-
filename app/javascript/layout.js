@@ -5166,15 +5166,53 @@ function initDeferredLayoutPage() {
     paginateTable(table, 1);
   };
 
+  // A list the server paginates only ever ships one page to the browser, so
+  // filtering the rows in place would silently drop everything on the other
+  // pages. Such a table names a form instead: the heading filter writes the
+  // choice into that form and submits, and the server answers with the real
+  // matches. The widget itself looks and behaves the same either way.
+  const submitColumnFilterToServer = (table, header, operator, value, immediate = false) => {
+    const form = document.getElementById(table.dataset.columnFilterForm);
+    if (!form) return;
+
+    const setField = (name, fieldValue) => {
+      if (!name) return;
+      let field = form.querySelector(`input[name="${CSS.escape(name)}"]`);
+      if (!field) {
+        field = document.createElement("input");
+        field.type = "hidden";
+        field.name = name;
+        form.appendChild(field);
+      }
+      field.value = fieldValue;
+    };
+
+    setField(header.dataset.columnFilterParam, value);
+    setField(header.dataset.columnFilterOperatorParam, value ? operator : "");
+    header.classList.toggle("filtered", Boolean(value));
+
+    clearTimeout(table.__columnFilterTimer);
+    if (immediate) {
+      form.requestSubmit();
+    } else {
+      // Let the typing settle instead of reloading on every keystroke.
+      table.__columnFilterTimer = setTimeout(() => form.requestSubmit(), 450);
+    }
+  };
+
   const setupColumnFilters = (table) => {
     if (table.dataset.columnFiltersReady) return;
 
     table.dataset.columnFiltersReady = "true";
     table.dataset.columnFilters ||= "{}";
+    const serverSide = Boolean(table.dataset.columnFilterForm);
 
     table.querySelectorAll("thead th").forEach((header, columnIndex) => {
       if (header.querySelector("input[type='checkbox']")) return;
       if (header.querySelector(".column-filter-trigger")) return;
+      // A server-filtered table says which columns it can actually filter on;
+      // a total like Farmer Count is not one of them.
+      if (serverSide && !header.dataset.columnFilterParam) return;
 
       const label = document.createElement("span");
       label.className = "column-filter-label";
@@ -5201,6 +5239,13 @@ function initDeferredLayoutPage() {
       input.type = "search";
       input.placeholder = "Filter...";
 
+      // Come back from a server round trip showing what was searched for.
+      if (serverSide) {
+        input.value = header.dataset.columnFilterValue || "";
+        operator.value = header.dataset.columnFilterOperator || "contains";
+        if (input.value) header.classList.add("filtered");
+      }
+
       panel.appendChild(operator);
       panel.appendChild(input);
       header.textContent = "";
@@ -5219,12 +5264,22 @@ function initDeferredLayoutPage() {
 
       panel.addEventListener("click", (event) => event.stopPropagation());
 
-      operator.addEventListener("change", () => {
-        renderColumnFilterState(table, header, columnIndex, operator.value, input.value.trim());
-      });
+      const applyFilter = () => {
+        if (serverSide) {
+          submitColumnFilterToServer(table, header, operator.value, input.value.trim());
+        } else {
+          renderColumnFilterState(table, header, columnIndex, operator.value, input.value.trim());
+        }
+      };
 
-      input.addEventListener("input", () => {
-        renderColumnFilterState(table, header, columnIndex, operator.value, input.value.trim());
+      operator.addEventListener("change", applyFilter);
+      input.addEventListener("input", applyFilter);
+      input.addEventListener("keydown", (event) => {
+        if (event.key !== "Enter" || !serverSide) return;
+
+        // Enter means "now", not "in another 450ms".
+        event.preventDefault();
+        submitColumnFilterToServer(table, header, operator.value, input.value.trim(), true);
       });
     });
   };
@@ -5296,11 +5351,22 @@ function initDeferredLayoutPage() {
     const largeTable = table.dataset.fastOpenTable === "true" || rows.length > 250;
     ensureTableSearch(table, index);
     ensureTablePagination(table);
-    if (!largeTable) {
-      sortTableRowsAlphabetically(table);
-      setupColumnFilters(table);
-    }
+    // Re-sorting thousands of rows is what made the big lists freeze, so that
+    // stays off for them -- but the heading filter costs nothing until it is
+    // typed into, and those are the lists that need it most.
+    if (!largeTable) sortTableRowsAlphabetically(table);
+    setupColumnFilters(table);
     paginateTable(table, 1);
+  });
+
+  // Lists that are not client-paginated -- either the server pages them, or
+  // they are short enough to show whole -- never reach the loop above. They
+  // still get the same heading filter. Without a page size of their own they
+  // keep showing every matching row, so switching the filter on here does not
+  // quietly start paginating a list that never paginated before.
+  document.querySelectorAll("[data-column-filters-enabled]:not([data-paginated-table])").forEach((table) => {
+    table.dataset.pageSize ||= String(Number.MAX_SAFE_INTEGER);
+    setupColumnFilters(table);
   });
 
   document.querySelectorAll("[data-table-search]").forEach((input) => {

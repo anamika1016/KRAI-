@@ -15,11 +15,14 @@ class AflsController < ApplicationController
     @month_filter = params[:month].presence
     @main_activity_filter = params[:main_activity].presence
     @sub_activity_filter = params[:sub_activity].presence
+    @column_filters = Afl.column_filter_values(params[:col])
+    @column_filter_operators = Afl.column_filter_values(params[:colop])
+      .select { |_column, operator| Afl::COLUMN_FILTER_OPERATORS.include?(operator) }
     @summary_mode = params[:summary_mode].presence_in(%w[ics village farmer])
     @page = [params[:page].to_i, 1].max
     @page_size = PAGE_SIZE
 
-    scoped_afls = Afl.search(@query)
+    scoped_afls = Afl.search(@query).merge(Afl.column_filtered(@column_filters, @column_filter_operators))
     scoped_afls = apply_afl_filters(scoped_afls)
     scoped_afls = grouped_afl_scope(scoped_afls) if @summary_mode.present?
     @total_afls = @summary_mode.present? ? scoped_afls.length : scoped_afls.count
@@ -87,7 +90,9 @@ class AflsController < ApplicationController
     @month_filter = params[:month].presence
     @main_activity_filter = params[:main_activity].presence
     @sub_activity_filter = params[:sub_activity].presence
-    scoped_afls = apply_afl_filters(Afl.search(query))
+    # Deleting "everything matching" must mean what the screen is showing, so
+    # the heading filters narrow this the same way they narrow the list.
+    scoped_afls = apply_afl_filters(Afl.search(query).merge(Afl.column_filtered(params[:col], params[:colop])))
     destroyed_count = scoped_afls.count
 
     scoped_afls.find_each(&:destroy)

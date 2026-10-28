@@ -18,7 +18,7 @@
         <% end %>
 
         <div class="list-control-actions">
-          <%= form_with url: afls_path, method: :get, local: true, class: "list-search compact" do |form| %>
+          <%= form_with url: afls_path, method: :get, local: true, class: "list-search compact", id: "afl_search_form" do |form| %>
             <span>⌕</span>
             <% Array(params[:fco_id]).each do |fco_id| %>
               <%= hidden_field_tag "fco_id[]", fco_id if fco_id.present? %>
@@ -43,71 +43,63 @@
         </div>
       <% end %>
 
+      <%# Heading labels paired with the column each one searches. A column
+          added here gets its heading filter for free. A nil column is one
+          there is nothing to search on -- the row checkbox, and Farmer Count,
+          which is a total rather than a stored value. %>
+      <%
+        afl_columns =
+          case @summary_mode
+          when "ics"
+            [["FCO ID", :fco_id], ["FCO Name", :fco], ["FPO ID", :fpo_id], ["FPO Name", :fpo_name],
+             ["ICS ID", :ics_id], ["ICS Name", :ics_name], ["Farmer Count", nil]]
+          when "village"
+            [["FCO ID", :fco_id], ["FCO Name", :fco], ["FPO ID", :fpo_id], ["FPO Name", :fpo_name],
+             ["ICS ID", :ics_id], ["ICS Name", :ics_name], ["Village ID", :village_id],
+             ["Village Name", :village_name], ["Farmer Count", nil]]
+          when "farmer"
+            [["FCO ID", :fco_id], ["FCO Name", :fco], ["FPO ID", :fpo_id], ["FPO Name", :fpo_name],
+             ["ICS ID", :ics_id], ["ICS Name", :ics_name], ["Village ID", :village_id],
+             ["Village Name", :village_name], ["Tracenet No", :tracenet_no],
+             ["Farmer Name", :farmer_name], ["Father Name", :father_name]]
+          else
+            [[nil, nil], ["ID", :id], ["Farm ID", :farm_id], ["FCO ID", :fco_id], ["FCO", :fco],
+             ["FPO ID", :fpo_id], ["FPO Name", :fpo_name], ["ICS ID", :ics_id], ["ICS Name", :ics_name],
+             ["Village ID", :village_id], ["Village Name", :village_name], ["Farmer Name", :farmer_name],
+             ["Father Name", :father_name], ["Tracenet No", :tracenet_no], ["Total Farm Area", :total_farm_area],
+             ["Purchase Quantity Amount", :purchase_quantity_amount], ["Estimate Quantity", :estimate_quantity],
+             ["Purchase Quantity", :purchase_quantity], ["Purchase Date", :purchase_date],
+             ["Mobile No", :mobile_no], ["Purchase Product", :purchase_product], ["Status", :status]]
+          end
+      %>
       <div class="table-shell">
-        <table class="module-table vrp-list-table" id="afl_list">
+        <%# This list is paginated by the server, so its heading filters have to
+            go back to the server -- filtering the fifteen rows on screen would
+            quietly hide the rest. data-column-filter-form tells the shared
+            filter widget to submit instead of filtering in place; the look and
+            the Contains/Equals/Starts/Ends choices stay the same as every
+            other list. %>
+        <table class="module-table vrp-list-table" id="afl_list"
+               data-column-filters-enabled
+               data-column-filter-form="afl_search_form">
           <thead>
-            <% if @summary_mode == "ics" %>
-              <tr>
-                <th>FCO ID</th>
-                <th>FCO Name</th>
-                <th>FPO ID</th>
-                <th>FPO Name</th>
-                <th>ICS ID</th>
-                <th>ICS Name</th>
-                <th>Farmer Count</th>
-              </tr>
-            <% elsif @summary_mode == "village" %>
-              <tr>
-                <th>FCO ID</th>
-                <th>FCO Name</th>
-                <th>FPO ID</th>
-                <th>FPO Name</th>
-                <th>ICS ID</th>
-                <th>ICS Name</th>
-                <th>Village ID</th>
-                <th>Village Name</th>
-                <th>Farmer Count</th>
-              </tr>
-            <% elsif @summary_mode == "farmer" %>
-              <tr>
-                <th>FCO ID</th>
-                <th>FCO Name</th>
-                <th>FPO ID</th>
-                <th>FPO Name</th>
-                <th>ICS ID</th>
-                <th>ICS Name</th>
-                <th>Village ID</th>
-                <th>Village Name</th>
-                <th>Tracenet No</th>
-                <th>Farmer Name</th>
-                <th>Father Name</th>
-              </tr>
-            <% else %>
-              <tr>
-                <th><input type="checkbox" data-afl-select-all></th>
-                <th>ID</th>
-                <th>Farm ID</th>
-                <th>FCO ID</th>
-                <th>FCO</th>
-                <th>FPO ID</th>
-                <th>FPO Name</th>
-                <th>ICS ID</th>
-                <th>ICS Name</th>
-                <th>Village ID</th>
-                <th>Village Name</th>
-                <th>Farmer Name</th>
-                <th>Father Name</th>
-                <th>Tracenet No</th>
-                <th>Total Farm Area</th>
-                <th>Purchase Quantity Amount</th>
-                <th>Estimate Quantity</th>
-                <th>Purchase Quantity</th>
-                <th>Purchase Date</th>
-                <th>Mobile No</th>
-                <th>Purchase Product</th>
-                <th>Status</th>
-              </tr>
-            <% end %>
+            <tr>
+              <% afl_columns.each do |label, column| %>
+                <% filter_attributes = column.present? ? {
+                     column_filter_param: "col[#{column}]",
+                     column_filter_operator_param: "colop[#{column}]",
+                     column_filter_value: @column_filters&.dig(column.to_s),
+                     column_filter_operator: @column_filter_operators&.dig(column.to_s)
+                   } : {} %>
+                <%= tag.th data: filter_attributes do %>
+                  <% if label.nil? %>
+                    <input type="checkbox" data-afl-select-all>
+                  <% else %>
+                    <%= label %>
+                  <% end %>
+                <% end %>
+              <% end %>
+            </tr>
           </thead>
           <tbody>
             <% if @afls.any? %>
