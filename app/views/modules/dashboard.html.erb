@@ -438,7 +438,21 @@
               id: "dash_fcoc", class: "form-select dashboard-filter-select", data: { dashboard_filter_select: true } %>
       </div>
 
-      <%# ICS Name (cascades from the selected activity, FCO and Cluster Incharge) %>
+      <%# TO -- the sub offices that exist under the FCO in view. The ICS list
+          below is built after this one narrows the scope, so picking a TO
+          leaves only that TO's ICS to choose from. %>
+      <div class="dashboard-filter-field">
+        <label for="dash_to">TO</label>
+        <%= f.select :to_name,
+              options_for_select(
+                [["All TO", ""]] + (@filter_to_options || []).map { |v| [v, v] },
+                @dashboard_to_filter_value
+              ),
+              {},
+              id: "dash_to", class: "form-select dashboard-filter-select", data: { dashboard_filter_select: true } %>
+      </div>
+
+      <%# ICS Name (cascades from the selected activity, FCO, TO and Cluster Incharge) %>
       <div class="dashboard-filter-field">
         <label for="dash_ics">ICS Name</label>
         <%= f.select :ics,
@@ -462,6 +476,7 @@
     params[:search].present?           ? "Search: #{params[:search]}"                 : nil,
     params[:activity].present?         ? "Activity: #{params[:activity]}"             : nil,
     params[:fcoc].present?             ? "FCO: #{params[:fcoc]}"                      : nil,
+    params[:to_name].present?          ? "TO: #{params[:to_name]}"                    : nil,
     params[:month].present?            ? "Month: #{params[:month]}"                   : nil,
     params[:vrp_id].present?           ? "VRP ##{params[:vrp_id]}"                   : nil
   ].compact %>

@@ -1,7 +1,7 @@
 require "csv"
 require "date"
 require "bigdecimal"
-require "rexml/document"
+require "nokogiri"
 require "zip"
 
 class Afl < ApplicationRecord
@@ -101,7 +101,7 @@ class Afl < ApplicationRecord
   end
 
   def self.import_csv(path)
-    csv = CSV.open(path, headers: false)
+    csv = CSV.new(csv_text_from(path), headers: false)
     headers = csv.shift
     raise ArgumentError, "Uploaded file is blank." if headers.blank?
 
@@ -119,6 +119,18 @@ class Afl < ApplicationRecord
     { imported: imported, skipped: skipped }
   ensure
     csv&.close
+  end
+
+  # Excel's "CSV (Comma delimited)" export writes the system's ANSI codepage
+  # (Windows-1252), not UTF-8, so handing the raw file straight to CSV.open
+  # raised CSV::InvalidEncodingError on the first accented/special byte. Every
+  # byte has a Windows-1252 mapping, so re-reading through it never raises --
+  # a genuinely UTF-8 file (the common case) passes through on the first try.
+  def self.csv_text_from(path)
+    text = File.read(path, encoding: "bom|utf-8")
+    return text if text.valid_encoding?
+
+    File.read(path, encoding: "Windows-1252:UTF-8", invalid: :replace, undef: :replace)
   end
 
   def self.queue_import_row(row, row_number, attributes_by_index, batch, skipped)
@@ -322,15 +334,9 @@ class Afl < ApplicationRecord
       sheet_entry = zip.find_entry("xl/worksheets/sheet1.xml")
       raise ArgumentError, "Could not find first sheet in the Excel file." unless sheet_entry
 
-      sheet = REXML::Document.new(sheet_entry.get_input_stream.read)
-      REXML::XPath.match(sheet, "//*[local-name()='row']").map do |row|
-        cells = []
-        REXML::XPath.match(row, "*[local-name()='c']").each do |cell|
-          index = xlsx_column_index(cell.attributes["r"])
-          cells[index] = xlsx_cell_value(cell, shared_strings)
-        end
-        cells
-      end
+      handler = XlsxRowHandler.new(shared_strings)
+      Nokogiri::XML::SAX::Parser.new(handler).parse(sheet_entry.get_input_stream.read)
+      handler.rows
     end
   end
 
@@ -338,19 +344,58 @@ class Afl < ApplicationRecord
     entry = zip.find_entry("xl/sharedStrings.xml")
     return [] unless entry
 
-    document = REXML::Document.new(entry.get_input_stream.read)
-    REXML::XPath.match(document, "//*[local-name()='si']").map do |item|
-      REXML::XPath.match(item, ".//*[local-name()='t']").map(&:text).join
-    end
+    document = Nokogiri::XML(entry.get_input_stream.read)
+    document.remove_namespaces!
+    document.xpath("//si").map { |item| item.xpath(".//t").map(&:text).join }
   end
 
-  def self.xlsx_cell_value(cell, shared_strings)
-    value = REXML::XPath.first(cell, "*[local-name()='v']")&.text
-    inline = REXML::XPath.match(cell, "*[local-name()='is']//*[local-name()='t']").map(&:text).join
-    return inline if inline.present?
-    return if value.blank?
+  # Streams xl/worksheets/sheet1.xml instead of building a DOM. REXML's XPath
+  # re-scans the whole tree for every row and every cell lookup inside it, so
+  # it had no trouble with a handful of rows but a 1,000-row AFL file alone
+  # took 28s to parse -- for a real import of tens of thousands of rows that
+  # was minutes before the database work even started, well past the proxy's
+  # timeout. A cell is either a shared string (t="s", looked up by index into
+  # xlsx_shared_strings) or an inline value/string -- both arrive as the text
+  # inside <v> or <is><t>, so one small buffer covers both.
+  class XlsxRowHandler < Nokogiri::XML::SAX::Document
+    attr_reader :rows
 
-    cell.attributes["t"] == "s" ? shared_strings[value.to_i] : value
+    def initialize(shared_strings)
+      super()
+      @shared_strings = shared_strings
+      @rows = []
+    end
+
+    def start_element(name, attrs = [])
+      case name
+      when "row"
+        @row = []
+      when "c"
+        attributes = attrs.to_h
+        @cell_index = Afl.xlsx_column_index(attributes["r"])
+        @cell_shared = attributes["t"] == "s"
+        @cell_value = nil
+      when "v", "t"
+        @buffer = +""
+      end
+    end
+
+    def characters(string)
+      @buffer << string if @buffer
+    end
+
+    def end_element(name)
+      case name
+      when "v", "t"
+        @cell_value = @buffer if @buffer.present?
+        @buffer = nil
+      when "c"
+        @row[@cell_index] = @cell_shared ? @shared_strings[@cell_value.to_i] : @cell_value if @cell_index
+      when "row"
+        @rows << @row
+        @row = nil
+      end
+    end
   end
 
   def self.xlsx_column_index(reference)

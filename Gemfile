@@ -45,6 +45,10 @@ gem "csv", "~> 3.3"
 # Read .xlsx files for bulk upload screens.
 gem "rexml", "~> 3.4"
 gem "rubyzip", "~> 3.3", require: "zip"
+# Already pulled in transitively by Rails (html sanitization); declared
+# directly because Afl streams large .xlsx sheets with its SAX parser --
+# REXML's XPath-per-row/cell walk took 28s for just 1,000 AFL rows.
+gem "nokogiri"
 
 group :development, :test do
   # See https://guides.rubyonrails.org/debugging_rails_applications.html#debugging-with-the-debug-gem

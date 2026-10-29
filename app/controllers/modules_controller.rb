@@ -792,6 +792,22 @@ class ModulesController < ApplicationController
       end
     end
 
+    # 2b. TO Filter (depends on the selected FCO). The sub office each Jeevika
+    # Jankar belongs to is already on the record, so the list is whatever TOs
+    # exist under the FCO in view -- a TO added later shows up with no code
+    # change. Narrowing here is what makes ICS below list only that TO's ICS.
+    @filter_to_options = (v_scope.map(&:to_name) + dashboard_master_to_options(@dashboard_fcoc_filter_value))
+      .filter_map { |label| label.to_s.squish.presence }
+      .uniq { |label| dashboard_to_filter_key(label) }
+      .sort_by { |label| dashboard_to_filter_key(label) }
+    @dashboard_to_filter_value = dashboard_filter_param(:to_name, :to)
+    if @dashboard_to_filter_value.present?
+      selected_to_key = dashboard_to_filter_key(@dashboard_to_filter_value)
+      v_scope = v_scope.select { |v| dashboard_to_filter_key(v.to_name) == selected_to_key }
+      v_ids = v_scope.map(&:id).to_set
+      t_scope = t_scope.select { |t| t.vrp_id.present? && v_ids.include?(t.vrp_id) }
+    end
+
     # 3. Cluster Incharge Filter (depends on selected Activity & FCO)
     current_cluster_labels = hierarchy_cluster_incharge_labels
     @filter_cluster_incharge_options = v_scope.filter_map do |vrp|
@@ -9082,6 +9098,27 @@ class ModulesController < ApplicationController
 
   def dashboard_visible_vrp_ids
     @dashboard_visible_vrp_ids ||= dashboard_vrps.map(&:id)
+  end
+
+  # Sub offices as Office Setup knows them, so a TO added on the Sub Office Add
+  # screen is selectable straight away. Reading only the Jeevika Jankar records
+  # meant a brand new TO stayed invisible until somebody had been posted to it
+  # -- which is the one moment you need to pick it.
+  def dashboard_master_to_options(fcoc_value)
+    sub_offices = ics_to_mapping_sub_offices
+    return sub_offices.values.flatten if fcoc_value.blank?
+
+    sub_offices.fetch(normalize_dashboard_text(FcoDirectory.bare_name(fcoc_value)), [])
+  rescue StandardError => e
+    Rails.logger.warn("Dashboard TO options from Office Setup failed: #{e.class} - #{e.message}")
+    []
+  end
+
+  # One TO is stored several ways -- "TO-Turekela", "TO- Turekela", "TO -Sausar"
+  # -- so the dropdown would otherwise list the same office more than once and
+  # a filter picked from one spelling would miss rows saved with another.
+  def dashboard_to_filter_key(value)
+    value.to_s.squish.sub(FcoDirectory::SUB_OFFICE_PREFIX, "").squish.downcase
   end
 
   def dashboard_ics_filtered_scope(scope)

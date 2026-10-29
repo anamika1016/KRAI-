@@ -66,6 +66,8 @@ class AflsController < ApplicationController
     end
   rescue ArgumentError => e
     redirect_to afls_path, alert: e.message
+  rescue CSV::MalformedCSVError => e
+    redirect_to afls_path, alert: "Could not read this CSV file: #{e.message}. Please re-save it and try again."
   end
 
   def import_report
