@@ -800,7 +800,14 @@ class ModulesController < ApplicationController
       .filter_map { |label| label.to_s.squish.presence }
       .uniq { |label| dashboard_to_filter_key(label) }
       .sort_by { |label| dashboard_to_filter_key(label) }
-    @dashboard_to_filter_value = dashboard_filter_param(:to_name, :to)
+    # NEW: same as the FCO default above, but for Sub Office Name -- a
+    # logged-in user whose own User Register record has a Sub Office Name
+    # (Agronomist, Cluster Coordinator, or anyone else) sees only their own
+    # TO, both as the auto-selected value and as the only choice in the
+    # dropdown, instead of every TO under the FCO.
+    user_to_value = dashboard_user_sub_office_to_value
+    @filter_to_options = [user_to_value] if user_to_value.present?
+    @dashboard_to_filter_value = dashboard_filter_param(:to_name, :to) || user_to_value
     if @dashboard_to_filter_value.present?
       selected_to_key = dashboard_to_filter_key(@dashboard_to_filter_value)
       v_scope = v_scope.select { |v| dashboard_to_filter_key(v.to_name) == selected_to_key }
@@ -4124,7 +4131,9 @@ class ModulesController < ApplicationController
     # real, directly-saved field, so unlike the AFL-side ICS/Village/Farmer
     # counts (dashboard_total_afl_farmer_scope) this needs no ICS TO MAPPING
     # fallback -- it matches exactly, dynamically, for whatever TO is picked.
-    to_value = @dashboard_to_filter_value.presence || dashboard_filter_param(:to_name, :to)
+    # An agronomist who hasn't picked a TO gets their own inferred one, same
+    # as an explicit pick would.
+    to_value = @dashboard_to_filter_value.presence || dashboard_filter_param(:to_name, :to) || dashboard_user_sub_office_to_value
     if to_value.present?
       conditions << "LOWER(BTRIM(REGEXP_REPLACE(COALESCE(#{vrp_alias}.to_name,''), '^to\\s*[-: ]\\s*', '', 'i'))) = :summary_to"
       binds[:summary_to] = dashboard_to_filter_key(to_value)
@@ -4188,6 +4197,35 @@ class ModulesController < ApplicationController
 
   def dashboard_registered_vrp_ids_for_current_user
     @dashboard_registered_vrp_ids_for_current_user ||= dashboard_own_vrps_list.map(&:id).compact
+  end
+
+  # SUPERSEDED, kept for revert -- this inferred a TO from the agronomist's
+  # own *registered VRPs*. Wrong source: User Register has its own direct
+  # "Sub Office Name" column per user (same place "Office Name" already
+  # drives the FCO auto-fill), so dashboard_user_sub_office_to_value below
+  # reads that instead.
+  #
+  # def dashboard_agronomist_inferred_to_value
+  #   return nil unless dashboard_agronomics_login?
+  #   return @dashboard_agronomist_inferred_to_value if defined?(@dashboard_agronomist_inferred_to_value)
+  #
+  #   vrp_ids = dashboard_registered_vrp_ids_for_current_user
+  #   to_names = Vrp.where(id: vrp_ids).where.not(to_name: [nil, ""]).distinct.pluck(:to_name)
+  #   to_keys = to_names.map { |name| dashboard_to_filter_key(name) }.uniq.reject(&:blank?)
+  #
+  #   @dashboard_agronomist_inferred_to_value = to_keys.size == 1 ? to_names.first : nil
+  # end
+
+  # The logged-in user's own TO, auto-applied when nobody picked one from the
+  # filter bar -- same idea as @dashboard_fcoc_filter_value's default, which
+  # already reads the user's own office_name. sub_office_name is the same
+  # kind of direct per-user assignment (visible as "Sub Office Name" on the
+  # User Register list) and applies to any role (Agronomist, Cluster
+  # Coordinator, ...), not just one.
+  def dashboard_user_sub_office_to_value
+    return nil if dashboard_global_view_user?
+
+    current_app_user&.dig("sub_office_name").presence
   end
 
   def dashboard_cc_vrp_scope_active?
@@ -4586,8 +4624,9 @@ class ModulesController < ApplicationController
     # (@dashboard_to_fallback_active flags this for the view, so the card
     # section can say plainly that this TO has no mapping yet instead of
     # silently showing every other TO's farmers under this FCO as if they
-    # were this TO's own).
-    to_value = @dashboard_to_filter_value.presence || dashboard_filter_param(:to_name, :to)
+    # were this TO's own). An agronomist who hasn't picked a TO gets their
+    # own inferred one, same as an explicit pick would.
+    to_value = @dashboard_to_filter_value.presence || dashboard_filter_param(:to_name, :to) || dashboard_user_sub_office_to_value
     if to_value.present?
       mapped_ics_ids = dashboard_to_mapped_ics_ids(fcoc_value, to_value)
       if mapped_ics_ids.present?
