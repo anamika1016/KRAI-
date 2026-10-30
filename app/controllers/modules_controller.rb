@@ -9376,8 +9376,14 @@ class ModulesController < ApplicationController
 
   def dashboard_user_visible_farmer_scope
     return Afl.all if dashboard_global_view_user?
-    if dashboard_source_fcoc_login? || dashboard_agronomist_all_months?
-      fco_values = dashboard_vrps.map(&:fcoc).compact_blank.uniq.flat_map { |fcoc| training_fcoc_filter_values(fcoc) }.map(&:downcase).uniq
+    # NEW: a user with their own Sub Office Name (TO) set sees that whole TO's
+    # ICS/Village/Farmer totals, same as a source-FCOC login sees their whole
+    # FCO -- not narrowed down further to only the targets they personally
+    # registered. dashboard_total_afl_farmer_scope's TO condition (Condition
+    # 1: ICS TO MAPPING) still narrows this to their specific TO afterwards.
+    if dashboard_source_fcoc_login? || dashboard_agronomist_all_months? || dashboard_user_sub_office_to_value.present?
+      fco_sources = dashboard_vrps.map(&:fcoc) + [current_app_user&.dig("office_name")]
+      fco_values = fco_sources.compact_blank.uniq.flat_map { |fcoc| training_fcoc_filter_values(fcoc) }.map(&:downcase).uniq
       return Afl.where("LOWER(BTRIM(fco_id)) IN (:values) OR LOWER(BTRIM(fco)) IN (:values)", values: fco_values)
     end
 
