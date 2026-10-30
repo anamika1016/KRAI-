@@ -4576,6 +4576,19 @@ class ModulesController < ApplicationController
       end
     end
 
+    # NEW: month-wise historical cutoff. A specific month means "as it stood
+    # by the end of that month" -- only farmers already added to the system
+    # by then count, not ones added afterwards. "All Months" keeps the full
+    # current total, matching the card's original (pre-TO-filter) behaviour.
+    month_value = @dashboard_month_filter_value.presence || dashboard_filter_param(:month, :training_month)
+    if month_value.present? && month_value.to_s.casecmp("all").nonzero?
+      month_index = dashboard_month_index(month_value)
+      if month_index <= 12
+        month_cutoff = Date.civil(Time.zone.today.year, month_index, 1).next_month
+        scope = scope.where("created_at < :month_cutoff", month_cutoff: month_cutoff)
+      end
+    end
+
     scope
   end
 
