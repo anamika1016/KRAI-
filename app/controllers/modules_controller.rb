@@ -14507,16 +14507,21 @@ class ModulesController < ApplicationController
   # Afl actually records, so an FCO lists exactly its own ICS and no others. An
   # ICS repeats only when it genuinely sits under more than one FCO.
   #
-  # TO Name is deliberately left blank. Nothing in the data links an ICS to a
-  # sub-office -- office-mapping-add only records FCO -> TO, so reading a TO from
-  # it would hand every ICS under an FCO all of that FCO's sub-offices, which is
-  # a guess, not a mapping. The column is left for the user to fill in and upload
-  # back rather than pre-filled with something wrong.
+  # TO Name is filled in only where it is certain: office-mapping-add records
+  # FCO -> TO, never ICS -> TO, so an FCO with a single sub-office leaves its ICS
+  # nowhere else to belong. An FCO with several sub-offices does not say which
+  # ICS sits under which, and spreading them across all of them is what made an
+  # FCO's ICS count come out multiplied -- so those are left blank to fill in.
   def ics_to_mapping_template_rows
+    sub_offices = ics_to_mapping_sub_offices
+
     afl_ics_to_mapping_rows
       .select { |row| row[:ics_name].present? }
       .uniq { |row| [row[:ics_name], row[:fco_name]].map { |value| normalize_dashboard_text(value) } }
-      .map { |row| [row[:ics_name], row[:fco_name], nil, "Active"] }
+      .map do |row|
+        known = Array(sub_offices[normalize_dashboard_text(FcoDirectory.bare_name(row[:fco_name]))])
+        [row[:ics_name], row[:fco_name], (known.first if known.one?), "Active"]
+      end
   end
 
   def afl_ics_to_mapping_rows
