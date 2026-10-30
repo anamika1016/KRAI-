@@ -4560,20 +4560,31 @@ class ModulesController < ApplicationController
       )
     end
 
-    # NEW: TO filter (dashboard.html.erb's "TO" dropdown). afls has no TO
-    # column of its own -- the only place an ICS is explicitly assigned to a
-    # TO is the separate "ICS TO MAPPING" module (Office Setup > ICS TO
-    # MAPPING; Sub Office Add only registers the TO's name under an FCO, not
-    # its ICS list).
-    # Condition 1: that mapping has rows for this TO -> narrow to just those
-    # ICS. Condition 2: it has none yet -> leave the scope as the full FCO
-    # total above rather than reporting zero for a TO nobody has mapped yet.
+    # SUPERSEDED fallback version, kept for revert -- uncomment and delete the
+    # strict version below to bring back "no mapping yet -> show the full FCO"
+    # instead of 0. Reverted because the fallback's full-FCO number silently
+    # included every other TO under that FCO (e.g. TO-Sausar showing
+    # TO-Hinganghat's farmers too), which read as "wrong" even though it was
+    # the documented fallback behaviour.
+    #
+    # to_value = @dashboard_to_filter_value.presence || dashboard_filter_param(:to_name, :to)
+    # if to_value.present?
+    #   mapped_ics_ids = dashboard_to_mapped_ics_ids(fcoc_value, to_value)
+    #   if mapped_ics_ids.present?
+    #     scope = scope.where("LOWER(BTRIM(COALESCE(ics_id, ''))) IN (:to_ics_ids)", to_ics_ids: mapped_ics_ids)
+    #   end
+    # end
+
+    # TO filter (dashboard.html.erb's "TO" dropdown). afls has no TO column of
+    # its own -- the only place an ICS is explicitly assigned to a TO is the
+    # separate "ICS TO MAPPING" module (Office Setup > ICS TO MAPPING; Sub
+    # Office Add only registers the TO's name under an FCO, not its ICS list).
+    # STRICT: only ICS explicitly mapped to this TO count. A TO with no rows
+    # there yet reports 0 -- never another TO's (or the whole FCO's) farmers.
     to_value = @dashboard_to_filter_value.presence || dashboard_filter_param(:to_name, :to)
     if to_value.present?
-      mapped_ics_ids = dashboard_to_mapped_ics_ids(fcoc_value, to_value)
-      if mapped_ics_ids.present?
-        scope = scope.where("LOWER(BTRIM(COALESCE(ics_id, ''))) IN (:to_ics_ids)", to_ics_ids: mapped_ics_ids)
-      end
+      mapped_ics_ids = Array(dashboard_to_mapped_ics_ids(fcoc_value, to_value))
+      scope = scope.where("LOWER(BTRIM(COALESCE(ics_id, ''))) IN (:to_ics_ids)", to_ics_ids: mapped_ics_ids)
     end
 
     # NEW: month-wise historical cutoff. A specific month means "as it stood
