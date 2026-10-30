@@ -14503,19 +14503,20 @@ class ModulesController < ApplicationController
     end
   end
 
-  # Upload template for the ICS TO MAPPING screen. One row per ICS/FCO/TO
-  # combination the master data actually knows about, which is the same shape a
-  # saved mapping record takes -- so every TO that can be identified arrives
-  # filled in and the sheet uploads straight back.
+  # Upload template for the ICS TO MAPPING screen: one row per ICS/FCO pair that
+  # Afl actually records, so an FCO lists exactly its own ICS and no others. An
+  # ICS repeats only when it genuinely sits under more than one FCO.
   #
-  # An ICS therefore repeats when it sits under more than one FCO, or under an
-  # FCO that has several sub-offices: those combinations are all genuinely valid
-  # and picking one here would be a guess. TO Name still comes out blank where
-  # the FCO has no sub-office recorded at all -- nothing to identify it from.
+  # TO Name is deliberately left blank. Nothing in the data links an ICS to a
+  # sub-office -- office-mapping-add only records FCO -> TO, so reading a TO from
+  # it would hand every ICS under an FCO all of that FCO's sub-offices, which is
+  # a guess, not a mapping. The column is left for the user to fill in and upload
+  # back rather than pre-filled with something wrong.
   def ics_to_mapping_template_rows
     afl_ics_to_mapping_rows
       .select { |row| row[:ics_name].present? }
-      .map { |row| [row[:ics_name], row[:fco_name], row[:to_name], "Active"] }
+      .uniq { |row| [row[:ics_name], row[:fco_name]].map { |value| normalize_dashboard_text(value) } }
+      .map { |row| [row[:ics_name], row[:fco_name], nil, "Active"] }
   end
 
   def afl_ics_to_mapping_rows
