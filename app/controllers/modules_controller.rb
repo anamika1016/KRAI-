@@ -4560,31 +4560,34 @@ class ModulesController < ApplicationController
       )
     end
 
-    # SUPERSEDED fallback version, kept for revert -- uncomment and delete the
-    # strict version below to bring back "no mapping yet -> show the full FCO"
-    # instead of 0. Reverted because the fallback's full-FCO number silently
-    # included every other TO under that FCO (e.g. TO-Sausar showing
-    # TO-Hinganghat's farmers too), which read as "wrong" even though it was
-    # the documented fallback behaviour.
+    # SUPERSEDED strict version, kept for revert -- uncomment and delete the
+    # fallback version below to go back to "no mapping yet -> 0", never the
+    # full FCO.
     #
     # to_value = @dashboard_to_filter_value.presence || dashboard_filter_param(:to_name, :to)
     # if to_value.present?
-    #   mapped_ics_ids = dashboard_to_mapped_ics_ids(fcoc_value, to_value)
-    #   if mapped_ics_ids.present?
-    #     scope = scope.where("LOWER(BTRIM(COALESCE(ics_id, ''))) IN (:to_ics_ids)", to_ics_ids: mapped_ics_ids)
-    #   end
+    #   mapped_ics_ids = Array(dashboard_to_mapped_ics_ids(fcoc_value, to_value))
+    #   scope = scope.where("LOWER(BTRIM(COALESCE(ics_id, ''))) IN (:to_ics_ids)", to_ics_ids: mapped_ics_ids)
     # end
 
     # TO filter (dashboard.html.erb's "TO" dropdown). afls has no TO column of
     # its own -- the only place an ICS is explicitly assigned to a TO is the
     # separate "ICS TO MAPPING" module (Office Setup > ICS TO MAPPING; Sub
     # Office Add only registers the TO's name under an FCO, not its ICS list).
-    # STRICT: only ICS explicitly mapped to this TO count. A TO with no rows
-    # there yet reports 0 -- never another TO's (or the whole FCO's) farmers.
+    # Condition 1: that mapping has rows for this TO -> narrow to just those
+    # ICS. Condition 2: it has none yet -> fall back to the full FCO total
+    # (@dashboard_to_fallback_active flags this for the view, so the card
+    # section can say plainly that this TO has no mapping yet instead of
+    # silently showing every other TO's farmers under this FCO as if they
+    # were this TO's own).
     to_value = @dashboard_to_filter_value.presence || dashboard_filter_param(:to_name, :to)
     if to_value.present?
-      mapped_ics_ids = Array(dashboard_to_mapped_ics_ids(fcoc_value, to_value))
-      scope = scope.where("LOWER(BTRIM(COALESCE(ics_id, ''))) IN (:to_ics_ids)", to_ics_ids: mapped_ics_ids)
+      mapped_ics_ids = dashboard_to_mapped_ics_ids(fcoc_value, to_value)
+      if mapped_ics_ids.present?
+        scope = scope.where("LOWER(BTRIM(COALESCE(ics_id, ''))) IN (:to_ics_ids)", to_ics_ids: mapped_ics_ids)
+      else
+        @dashboard_to_fallback_active = true
+      end
     end
 
     # NEW: month-wise historical cutoff. A specific month means "as it stood

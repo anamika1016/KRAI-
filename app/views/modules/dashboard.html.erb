@@ -506,6 +506,11 @@
       <div class="module-card-header training-participation-status-header">
         <div>
           <h2>Dashboard Summary</h2>
+          <% if @dashboard_to_fallback_active %>
+            <p class="dashboard-summary-to-fallback-notice" style="color:#b45309; font-size:0.875rem; margin-top:4px;">
+              Note: "<%= @dashboard_to_filter_value %>" ke liye ICS TO MAPPING me abhi koi ICS map nahi hui hai, isliye ICS/Village/Farmer Count yahan poore FCO ka total dikha raha hai, sirf is TO ka apna nahi. Is TO ka khud ka number dekhne ke liye Office Setup &gt; ICS TO MAPPING me iske ICS add karein.
+            </p>
+          <% end %>
         </div>
       </div>
 
