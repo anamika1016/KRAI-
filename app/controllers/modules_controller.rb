@@ -4008,9 +4008,72 @@ class ModulesController < ApplicationController
     { main_activity_count: 0, sub_activity_count: 0 }
   end
 
+  # ORIGINAL (pre-TO-filter) version, kept for revert -- uncomment this and
+  # delete the active version below to go back to it.
+  #
+  # def dashboard_summary_target_sql_filters_base(include_activity_filters: true, target_alias: "t", vrp_alias: "v")
+  #   conditions = ["1=1"]
+  #   binds = {}
+  #   unless dashboard_global_view_user?
+  #     conditions << "#{target_alias}.vrp_id IN (:authorized_vrp_ids)"
+  #     binds[:authorized_vrp_ids] = dashboard_visible_vrp_ids
+  #   end
+  #
+  #   month_value = @dashboard_month_filter_value.presence || dashboard_filter_param(:month, :training_month)
+  #   if month_value.present?
+  #     conditions << "LOWER(BTRIM(#{target_alias}.month_name)) = :summary_month"
+  #     binds[:summary_month] = normalize_dashboard_text(month_value)
+  #   end
+  #
+  #   if include_activity_filters
+  #     main_activity_value = @dashboard_main_activity_filter_value.presence || dashboard_filter_param(:main_activity)
+  #     if main_activity_value.present?
+  #       conditions << "LOWER(BTRIM(#{target_alias}.main_activity_name)) = :summary_main_activity"
+  #       binds[:summary_main_activity] = normalize_dashboard_text(main_activity_value)
+  #     end
+  #
+  #     sub_activity_value = dashboard_filter_param(:sub_activity)
+  #     if sub_activity_value.present?
+  #       conditions << "LOWER(BTRIM(#{target_alias}.activity_name)) = :summary_sub_activity"
+  #       binds[:summary_sub_activity] = normalize_dashboard_text(sub_activity_value)
+  #     end
+  #   end
+  #
+  #   fcoc_value = @dashboard_fcoc_filter_value.presence || dashboard_filter_param(:fcoc, :fco)
+  #   fco_values = dashboard_summary_fco_filter_values(fcoc_value)
+  #   conditions << "(LOWER(BTRIM(#{target_alias}.fco_name)) IN (:summary_fco_values) OR LOWER(BTRIM(#{target_alias}.fco_id)) IN (:summary_fco_values) OR LOWER(BTRIM(#{vrp_alias}.fcoc)) IN (:summary_fco_values))"
+  #   binds[:summary_fco_values] = fco_values
+  #
+  #   ics_value = dashboard_filter_param(:ics, :ics_name)
+  #   if ics_value.present?
+  #     conditions << "(LOWER(BTRIM(#{target_alias}.ics_name)) = :summary_ics OR LOWER(BTRIM(#{target_alias}.ics_id)) = :summary_ics)"
+  #     binds[:summary_ics] = normalize_dashboard_text(ics_value)
+  #   end
+  #
+  #   selected_vrp_id = dashboard_filter_param(:vrp_id)
+  #   if selected_vrp_id.present?
+  #     conditions << "#{target_alias}.vrp_id = :summary_vrp_id"
+  #     binds[:summary_vrp_id] = selected_vrp_id.to_i
+  #   elsif vrp_login_user? && current_vrp_record.present?
+  #     conditions << "#{target_alias}.vrp_id = :summary_vrp_id"
+  #     binds[:summary_vrp_id] = current_vrp_record.id
+  #   elsif dashboard_agronomics_login? && !dashboard_agronomist_all_months?
+  #     conditions << "#{target_alias}.vrp_id IN (:summary_registered_vrp_ids)"
+  #     binds[:summary_registered_vrp_ids] = dashboard_registered_vrp_ids_for_current_user
+  #   elsif dashboard_cc_vrp_scope_active?
+  #     conditions << "#{target_alias}.vrp_id IN (:summary_visible_vrp_ids)"
+  #     binds[:summary_visible_vrp_ids] = module_cluster_visible_vrp_ids
+  #   end
+  #
+  #   [conditions, binds]
+  # end
+
   # Builds the WHERE clause behind every dashboard summary card. The table
   # aliases are configurable so the same predicate can be reused by the
   # "View List" pages, which join through ActiveRecord's real table names.
+  # Admin/Agronomist/CC scoping (dashboard_global_view_user?,
+  # dashboard_agronomics_login?, dashboard_cc_vrp_scope_active?) is unchanged
+  # from the original -- only the TO condition is new.
   def dashboard_summary_target_sql_filters_base(include_activity_filters: true, target_alias: "t", vrp_alias: "v")
     conditions = ["1=1"]
     binds = {}
@@ -4048,6 +4111,16 @@ class ModulesController < ApplicationController
     if ics_value.present?
       conditions << "(LOWER(BTRIM(#{target_alias}.ics_name)) = :summary_ics OR LOWER(BTRIM(#{target_alias}.ics_id)) = :summary_ics)"
       binds[:summary_ics] = normalize_dashboard_text(ics_value)
+    end
+
+    # NEW: TO filter (dashboard.html.erb's "TO" dropdown). vrps.to_name is a
+    # real, directly-saved field, so unlike the AFL-side ICS/Village/Farmer
+    # counts (dashboard_total_afl_farmer_scope) this needs no ICS TO MAPPING
+    # fallback -- it matches exactly, dynamically, for whatever TO is picked.
+    to_value = @dashboard_to_filter_value.presence || dashboard_filter_param(:to_name, :to)
+    if to_value.present?
+      conditions << "LOWER(BTRIM(REGEXP_REPLACE(COALESCE(#{vrp_alias}.to_name,''), '^to\\s*[-: ]\\s*', '', 'i'))) = :summary_to"
+      binds[:summary_to] = dashboard_to_filter_key(to_value)
     end
 
     selected_vrp_id = dashboard_filter_param(:vrp_id)
@@ -4422,9 +4495,44 @@ class ModulesController < ApplicationController
     dashboard_ics_filtered_scope(scope)
   end
 
+  # ORIGINAL (pre-TO-filter) version, kept for revert -- uncomment this and
+  # delete the active version below to go back to it.
+  #
+  # def dashboard_total_afl_farmer_scope
+  #   scope = dashboard_visible_farmer_scope.where.not(id: nil)
+  #   fcoc_value = @dashboard_fcoc_filter_value.presence || dashboard_filter_param(:fcoc, :fco)
+  #   fco_values = dashboard_summary_fco_filter_values(fcoc_value)
+  #
+  #   # Extract only the numeric-style fco_id values (e.g., '1004', '1006')
+  #   fco_id_values = fco_values.select { |v| v.match?(/\A\d+\z/) }
+  #
+  #   if fco_id_values.any?
+  #     scope = scope.where("LOWER(BTRIM(COALESCE(fco_id, ''))) IN (:fco_id_values)", fco_id_values: fco_id_values)
+  #   else
+  #     # Fallback to standard name+id scope if no numeric IDs found
+  #     scope = scope.where(
+  #       "LOWER(BTRIM(COALESCE(fco, ''))) IN (:fco_values) OR LOWER(BTRIM(COALESCE(fco_id, ''))) IN (:fco_values)",
+  #       fco_values: fco_values
+  #     )
+  #   end
+  #
+  #   ics_value = dashboard_filter_param(:ics, :ics_name)
+  #   if ics_value.present?
+  #     normalized_ics = normalize_dashboard_text(ics_value)
+  #     scope = scope.where(
+  #       "LOWER(BTRIM(COALESCE(ics_name, ''))) = :ics OR LOWER(BTRIM(COALESCE(ics_id, ''))) = :ics",
+  #       ics: normalized_ics
+  #     )
+  #   end
+  #
+  #   scope
+  # end
+
   # Farmer-count scope: filter strictly by fco_id (numeric IDs only), not by fco name.
   # This prevents name-based double-counting when some AFL rows have fco = 'FCO-C Sausar'
-  # but a different fco_id, which would inflate the count.
+  # but a different fco_id, which would inflate the count. Admin/Agronomist/CC scoping
+  # (dashboard_visible_farmer_scope) is unchanged from the original -- only the TO
+  # block at the end is new.
   def dashboard_total_afl_farmer_scope
     scope = dashboard_visible_farmer_scope.where.not(id: nil)
     fcoc_value = @dashboard_fcoc_filter_value.presence || dashboard_filter_param(:fcoc, :fco)
@@ -4452,7 +4560,59 @@ class ModulesController < ApplicationController
       )
     end
 
+    # NEW: TO filter (dashboard.html.erb's "TO" dropdown). afls has no TO
+    # column of its own -- the only place an ICS is explicitly assigned to a
+    # TO is the separate "ICS TO MAPPING" module (Office Setup > ICS TO
+    # MAPPING; Sub Office Add only registers the TO's name under an FCO, not
+    # its ICS list).
+    # Condition 1: that mapping has rows for this TO -> narrow to just those
+    # ICS. Condition 2: it has none yet -> leave the scope as the full FCO
+    # total above rather than reporting zero for a TO nobody has mapped yet.
+    to_value = @dashboard_to_filter_value.presence || dashboard_filter_param(:to_name, :to)
+    if to_value.present?
+      mapped_ics_ids = dashboard_to_mapped_ics_ids(fcoc_value, to_value)
+      if mapped_ics_ids.present?
+        scope = scope.where("LOWER(BTRIM(COALESCE(ics_id, ''))) IN (:to_ics_ids)", to_ics_ids: mapped_ics_ids)
+      end
+    end
+
     scope
+  end
+
+  # ICS names recorded by the "ICS TO MAPPING" module, matched against this
+  # TO (and FCO, when one is also selected). Matched by a letters+digits-only
+  # key, not exact text, because the AFL import has duplicate ICS rows that
+  # differ only by stray/corrupted trailing characters -- an exact-string
+  # match would silently drop farmers under the clean spelling's twin.
+  # Returns nil (not []) when nothing is mapped yet, so the caller can tell
+  # "no mapping configured" apart from "mapping configured but matched zero".
+  def dashboard_to_mapped_ics_ids(fcoc_value, to_value)
+    return nil unless model_ready?(:ModuleRecord) && model_ready?(:Afl)
+
+    to_key = dashboard_to_filter_key(to_value)
+    fco_key = fcoc_value.present? ? normalize_dashboard_text(FcoDirectory.bare_name(fcoc_value)) : nil
+
+    mapped_ics_keys = ModuleRecord.where(module_slug: "ics-to-mapping").filter_map do |record|
+      data = record.data
+      next if data["status"].present? && !data["status"].to_s.casecmp("Active").zero?
+      next unless dashboard_to_filter_key(data["to_name"]) == to_key
+      next if fco_key.present? && normalize_dashboard_text(FcoDirectory.bare_name(data["fco_name"])) != fco_key
+
+      dashboard_ics_match_key(data["ics_name"])
+    end.reject(&:blank?).to_set
+    return nil if mapped_ics_keys.empty?
+
+    dashboard_ics_name_to_id_index.filter_map { |key, id| id if mapped_ics_keys.include?(key) }.presence
+  end
+
+  def dashboard_ics_match_key(value)
+    value.to_s.downcase.gsub(/[^a-z0-9]/, "")
+  end
+
+  def dashboard_ics_name_to_id_index
+    @dashboard_ics_name_to_id_index ||= Afl.where.not(ics_name: [nil, ""]).where.not(ics_id: [nil, ""])
+      .distinct.pluck(:ics_name, :ics_id)
+      .each_with_object({}) { |(name, id), index| index[dashboard_ics_match_key(name)] ||= id.to_s.downcase }
   end
 
   def dashboard_total_afl_scope
@@ -4581,7 +4741,11 @@ class ModulesController < ApplicationController
     []
   end
 
-  def dashboard_jj_requirement_items(fco_name, vrps, targets = nil)
+  # month: lets a caller that already resolved the dashboard's month (API
+  # callers use DashboardDefaults.month) force this card to agree with it. Left
+  # nil, this keeps its own old fallback chain unchanged -- the web dashboard
+  # relies on that and is out of scope here.
+  def dashboard_jj_requirement_items(fco_name, vrps, targets = nil, month: nil)
     normalized_fco = normalize_dashboard_text(fco_name)
     fco_id = FcoDirectory.office_for(fco_name)&.dig(:id).presence || FcoDirectory.id_for(fco_name).presence || if normalized_fco.include?("1004") || normalized_fco.include?("sausar")
                "1004"
@@ -4593,7 +4757,7 @@ class ModulesController < ApplicationController
                nil
              end
 
-    selected_month = params[:month].presence || params[:training_month].presence || "August"
+    selected_month = month.presence || params[:month].presence || params[:training_month].presence || "August"
     active_count   = dashboard_fco_active_vrp_count(fco_name, selected_month, vrps)
 
     if normalized_fco.include?("sausar") || fco_id == "1004"

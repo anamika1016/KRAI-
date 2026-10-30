@@ -26,6 +26,36 @@ class Api::V1::JeevikaJankarsControllerTest < ActionDispatch::IntegrationTest
     assert_equal "Submitted", body["jeevika_jankars"].find { |row| row["id"] == vrp.id }["status_label"]
   end
 
+  # Reported: /api/v1/jeevika-jankars read correctly for admin but empty for
+  # CC/Agronomist/FCOC logins. Those roles coordinate a cluster -- they don't
+  # necessarily register the JJs in it themselves, so a CC whose own name is
+  # never in created_by_id/user_id has nothing in own_vrps even though the web
+  # dashboard shows their cluster's JJs fine (VrpsController#visible_vrps
+  # unions cluster_mapped_vrps + own_vrps + approval_related_vrps; the API's
+  # visible_vrps only ever called own_vrps).
+  test "list includes JJs the current CC coordinates but did not personally register" do
+    cc = User.create!(
+      first_name: "Priya", last_name: "Coordinator", user_name: "cc_cluster_#{SecureRandom.hex(3)}",
+      email: "cc_#{SecureRandom.hex(3)}@example.com", mobile_no: "9#{SecureRandom.random_number(10**9).to_s.rjust(9, "0")}",
+      password: "secret", user_type: "User", status: "Active", role: "Cluster Incharge"
+    )
+    cc_token = api_login_token(login: cc.user_name, password: "secret")
+
+    # Registered by the admin (not the CC), but mapped to the CC's cluster.
+    cluster_vrp = create_vrp(name: "Cluster JJ", user_name: "cluster_jj_#{SecureRandom.hex(3)}",
+      created_by_id: @user.id, cluster_incharge: cc.full_name, status: 10)
+    # Unrelated to this CC -- registered by someone else, no cluster match.
+    other_vrp = create_vrp(name: "Other JJ", user_name: "other_jj_#{SecureRandom.hex(3)}",
+      created_by_id: @user.id, cluster_incharge: "Someone Else", status: 10)
+
+    get "/api/v1/jeevika-jankars", headers: { "Authorization" => "Bearer #{cc_token}" }, as: :json
+
+    assert_response :success
+    ids = response.parsed_body["jeevika_jankars"].map { |row| row["id"] }
+    assert_includes ids, cluster_vrp.id
+    refute_includes ids, other_vrp.id
+  end
+
   test "registration creates jeevika jankar with status 10" do
     payload = registration_payload(user_name: "new_jj_user")
 

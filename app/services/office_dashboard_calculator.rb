@@ -69,8 +69,12 @@ class OfficeDashboardCalculator < ModulesController
       ]
     end
     cards << dashboard_group_card("Gender Count", gender_items, style: "registration")
+    # Same month as Gender Count above -- dashboard_jj_requirement_items
+    # otherwise falls back to its own hardcoded "August" when no month filter
+    # is selected, so the two cards in the same response disagreed about which
+    # month's data they were showing.
     cards << dashboard_group_card("FCO-wise JJ Requirement",
-      fco_names.flat_map { |fco_name| dashboard_jj_requirement_items(fco_name, vrps, targets) }, style: "fco")
+      fco_names.flat_map { |fco_name| dashboard_jj_requirement_items(fco_name, vrps, targets, month: month) }, style: "fco")
     cards
   end
 

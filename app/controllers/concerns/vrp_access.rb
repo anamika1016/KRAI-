@@ -202,7 +202,16 @@ module VrpAccess
   def visible_vrps
     return Vrp.all if current_app_user.blank? || admin_user?
 
-    own_vrps
+    # Registering a Jeevika Jankar and coordinating the cluster it sits in are
+    # independent reasons to see it, and one person is often both -- this
+    # mirrors VrpsController#visible_vrps on the web, which unions all three
+    # for the same reason. own_vrps alone only shows what a CC/Agronomist/FCOC
+    # login personally registered, which is empty for someone who coordinates
+    # a cluster or FCO without having registered any JJ themselves -- that's
+    # why /api/v1/jeevika-jankars read empty for those roles while the web
+    # dashboard, which already unions them, read correctly.
+    ids = (cluster_mapped_vrps.to_a + own_vrps.to_a + approval_related_vrps).map(&:id).uniq
+    Vrp.where(id: ids)
   end
 
   def find_visible_vrp(id)

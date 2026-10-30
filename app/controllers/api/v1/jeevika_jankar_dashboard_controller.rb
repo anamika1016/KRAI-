@@ -223,10 +223,18 @@ module Api
             context = prepare_lightweight_admin_dashboard_context
             web = context[:web]
             vrps = web.send(:dashboard_vrps)
-            gender_month = params[:month].presence || params[:training_month].presence || "August"
+            # Same default the office/CC/Agronomist/FCOC API path uses
+            # (DashboardDefaults.month, the current month). This was hardcoded
+            # to "August" here only, so with no month filter selected the
+            # admin widget showed stale August data while every other login's
+            # Gender Count/FCO-wise JJ Requirement showed the current month --
+            # and the admin side's own two cards agreed with each other only
+            # because dashboard_jj_requirement_items had the same hardcoded
+            # fallback, not because either number was actually correct.
+            gender_month = params[:month].presence || params[:training_month].presence || DashboardDefaults.month
             items = FcoDirectory.names.flat_map do |fco|
               active = web.send(:dashboard_fco_active_vrp_records, fco, gender_month, vrps)
-              web.send(:dashboard_jj_requirement_items, fco, vrps, context[:targets]) + [
+              web.send(:dashboard_jj_requirement_items, fco, vrps, context[:targets], month: gender_month) + [
                 { title: "#{fco} Male", value: active.count { |vrp| web.send(:normalize_dashboard_text, vrp.gender) == "male" } },
                 { title: "#{fco} Female", value: active.count { |vrp| web.send(:normalize_dashboard_text, vrp.gender) == "female" } }
               ]
@@ -859,7 +867,7 @@ module Api
         ics_rows = selected_ics ? web.send(:ics_farmer_report_rows, ics_targets, ics_records, selected_ics: selected_ics) : []
         target_progress = admin_dashboard_progress(web, targets, vrps)
 
-        card_data = exact_admin_card_data(web, vrps, targets, all_targets, bills)
+        card_data = exact_admin_card_data(web, vrps, targets, all_targets, bills, all_vrps: all_vrps)
         web_summary_cards = web.send(:dashboard_summary_cards, targets)
         web_demo_cards = web.send(:demonstration_method_cards)
         web_training_cards = web.send(:training_participation_dashboard_status_cards,
@@ -1040,7 +1048,7 @@ module Api
         end
       end
 
-      def exact_admin_card_data(web, vrps, targets, all_targets, bills)
+      def exact_admin_card_data(web, vrps, targets, all_targets, bills, all_vrps:)
         assigned_vrp_ids = all_targets.filter_map { |target| target.vrp_id.to_s.presence }.uniq
         activity_vrp_ids = all_targets.filter_map do |target|
           target.vrp_id.to_s.presence if target.main_activity_name.present? || target.activity_name.present?
@@ -1050,7 +1058,13 @@ module Api
         end.reject { |main, sub| main.blank? && sub.blank? }.uniq.size
 
         month_bills = admin_dashboard_bills_for_month(web, bills)
-        gender_month = params[:month].presence || params[:training_month].presence || "August"
+        # Same default as admin_api_group_items/OfficeDashboardCalculator below.
+        # This field (sections.fco_wise_jeevika_jankar) and that one
+        # (mobile_widget_values["<FCO> Male"/"Female"]) describe the same
+        # FCO-wise gender counts; hardcoding "August" only here meant the two
+        # parts of the same admin response disagreed whenever no month filter
+        # was selected.
+        gender_month = params[:month].presence || params[:training_month].presence || DashboardDefaults.month
 
         {
           registration: {
@@ -1069,8 +1083,23 @@ module Api
             bill_approved: month_bills.count { |bill| web.send(:dashboard_bill_approved?, bill) },
             bill_pending: month_bills.count { |bill| web.send(:dashboard_bill_pending?, bill) }
           },
+          # all_vrps (not the activity-filtered vrps above): this must count the
+          # same population as admin_api_group_items/mobile_widget_values below,
+          # which was deliberately built on "the same approved, active JJ
+          # population" (see its comment). Using the narrowed vrps here made
+          # sections.fco_wise_jeevika_jankar disagree with
+          # mobile_widget_values["<FCO> Male"/"Female"] in the same response
+          # whenever an activity filter (including the default one) narrowed
+          # the VRP list.
           fco_wise_jeevika_jankar: FcoDirectory.names.map do |fco_name|
-            matching = web.send(:dashboard_fco_active_vrp_records, fco_name, gender_month, vrps)
+            # OfficeDashboardCalculator's override of dashboard_fco_active_vrp_records
+            # additionally requires dashboard_vrp_active_for_requirement? (approved,
+            # not just active/not-deleted) -- this plain ModulesController instance
+            # does not apply that override, so without filtering by it here a
+            # not-yet-approved JJ counted in this field but not in
+            # mobile_widget_values["<FCO> Male"/"Female"]/Active above.
+            matching = web.send(:dashboard_fco_active_vrp_records, fco_name, gender_month, all_vrps)
+              .select { |vrp| web.send(:dashboard_vrp_active_for_requirement?, vrp) }
             {
               fco: fco_name,
               male: matching.count { |vrp| web.send(:normalize_dashboard_text, vrp.gender) == "male" },
