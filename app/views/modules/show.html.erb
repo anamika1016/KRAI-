@@ -9,6 +9,18 @@
         <h1><%= @slug == "new-user" ? "Registration" : @module[:title] %></h1>
         <p><%= @module[:purpose] %></p>
       </div>
+      <% if @slug == "ics-to-mapping" %>
+        <div class="module-hero-actions">
+          <%= link_to "Export Excel", export_module_path(@slug, format: :xlsx, template: 1), class: "list-btn export" %>
+          <%= form_with url: import_module_path(@slug), method: :post, multipart: true, local: true do |form| %>
+            <label class="import-btn">
+              Choose Excel
+              <%= form.file_field :file, accept: ".csv,.xlsx", data: { import_file: true }, hidden: true %>
+            </label>
+            <%= form.submit "Upload Excel", class: "list-btn upload" %>
+          <% end %>
+        </div>
+      <% end %>
     </div>
   <% end %>
 

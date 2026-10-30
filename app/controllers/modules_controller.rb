@@ -1988,6 +1988,13 @@ class ModulesController < ApplicationController
             sheet_name: "Observation") and return
         end
 
+        if @slug == "ics-to-mapping" && params[:template].present?
+          send_xlsx(headers: @module[:fields],
+            rows: ics_to_mapping_template_rows,
+            filename: "ics_to_mapping_template_#{Date.current}.xlsx",
+            sheet_name: "ICS TO MAPPING") and return
+        end
+
         if @slug == "lg-directory-list"
           prepare_lg_directory_data
           csv_data = lg_directory_csv(@lg_directory_rows)
@@ -14494,6 +14501,21 @@ class ModulesController < ApplicationController
     afl_ics_to_mapping_rows.map do |row|
       { ics_name: row[:ics_name], fco_name: row[:fco_name], to_name: row[:to_name] }
     end
+  end
+
+  # Upload template for the ICS TO MAPPING screen. One row per ICS/FCO/TO
+  # combination the master data actually knows about, which is the same shape a
+  # saved mapping record takes -- so every TO that can be identified arrives
+  # filled in and the sheet uploads straight back.
+  #
+  # An ICS therefore repeats when it sits under more than one FCO, or under an
+  # FCO that has several sub-offices: those combinations are all genuinely valid
+  # and picking one here would be a guess. TO Name still comes out blank where
+  # the FCO has no sub-office recorded at all -- nothing to identify it from.
+  def ics_to_mapping_template_rows
+    afl_ics_to_mapping_rows
+      .select { |row| row[:ics_name].present? }
+      .map { |row| [row[:ics_name], row[:fco_name], row[:to_name], "Active"] }
   end
 
   def afl_ics_to_mapping_rows
