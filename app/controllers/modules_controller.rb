@@ -834,6 +834,20 @@ class ModulesController < ApplicationController
 
     # 4. ICS Filter
     @filter_ics_options = t_scope.map { |t| t.ics_name.presence || t.ics_id }.uniq.compact_blank.sort
+    # A target row's own VRP can carry a TO that does not match its ICS TO
+    # MAPPING assignment (a VRP covers more than one ICS, or the VRP's to_name
+    # is stale), which let an ICS belonging to a different TO leak into this
+    # dropdown. Narrow to the TO's actual mapped ICS when one is configured;
+    # same Condition 1/2 rule as everywhere else -- no mapping yet for this TO
+    # leaves the FCO-wide list above untouched.
+    if @dashboard_to_filter_value.present?
+      to_ics_ids = dashboard_to_mapped_ics_ids(@dashboard_fcoc_filter_value, @dashboard_to_filter_value)
+      if to_ics_ids.present?
+        to_ics_id_set = to_ics_ids.to_set
+        @filter_ics_options = t_scope.select { |t| to_ics_id_set.include?(t.ics_id.to_s.strip.downcase) }
+          .map { |t| t.ics_name.presence || t.ics_id }.uniq.compact_blank.sort
+      end
+    end
     selected_ics_filter = dashboard_filter_param(:ics)
     if selected_ics_filter.present?
       selected_ics = selected_ics_filter.to_s
