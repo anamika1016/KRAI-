@@ -2,7 +2,7 @@ class CcJjWorkStatusReport
   # FCO list comes from the farmer master so a new FCO is covered here too.
   HEADERS = ["month", "fco_id", "fpo_id", "fpo_name", "cluster_incharge", "vrp_name", "total_farmer", "No Activity Mapping", "No Training Mapping", "Training Mapped But No Entry", "Training Entry Done", "Red", "Completed", "Cluster Coordinator Involved", "Agronomist Involved"].freeze
 
-  def initialize(calculator:, month: nil, fco: nil)
+  def initialize(calculator:, month: nil, fco: nil, to_name: nil)
     @calculator = calculator
     filters = calculator.request ? calculator.params : {}
     @month = (month || (filters.key?(:month) ? filters[:month] : DashboardDefaults.month)).to_s.strip
@@ -11,6 +11,12 @@ class CcJjWorkStatusReport
     # A selected FCO can arrive as a name ("FCO-C Sausar") or an id. Resolve
     # through the directory so a later-added office is recognised too.
     @fco = FcoDirectory.id_for(@fco) || @fco unless @fco.match?(/\A\d+\z/)
+    # Fall back to the logged-in user's own Sub Office Name (Agronomist/CC)
+    # when no TO was explicitly chosen, same auto-fill the dashboard cards use
+    # -- otherwise a user whose TO only ever auto-fills (never an explicit URL
+    # param) would see this list unfiltered while the card above it narrows.
+    @to_name = (to_name || filters[:to_name] || filters[:to]).to_s.strip
+    @to_name = @calculator.send(:dashboard_user_sub_office_to_value).to_s.strip if @to_name.blank? && @calculator.respond_to?(:dashboard_user_sub_office_to_value, true)
   end
 
   def summary
@@ -56,10 +62,19 @@ class CcJjWorkStatusReport
       ids = @calculator.send(:dashboard_visible_vrp_ids).map { |id| connection.quote(id) }
       ids.empty? ? "FALSE" : "m.vrp_id IN (#{ids.join(', ')})"
     end
+    # TO filter: same Condition 1/2 rule as Dashboard Summary -- an ICS TO
+    # MAPPING match narrows to that TO's ICS; no mapping yet for this TO
+    # leaves both filters below as TRUE, i.e. the full FCO total.
+    to_ics_ids = @to_name.present? ? @calculator.send(:dashboard_to_mapped_ics_ids, @fco, @to_name) : nil
+    to_ics_quoted = Array(to_ics_ids).map { |id| connection.quote(id) }.join(", ")
+    list_to_filter = to_ics_ids.present? ? "LOWER(BTRIM(a.ics_id)) IN (#{to_ics_quoted})" : "TRUE"
+    summary_to_filter = to_ics_ids.present? ? "fvm.afl_id IN (SELECT id::text FROM public.afls WHERE LOWER(BTRIM(ics_id)) IN (#{to_ics_quoted}))" : "TRUE"
     replacements = {
       assignment_visibility_filter: assignment_scope,
       summary_fco_filter: selected_fcos.empty? ? "FALSE" : "LOWER(TRIM(fvm.fco_id)) IN (#{fcos})",
       list_fco_filter: selected_fcos.empty? ? "FALSE" : "LOWER(TRIM(a.fco_id)) IN (#{stored_fcos})",
+      list_to_filter: list_to_filter,
+      summary_to_filter: summary_to_filter,
       month_label: connection.quote(all_months? ? "All Months" : @month),
       target_month_filter: all_months? ? "TRUE" : "LOWER(TRIM(t.month_name)) = #{connection.quote(@month.downcase)}",
       entry_month_filter: all_months? ? "TRUE" : "LOWER(TRIM(COALESCE(mr.data::jsonb ->> 'month', ''))) = #{connection.quote(@month.downcase)}"

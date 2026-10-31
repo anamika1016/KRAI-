@@ -222,6 +222,7 @@ base_farmer_data AS (
         ON registered.fco_id = a.fco_id AND registered.afl_id = a.id::text
 
     WHERE %{list_fco_filter}
+      AND %{list_to_filter}
 )
 
 SELECT

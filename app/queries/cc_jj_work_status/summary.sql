@@ -73,6 +73,7 @@ farmer_status_data AS (
         ON td.farmer_id = fvm.afl_id
 
     WHERE %{summary_fco_filter}
+      AND %{summary_to_filter}
 ),
 
 /* 

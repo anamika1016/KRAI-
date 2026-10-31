@@ -3,4 +3,5 @@
 -- of target or training JSON arrays. Preserve the same scoped farmer filter.
 SELECT DISTINCT a.fco_id
 FROM public.afls a
-WHERE %{list_fco_filter};
+WHERE %{list_fco_filter}
+  AND %{list_to_filter};

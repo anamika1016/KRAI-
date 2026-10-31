@@ -11,6 +11,7 @@ class AflsController < ApplicationController
   def index
     @query = params[:q].to_s.strip
     @fco_filter = params[:fco_id].presence || params[:fcoc].presence
+    @to_filter = params[:to_name].presence || params[:to].presence
     @ics_filter = params[:ics].presence || params[:ics_id].presence
     @month_filter = params[:month].presence
     @main_activity_filter = params[:main_activity].presence
@@ -88,6 +89,7 @@ class AflsController < ApplicationController
   def bulk_destroy
     query = params[:q].to_s.strip
     @fco_filter = params[:fco_id].presence || params[:fcoc].presence
+    @to_filter = params[:to_name].presence || params[:to].presence
     @ics_filter = params[:ics].presence || params[:ics_id].presence
     @month_filter = params[:month].presence
     @main_activity_filter = params[:main_activity].presence
@@ -128,6 +130,19 @@ class AflsController < ApplicationController
         "LOWER(BTRIM(COALESCE(ics_name, ''))) IN (:ics_values) OR LOWER(BTRIM(COALESCE(ics_id, ''))) IN (:ics_values)",
         ics_values: ics_values
       )
+    end
+
+    # TO filter: same Condition 1/2 rule as the Dashboard Summary cards this
+    # list is a drill-down for -- an ICS TO MAPPING match narrows to that TO's
+    # ICS, no mapping yet leaves the FCO scope above untouched. Falls back to
+    # the logged-in user's own Sub Office Name (Agronomist/CC auto-fill) when
+    # no TO was explicitly chosen, same as the dashboard cards.
+    effective_to_filter = @to_filter.presence || policy.send(:dashboard_user_sub_office_to_value)
+    if effective_to_filter.present?
+      to_ics_ids = policy.send(:dashboard_to_mapped_ics_ids, @fco_filter, effective_to_filter)
+      if to_ics_ids.present?
+        scope = scope.where("LOWER(BTRIM(COALESCE(ics_id, ''))) IN (:to_ics_ids)", to_ics_ids: to_ics_ids)
+      end
     end
 
     if (village_filter = params[:village_id].presence)

@@ -2307,6 +2307,25 @@ class ModulesController < ApplicationController
     COND
     binds[:fco_values] = dashboard_summary_fco_filter_values(selected_fco)
 
+    # TO filter: same Condition 1/2 rule as Dashboard Summary and Farmer
+    # Training Participation Status. An Other Target entry has no ICS of its
+    # own, but it links to the target_mapping it was raised against, which
+    # does -- resolve the selected TO to its mapped ICS ids and match through
+    # that link. No mapping for this TO yet (Condition 2) leaves the entry
+    # unfiltered, i.e. the full FCO total, same as everywhere else.
+    to_value = @dashboard_to_filter_value.presence || dashboard_filter_param(:to_name, :to)
+    if to_value.present?
+      to_ics_ids = dashboard_to_mapped_ics_ids(selected_fco, to_value)
+      if to_ics_ids.present?
+        conditions << <<~COND.squish
+          data::jsonb->>'target_mapping_id' IN (
+            SELECT id::text FROM target_mappings WHERE LOWER(BTRIM(ics_id)) IN (:to_ics_ids)
+          )
+        COND
+        binds[:to_ics_ids] = to_ics_ids
+      end
+    end
+
     sql = <<~SQL.squish
       SELECT data::jsonb->>'jeevika_jankar_name' AS jeevika_jankar_name,
              data::jsonb->>'fcoc_name' AS fco_name,
@@ -4683,20 +4702,40 @@ class ModulesController < ApplicationController
   def dashboard_to_mapped_ics_ids(fcoc_value, to_value)
     return nil unless model_ready?(:ModuleRecord) && model_ready?(:Afl)
 
-    to_key = dashboard_to_filter_key(to_value)
-    fco_key = fcoc_value.present? ? normalize_dashboard_text(FcoDirectory.bare_name(fcoc_value)) : nil
+    # Up to 8 cards/lists ask this the same (fcoc, to) question in one request
+    # (Dashboard Summary, each Farmer Training Participation card, Other
+    # Target...). Cache per argument pair so only the first call per pair hits
+    # the DB; dashboard_ics_to_mapping_records below caches the underlying
+    # ICS TO MAPPING rows once so a different (fcoc, to) pair in the same
+    # request doesn't requery them either.
+    @dashboard_to_mapped_ics_ids_cache ||= {}
+    cache_key = [fcoc_value, to_value]
+    return @dashboard_to_mapped_ics_ids_cache[cache_key] if @dashboard_to_mapped_ics_ids_cache.key?(cache_key)
 
-    mapped_ics_keys = ModuleRecord.where(module_slug: "ics-to-mapping").filter_map do |record|
-      data = record.data
+    to_key = dashboard_to_filter_key(to_value)
+    # fcoc_value is usually a name ("FCO-C Sausar"), matching ICS TO MAPPING's
+    # stored fco_name. Some callers pass a bare numeric id, or (for "All FCO")
+    # an array of ids -- resolve the id back to a name, or drop the FCO
+    # restriction for an array, so the comparison below doesn't silently fail
+    # against a value shaped differently than a plain name.
+    single_fco_value = fcoc_value.is_a?(Array) ? nil : fcoc_value
+    single_fco_value = FcoDirectory.name_for(single_fco_value) if single_fco_value.to_s.match?(/\A\d+\z/)
+    fco_key = single_fco_value.present? ? normalize_dashboard_text(FcoDirectory.bare_name(single_fco_value)) : nil
+
+    mapped_ics_keys = dashboard_ics_to_mapping_records.filter_map do |data|
       next if data["status"].present? && !data["status"].to_s.casecmp("Active").zero?
       next unless dashboard_to_filter_key(data["to_name"]) == to_key
       next if fco_key.present? && normalize_dashboard_text(FcoDirectory.bare_name(data["fco_name"])) != fco_key
 
       dashboard_ics_match_key(data["ics_name"])
     end.reject(&:blank?).to_set
-    return nil if mapped_ics_keys.empty?
 
-    dashboard_ics_name_to_id_index.filter_map { |key, id| id if mapped_ics_keys.include?(key) }.presence
+    result = mapped_ics_keys.empty? ? nil : dashboard_ics_name_to_id_index.filter_map { |key, id| id if mapped_ics_keys.include?(key) }.presence
+    @dashboard_to_mapped_ics_ids_cache[cache_key] = result
+  end
+
+  def dashboard_ics_to_mapping_records
+    @dashboard_ics_to_mapping_records ||= ModuleRecord.where(module_slug: "ics-to-mapping").map(&:data)
   end
 
   def dashboard_ics_match_key(value)
@@ -5033,10 +5072,11 @@ class ModulesController < ApplicationController
 
   def dashboard_summary_target_params
     @dashboard_summary_target_params ||= begin
-      target_params = params.permit(:main_activity, :sub_activity, :fcoc, :ics, :month, :vrp_id).to_h
+      target_params = params.permit(:main_activity, :sub_activity, :fcoc, :ics, :month, :vrp_id, :to_name).to_h
         .reverse_merge(
         "month" => @dashboard_month_filter_value,
-        "fcoc" => @dashboard_fcoc_filter_value
+        "fcoc" => @dashboard_fcoc_filter_value,
+        "to_name" => @dashboard_to_filter_value
       )
       .compact_blank
       target_params["month"] = "all" if dashboard_agronomist_all_months?
@@ -5076,6 +5116,8 @@ class ModulesController < ApplicationController
       params_hash[:fco_id] = FcoDirectory.ids
     end
     params_hash[:ics] = dashboard_filter_param(:ics, :ics_name) if dashboard_filter_param(:ics, :ics_name).present?
+    to_value = @dashboard_to_filter_value.presence || dashboard_filter_param(:to_name, :to)
+    params_hash[:to_name] = to_value if to_value.present?
     params_hash
   end
 
@@ -7249,7 +7291,15 @@ class ModulesController < ApplicationController
   end
 
   def training_fcoc_filter_values(*values)
-    Array(values).flatten.filter_map do |value|
+    # Called once per VRP/target row in several dashboard loops, but the same
+    # handful of FCO spellings repeat across hundreds of rows -- cache by the
+    # exact argument list so a repeated value is a hash lookup, not a re-run
+    # of FcoDirectory.aliases_for and the regex/normalize work below.
+    @training_fcoc_filter_values_cache ||= {}
+    cache_key = values
+    return @training_fcoc_filter_values_cache[cache_key] if @training_fcoc_filter_values_cache.key?(cache_key)
+
+    @training_fcoc_filter_values_cache[cache_key] = Array(values).flatten.filter_map do |value|
       text = value.to_s.strip
       next if text.blank?
 
@@ -14166,9 +14216,9 @@ class ModulesController < ApplicationController
     return @hierarchy_cluster_incharge_labels if defined?(@hierarchy_cluster_incharge_labels)
     return @hierarchy_cluster_incharge_labels = [] unless model_ready?(:ModuleRecord)
 
-    @hierarchy_cluster_incharge_labels = active_module_records_scope("user-hierarchy-mapping")
-      .order(created_at: :desc)
-      .flat_map { |record| user_hierarchy_list_rows([record]).map { |row| row[:level_2_user] } }
+    records = active_module_records_scope("user-hierarchy-mapping").order(created_at: :desc).to_a
+    @hierarchy_cluster_incharge_labels = user_hierarchy_list_rows(records)
+      .map { |row| row[:level_2_user] }
       .select { |label| cluster_incharge_user_label?(label) }
       .compact_blank
       .uniq
