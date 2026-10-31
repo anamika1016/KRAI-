@@ -1024,6 +1024,10 @@ class ModulesController < ApplicationController
     end
     @participation_selected_month = @participation_month_filter_value == "all" ? nil : @participation_month_filter_value
     @participation_fcoc_filter_value = @dashboard_fcoc_filter_value.presence || dashboard_default_visible_fcoc(@filter_fcoc_options)
+    # NEW: same TO value the Dashboard Summary cards use (explicit pick, or
+    # the logged-in user's own Sub Office Name) -- this section had no TO
+    # wiring before, so none of the four cards below respected it.
+    @participation_to_filter_value = @dashboard_to_filter_value.presence
     @participation_week_filter_value = dashboard_filter_param(:weekly_target_week).to_i if dashboard_filter_param(:weekly_target_week).present?
     @participation_week_filter_value = nil unless (1..4).include?(@participation_week_filter_value)
     if @dashboard_farmer_activity_mode
@@ -1034,19 +1038,23 @@ class ModulesController < ApplicationController
       )
       mapped_count, mapped_popups = farmer_training_mapped_farmer_count_and_popups(
         month_name: @participation_selected_month,
-        fcoc_name: @participation_fcoc_filter_value
+        fcoc_name: @participation_fcoc_filter_value,
+        to_name: @participation_to_filter_value
       )
       no_training_count, no_training_popups, red_fco_details = farmer_training_no_training_count_and_popups(
         month_name: @participation_selected_month,
-        fcoc_name: @participation_fcoc_filter_value
+        fcoc_name: @participation_fcoc_filter_value,
+        to_name: @participation_to_filter_value
       )
       yellow_count, yellow_popups = farmer_training_yellow_farmer_count_and_popups(
         month_name: @participation_selected_month,
-        fcoc_name: @participation_fcoc_filter_value
+        fcoc_name: @participation_fcoc_filter_value,
+        to_name: @participation_to_filter_value
       )
       green_count, green_popups = farmer_training_green_farmer_count_and_popups(
         month_name: @participation_selected_month,
-        fcoc_name: @participation_fcoc_filter_value
+        fcoc_name: @participation_fcoc_filter_value,
+        to_name: @participation_to_filter_value
       )
       participation_dashboard_counts[:red] = no_training_count if participation_dashboard_counts.is_a?(Hash)
       participation_dashboard_counts[:yellow] = yellow_count if participation_dashboard_counts.is_a?(Hash)
@@ -1180,6 +1188,10 @@ class ModulesController < ApplicationController
     selected_sub_activity = dashboard_filter_param(:training_sub_activity, :sub_activity)
     selected_fcoc = dashboard_filter_param(:training_fcoc, :fcoc)
     selected_fcoc = Array(params[:fco_id]).reject(&:blank?) if selected_fcoc.blank? && params[:fco_id].present?
+    # NEW: same TO value the Dashboard Summary cards use -- keeps this "View
+    # List" drill-down's totals consistent with the card counts they're
+    # supposed to match.
+    selected_to = dashboard_filter_param(:to_name, :to) || dashboard_user_sub_office_to_value
     selected_main_activity = dashboard_filter_param(:main_activity, :activity)
     selected_training_method = params[:training_method].to_s.strip
     selected_week_param = params[:week].presence || params[:weekly_target_week].presence
@@ -1257,19 +1269,23 @@ class ModulesController < ApplicationController
     end
     mapped_sql_count, mapped_sql_popups = farmer_training_mapped_farmer_count_and_popups(
       month_name: selected_month,
-      fcoc_name: selected_fcoc
+      fcoc_name: selected_fcoc,
+      to_name: selected_to
     )
     no_training_sql_count, no_training_sql_popups = farmer_training_no_training_count_and_popups(
       month_name: selected_month,
-      fcoc_name: selected_fcoc
+      fcoc_name: selected_fcoc,
+      to_name: selected_to
     )
     yellow_sql_count, yellow_sql_popups = farmer_training_yellow_farmer_count_and_popups(
       month_name: selected_month,
-      fcoc_name: selected_fcoc
+      fcoc_name: selected_fcoc,
+      to_name: selected_to
     )
     green_sql_count, green_sql_popups = farmer_training_green_farmer_count_and_popups(
       month_name: selected_month,
-      fcoc_name: selected_fcoc
+      fcoc_name: selected_fcoc,
+      to_name: selected_to
     )
 
     @training_participation_totals = participation_dashboard_counts.slice(:green, :yellow, :red, :pending, :total)
@@ -2324,13 +2340,18 @@ class ModulesController < ApplicationController
     # its mapping scope directly so a default Farmers' Training selection cannot
     # hide Other indicators. By default include all three supported FCOs.
     selected_fco = dashboard_filter_param(:fcoc, :fco).presence || @dashboard_fcoc_filter_value
+    # Resolve any FCO-C dynamically via FcoDirectory (not just Sausar/Turekela/
+    # Direct to HO) so a newly added FCO's Other Activity rows and filter both
+    # scope correctly instead of only the three originally hardcoded here.
     fco_ids_for_values = lambda do |*values|
-      text = normalize_dashboard_text(values.flatten.compact.join(" "))
-      {
-        "1004" => text.include?("1004") || text.include?("sausar"),
-        "1006" => text.include?("1006") || text.include?("turekela"),
-        "1095" => text.include?("1095") || text.include?("direct to ho")
-      }.filter_map { |id, matches| id if matches }
+      values.flatten.compact.flat_map do |value|
+        text = value.to_s.strip
+        next [] if text.blank?
+        next [normalize_dashboard_text(text)] if text.match?(/\A\d+\z/)
+
+        resolved_id = FcoDirectory.id_for(text)
+        resolved_id.present? ? FcoDirectory.aliases_for(resolved_id).grep(/\A\d+\z/) : []
+      end.uniq
     end
     fco_ids = selected_fco.present? ? fco_ids_for_values.call(selected_fco) : FcoDirectory.data_ids
     selected_month = normalize_dashboard_text(@dashboard_month_filter_value)
@@ -6284,36 +6305,41 @@ class ModulesController < ApplicationController
     raw_values = Array(fcoc_name).flatten.map(&:to_s).reject(&:blank?)
     return FcoDirectory.data_ids if raw_values.blank?
 
+    # Resolve any Office Setup FCO-C dynamically (not just Sausar/Turekela/Direct
+    # to HO) via FcoDirectory, same lookup the Dashboard Summary cards use -- a
+    # newly added FCO scopes correctly here too instead of silently falling back
+    # to "All FCO" below.
     ids = raw_values.flat_map do |value|
       normalized = value.downcase.strip
-      matches = []
-      matches << "1004" if normalized.include?("1004") || normalized.include?("sausar")
-      matches << "1006" if normalized.include?("1006") || normalized.include?("turekela")
-      if normalized.include?("1095") || normalized.include?("direct to ho")
-        matches.concat(FcoDirectory.aliases_for("1095").grep(/\A\d+\z/))
-      end
-      matches << normalized if normalized.match?(/\A\d+\z/)
-      matches
+      next [normalized] if normalized.match?(/\A\d+\z/)
+
+      resolved_id = FcoDirectory.id_for(value)
+      resolved_id.present? ? FcoDirectory.aliases_for(resolved_id).grep(/\A\d+\z/) : []
     end
     ids = ids.uniq
     ids.presence || FcoDirectory.data_ids
   end
 
-  def farmer_training_mapped_farmer_count_and_popups(month_name:, fcoc_name:)
+  def farmer_training_mapped_farmer_count_and_popups(month_name:, fcoc_name:, to_name: nil)
     @farmer_training_mapped_farmer_count_and_popups_cache ||= {}
-    key = [month_name, fcoc_name]
+    key = [month_name, fcoc_name, to_name]
     return @farmer_training_mapped_farmer_count_and_popups_cache[key] if @farmer_training_mapped_farmer_count_and_popups_cache.key?(key)
 
-    @farmer_training_mapped_farmer_count_and_popups_cache[key] = compute_farmer_training_mapped_farmer_count_and_popups(month_name: month_name, fcoc_name: fcoc_name)
+    @farmer_training_mapped_farmer_count_and_popups_cache[key] = compute_farmer_training_mapped_farmer_count_and_popups(month_name: month_name, fcoc_name: fcoc_name, to_name: to_name)
   end
 
-  def compute_farmer_training_mapped_farmer_count_and_popups(month_name:, fcoc_name:)
+  def compute_farmer_training_mapped_farmer_count_and_popups(month_name:, fcoc_name:, to_name: nil)
     # Extend only user All Months; preserve the admin and monthly queries.
     selected_month = month_name.presence || "August"
     user_all_months = month_name.blank? && !admin_dashboard_user?
     month_filter_sql = user_all_months ? "TRUE" : "LOWER(BTRIM(t.month_name)) = :month_name"
     fco_ids = training_fcoc_ids_from_param(fcoc_name)
     fco_filter_sql = "AND LOWER(BTRIM(t.fco_id)) IN (:fco_ids)"
+    # TO filter: only ICS explicitly mapped to this TO (Office Setup > ICS TO
+    # MAPPING) count -- same Condition 1/2 rule as the Dashboard Summary cards.
+    # No afls join existed here before; added one so a.ics_id is available.
+    to_ics_ids = to_name.present? ? dashboard_to_mapped_ics_ids(fcoc_name, to_name) : nil
+    to_filter_sql = to_ics_ids.present? ? "AND LOWER(BTRIM(a.ics_id)) IN (:to_ics_ids)" : ""
 
     sql = <<~SQL.squish
       SELECT
@@ -6327,14 +6353,17 @@ class ModulesController < ApplicationController
             ELSE jsonb_build_array(t.afl_ids::jsonb)
           END
       ) AS v(afl_id)
+      LEFT JOIN public.afls a ON a.id::text = v.afl_id
       WHERE #{month_filter_sql}
         #{fco_filter_sql}
+        #{to_filter_sql}
       GROUP BY t.fco_id
       ORDER BY t.fco_id;
     SQL
 
     binds = { fco_ids: fco_ids.map(&:downcase) }
     binds[:month_name] = selected_month.strip.downcase unless user_all_months
+    binds[:to_ics_ids] = to_ics_ids if to_ics_ids.present?
     rows = ActiveRecord::Base.connection.exec_query(
       ActiveRecord::Base.send(:sanitize_sql_array, [dashboard_scoped_training_sql(sql), binds])
     ).to_a
@@ -6348,25 +6377,28 @@ class ModulesController < ApplicationController
     [0, format_fco_popups([], fco_ids, "farmer_count")]
   end
 
-  def farmer_training_no_training_count_and_popups(month_name:, fcoc_name:)
+  def farmer_training_no_training_count_and_popups(month_name:, fcoc_name:, to_name: nil)
     @farmer_training_no_training_count_and_popups_cache ||= {}
-    key = [month_name, fcoc_name, selected_participation_sql_week]
+    key = [month_name, fcoc_name, to_name, selected_participation_sql_week]
     return @farmer_training_no_training_count_and_popups_cache[key] if @farmer_training_no_training_count_and_popups_cache.key?(key)
 
-    @farmer_training_no_training_count_and_popups_cache[key] = compute_farmer_training_no_training_count_and_popups(month_name: month_name, fcoc_name: fcoc_name)
+    @farmer_training_no_training_count_and_popups_cache[key] = compute_farmer_training_no_training_count_and_popups(month_name: month_name, fcoc_name: fcoc_name, to_name: to_name)
   end
 
-  def compute_farmer_training_no_training_count_and_popups(month_name:, fcoc_name:)
+  def compute_farmer_training_no_training_count_and_popups(month_name:, fcoc_name:, to_name: nil)
     # "All Months" selected: run the simpler all-months red query below instead of
     # silently defaulting to August. Every other (specific-month) path below is
     # unchanged.
-    return compute_farmer_training_no_training_count_and_popups_all_months(fcoc_name: fcoc_name) if month_name.blank?
+    return compute_farmer_training_no_training_count_and_popups_all_months(fcoc_name: fcoc_name, to_name: to_name) if month_name.blank?
 
     selected_month = month_name.presence || "August"
     fco_ids = training_fcoc_ids_from_param(fcoc_name)
     fco_values = fco_ids.flat_map { |id| training_fcoc_filter_values(id) }.uniq.map(&:downcase)
     fco_filter_sql = "AND LOWER(BTRIM(a.fco_id)) IN (:fco_ids)"
     fco_filter_t = "AND (LOWER(BTRIM(t.fco_id)) IN (:fco_values) OR LOWER(BTRIM(t.fco_name)) IN (:fco_values))"
+    # TO filter: same Condition 1/2 rule as the Dashboard Summary cards.
+    to_ics_ids = to_name.present? ? dashboard_to_mapped_ics_ids(fcoc_name, to_name) : nil
+    to_filter_sql = to_ics_ids.present? ? "AND LOWER(BTRIM(a.ics_id)) IN (:to_ics_ids)" : ""
 
     sql = <<~SQL.squish
       WITH august_any_mapping AS (
@@ -6423,11 +6455,13 @@ class ModulesController < ApplicationController
       LEFT JOIN august_training_done td ON td.farmer_id = a.id::text
       WHERE 1=1
         #{fco_filter_sql}
+        #{to_filter_sql}
       GROUP BY a.fco_id
       ORDER BY a.fco_id;
     SQL
 
     binds = { month_name: selected_month.strip.downcase, fco_ids: fco_ids.map(&:downcase), fco_values: fco_values }
+    binds[:to_ics_ids] = to_ics_ids if to_ics_ids.present?
     rows = ActiveRecord::Base.connection.exec_query(
       ActiveRecord::Base.send(:sanitize_sql_array, [dashboard_scoped_training_sql(sql), binds])
     ).to_a
@@ -6447,9 +6481,12 @@ class ModulesController < ApplicationController
   # training entries are matched across all months. The FCO filter and the
   # login's own visibility scope still apply, so picking Sausar or Turekela
   # narrows this exactly like it does for a single month.
-  def compute_farmer_training_no_training_count_and_popups_all_months(fcoc_name:)
+  def compute_farmer_training_no_training_count_and_popups_all_months(fcoc_name:, to_name: nil)
     fco_ids = training_fcoc_ids_from_param(fcoc_name)
     fco_filter_sql = "AND LOWER(BTRIM(a.fco_id)) IN (:fco_ids)"
+    # TO filter: same Condition 1/2 rule as the Dashboard Summary cards.
+    to_ics_ids = to_name.present? ? dashboard_to_mapped_ics_ids(fcoc_name, to_name) : nil
+    to_filter_sql = to_ics_ids.present? ? "AND LOWER(BTRIM(a.ics_id)) IN (:to_ics_ids)" : ""
 
     sql = <<~SQL.squish
       WITH august_any_mapping AS (
@@ -6500,11 +6537,13 @@ class ModulesController < ApplicationController
       LEFT JOIN august_training_done td ON td.farmer_id = a.id::text
       WHERE 1=1
         #{fco_filter_sql}
+        #{to_filter_sql}
       GROUP BY a.fco_id
       ORDER BY a.fco_id;
     SQL
 
     binds = { fco_ids: fco_ids.map(&:downcase) }
+    binds[:to_ics_ids] = to_ics_ids if to_ics_ids.present?
     rows = ActiveRecord::Base.connection.exec_query(
       ActiveRecord::Base.send(:sanitize_sql_array, [dashboard_scoped_training_sql(sql), binds])
     ).to_a
@@ -6520,7 +6559,7 @@ class ModulesController < ApplicationController
   end
 
   def format_red_fco_popups(rows, fco_ids)
-    fco_name_map = { "1004" => "Sausar", "1006" => "Turekela", "1095" => "Direct to HO" }
+    fco_name_map = FcoDirectory.name_by_id
     target_ids = dashboard_display_fco_ids(fco_ids)
     rows_by_id = Array(rows).index_by { |row| dashboard_display_fco_id(row["fco_id"]) }
 
@@ -6544,7 +6583,7 @@ class ModulesController < ApplicationController
   end
 
   def format_red_fco_details(rows, fco_ids)
-    fco_name_map = { "1004" => "Sausar", "1006" => "Turekela", "1095" => "Direct to HO" }
+    fco_name_map = FcoDirectory.name_by_id
     target_ids = dashboard_display_fco_ids(fco_ids)
     rows_by_id = Array(rows).index_by { |row| dashboard_display_fco_id(row["fco_id"]) }
 
@@ -6569,33 +6608,33 @@ class ModulesController < ApplicationController
     end
   end
 
-  def farmer_training_yellow_farmer_count_and_popups(month_name:, fcoc_name:)
+  def farmer_training_yellow_farmer_count_and_popups(month_name:, fcoc_name:, to_name: nil)
     @farmer_training_yellow_farmer_count_and_popups_cache ||= {}
-    key = [month_name, fcoc_name, selected_participation_sql_week]
+    key = [month_name, fcoc_name, to_name, selected_participation_sql_week]
     return @farmer_training_yellow_farmer_count_and_popups_cache[key] if @farmer_training_yellow_farmer_count_and_popups_cache.key?(key)
 
-    @farmer_training_yellow_farmer_count_and_popups_cache[key] = compute_farmer_training_yellow_farmer_count_and_popups(month_name: month_name, fcoc_name: fcoc_name)
+    @farmer_training_yellow_farmer_count_and_popups_cache[key] = compute_farmer_training_yellow_farmer_count_and_popups(month_name: month_name, fcoc_name: fcoc_name, to_name: to_name)
   end
 
-  def compute_farmer_training_yellow_farmer_count_and_popups(month_name:, fcoc_name:)
-    rows = farmer_training_attendance_counts_by_fco(month_name: month_name, fcoc_name: fcoc_name)
+  def compute_farmer_training_yellow_farmer_count_and_popups(month_name:, fcoc_name:, to_name: nil)
+    rows = farmer_training_attendance_counts_by_fco(month_name: month_name, fcoc_name: fcoc_name, to_name: to_name)
     [rows.sum { |row| row["yellow_count"].to_i }, format_fco_popups(rows, training_fcoc_ids_from_param(fcoc_name), "yellow_count")]
   end
 
-  def farmer_training_green_farmer_count_and_popups(month_name:, fcoc_name:)
+  def farmer_training_green_farmer_count_and_popups(month_name:, fcoc_name:, to_name: nil)
     @farmer_training_green_farmer_count_and_popups_cache ||= {}
-    key = [month_name, fcoc_name, selected_participation_sql_week]
+    key = [month_name, fcoc_name, to_name, selected_participation_sql_week]
     return @farmer_training_green_farmer_count_and_popups_cache[key] if @farmer_training_green_farmer_count_and_popups_cache.key?(key)
 
-    @farmer_training_green_farmer_count_and_popups_cache[key] = compute_farmer_training_green_farmer_count_and_popups(month_name: month_name, fcoc_name: fcoc_name)
+    @farmer_training_green_farmer_count_and_popups_cache[key] = compute_farmer_training_green_farmer_count_and_popups(month_name: month_name, fcoc_name: fcoc_name, to_name: to_name)
   end
 
-  def compute_farmer_training_green_farmer_count_and_popups(month_name:, fcoc_name:)
-    rows = farmer_training_attendance_counts_by_fco(month_name: month_name, fcoc_name: fcoc_name)
+  def compute_farmer_training_green_farmer_count_and_popups(month_name:, fcoc_name:, to_name: nil)
+    rows = farmer_training_attendance_counts_by_fco(month_name: month_name, fcoc_name: fcoc_name, to_name: to_name)
     [rows.sum { |row| row["green_count"].to_i }, format_fco_popups(rows, training_fcoc_ids_from_param(fcoc_name), "green_count")]
   end
 
-  def farmer_training_attendance_counts_by_fco(month_name:, fcoc_name:)
+  def farmer_training_attendance_counts_by_fco(month_name:, fcoc_name:, to_name: nil)
     @farmer_training_attendance_counts_by_fco ||= {}
     fco_ids = training_fcoc_ids_from_param(fcoc_name).map(&:downcase)
     # "All Months" selected: drop the month filter (and the week filter, which is
@@ -6603,7 +6642,10 @@ class ModulesController < ApplicationController
     # month's training entries, instead of silently defaulting to August.
     all_months = month_name.blank?
     month = all_months ? nil : normalize_dashboard_text(month_name.presence || "August")
-    key = [month, fco_ids.sort, all_months ? nil : selected_participation_sql_week]
+    # TO filter: same Condition 1/2 rule as the Dashboard Summary cards.
+    to_ics_ids = to_name.present? ? dashboard_to_mapped_ics_ids(fcoc_name, to_name) : nil
+    to_filter_sql = to_ics_ids.present? ? "AND LOWER(BTRIM(a.ics_id)) IN (:to_ics_ids)" : ""
+    key = [month, fco_ids.sort, to_name, all_months ? nil : selected_participation_sql_week]
     return @farmer_training_attendance_counts_by_fco[key] if @farmer_training_attendance_counts_by_fco.key?(key)
 
     month_filter_sql = all_months ? "" : "AND LOWER(TRIM(mr.data::jsonb ->> 'month')) = :month_name"
@@ -6629,18 +6671,20 @@ class ModulesController < ApplicationController
       FROM public.afls a
       JOIN attendance ON attendance.farmer_id = a.id::text
       WHERE LOWER(BTRIM(a.fco_id)) IN (:fco_ids)
+        #{to_filter_sql}
       GROUP BY a.fco_id
       ORDER BY a.fco_id
     SQL
     binds = { fco_ids: fco_ids }
     binds[:month_name] = month unless all_months
+    binds[:to_ics_ids] = to_ics_ids if to_ics_ids.present?
     @farmer_training_attendance_counts_by_fco[key] = ActiveRecord::Base.connection.exec_query(
       ActiveRecord::Base.send(:sanitize_sql_array, [dashboard_scoped_training_sql(sql), binds])
     ).to_a
   end
 
   def format_fco_popups(rows, fco_ids, count_key)
-    fco_name_map = { "1004" => "Sausar", "1006" => "Turekela", "1095" => "Direct to HO" }
+    fco_name_map = FcoDirectory.name_by_id
     target_ids = dashboard_display_fco_ids(fco_ids)
     rows_by_id = Array(rows).index_by { |row| dashboard_display_fco_id(row["fco_id"]) }
 

@@ -60,13 +60,48 @@ class FcoDirectory
 
   # [{ id: "1095", name: "Direct to HO", raw_name: "direact to ho" }, ...]
   # A Direct-to-HO/TO mapping is a filter alias, not a second FCO card.
+  # The three configured boxes always exist, even in a moment where one of them
+  # has no AFL data yet -- a box should not disappear just because its data
+  # hasn't landed. Any other FCO-C Office Setup knows about is appended
+  # dynamically on top, so a newly added office needs no code change.
   def self.offices
-    Store.offices ||= FALLBACK.map do |row|
-      source = afl_rows.find { |candidate| candidate[:id] == row[:id] }
-      afl_name = source&.dig(:name).presence || row[:name]
-      { id: row[:id], name: row[:name], raw_name: row[:name], afl_name: afl_name }
+    Store.offices ||= begin
+      known = FALLBACK.map do |row|
+        source = afl_rows.find { |candidate| candidate[:id] == row[:id] }
+        afl_name = source&.dig(:name).presence || row[:name]
+        { id: row[:id], name: row[:name], raw_name: row[:name], afl_name: afl_name }
+      end
+      known + additional_offices(known.map { |office| office[:id] })
     end
   end
+
+  # Office Setup FCO-C offices beyond the three configured above. The three
+  # known offices keep the exact result built above; this only appends offices
+  # that resolve to a different numeric code, so a new office shows up without
+  # a code change while the configured three are unaffected.
+  def self.additional_offices(known_ids)
+    return [] unless defined?(ModuleRecord) && ModuleRecord.table_exists?
+
+    records = ModuleRecord.where(module_slug: %w[office-category-add office-mapping-add])
+      .filter_map { |record| record.data if record.data.is_a?(Hash) }
+    return [] if records.blank?
+
+    sub_offices = records.each_with_object({}) do |data, map|
+      office = bare_name(data["office_name"]).downcase
+      sub = bare_name(data["sub_office_name"].to_s.sub(SUB_OFFICE_PREFIX, ""))
+      map[office] ||= sub if office.present? && sub.present? && id_by_name.key?(sub.downcase)
+    end
+
+    records.select { |data| fco_office?(data) }
+      .filter_map { |data| build_office(data, sub_offices) }
+      .reject { |office| office[:id].blank? || known_ids.include?(office[:id]) }
+      .uniq { |office| office[:id] }
+      .sort_by { |office| office[:name].downcase }
+  rescue StandardError => e
+    Rails.logger.warn("FcoDirectory additional office lookup failed: #{e.class} - #{e.message}")
+    []
+  end
+  private_class_method :additional_offices
 
   # Box labels, e.g. ["Sausar", "Turekela", "Direct to HO"].
   def self.names
@@ -320,8 +355,13 @@ class FcoDirectory
     # Keep the raw office name as an alias, but use its mapped actual FCO as
     # the card label. Otherwise 1095 gets both "Direct to HO" and "Direct to
     # HO" boxes for the same data.
+    # afl_name above is only ever set from name_by_id/id_by_name/sub_offices,
+    # all of which already confirm it exists in id_by_name -- look it up
+    # directly instead of through id_for, which calls office_for -> offices
+    # and would recurse back into the offices computation this builds.
     display_name = name
-    { id: afl_name.present? ? id_for(afl_name).to_s : "", name: display_name, raw_name: raw, afl_name: afl_name }
+    resolved_id = afl_name.present? ? id_by_name[bare_name(afl_name).downcase] : nil
+    { id: resolved_id.to_s, name: display_name, raw_name: raw, afl_name: afl_name }
   end
   private_class_method :build_office
 
