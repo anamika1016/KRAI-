@@ -136,6 +136,24 @@ class Api::V1::OfficeDashboardControllerTest < ActionDispatch::IntegrationTest
     assert_includes calculator.send(:dashboard_training_participation_records, month_name: "August"), record
   end
 
+  test "Pending participation survives activity filters that have no matching target rows" do
+    query = { month: "August", main_activity: "No matching activity", sub_activity: "All", fco: "All", ics: "All" }
+    web = ModulesController.new
+    web.request = ActionDispatch::TestRequest.create
+    web.response = ActionDispatch::TestResponse.new
+    web.params = ActionController::Parameters.new(query)
+    web.instance_variable_set(:@current_app_user, { "user_type" => "admin" })
+    web.send(:dashboard)
+    expected = web.instance_variable_get(:@participation_dashboard_counts)[:red]
+
+    get "/api/v1/user-dashboard", params: query, headers: headers(@specialist)
+    assert_response :success
+    pending = response.parsed_body.fetch("sections").find { |section| section["key"] == "participation" }
+      .fetch("cards").find { |card| card["title"] == "Pending" }
+    assert_equal expected, pending["value"]
+    assert_equal "training_pending", pending.dig("list_endpoint").split("/").last
+  end
+
   test "complete sections expose working lists and numeric demonstration pairs" do
     get "/api/v1/user-dashboard", params: { month: "August", main_activity: "All" }, headers: headers(@specialist)
     assert_response :success
@@ -504,9 +522,9 @@ class Api::V1::OfficeDashboardControllerTest < ActionDispatch::IntegrationTest
   test "FCO requirement gender cards and lists include Direct to HO and new backend FCOs dynamically" do
     admin = User.create!(first_name: "Dynamic", last_name: "Admin", user_name: "dynamic_admin_#{SecureRandom.hex(3)}",
       password: "secret", user_type: "admin", status: "Active")
-    direct to ho = create_vrp(admin, "Direct to HO CC", "FCO-Direct to HO")
-    direct to ho.update_column(:gender, Vrp.genders.fetch("female"))
-    create_target(direct to ho, "1095", "Direct to HO ICS")
+    direct_to_ho = create_vrp(admin, "Direct to HO CC", "FCO-Direct to HO")
+    direct_to_ho.update_column(:gender, Vrp.genders.fetch("female"))
+    create_target(direct_to_ho, "1095", "Direct to HO ICS")
     new_fco = create_vrp(admin, "New Valley CC", "FCO-C New Valley")
     create_target(new_fco, "2000", "New Valley ICS")
 
@@ -522,7 +540,7 @@ class Api::V1::OfficeDashboardControllerTest < ActionDispatch::IntegrationTest
     assert_equal 1, fco_cards.fetch("fco_requirement_new_valley_active")["value"]
     assert_equal 1, gender_cards.fetch("gender_new_valley_male")["value"]
 
-    { "gender_direct_to_ho_female" => direct to ho.id, "fco_requirement_direct_to_ho_active" => direct to ho.id,
+    { "gender_direct_to_ho_female" => direct_to_ho.id, "fco_requirement_direct_to_ho_active" => direct_to_ho.id,
       "gender_new_valley_male" => new_fco.id, "fco_requirement_new_valley_active" => new_fco.id }.each do |list, expected_id|
       get "/api/v1/user-dashboard/lists/#{list}", params: filters, headers: headers(admin)
       assert_response :success
@@ -536,8 +554,8 @@ class Api::V1::OfficeDashboardControllerTest < ActionDispatch::IntegrationTest
     calculator.params = ActionController::Parameters.new(fco: "All", ics: "All")
     calculator.instance_variable_set(:@dashboard_source_fcoc_login, true)
     calculator.instance_variable_set(:@current_app_user, { "user_type" => "User", "role" => "FCO" })
-    direct to ho = create_vrp(@other_fco, "Direct to HO CC", "FCO-Direct to HO")
-    calculator.apply_dashboard_scope(vrps: [@first, @second, direct to ho], targets: [], bills: [])
+    direct_to_ho = create_vrp(@other_fco, "Direct to HO CC", "FCO-Direct to HO")
+    calculator.apply_dashboard_scope(vrps: [@first, @second, direct_to_ho], targets: [], bills: [])
     Afl.create!(farmer_name: "Direct to HO farmer", fco_id: "1095", fco: "Direct to HO", ics_id: "PAVI", ics_name: "PAVI")
     assert_equal %w[1004 1006 1095], calculator.send(:dashboard_total_afl_farmer_scope).distinct.pluck(:fco_id).sort
   end

@@ -105,12 +105,28 @@ class OfficeDashboardCalculator < ModulesController
   def dashboard_fco_active_vrp_records(fco, month = nil, vrps = nil)
     source = vrps || @office_authorized_vrps
     allowed_ids = Array(source).map { |vrp| vrp.id.to_s }.to_set
-    super(fco, month, source).select do |vrp|
+    month = nil if month.to_s.casecmp("all").zero?
+    mapped_records = super(fco, month, source)
+    has_mappings = TargetMapping.where(vrp_id: mapped_records.map(&:id)).exists?
+    records = mapped_records.select do |vrp|
       allowed_ids.include?(vrp.id.to_s) &&
         (!vrp.respond_to?(:is_active) || vrp.is_active == true || vrp.is_active == 1) &&
         !(vrp.respond_to?(:is_deleted) && (vrp.is_deleted == true || vrp.is_deleted == 1)) &&
         send(:dashboard_vrp_active_for_requirement?, vrp)
     end
+
+    # Raw target mappings can contain stale, inactive or deleted JJ IDs. Keep
+    # the web card's approved/active rule authoritative for both Active and
+    # Gender Count, then use the FCO assignment only when no mappings exist.
+    if records.empty? && !has_mappings
+      records = Array(source).select do |vrp|
+        training_fcoc_text_matches?(vrp.fcoc, fco) &&
+        (!vrp.respond_to?(:is_active) || vrp.is_active == true || vrp.is_active == 1) &&
+        !(vrp.respond_to?(:is_deleted) && (vrp.is_deleted == true || vrp.is_deleted == 1)) &&
+        send(:dashboard_vrp_active_for_requirement?, vrp)
+      end
+    end
+    records
   end
 
   def dashboard_fco_active_vrp_count(fco, month = nil, vrps = nil)
@@ -168,8 +184,6 @@ class OfficeDashboardCalculator < ModulesController
   # for a month. It deliberately does not restrict this card by main or sub
   # activity, even when those dropdowns are selected.
   def training_mapped_farmer_distinct_count_for_participation(month_name:, fcoc_name:, targets:)
-    return 0 if defined?(@filtered_targets) && @filtered_targets.empty?
-
     if month_name.present?
       return with_web_participation_status_scope do
         mapped, = farmer_training_mapped_farmer_count_and_popups(month_name: month_name, fcoc_name: fcoc_name)
@@ -186,13 +200,9 @@ class OfficeDashboardCalculator < ModulesController
   # mapped target farmers, no-training farmers, one training and repeated training.
   def training_participation_dashboard_counts(month_name:, fcoc_name:, records:, targets: nil, week_number: nil)
     counts = super
-    if defined?(@filtered_targets) && @filtered_targets.empty?
-      return counts.merge(total: 0, target_map_total: 0, completed_target_map_total: 0,
-        red: 0, pending: 0, yellow: 0, green: 0)
-    end
     # The legacy final-card queries default a blank month to August. Preserve
     # the generic calculation for explicit month=All instead.
-    return counts if month_name.blank?
+    return counts if month_name.blank? || week_number.present?
 
     participation_targets = targets || training_participation_targets_for_dashboard(
       month_name: month_name, fcoc_name: fcoc_name
@@ -206,10 +216,33 @@ class OfficeDashboardCalculator < ModulesController
     # JJ/FCO population, not the selected target array. Temporarily restore
     # that same base scope only for these status cards.
     red, yellow, green = with_web_participation_status_scope do
+      # Activity dropdowns can leave the visible target set empty, but web
+      # participation cards intentionally retain the login/FCO/ICS/JJ base.
+      # Explicitly empty authorization scopes still remain empty.
+      if @office_summary_targets.present? || @office_summary_vrps.present?
+        @filtered_targets = Array(@office_summary_targets)
+        @dashboard_vrps = Array(@office_summary_vrps)
+        @dashboard_visible_vrp_ids = @dashboard_vrps.map(&:id)
+      end
       red, = farmer_training_no_training_count_and_popups(month_name: month_name, fcoc_name: fcoc_name)
       yellow, = farmer_training_yellow_farmer_count_and_popups(month_name: month_name, fcoc_name: fcoc_name)
       green, = farmer_training_green_farmer_count_and_popups(month_name: month_name, fcoc_name: fcoc_name)
       [red, yellow, green]
+    end
+
+    if week_number.blank?
+      red_rows = with_web_participation_status_scope do
+        if @office_summary_targets.present? || @office_summary_vrps.present?
+          @filtered_targets = Array(@office_summary_targets)
+          @dashboard_vrps = Array(@office_summary_vrps)
+          @dashboard_visible_vrp_ids = @dashboard_vrps.map(&:id)
+        end
+        farmer_training_participation_rows_from_sql("red", month_name: month_name, fcoc_name: fcoc_name)
+      end
+      if red_rows.empty?
+        red_rows = training_participation_web_rows(status: "red", month_name: month_name, fcoc_name: fcoc_name)
+      end
+      @office_pending_participation_rows = red_rows
     end
 
     counts.merge(total: mapped.to_i, red: red.to_i, pending: red.to_i,
@@ -234,7 +267,7 @@ class OfficeDashboardCalculator < ModulesController
   # Exact web View List rows for the four Participation cards. This keeps the
   # list query on the same authorized base population as its count card.
   def training_participation_web_rows(status:, month_name:, fcoc_name:)
-    return [] if defined?(@filtered_targets) && @filtered_targets.empty?
+    return Array(@office_pending_participation_rows) if status.to_s == "pending" && defined?(@office_pending_participation_rows)
 
     if month_name.blank?
       records = dashboard_training_participation_records(month_name: nil, fcoc_name: fcoc_name)
@@ -242,7 +275,8 @@ class OfficeDashboardCalculator < ModulesController
       rows = rows.select { |row| row[:status].to_s == (status == "pending" ? "red" : status) } unless %w[unique mapped].include?(status)
     else
       rows = with_web_participation_status_scope do
-        farmer_training_participation_rows_from_sql(status.to_s, month_name: month_name, fcoc_name: fcoc_name)
+        sql_status = status.to_s == "pending" ? "red" : status.to_s
+        farmer_training_participation_rows_from_sql(sql_status, month_name: month_name, fcoc_name: fcoc_name)
       end
       if %w[unique mapped].include?(status.to_s)
         historical_rows = historical_mapped_farmer_rows(month_name: month_name, fcoc_name: fcoc_name)
@@ -382,7 +416,14 @@ class OfficeDashboardCalculator < ModulesController
   end
 
   def dashboard_training_participation_records(**options)
-    return [] if defined?(@filtered_targets) && @filtered_targets.empty?
+    if defined?(@filtered_targets) && @filtered_targets.empty?
+      return with_web_participation_status_scope do
+        @filtered_targets = Array(@office_summary_targets) if @office_summary_targets.present?
+        @dashboard_vrps = Array(@office_summary_vrps) if @office_summary_vrps.present?
+        @dashboard_visible_vrp_ids = @dashboard_vrps.map(&:id) if @dashboard_vrps.present?
+        super(**options)
+      end
+    end
 
     super
   end

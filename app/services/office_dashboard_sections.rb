@@ -26,7 +26,8 @@ class OfficeDashboardSections
     participation = [card("mapped_farmer", "Mapped Farmer", call(:training_mapped_farmer_distinct_count_for_participation,
       month_name: @month, fcoc_name: @fcoc, targets: call(:training_participation_targets_for_dashboard, month_name: @month, fcoc_name: @fcoc)), "training_unique_farmers")]
     %w[red yellow green].zip(["Pending", "Only 1 Training", "1+ Trainings"]).each do |status, title|
-      participation << card("training_#{status}", title, @participation[status.to_sym].to_i, "training_#{status}")
+      list = status == "red" ? "training_pending" : "training_#{status}"
+      participation << card("training_#{status}", title, @participation[status.to_sym].to_i, list)
     end
     primary = [section("summary", "Dashboard Summary", summary),
       section("participation", "Farmer Training Participation Status", participation),

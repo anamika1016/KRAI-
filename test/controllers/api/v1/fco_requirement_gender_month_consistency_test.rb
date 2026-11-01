@@ -90,6 +90,30 @@ class FcoRequirementGenderMonthConsistencyTest < ActionDispatch::IntegrationTest
       "FCO-wise JJ Requirement's Sausar Active card and Gender Count's Sausar Male card must agree for the same request"
   end
 
+  test "API active and gender cards exclude inactive and unapproved stale Sausar mappings" do
+    stale = Vrp.new(name: "Stale Sausar JJ", father_husband_name: "Father", gender: :male,
+      date_of_birth: Date.new(1990, 1, 1), date_of_joining: Date.current,
+      aadhar_no: "123456789013", account_no: "1234", branch: "Test", ifsc_code: "TEST0123456",
+      address: "Test", mobile_no: "9876543211", email: "stale-sausar@example.test",
+      fcoc: "Unrelated Office", is_active: true, status: 25, experience_in_years: 1, office_detail_id: 0, to_office_detail_id: 0)
+    stale.save!(validate: false)
+    TargetMapping.new(vrp: stale, fco_id: "1004", fco_name: "Sausar", ics_id: "stale-ics",
+      ics_name: "Stale ICS", village_id: "stale-village", month_name: DashboardDefaults.month,
+      main_activity_name: "Farmers' Training", activity_name: "Module-1", target_quantity: 1).save!(validate: false)
+
+    admin = User.create!(first_name: "Admin", last_name: "StaleScope", user_name: "admin_stale_scope_#{SecureRandom.hex(3)}",
+      email: "admin-stale-scope-#{SecureRandom.hex(3)}@example.test", mobile_no: "9876500914", password: "secret",
+      user_type: "admin", status: "Active")
+    get "/api/v1/user-dashboard", params: { month: DashboardDefaults.month, main_activity: "All" },
+      headers: { "Authorization" => "Bearer #{ApiAuthToken.encode(admin)}" }
+    assert_response :success
+    sections = response.parsed_body.fetch("sections").index_by { |section| section["key"] }
+    active = sections.fetch("fco_requirement").fetch("cards").find { |card| card["key"] == "fco_requirement_sausar_active" }["value"]
+    male = sections.fetch("gender").fetch("cards").find { |card| card["key"] == "gender_sausar_male" }["value"]
+    assert_equal 1, active
+    assert_equal 1, male
+  end
+
   test "CC/Agronomist/FCOC office API: the required/vacant list for one FCO stays on the same month as its active list" do
     cc = User.create!(first_name: "Priya", last_name: "ListCluster", user_name: "cc_list_consistency_#{SecureRandom.hex(3)}",
       email: "cc-list-consistency-#{SecureRandom.hex(3)}@example.test", mobile_no: "9876500913",

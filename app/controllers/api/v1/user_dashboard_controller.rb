@@ -182,7 +182,9 @@ module Api
 
       def office_section_list_catalog
         catalog = { "summary_ics" => "Total ICS Count", "summary_villages" => "Total Villages Count",
-          "summary_farmers" => "Total Farmer Count", "other_activities" => "Main Major Work Indicator - Other" }
+          "summary_farmers" => "Total Farmer Count", "other_activities" => "Main Major Work Indicator - Other",
+          "training_unique_farmers" => "Mapped Farmer", "training_red" => "Pending", "training_pending" => "Pending",
+          "training_yellow" => "Only 1 Training", "training_green" => "1+ Trainings" }
         office_dashboard_fco_names.each do |fco|
           key = fco.parameterize(separator: "_")
           %w[required active vacant].each { |kind| catalog["fco_requirement_#{key}_#{kind}"] = "#{fco} #{kind.titleize}" }
@@ -206,6 +208,18 @@ module Api
       end
 
       def office_section_list_payload(type, calculator, vrps, targets)
+        if type.start_with?("training_")
+          month = selected_month(:participation_month, [], calculator, targets)
+          fcoc = filter_param(:participation_fcoc, :training_fcoc, :fcoc, :fco) ||
+            calculator.send(:dashboard_default_visible_fcoc, calculator.send(:dashboard_fco_names))
+          status = { "training_red" => "red", "training_pending" => "pending",
+            "training_yellow" => "yellow", "training_green" => "green",
+            "mapped_farmer" => "unique" }.fetch(type, "unique")
+          rows = calculator.send(:training_participation_web_rows,
+            status: status, month_name: month, fcoc_name: fcoc)
+          return { title: office_section_list_catalog.fetch(type), records: rows }
+        end
+
         records = if type.start_with?("summary_")
           scope = if calculator.send(:dashboard_total_farmer_count_for_direct_to_ho?)
             calculator.send(:dashboard_direct_to_ho_afl_farmer_scope)
@@ -341,7 +355,7 @@ module Api
 
       def user_dashboard_widget_catalog
         extras = office_section_list_catalog.except("other_activities").to_h { |key, title| [key, { heading: title, section_card: key }] }
-        (OfficeDashboardSections::DEMO + %w[mapped_farmer training_red training_yellow training_green] +
+        (OfficeDashboardSections::DEMO + %w[mapped_farmer training_red training_pending training_yellow training_green] +
           OfficeDashboardSections::OTHER.keys.map { |key| "other_#{key}" }).each do |key|
           extras[key] = { heading: key.humanize, section_card: key }
         end
@@ -403,7 +417,7 @@ module Api
         calculator = dashboard_calculator
         vrps, targets, options = filtered_scope(calculator)
         summary_vrps, summary_targets = summary_scope(calculator)
-        if office_section_list_catalog.key?(list_type)
+        if office_section_list_catalog.key?(list_type) && !list_type.start_with?("training_")
           summary_based = list_type.start_with?("summary_", "fco_requirement_", "gender_")
           list_vrps, list_targets = summary_based ? [summary_vrps, summary_targets] : [vrps, targets]
           set_filtered_scope(calculator, list_vrps, list_targets, [], summary_vrps: summary_vrps, summary_targets: summary_targets)
@@ -432,15 +446,9 @@ module Api
         if %w[training_unique_farmers training_red training_pending training_yellow training_green].include?(list_type)
           months = calculator.send(:dashboard_month_options_for_targets, targets)
           participation_month = selected_month(:participation_month, months, calculator, targets)
-          participation_fcoc = participation_list_fcoc(calculator, options)
-          if list_type == "training_unique_farmers"
-            # Match the web Mapped Farmer card: its population is month/FCO/ICS
-            # scoped and deliberately ignores the main/sub activity dropdowns.
-            mapped_targets = calculator.send(:training_participation_targets_for_dashboard,
-              month_name: participation_month, fcoc_name: participation_fcoc)
-            rows = api_mapped_farmer_rows(calculator, mapped_targets, participation_month)
-            return { title: user_dashboard_list_catalog.fetch(list_type), records: rows }
-          end
+          calculator.instance_variable_set(:@office_summary_vrps, summary_vrps)
+          calculator.instance_variable_set(:@office_summary_targets, summary_targets)
+          participation_fcoc = filter_param(:participation_fcoc, :training_fcoc, :fcoc, :fco) || calculator.send(:dashboard_default_visible_fcoc, values(summary_vrps, :fcoc))
           status = {
             "training_unique_farmers" => "unique", "training_red" => "red", "training_pending" => "pending",
             "training_yellow" => "yellow", "training_green" => "green"
@@ -506,7 +514,11 @@ module Api
         @calculation_stage = "participation_month_options"
         months = calculator.send(:dashboard_month_options_for_targets, targets)
         participation_month = selected_month(:participation_month, months, calculator, targets)
-        participation_fcoc = filter_param(:participation_fcoc) || calculator.send(:dashboard_default_visible_fcoc, options[:fcos])
+        calculator.instance_variable_set(:@office_summary_vrps, summary_vrps)
+        calculator.instance_variable_set(:@office_summary_targets, summary_targets)
+        participation_fcoc = filter_param(:participation_fcoc, :training_fcoc, :fcoc, :fco) || calculator.send(:dashboard_default_visible_fcoc, values(summary_vrps, :fcoc))
+        calculator.instance_variable_set(:@office_authorized_vrps, summary_vrps)
+        calculator.instance_variable_set(:@office_authorized_vrp_ids, summary_vrps.map(&:id).to_set)
         @calculation_stage = "participation_records"
         records = calculator.send(:dashboard_training_participation_records, month_name: participation_month, fcoc_name: participation_fcoc)
         @calculation_stage = "participation_counts"
