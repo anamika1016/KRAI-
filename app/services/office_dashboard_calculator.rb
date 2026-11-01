@@ -61,6 +61,7 @@ class OfficeDashboardCalculator < ModulesController
     targets = Array(@office_summary_targets || @filtered_targets || dashboard_target_mappings)
     fco_names = dashboard_report_fco_names(vrps, targets)
     month = params[:month].presence || params[:training_month].presence || DashboardDefaults.month
+    month = nil if month.to_s.casecmp("all").zero?
     gender_items = fco_names.flat_map do |fco_name|
       fco_vrps = dashboard_fco_active_vrp_records(fco_name, month, vrps)
       [

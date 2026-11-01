@@ -186,6 +186,9 @@ class CcTargetStatusReport
     end
 
     records = ModuleRecord.where(module_slug: "training-form")
+    # Narrow at the DB with the existing normalized-month index instead of
+    # deserializing every training-form row just to skip most of them below.
+    records = records.where("LOWER(BTRIM(data::jsonb ->> 'month')) = ?", @month.downcase) unless all_months?
     records.find_each do |rec|
       data = rec.data || {}
       rec_month = data["month"].to_s.strip

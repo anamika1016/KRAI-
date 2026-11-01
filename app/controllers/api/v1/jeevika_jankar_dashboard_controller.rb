@@ -214,31 +214,16 @@ module Api
         payload = cache_admin_dashboard_payload(billing ? "billing-widgets" : "fco-gender-widgets") do
           web = mobile_participation_calculator
           if billing
-            bills = admin_dashboard_bills_for_month(web, web.send(:dashboard_billing_records))
-            values = {
-              "bill_approved" => bills.count { |bill| web.send(:dashboard_bill_approved?, bill) },
-              "bill_pending" => bills.count { |bill| web.send(:dashboard_bill_pending?, bill) }
-            }
+            # Use the same dashboard card calculation as the web view so the
+            # selected month (including `All`) and bill status rules stay in sync.
+            web = admin_office_dashboard_calculator
+            items = web.send(:dashboard_cards).find { |card| card[:title] == "Jeevika Jankar Billing" }[:items]
+            values = { "bill_approved" => items.find { |item| item[:title] == "Approved" }[:value],
+              "bill_pending" => items.find { |item| item[:title] == "Pending" }[:value] }
           else
             context = prepare_lightweight_admin_dashboard_context
-            web = context[:web]
-            vrps = web.send(:dashboard_vrps)
-            # Same default the office/CC/Agronomist/FCOC API path uses
-            # (DashboardDefaults.month, the current month). This was hardcoded
-            # to "August" here only, so with no month filter selected the
-            # admin widget showed stale August data while every other login's
-            # Gender Count/FCO-wise JJ Requirement showed the current month --
-            # and the admin side's own two cards agreed with each other only
-            # because dashboard_jj_requirement_items had the same hardcoded
-            # fallback, not because either number was actually correct.
-            gender_month = params[:month].presence || params[:training_month].presence || DashboardDefaults.month
-            items = FcoDirectory.names.flat_map do |fco|
-              active = web.send(:dashboard_fco_active_vrp_records, fco, gender_month, vrps)
-              web.send(:dashboard_jj_requirement_items, fco, vrps, context[:targets], month: gender_month) + [
-                { title: "#{fco} Male", value: active.count { |vrp| web.send(:normalize_dashboard_text, vrp.gender) == "male" } },
-                { title: "#{fco} Female", value: active.count { |vrp| web.send(:normalize_dashboard_text, vrp.gender) == "female" } }
-              ]
-            end
+            web = admin_office_dashboard_calculator(context)
+            items = web.send(:dashboard_cards).flat_map { |card| Array(card[:items]) }
             values = items.to_h { |item| [item[:title], item[:value]] }
           end
           { values: values, filters: admin_filter_payload }
@@ -246,6 +231,31 @@ module Api
         key = billing ? widget : config[:path].last
         { success: true, dashboard_type: "admin", widget: widget, heading: config[:heading],
           value: payload[:values][key], filters: payload[:filters], generated_at: Time.current.iso8601 }
+      end
+
+      # Admin dashboard cards use an unrestricted authorized population, while
+      # office roles use their existing scoped population. Build the same card
+      # calculator for admin API sections and one-box widgets.
+      def admin_office_dashboard_calculator(context = nil)
+        context = context.to_h if context.respond_to?(:to_h)
+        calculator = OfficeDashboardCalculator.new
+        calculator.request = request
+        calculator.params = params
+        calculator.instance_variable_set(:@current_app_user, current_api_user_payload)
+        if context && context[:vrps]
+          all_vrps = context[:all_vrps] || context[:web].send(:dashboard_vrps).to_a
+          all_targets = context[:all_targets] || context[:web].send(:dashboard_target_mappings).to_a
+          calculator.instance_variable_set(:@dashboard_vrps, all_vrps)
+          calculator.instance_variable_set(:@dashboard_visible_vrp_ids, all_vrps.map(&:id))
+          calculator.apply_dashboard_scope(vrps: context[:vrps], targets: context[:targets], bills: context[:bills] || [],
+            summary_vrps: all_vrps, summary_targets: all_targets)
+        else
+          all_vrps = calculator.send(:dashboard_vrps).to_a
+          all_targets = calculator.send(:dashboard_target_mappings).to_a
+          calculator.apply_dashboard_scope(vrps: all_vrps, targets: all_targets, bills: [],
+            summary_vrps: all_vrps, summary_targets: all_targets)
+        end
+        calculator
       end
 
       def vrp_dashboard_widget_catalog
@@ -868,6 +878,18 @@ module Api
         target_progress = admin_dashboard_progress(web, targets, vrps)
 
         card_data = exact_admin_card_data(web, vrps, targets, all_targets, bills, all_vrps: all_vrps)
+        office_card_calculator = admin_office_dashboard_calculator(
+          web: web, vrps: vrps, targets: targets, bills: bills, all_vrps: all_vrps, all_targets: all_targets
+        )
+        office_card_calculator.instance_variable_set(:@office_authorized_vrps, all_vrps)
+        office_card_calculator.instance_variable_set(:@office_authorized_vrp_ids, all_vrps.map(&:id).to_set)
+        shared_cards = office_card_calculator.send(:dashboard_cards)
+        shared_gender = shared_cards.find { |card| card[:title] == "Gender Count" }[:items]
+        card_data[:fco_wise_jeevika_jankar] = FcoDirectory.names.map do |fco|
+          { fco: fco,
+            male: shared_gender.find { |item| item[:title] == "#{fco} Male" }[:value],
+            female: shared_gender.find { |item| item[:title] == "#{fco} Female" }[:value] }
+        end
         web_summary_cards = web.send(:dashboard_summary_cards, targets)
         web_demo_cards = web.send(:demonstration_method_cards)
         web_training_cards = web.send(:training_participation_dashboard_status_cards,
@@ -1058,13 +1080,6 @@ module Api
         end.reject { |main, sub| main.blank? && sub.blank? }.uniq.size
 
         month_bills = admin_dashboard_bills_for_month(web, bills)
-        # Same default as admin_api_group_items/OfficeDashboardCalculator below.
-        # This field (sections.fco_wise_jeevika_jankar) and that one
-        # (mobile_widget_values["<FCO> Male"/"Female"]) describe the same
-        # FCO-wise gender counts; hardcoding "August" only here meant the two
-        # parts of the same admin response disagreed whenever no month filter
-        # was selected.
-        gender_month = params[:month].presence || params[:training_month].presence || DashboardDefaults.month
 
         {
           registration: {
@@ -1091,21 +1106,7 @@ module Api
           # mobile_widget_values["<FCO> Male"/"Female"] in the same response
           # whenever an activity filter (including the default one) narrowed
           # the VRP list.
-          fco_wise_jeevika_jankar: FcoDirectory.names.map do |fco_name|
-            # OfficeDashboardCalculator's override of dashboard_fco_active_vrp_records
-            # additionally requires dashboard_vrp_active_for_requirement? (approved,
-            # not just active/not-deleted) -- this plain ModulesController instance
-            # does not apply that override, so without filtering by it here a
-            # not-yet-approved JJ counted in this field but not in
-            # mobile_widget_values["<FCO> Male"/"Female"]/Active above.
-            matching = web.send(:dashboard_fco_active_vrp_records, fco_name, gender_month, all_vrps)
-              .select { |vrp| web.send(:dashboard_vrp_active_for_requirement?, vrp) }
-            {
-              fco: fco_name,
-              male: matching.count { |vrp| web.send(:normalize_dashboard_text, vrp.gender) == "male" },
-              female: matching.count { |vrp| web.send(:normalize_dashboard_text, vrp.gender) == "female" }
-            }
-          end
+          fco_wise_jeevika_jankar: []
         }
       end
 
@@ -1764,11 +1765,19 @@ module Api
         ids = Array(target.afl_ids).map(&:to_s).reject(&:blank?).uniq
         return ids if ids.any?
 
-        VrpIcsMapping.where(vrp_id: target.vrp_id).select do |mapping|
+        vrp_ics_mappings_for_vrp(target.vrp_id).select do |mapping|
           location_match?(mapping.fco_id, mapping.fco_name, target.fco_id, target.fco_name) &&
             location_match?(mapping.ics_id, mapping.ics_name, target.ics_id, target.ics_name) &&
             location_match?(mapping.village_id, mapping.village_name, target.village_id, target.village_name)
         end.flat_map { |mapping| Array(mapping.afl_ids).map(&:to_s) }.reject(&:blank?).uniq
+      end
+
+      # Many targets share the same vrp_id (one JJ has many target rows), so
+      # fetch each vrp_id's mappings once per request instead of once per
+      # target with a blank afl_ids fallback.
+      def vrp_ics_mappings_for_vrp(vrp_id)
+        @vrp_ics_mappings_for_vrp_cache ||= {}
+        @vrp_ics_mappings_for_vrp_cache[vrp_id] ||= VrpIcsMapping.where(vrp_id: vrp_id).to_a
       end
 
       def location_match?(left_id, left_name, right_id, right_name)

@@ -35,7 +35,7 @@ class FcoDirectory
   # here: it outlived the data it described, which made the dashboard answer
   # depend on whatever happened to populate the cache first.
   class Store < ActiveSupport::CurrentAttributes
-    attribute :afl_rows, :offices, :office_aliases
+    attribute :afl_rows, :offices, :office_aliases, :office_setup_records
   end
 
   # Imported rows carry the string "NULL" where the source file had no value.
@@ -80,10 +80,7 @@ class FcoDirectory
   # that resolve to a different numeric code, so a new office shows up without
   # a code change while the configured three are unaffected.
   def self.additional_offices(known_ids)
-    return [] unless defined?(ModuleRecord) && ModuleRecord.table_exists?
-
-    records = ModuleRecord.where(module_slug: %w[office-category-add office-mapping-add])
-      .filter_map { |record| record.data if record.data.is_a?(Hash) }
+    records = office_setup_records
     return [] if records.blank?
 
     sub_offices = records.each_with_object({}) do |data, map|
@@ -102,6 +99,16 @@ class FcoDirectory
     []
   end
   private_class_method :additional_offices
+
+  # additional_offices and load_office_aliases both read the same Office
+  # Setup records -- fetch once per request instead of twice.
+  def self.office_setup_records
+    return [] unless defined?(ModuleRecord) && ModuleRecord.table_exists?
+
+    Store.office_setup_records ||= ModuleRecord.where(module_slug: %w[office-category-add office-mapping-add])
+      .filter_map { |record| record.data if record.data.is_a?(Hash) }
+  end
+  private_class_method :office_setup_records
 
   # Box labels, e.g. ["Sausar", "Turekela", "Direct to HO"].
   def self.names
@@ -221,6 +228,7 @@ class FcoDirectory
     Store.afl_rows = nil
     Store.offices = nil
     Store.office_aliases = nil
+    Store.office_setup_records = nil
   end
 
   # --- Loading --------------------------------------------------------------
@@ -252,10 +260,7 @@ class FcoDirectory
   # is mapped to ("TO-Direct to HO"). An office that resolves to nothing is simply
   # left out, so callers keep their existing name-only behaviour for it.
   def self.load_office_aliases
-    return {} unless defined?(ModuleRecord) && ModuleRecord.table_exists?
-
-    records = ModuleRecord.where(module_slug: %w[office-category-add office-mapping-add])
-      .filter_map { |record| record.data if record.data.is_a?(Hash) }
+    records = office_setup_records
     return {} if records.blank?
 
     sub_offices = records.each_with_object({}) do |data, map|

@@ -370,19 +370,8 @@ class FarmerTargetApi
   def vrp_office_visible?(vrp)
     vrp_fcoc = visibility_values(vrp.fcoc)
     vrp_to = visibility_values(vrp.to_name)
-    current_fcoc = visibility_values(
-      current_app_user["fcoc"],
-      current_app_user["fcoc_name"],
-      current_app_user["office_category"],
-      current_app_user["parent_office"]
-    )
-    current_to = visibility_values(
-      current_app_user["to"],
-      current_app_user["to_name"],
-      current_app_user["sub_office_name"],
-      current_app_user["office"],
-      current_app_user["office_name"]
-    )
+    current_fcoc = current_app_user_fcoc_values
+    current_to = current_app_user_to_values
 
     fcoc_matches = vrp_fcoc.any? && (vrp_fcoc & current_fcoc).any?
     to_matches = vrp_to.any? && (vrp_to & current_to).any?
@@ -392,6 +381,28 @@ class FarmerTargetApi
     return to_matches if vrp_to.any?
 
     false
+  end
+
+  # current_app_user never changes mid-request, but vrp_office_visible? is
+  # called once per VRP from training_target_scope's Vrp.all.select -- cache
+  # these two instead of re-running visibility_values on every VRP.
+  def current_app_user_fcoc_values
+    @current_app_user_fcoc_values ||= visibility_values(
+      current_app_user["fcoc"],
+      current_app_user["fcoc_name"],
+      current_app_user["office_category"],
+      current_app_user["parent_office"]
+    )
+  end
+
+  def current_app_user_to_values
+    @current_app_user_to_values ||= visibility_values(
+      current_app_user["to"],
+      current_app_user["to_name"],
+      current_app_user["sub_office_name"],
+      current_app_user["office"],
+      current_app_user["office_name"]
+    )
   end
 
   def mapped_vrp_scope_active?
@@ -408,7 +419,10 @@ class FarmerTargetApi
   end
 
   def cluster_visible_vrp_ids
-    cluster_visible_vrps.map(&:id)
+    # training_target_scope checks membership here once per VRP in Vrp.all --
+    # cache the id set (and use a Set, not an Array) so that is an O(1) lookup
+    # instead of rebuilding the list and doing an O(n) scan on every VRP.
+    @cluster_visible_vrp_ids ||= cluster_visible_vrps.map(&:id).to_set
   end
 
   def cluster_visible_vrps
