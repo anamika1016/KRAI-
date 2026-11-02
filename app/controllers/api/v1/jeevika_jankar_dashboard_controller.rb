@@ -830,9 +830,16 @@ module Api
           selected_fcoc
         end
         participation_records = web.send(:dashboard_training_participation_records, month_name: participation_month, fcoc_name: participation_fcoc)
-        population = web.send(:training_participation_population_rows,
-          month_name: participation_month, fcoc_name: participation_fcoc, records: participation_records)
-        participation_counts = web.send(:training_participation_status_counts_from_rows, population)
+        # The summary response only returns aggregate participation counts.
+        # Materializing every farmer row here, then materializing them again
+        # for weekly status, made each filter change scale with all assigned
+        # farmers. List endpoints still build rows because they return them.
+        include_detail_rows = request.path.include?("/lists/")
+        population = if include_detail_rows
+          web.send(:training_participation_population_rows,
+            month_name: participation_month, fcoc_name: participation_fcoc, records: participation_records)
+        end
+        participation_counts = population ? web.send(:training_participation_status_counts_from_rows, population) : {}
         mapped_count, = web.send(:farmer_training_mapped_farmer_count_and_popups, month_name: participation_month, fcoc_name: participation_fcoc)
         red_count, = web.send(:farmer_training_no_training_count_and_popups, month_name: participation_month, fcoc_name: participation_fcoc)
         yellow_count, = web.send(:farmer_training_yellow_farmer_count_and_popups, month_name: participation_month, fcoc_name: participation_fcoc)
@@ -847,16 +854,32 @@ module Api
           normalized_fcoc = web.send(:normalize_dashboard_text, weekly_fcoc)
           weekly_targets.select! { |target| web.send(:normalize_dashboard_text, target.vrp&.fcoc) == normalized_fcoc }
         end
-        weekly_rows = web.send(:weekly_activity_target_farmer_status_rows,
-          weekly_targets,
-          month_name: weekly_month,
-          fcoc_name: weekly_fcoc,
-          week_number: dashboard_list_week_number)
-        weekly_status_counts = web.send(:weekly_activity_target_status_counts_for_rows, weekly_rows)
+        week_number = dashboard_list_week_number
+        same_training_scope = !include_detail_rows && week_number.blank? && selected_sub_activity.blank? &&
+          web.send(:normalize_dashboard_text, selected_main_activity) == "farmers training" &&
+          web.send(:normalize_dashboard_text, weekly_month) == web.send(:normalize_dashboard_text, participation_month) &&
+          web.send(:normalize_dashboard_text, weekly_fcoc) == web.send(:normalize_dashboard_text, participation_fcoc) &&
+          !web.send(:weekly_activity_other_targets?, weekly_targets)
+        if same_training_scope
+          weekly_rows = []
+          weekly_status_counts = {
+            green: participation_counts[:green].to_f,
+            yellow: participation_counts[:yellow].to_f,
+            red: participation_counts[:red].to_f,
+            total: (participation_counts[:green].to_f + participation_counts[:yellow].to_f + participation_counts[:red].to_f)
+          }
+        else
+          weekly_rows = web.send(:weekly_activity_target_farmer_status_rows,
+            weekly_targets,
+            month_name: weekly_month,
+            fcoc_name: weekly_fcoc,
+            week_number: week_number)
+          weekly_status_counts = web.send(:weekly_activity_target_status_counts_for_rows, weekly_rows)
+        end
         weekly_summary_totals = web.send(:dashboard_weekly_activity_summary_totals,
           weekly_targets,
           participation_counts,
-          week_number: dashboard_list_week_number)
+          week_number: week_number)
         weekly_counts = {
           target_assigned: weekly_status_counts[:total].to_i,
           completed: weekly_status_counts[:green].to_i,
@@ -865,7 +888,7 @@ module Api
           activity_target_mapping: number(weekly_summary_totals[:target]),
           activity_wise_achievement: number(weekly_summary_totals[:completed]),
           activity_wise_pending_achievement: number(weekly_summary_totals[:pending]),
-          target_records: weekly_rows.size
+          target_records: same_training_scope ? weekly_status_counts[:total].to_i : weekly_rows.size
         }
 
         ics_month_value = filter_param(:ics_report_month) || participation_value
