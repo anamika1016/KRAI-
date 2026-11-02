@@ -54,11 +54,11 @@ class OfficeDashboardCalculator < ModulesController
 
   def dashboard_cards
     cards = super.reject { |group| ["Gender Count", "FCO-wise JJ Requirement"].include?(group[:title]) }
-    # Match the web dashboard's authorized JJ scope. Loading every JJ here
-    # inflated API Active counts for office users and made card/list counts
-    # disagree with their web dashboard.
-    vrps = Array(@office_authorized_vrps || @filtered_vrps || dashboard_vrps)
-    targets = Array(@office_summary_targets || @filtered_targets || dashboard_target_mappings)
+    # Use the same filtered JJ and target sets as the web dashboard cards.
+    # The summary scope intentionally ignores activity filters for summary
+    # sections; using it here inflated Direct to HO required/vacant counts.
+    vrps = Array(@filtered_vrps || @office_authorized_vrps || dashboard_vrps)
+    targets = Array(@filtered_targets || @office_summary_targets || dashboard_target_mappings)
     fco_names = dashboard_report_fco_names(vrps, targets)
     month = params[:month].presence || params[:training_month].presence || DashboardDefaults.month
     month = nil if month.to_s.casecmp("all").zero?

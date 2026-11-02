@@ -24,6 +24,7 @@ module Api
         merge_agreement_json_body_params!
         vrp = agreement_vrp_from_credentials if agreement_credentials_present?
         vrp ||= current_api_user if current_api_user.is_a?(Vrp)
+        vrp ||= selected_agreement_vrp if params[:vrp_id].present?
 
         # The agreement terms are public form content. Allow the client to
         # render the first-login form before obtaining a JJ token; only the
@@ -171,6 +172,14 @@ module Api
         return if login.blank? || params[:password].blank?
 
         AppUserAuthenticator.authenticate(login: login, password: params[:password])
+      end
+
+      def selected_agreement_vrp
+        return unless agreement_list_authorized?
+
+        Vrp.find_by(id: params[:vrp_id]).then do |vrp|
+          vrp if vrp && agreement_vrp_visible_to_current_user?(vrp)
+        end
       end
 
       def agreement_list_row(vrp)

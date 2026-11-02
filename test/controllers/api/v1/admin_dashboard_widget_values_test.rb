@@ -2,9 +2,9 @@ require "test_helper"
 
 class Api::V1::AdminDashboardWidgetValuesTest < ActionDispatch::IntegrationTest
   setup do
-    user = User.create!(first_name: "Widget", last_name: "Admin", user_name: "widget_admin",
+    @admin = User.create!(first_name: "Widget", last_name: "Admin", user_name: "widget_admin",
       email: "widget-admin@example.test", mobile_no: "9876500045", password: "secret", user_type: "admin", status: "Active")
-    @headers = { "Authorization" => "Bearer #{ApiAuthToken.encode(user)}" }
+    @headers = { "Authorization" => "Bearer #{ApiAuthToken.encode(@admin)}" }
     @vrp = Vrp.new(name: "Widget JJ", father_husband_name: "Father", gender: :male,
       date_of_birth: Date.new(1990, 1, 1), date_of_joining: Date.current,
       aadhar_no: "123456789012", account_no: "1234", branch: "Test", ifsc_code: "TEST0123456",
@@ -82,6 +82,40 @@ class Api::V1::AdminDashboardWidgetValuesTest < ActionDispatch::IntegrationTest
     get "/api/v1/admin-dashboard/lists/target_records", params: @filters.merge(month: "August"), headers: @headers
     assert_response :success
     assert_equal expected, response.parsed_body.fetch("records").size
+  end
+
+  test "Direct to HO required and vacant cards match the web filtered target set" do
+    @vrp.update_column(:fcoc, "FCO-Direct to HO")
+    [
+      ["direct-village-filtered", "Farmers' Training"],
+      ["direct-village-other-activity", "Other Activity"]
+    ].each do |village_id, main_activity|
+      TargetMapping.new(vrp: @vrp, fco_id: "1095", fco_name: "Direct to HO", ics_id: "direct-ics",
+        ics_name: "Direct ICS", village_id: village_id, village_name: village_id,
+        month_name: "August", main_activity_name: main_activity, activity_name: "Soil",
+        target_quantity: 1).save!(validate: false)
+    end
+    filters = { month: "August", main_activity: "Farmers' Training", sub_activity: "All", fco: "All", ics: "All" }
+
+    web = ModulesController.new
+    web.request = ActionDispatch::TestRequest.create
+    web.response = ActionDispatch::TestResponse.new
+    web.params = ActionController::Parameters.new(filters)
+    api = Api::V1::UserDashboardController.new
+    api.define_singleton_method(:current_api_user) { @admin }
+    web.instance_variable_set(:@current_app_user, api.send(:current_api_user_payload))
+    web.send(:dashboard)
+    expected = web.instance_variable_get(:@dashboard_cards).find { |card| card[:title] == "FCO-wise JJ Requirement" }
+      .fetch(:items).select { |item| item[:title].start_with?("Direct to HO ") }
+      .to_h { |item| [item[:title], item[:value]] }
+
+    get "/api/v1/user-dashboard", params: filters, headers: @headers
+
+    assert_response :success
+    actual = response.parsed_body.fetch("sections").find { |section| section["key"] == "fco_requirement" }
+      .fetch("cards").select { |card| card["title"].start_with?("Direct to HO ") }
+      .to_h { |card| [card["title"], card["value"]] }
+    assert_equal expected, actual
   end
 
   test "mapped indicator lists return the same row count the widget shows" do

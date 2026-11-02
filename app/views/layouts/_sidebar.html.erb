@@ -1,7 +1,8 @@
 <aside class="app-sidebar" id="app-sidebar" data-mobile-sidebar>
   <%= link_to root_path, class: "app-brand", data: { turbo_prefetch: false } do %>
     <span class="brand-mark">
-      <%= image_tag app_logo_path, alt: app_display_name %>
+      <%= image_tag app_logo_path, alt: app_display_name,
+        onerror: "this.onerror=null;this.src='/ploughman-agro-logo.png'" %>
     </span>
   <% end %>
 

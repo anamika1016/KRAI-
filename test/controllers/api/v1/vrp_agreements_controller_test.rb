@@ -53,6 +53,23 @@ class Api::V1::VrpAgreementsControllerTest < ActionDispatch::IntegrationTest
     assert_response :forbidden
   end
 
+  test "admin can load a selected JJ identity for the agreement form" do
+    vrp = create_vrp(user_name: "agreement_selected_jj", password: "secret")
+    admin = User.new(first_name: "Agreement", last_name: "Admin", user_name: "agreement_selected_admin",
+      email: "agreement-selected-admin@example.test", mobile_no: "9876500912",
+      password: "secret", user_type: "admin", status: "Active")
+    admin.save!(validate: false)
+
+    get "/api/v1/jeevika-jankar-agreement",
+      params: { username: admin.user_name, password: "secret", vrp_id: vrp.id }, as: :json
+
+    assert_response :success
+    agreement = response.parsed_body.fetch("agreement")
+    assert_equal vrp.name, agreement.fetch("name")
+    assert_equal vrp.mobile_no, agreement.fetch("mobile_no")
+    assert_equal true, agreement.fetch("required")
+  end
+
   private
 
   def create_vrp(attributes = {})

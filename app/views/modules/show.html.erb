@@ -42,7 +42,8 @@
       <section class="bill-print-sheet">
         <div class="bill-print-header">
           <div>
-            <%= image_tag app_logo_path, alt: app_display_name, class: "bill-print-logo" %>
+            <%= image_tag app_logo_path, alt: app_display_name, class: "bill-print-logo",
+              onerror: "this.onerror=null;this.src='/ploughman-agro-logo.png'" %>
           </div>
         </div>
 
@@ -148,7 +149,8 @@
       <% if @bill_print_mode %>
         <div class="bill-print-header">
           <div>
-            <%= image_tag app_logo_path, alt: app_display_name, class: "bill-print-logo" %>
+            <%= image_tag app_logo_path, alt: app_display_name, class: "bill-print-logo",
+              onerror: "this.onerror=null;this.src='/ploughman-agro-logo.png'" %>
           </div>
           <div class="bill-print-stakeholder">
             <strong><%= app_display_name %></strong>

@@ -27,23 +27,27 @@ module Api
       def boxes
         return render_vrp_error if current_api_user.is_a?(Vrp)
 
-        started = Process.clock_gettime(Process::CLOCK_MONOTONIC)
-        calculator = dashboard_calculator
-        vrps, targets, options = filtered_scope(calculator)
-        summary_vrps, summary_targets = summary_scope(calculator)
-        set_filtered_scope(calculator, vrps, targets, [], summary_vrps: summary_vrps, summary_targets: summary_targets)
-        month = selected_month(:participation_month, [], calculator, targets)
-        fcoc = filter_param(:participation_fcoc) || calculator.send(:dashboard_default_visible_fcoc, options[:fcos])
-        # Counts use the same SQL path as the web cards; loading every training
-        # record here only delays the mobile landing page.
-        counts = calculator.send(:training_participation_dashboard_counts, month_name: month, fcoc_name: fcoc, records: [])
-        sections = OfficeDashboardSections.new(calculator: calculator, targets: targets,
-          participation: counts, month: month, fcoc: fcoc).sections(only: :primary)
-        duration = ((Process.clock_gettime(Process::CLOCK_MONOTONIC) - started) * 1000).round(2)
-        response.set_header("Server-Timing", "dashboard;dur=#{duration}")
-        render json: { success: true, dashboard_type: "user", user: user_payload,
-          filters: applied_filters, filter_options: options, sections: sections,
-          meta: { server_processing_ms: duration }, generated_at: Time.current.iso8601 }
+        payload = cached_user_dashboard_fragment("boxes") do
+          started = Process.clock_gettime(Process::CLOCK_MONOTONIC)
+          calculator = dashboard_calculator
+          vrps, targets, options = filtered_scope(calculator)
+          summary_vrps, summary_targets = summary_scope(calculator)
+          set_filtered_scope(calculator, vrps, targets, [], summary_vrps: summary_vrps, summary_targets: summary_targets)
+          month = selected_month(:participation_month, [], calculator, targets)
+          fcoc = filter_param(:participation_fcoc) || calculator.send(:dashboard_default_visible_fcoc, options[:fcos])
+          # Counts use the same SQL path as the web cards; loading every training
+          # record here only delays the mobile landing page.
+          counts = calculator.send(:training_participation_dashboard_counts, month_name: month, fcoc_name: fcoc, records: [])
+          sections = OfficeDashboardSections.new(calculator: calculator, targets: targets,
+            participation: counts, month: month, fcoc: fcoc).sections(only: :primary)
+          duration = ((Process.clock_gettime(Process::CLOCK_MONOTONIC) - started) * 1000).round(2)
+          { success: true, dashboard_type: "user", user: user_payload,
+            filters: applied_filters, filter_options: options, sections: sections,
+            meta: { server_processing_ms: duration }, generated_at: Time.current.iso8601 }
+        end
+        duration = payload.dig(:meta, :server_processing_ms) || payload.dig("meta", "server_processing_ms")
+        response.set_header("Server-Timing", "dashboard;dur=#{duration}") if duration
+        render json: payload
       end
 
       # Scoped drill-down for CC, Agronomist, FCO and other office users.
@@ -100,10 +104,13 @@ module Api
       def filters
         return render_vrp_error if current_api_user.is_a?(Vrp)
 
-        calculator = dashboard_calculator
-        render json: mobile_dashboard_filter_options(calculator.send(:dashboard_target_mappings), calculator).merge(
-          success: true, dashboard_type: "user", generated_at: Time.current.iso8601
-        )
+        payload = cached_user_dashboard_fragment("filters") do
+          calculator = dashboard_calculator
+          mobile_dashboard_filter_options(calculator.send(:dashboard_target_mappings), calculator).merge(
+            success: true, dashboard_type: "user", generated_at: Time.current.iso8601
+          )
+        end
+        render json: payload
       end
 
       def configuration
@@ -326,12 +333,33 @@ module Api
         @dashboard_cache_hit = cached.present?
         return cached if cached
 
-        response = build_user_dashboard_response
-        Rails.cache.write(key, response, expires_in: 1.minute) if response[:success]
-        response
+        DashboardCacheFill.synchronize(key) do
+          cached = Rails.cache.read(key)
+          if cached
+            @dashboard_cache_hit = true
+            cached
+          else
+            response = build_user_dashboard_response
+            Rails.cache.write(key, response, expires_in: 10.minutes) if response[:success]
+            response
+          end
+        end
       rescue StandardError => error
         Rails.logger.warn("User dashboard cache skipped: #{error.class}: #{error.message}")
         build_user_dashboard_response
+      end
+
+      def cached_user_dashboard_fragment(name)
+        key = ["api-v1-user-dashboard-fragment-v1", name, user_dashboard_cache_key].to_json
+        cached = Rails.cache.read(key)
+        return cached unless cached.nil?
+
+        DashboardCacheFill.synchronize(key) do
+          Rails.cache.fetch(key, expires_in: 10.minutes, race_condition_ttl: 30.seconds) { yield }
+        end
+      rescue StandardError => error
+        Rails.logger.warn("User dashboard #{name} cache skipped: #{error.class}: #{error.message}")
+        yield
       end
 
       PRIMARY_LIST_ALIASES = {
@@ -608,8 +636,8 @@ module Api
       end
 
       def cache_table_version(model)
-        begin
-          version = model.pick(Arel.sql("COUNT(*)"), Arel.sql("COALESCE(MAX(id), 0)"), Arel.sql("COALESCE(EXTRACT(EPOCH FROM MAX(updated_at)), 0)"))
+        Rails.cache.fetch(["api-dashboard/table-version", model.table_name], expires_in: 1.minute) do
+          version = model.pick(Arel.sql("COUNT(*)"), Arel.sql("COALESCE(MAX(id), 0)"), Arel.sql("COALESCE(EXTRACT(EPOCH FROM MAX(updated_at))::bigint, 0)"))
           "#{model.table_name}:#{version.join(":")}"
         end
       rescue StandardError
@@ -618,9 +646,9 @@ module Api
 
       def cache_module_records_version(module_slugs)
         slugs = Array(module_slugs).map(&:to_s).sort
-        begin
+        Rails.cache.fetch(["api-dashboard/module-record-version", slugs], expires_in: 1.minute) do
           scope = ModuleRecord.where(module_slug: slugs)
-          version = scope.pick(Arel.sql("COUNT(*)"), Arel.sql("COALESCE(MAX(id), 0)"), Arel.sql("COALESCE(EXTRACT(EPOCH FROM MAX(updated_at)), 0)"))
+          version = scope.pick(Arel.sql("COUNT(*)"), Arel.sql("COALESCE(MAX(id), 0)"), Arel.sql("COALESCE(EXTRACT(EPOCH FROM MAX(updated_at))::bigint, 0)"))
           "module_records:#{version.join(":")}"
         end
       rescue StandardError

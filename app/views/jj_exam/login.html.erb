@@ -224,7 +224,8 @@
 <main class="jj-exam-shell jj-login-compact-shell">
   <section class="jj-login-compact-card" aria-label="Jeevika Jankar Exam sign in">
     <div class="jj-login-compact-brand">
-      <span class="jj-brand-logo"><%= image_tag app_logo_path, alt: app_display_name %></span>
+      <span class="jj-brand-logo"><%= image_tag app_logo_path, alt: app_display_name,
+        onerror: "this.onerror=null;this.src='/ploughman-agro-logo.png'" %></span>
       <div>
         <small>Jeevika Jankar Exam</small>
         <h1>Jeevika Jankar Login</h1>

@@ -695,7 +695,12 @@ module ApplicationHelper
   end
 
   def app_logo_path
-    @app_logo_path ||= app_stakeholder_logo || "/icon.svg"
+    @app_logo_path ||= begin
+      logo = app_stakeholder_logo.to_s.strip
+      # /icon.svg is a legacy red-dot placeholder, not a usable brand mark.
+      logo = "" if logo.match?(%r{(?:\A|/)icon\.svg(?:\?[^/]*)?\z}i)
+      logo.presence || "/ploughman-agro-logo.png"
+    end
   end
 
   # The Stakeholder Name logo, or nil when none is configured. Used for the browser

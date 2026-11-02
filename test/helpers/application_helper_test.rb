@@ -10,6 +10,15 @@ class ApplicationHelperTest < ActiveSupport::TestCase
     assert_equal app_stakeholder_logo, app_logo_path
   end
 
+  test "missing and red-dot placeholder logos fall back to the Ploughman Agro brand" do
+    define_singleton_method(:app_stakeholder_logo) { nil }
+    assert_equal "/ploughman-agro-logo.png", app_logo_path
+
+    remove_instance_variable(:@app_logo_path)
+    define_singleton_method(:app_stakeholder_logo) { "/icon.svg" }
+    assert_equal "/ploughman-agro-logo.png", app_logo_path
+  end
+
   test "Jeevika Jankar bill menu permissions do not grant later payment menus" do
     bill_list_keys = sidebar_access_name_keys("Bill List")
     payment_list_keys = sidebar_access_name_keys("Payment List")
