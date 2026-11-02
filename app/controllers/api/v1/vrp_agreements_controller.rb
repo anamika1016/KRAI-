@@ -1,7 +1,7 @@
 module Api
   module V1
     class VrpAgreementsController < BaseController
-      skip_before_action :authenticate_api_user!, only: %i[show accept]
+      skip_before_action :authenticate_api_user!, only: %i[show accept index show_record]
 
       AGREEMENT_TEXT = {
         intro: "I hereby confirm that I am voluntarily associated with Ploughman Agro Pvt. Ltd./ Ploughman Greensutra Pvt. Ltd. as a “Jeevika Jankar” for supporting farmer outreach and programme implementation activities in my village/ area. I understand and acknowledge that:",
@@ -21,22 +21,21 @@ module Api
       # Available to a JJ with either a bearer token or username/password. This
       # is the pre-login path for JJs whose first login is blocked pending signature.
       def show
-        if params[:id].present?
-          return show_record
-        end
+        merge_agreement_json_body_params!
+        vrp = agreement_vrp_from_credentials if agreement_credentials_present?
+        vrp ||= current_api_user if current_api_user.is_a?(Vrp)
 
-        credentials_present = agreement_credentials_present?
-        vrp = credentials_present ? agreement_vrp_from_credentials : (current_api_user if current_api_user.is_a?(Vrp))
-        return render json: { success: false, message: "Invalid Jeevika Jankar username or password." }, status: :unauthorized if vrp == :invalid_credentials
-        return render json: { success: false, message: "Valid Jeevika Jankar login required." }, status: :unauthorized unless vrp.is_a?(Vrp)
-
-        render json: { success: true, agreement: agreement_payload(vrp) }, status: :ok
+        # The agreement terms are public form content. Allow the client to
+        # render the first-login form before obtaining a JJ token; only the
+        # acceptance action requires JJ authentication.
+        render json: { success: true, agreement: agreement_payload(vrp.is_a?(Vrp) ? vrp : nil) }, status: :ok
       end
 
       # POST /api/v1/jeevika-jankar-agreement
       # Signs in the same request after acceptance, so mobile clients can enter
       # the app without first repeating their password login.
       def accept
+        merge_agreement_json_body_params!
         credentials_present = agreement_credentials_present?
         vrp = credentials_present ? agreement_vrp_from_credentials : (current_api_user if current_api_user.is_a?(Vrp))
         return render json: { success: false, message: "Invalid Jeevika Jankar username or password." }, status: :unauthorized if vrp == :invalid_credentials
@@ -64,6 +63,7 @@ module Api
       # GET /api/v1/vrp-agreements
       # Mirrors the web archive: only signed, visible agreements are returned.
       def index
+        merge_agreement_json_body_params!
         unless agreement_list_authorized?
           return render json: { success: false, message: "Admin or authorized office login required." }, status: :forbidden
         end
@@ -74,6 +74,7 @@ module Api
       end
 
       def show_record
+        merge_agreement_json_body_params!
         unless agreement_list_authorized?
           return render json: { success: false, message: "Admin or authorized office login required." }, status: :forbidden
         end
@@ -87,22 +88,36 @@ module Api
       private
 
       def agreement_vrp_from_credentials
-        return unless params[:username].present? || params[:login].present? || params[:password].present?
+        login = params[:login].presence || params[:username].presence || params[:user_name].presence
+        return unless login.present? || params[:password].present?
 
-        AppUserAuthenticator.authenticate_vrp(login: params[:login].presence || params[:username], password: params[:password]) || :invalid_credentials
+        AppUserAuthenticator.authenticate_vrp(login: login, password: params[:password]) || :invalid_credentials
       end
 
       def agreement_credentials_present?
-        params[:username].present? || params[:login].present? || params[:password].present?
+        params[:username].present? || params[:user_name].present? || params[:login].present? || params[:password].present?
+      end
+
+      def merge_agreement_json_body_params!
+        return unless request.body.present?
+
+        body = request.raw_post.to_s
+        return if body.blank?
+
+        json = JSON.parse(body)
+        json.each { |key, value| params[key] = value if params[key].blank? } if json.is_a?(Hash)
+      rescue JSON::ParserError
+        nil
       end
 
       def agreement_payload(vrp)
-        { required: !vrp.agreement_accepted? || vrp.agreement_signature_data.blank?, accepted: vrp.agreement_accepted? && vrp.agreement_signature_data.present?,
-          accepted_at: vrp.agreement_accepted_at&.iso8601, name: vrp.name.presence || vrp.user_name,
-          village: agreement_village_name(vrp), mobile_no: vrp.mobile_no.presence || "-",
+        accepted = vrp&.agreement_accepted? && vrp.agreement_signature_data.present?
+        { required: !accepted, accepted: !!accepted,
+          accepted_at: vrp&.agreement_accepted_at&.iso8601, name: vrp&.name.presence || vrp&.user_name || "-",
+          village: vrp ? agreement_village_name(vrp) : "-", mobile_no: vrp&.mobile_no.presence || "-",
           date: Time.zone.today.strftime("%d/%m/%Y"), intro: AGREEMENT_TEXT[:intro],
           terms: AGREEMENT_TEXT[:terms], acceptance: AGREEMENT_TEXT[:acceptance],
-          signature_data: vrp.agreement_signature_data.presence }
+          signature_data: vrp&.agreement_signature_data.presence }
       end
 
       def accepted_agreement_vrps
@@ -114,9 +129,10 @@ module Api
       end
 
       def agreement_list_authorized?
-        return false unless current_api_user.present? && !current_api_user.is_a?(Vrp)
+        user = agreement_list_user
+        return false unless user.present? && !user.is_a?(Vrp)
 
-        payload = current_api_user_payload
+        payload = app_user_session_payload(user)
         return true if payload["user_type"].to_s.casecmp("admin").zero?
 
         roles = [payload["role"], payload["role_name"], payload["stakeholder_role"], payload["user_management_role"], payload["person_type"]]
@@ -127,7 +143,7 @@ module Api
       end
 
       def agreement_vrp_visible_to_current_user?(vrp)
-        payload = current_api_user_payload
+        payload = app_user_session_payload(agreement_list_user)
         return true if payload["user_type"].to_s.casecmp("admin").zero?
 
         roles = [payload["role"], payload["role_name"], payload["stakeholder_role"], payload["user_management_role"], payload["person_type"]]
@@ -135,14 +151,26 @@ module Api
         if roles.any? { |role| role.include?("manager") || role.include?("cluster") || role.include?("agronomist") || role.include?("agricultural specialist") }
           return true if roles.any? { |role| role.include?("agronomist") || role.include?("agricultural specialist") }
           current_name = payload["name"].to_s.downcase
-          return vrp.cluster_incharge.to_s.downcase == current_name || vrp.created_by_id.to_s == current_api_user.id.to_s
+          user = agreement_list_user
+          return vrp.cluster_incharge.to_s.downcase == current_name || vrp.created_by_id.to_s == user.id.to_s
         end
 
         if roles.any? { |role| role.match?(/\Afco(?:[-\s]|$)/) }
           office = payload["office_name"].to_s.downcase
           return vrp.fcoc.to_s.downcase.include?(office.delete_prefix("fco-c ")) if office.present?
         end
-        vrp.created_by_id.to_s == current_api_user.id.to_s
+        vrp.created_by_id.to_s == agreement_list_user.id.to_s
+      end
+
+      # The web archive uses the logged-in office account. Mobile/API clients
+      # can authenticate the same account with a bearer token or credentials.
+      def agreement_list_user
+        return current_api_user if current_api_user.present?
+
+        login = params[:login].presence || params[:username].presence || params[:user_name].presence
+        return if login.blank? || params[:password].blank?
+
+        AppUserAuthenticator.authenticate(login: login, password: params[:password])
       end
 
       def agreement_list_row(vrp)
