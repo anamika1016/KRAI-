@@ -9547,6 +9547,16 @@ class ModulesController < ApplicationController
     dashboard_ics_filtered_scope(dashboard_user_visible_farmer_scope)
   end
 
+  # "Is this login really a cluster coordinator?" -- the same question
+  # jeevika_jankar_bill_record_visible? asks. A role like "CC Agronomist" or
+  # "FCO-C Sausar" trips the \bcc\b test in module_cluster_incharge_login?
+  # without having any Jeevika Jankar mapped below it, so those logins keep
+  # their own wider scope.
+  def dashboard_cluster_coordinator_scope?
+    module_cluster_incharge_login? && !dashboard_agronomics_login? &&
+      !dashboard_source_fcoc_login? && !vrp_login_user?
+  end
+
   def dashboard_user_visible_farmer_scope
     return Afl.all if dashboard_global_view_user?
     # NEW: a user with their own Sub Office Name (TO) set sees that whole TO's
@@ -9554,7 +9564,14 @@ class ModulesController < ApplicationController
     # FCO -- not narrowed down further to only the targets they personally
     # registered. dashboard_total_afl_farmer_scope's TO condition (Condition
     # 1: ICS TO MAPPING) still narrows this to their specific TO afterwards.
-    if dashboard_source_fcoc_login? || dashboard_agronomist_all_months? || dashboard_user_sub_office_to_value.present?
+    # A cluster coordinator is deliberately left out of that widening. Their Sub
+    # Office Name is filled in like anyone else's, which reopened the whole
+    # office's farmers and made the Farmer Training Participation boxes count
+    # every farmer in the FCO rather than the ones under their own Jeevika
+    # Jankars. Mapped Farmer reads the target scope, so it stayed correct while
+    # Pending / Only 1 Training / 1+ Trainings did not.
+    if (dashboard_source_fcoc_login? || dashboard_agronomist_all_months? || dashboard_user_sub_office_to_value.present?) &&
+        !dashboard_cluster_coordinator_scope?
       fco_sources = dashboard_vrps.map(&:fcoc) + [current_app_user&.dig("office_name")]
       fco_values = fco_sources.compact_blank.uniq.flat_map { |fcoc| training_fcoc_filter_values(fcoc) }.map(&:downcase).uniq
       return Afl.where("LOWER(BTRIM(fco_id)) IN (:values) OR LOWER(BTRIM(fco)) IN (:values)", values: fco_values)
