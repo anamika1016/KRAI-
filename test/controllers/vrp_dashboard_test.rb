@@ -15,6 +15,7 @@ class VrpDashboardTest < ActionDispatch::IntegrationTest
       "main_activity" => "Farmers' Training", "sub_activity" => "Soil", "ics" => "ICS1", "village" => "V1",
       "training_date" => "2026-08-10"
     })
+    grant_jj_module_access("Training Form", "Training Form List", "Target Mapping Master")
     post login_path, params: { login: vrp.user_name, password: "secret" }
     targets.each_with_index do |target, index|
       get training_target_farmers_module_path("training-form"), params: { target_mapping_ids: target.id }
@@ -624,6 +625,7 @@ class VrpDashboardTest < ActionDispatch::IntegrationTest
     vrp = create_vrp(
       name: "Training VRP",
       user_name: "training_vrp",
+      password: "secret",
       mobile_no: "9876543888",
       email: "training-vrp@example.com",
       aadhar_no: "123456789088",
@@ -668,6 +670,7 @@ class VrpDashboardTest < ActionDispatch::IntegrationTest
       created_by_id: 1
     )
 
+    grant_jj_module_access("Training Form", "Training Form List", "Target Mapping Master")
     post login_path, params: { login: "training_vrp", password: "secret" }
     follow_redirect!
     get module_path("training-form")
@@ -1539,6 +1542,18 @@ class VrpDashboardTest < ActionDispatch::IntegrationTest
       "target" => target.target_quantity.to_i.to_s,
       "achievement" => "1"
     }
+  end
+
+  # A Jeevika Jankar's sidebar access is granted per JJ type through an Access
+  # Control record (see compute_allowed_sidebar_keys), so a JJ test has to grant
+  # it before the Farmer Target screens will answer instead of returning 403.
+  def grant_jj_module_access(*module_names)
+    type = VrpType.find_by(id: 1) || VrpType.create!(id: 1, type_name: "Test JJ Type")
+    ModuleRecord.create!(module_slug: "access-control", data: {
+      "jeevika_jankar_type" => type.type_name,
+      "can_view" => "Yes",
+      "sub_module_names" => module_names
+    })
   end
 
   def create_vrp(attributes = {})

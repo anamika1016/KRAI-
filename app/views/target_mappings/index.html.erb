@@ -55,6 +55,17 @@
               </select>
             </label>
 
+            <%# TO sits between FCO and ICS: the list comes from Office Setup's
+                Sub Office Add, and picking one narrows the ICS below to the
+                ones ICS TO MAPPING files under it. Optional -- leave it on
+                "All TO" and the form behaves exactly as before. %>
+            <label>
+              <span>TO</span>
+              <select name="target_mapping[to_name]" data-target-to data-selected-value="<%= @edit_target&.vrp&.to_name %>" disabled>
+                <option value="">All TO</option>
+              </select>
+            </label>
+
             <label>
               <span>ICS <em>*</em></span>
               <select name="target_mapping[ics_id]" data-target-ics data-selected-value="<%= [@edit_target&.ics_id, @edit_target&.ics_name].compact_blank.join("||") %>" required disabled>
@@ -435,6 +446,7 @@
                 <th>Jeevika Jankar</th>
                 <th>Cluster Coordinator</th>
                 <th>FCO</th>
+                <th>TO</th>
                 <th>ICS</th>
                 <th>Village</th>
                 <th>Month</th>
@@ -485,6 +497,10 @@
                     <td><%= target.vrp&.name %></td>
                     <td><%= target.vrp&.cluster_incharge.presence || "-" %></td>
                   <td><%= target.fco_name.presence || target.fco_id %></td>
+                  <%# The sub office comes from the Jeevika Jankar's own record,
+                      the same place the dashboard TO filter reads, so a new TO
+                      needs nothing added here. %>
+                  <td><%= target.vrp&.to_name.presence || "-" %></td>
                   <td><%= target.ics_name.presence || target.ics_id %></td>
                   <td><%= target.village_name.presence || target.village_id %></td>
                   <td><%= target.month_name %></td>
@@ -556,7 +572,7 @@
               <% end %>
             <% else %>
               <tr>
-	                <td colspan="<%= @target_summary_mode.present? ? 4 : (show_mapping_actions ? 21 : 20) %>">No target mapping saved yet.</td>
+	                <td colspan="<%= @target_summary_mode.present? ? 4 : (show_mapping_actions ? 22 : 21) %>">No target mapping saved yet.</td>
               </tr>
             <% end %>
           </tbody>

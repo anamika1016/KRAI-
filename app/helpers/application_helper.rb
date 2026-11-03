@@ -303,10 +303,11 @@ module ApplicationHelper
     return @sidebar_sections = SIDEBAR_SECTIONS if allowed_keys.nil?
 
     @sidebar_sections = SIDEBAR_SECTIONS.filter_map do |section|
-      allowed_links = section[:links].select do |link|
-        allowed_keys.include?(sidebar_access_key(link)) ||
-          (link[2] == :training_edit_approvals_path && training_approval_role?)
-      end
+      # Access Control decides every link. The Training Form Edit Approval List
+      # used to be handed to any Agronomist/Cluster role on top of whatever was
+      # granted, so a role given two lists saw three and the grant could not be
+      # taken away. Needing its own tick makes the screen match the form.
+      allowed_links = section[:links].select { |link| allowed_keys.include?(sidebar_access_key(link)) }
       section.merge(links: allowed_links) if allowed_links.any?
     end
   end
@@ -317,12 +318,6 @@ module ApplicationHelper
 
   def training_sidebar_pending?(link)
     ["training-form-list", "training_edit_approvals_path"].include?(link[2].to_s) && pending_training_approvals.any?
-  end
-
-  def training_approval_role?
-    TrainingStaffScope::ROLE_KEYS.any? do |key|
-      current_app_user&.dig(key).to_s.match?(/cluster|agronom|agricultural specialist/i)
-    end
   end
 
   def sidebar_link_path(link)

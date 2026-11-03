@@ -96,13 +96,13 @@ class DashboardLogicUnitTest < Minitest::Test
           ActiveRecord::Base.define_singleton_method(:sanitize_sql_array, original_sanitize)
         end
         assert_equal 8, sql_queries.size, role
-        sql_queries.each_with_index do |sql, index|
+        sql_queries.each do |sql|
           assert_includes sql, "987654", role unless role == "admin"
           refute_includes sql, "%{", role
-          if role == "admin" && month.nil? && index < 5
-            assert_includes sql, "'august'", role
-            next
-          end
+          # Admin used to be left out of All Months here, so its Mapped Farmer
+          # card stayed pinned to the literal August fallback while Pending
+          # beside it counted every month. All Months is all months for every
+          # role now -- which is what this test's own name asks for.
           refute_match(/month.*= 'august'/i, sql, role)
           if month.nil?
             refute_match(/(?:month_name|->> 'month')\s*\)?\s*= /, sql, role)
@@ -185,17 +185,24 @@ class DashboardLogicUnitTest < Minitest::Test
     assert_equal ["August Training", "July Training"], c.send(:dashboard_filter_sub_activity_options, targets)
   end
 
-  def test_other_activity_totals_use_reporting_query_totals
+  # The "Main Major Work Indicator - Other" box totals the saved Other Target
+  # entries, not the target mappings -- see dashboard_other_target_entry_rows.
+  def test_other_activity_totals_sum_saved_other_target_entries
     c = controller
-    c.define_singleton_method(:dashboard_other_activity_rows) do |targets|
-      targets.empty? ? [] : [{ "main_activity_name" => "Other", "mapped_farmer" => 60, "achievement_farmer" => 50, "pending_farmer" => 10 }]
-    end
-    targets = [OpenStruct.new(id: 1, fco_id: "1004", target_quantity: 40), OpenStruct.new(id: 2, fco_id: "1006", target_quantity: 20)]
-    assert_equal 60, c.send(:dashboard_other_activity_totals, targets)[:mapped_farmer]
-    assert_equal 50, c.send(:dashboard_other_activity_totals, targets)[:achievement_farmer]
-    assert_equal 10, c.send(:dashboard_other_activity_totals, targets)[:pending_farmer]
-    assert_equal 83.33, c.send(:dashboard_other_activity_totals, targets)[:achieved]
-    assert_equal 0, c.send(:dashboard_other_activity_totals, [])[:main_major_work_indicator]
+    entries = [
+      { "main_activity" => "Other", "fco_name" => "FCO-C Sausar", "target" => 40, "achievement" => 30 },
+      { "main_activity" => "Other", "fco_name" => "FCO-C Turekela", "target" => 20, "achievement" => 20 }
+    ]
+    c.define_singleton_method(:dashboard_other_target_entry_rows) { entries }
+    totals = c.send(:dashboard_other_activity_totals)
+    assert_equal 60, totals[:mapped_farmer]
+    assert_equal 50, totals[:achievement_farmer]
+    assert_equal 10, totals[:pending_farmer]
+    assert_equal 83.33, totals[:achieved]
+    assert_equal 1, totals[:main_major_work_indicator]
+
+    c.define_singleton_method(:dashboard_other_target_entry_rows) { [] }
+    assert_equal 0, c.send(:dashboard_other_activity_totals)[:main_major_work_indicator]
   end
 
   def test_completed_payments_are_not_limited_by_jj_assignment

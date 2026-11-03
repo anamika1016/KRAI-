@@ -4,6 +4,12 @@ class TrainingEditApprovalsControllerTest < ActionDispatch::IntegrationTest
   test "responsible Agronomist sees and approves automatically routed edit without channel setup" do
     fco = User.create!(user_name: "routing_fco", password: "secret", first_name: "Responsible FCO",
       role: "Agronomist", office_name: "FCO-C Sausar", user_type: "User")
+    # The sidebar link and its pending dot come from Access Control like every
+    # other link. An Agronomist used to be shown this one regardless of what
+    # was granted; routing and approving below are unaffected either way.
+    ModuleRecord.create!(module_slug: "access-control", data: {
+      "role" => "Agronomist", "can_view" => "Yes",
+      "sub_module_names" => ["Training Form Edit Approval List"] })
     record = ModuleRecord.create!(module_slug: "training-form", data: {
       "fco_name" => "FCO-C Sausar", "training_location" => "Original" })
     revision = TrainingEditApproval.submit!(record: record,

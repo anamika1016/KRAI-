@@ -187,13 +187,15 @@ class ModulesControllerDashboardTest < ActiveSupport::TestCase
       "training_photo_upload_with_geo_tag" => "photo.jpg"
     }
 
+    # Male + Female only drives Total Farmer Count; it need not match Farmer
+    # Count, so a mismatch is accepted. They do still have to be whole numbers.
     ["0", "2"].each do |male_count|
-      invalid = data.merge("male_count" => male_count)
-      assert_includes controller.send(:training_form_error_messages, invalid),
-        "Male Count + Female Count Farmer Count ke equal hona chahiye."
+      mismatched = data.merge("male_count" => male_count)
+      assert_empty controller.send(:training_form_error_messages, mismatched),
+        "male/female counts that do not add up to Farmer Count must still be accepted"
     end
-    refute_includes controller.send(:training_form_error_messages, data),
-      "Male Count + Female Count Farmer Count ke equal hona chahiye."
+    assert_includes controller.send(:training_form_error_messages, data.merge("male_count" => "abc")),
+      "Male Count valid whole number hona chahiye."
 
     messages = controller.send(:training_form_error_messages, data)
 
@@ -337,20 +339,26 @@ class ModulesControllerDashboardTest < ActiveSupport::TestCase
     assert_equal "CC TARGET STATUS", titles.last
   end
 
+  # Totals come from the saved Other Target entries, and the hover popup breaks
+  # them down per FCO as "name = achievement/target".
   test "dashboard_other_activity_totals calculates dynamic metrics and hover popups for other activities" do
-    controller = ModulesController.new
-    controller.define_singleton_method(:dashboard_other_activity_rows) do |_targets|
-      [{ "main_activity_name" => "Seed Distribution", "mapped_farmer" => 2, "achievement_farmer" => 1, "pending_farmer" => 1 }]
-    end
+    ModuleRecord.create!(module_slug: "other-target", data: {
+      "fcoc_name" => "FCO-C Sausar", "month" => "August", "main_activity" => "Seed Distribution",
+      "sub_activity" => "Village", "target" => "2", "achievement" => "1", "approval_status" => "Approved"
+    })
 
-    totals = controller.send(:dashboard_other_activity_totals, [])
+    controller = ModulesController.new
+    controller.params = ActionController::Parameters.new(month: "August", fcoc: "Sausar")
+    controller.instance_variable_set(:@dashboard_month_filter_value, "August")
+
+    totals = controller.send(:dashboard_other_activity_totals)
 
     assert_equal 1, totals[:main_major_work_indicator]
     assert_equal 2, totals[:mapped_farmer]
     assert_equal 1, totals[:achievement_farmer]
     assert_equal 1, totals[:pending_farmer]
     assert_equal 50.0, totals[:achieved]
-    assert_equal ["Seed Distribution"], totals[:main_major_work_indicator_popups]
+    assert_equal ["Sausar = 1/2"], totals[:main_major_work_indicator_popups]
   end
 
   private

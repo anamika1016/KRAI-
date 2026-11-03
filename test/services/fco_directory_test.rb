@@ -101,7 +101,9 @@ class FcoDirectoryTest < ActiveSupport::TestCase
     })
     FcoDirectory.reset_cache!
 
-    assert_nil FcoDirectory.canonical_name("Direct to HO")
+    # The office reports through 1095's farmer rows, so its name resolves to the
+    # AFL name behind it rather than to the sub office it was mapped to.
+    assert_equal "Direct to HO", FcoDirectory.canonical_name("Direct to HO")
     assert_equal %w[1004 1006 1095], FcoDirectory.ids
   end
 
@@ -145,7 +147,10 @@ class FcoDirectoryTest < ActiveSupport::TestCase
     })
     FcoDirectory.reset_cache!
 
-    assert_nil FcoDirectory.canonical_name("Direct to HO")
+    # Mapping it at a sub office that is not an FCO changes nothing: the name
+    # still resolves to its own AFL rows, not to "Nowhere".
+    assert_equal "Direct to HO", FcoDirectory.canonical_name("Direct to HO")
+    assert_nil FcoDirectory.canonical_name("TO-Nowhere")
   end
 
   test "falls back to the original three when AFL has nothing" do

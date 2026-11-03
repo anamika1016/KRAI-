@@ -866,6 +866,16 @@ class ModulesController < ApplicationController
     # can still choose All Months or another month from the filter.
     default_dashboard_month = DashboardDefaults.month
     @dashboard_month_filter_value = params.key?(:month) ? dashboard_filter_param(:month) : default_dashboard_month
+    # The default month is only usable if it is one of the months on offer. A
+    # month with no data yet -- the current one, early in the month -- is not
+    # in the list, so the select matches nothing and falls back to displaying
+    # "All Months" while the page stays filtered to that empty month. Every
+    # month-wise panel then reads zero under a dropdown claiming All Months.
+    # Honour what the dropdown shows. An explicitly chosen month is untouched.
+    if !params.key?(:month) && @dashboard_month_filter_value.present? &&
+        @filter_month_options.none? { |option| normalize_dashboard_text(option) == normalize_dashboard_text(@dashboard_month_filter_value) }
+      @dashboard_month_filter_value = nil
+    end
     if @dashboard_month_filter_value.present?
       m = normalize_dashboard_text(@dashboard_month_filter_value)
       t_scope = t_scope.select { |t| normalize_dashboard_text(t.month_name) == m }
@@ -2338,6 +2348,36 @@ class ModulesController < ApplicationController
         COND
         binds[:to_ics_ids] = to_ics_ids
       end
+    end
+
+    # A cluster coordinator's dashboard is a roll-up of the Jeevika Jankars
+    # mapped below them, so these entries narrow the same way the targets and
+    # bills already do. An entry carries its JJ id directly; older rows that do
+    # not are matched through the target they were raised against. An empty
+    # mapping stays empty rather than widening back out to the whole project.
+    #
+    # The agronomist and FCO exclusions match jeevika_jankar_bill_record_visible?,
+    # which asks this same "is this really a cluster coordinator" question: a role
+    # like "CC Agronomist" or "FCO-C Sausar" can trip module_cluster_incharge_login?
+    # without having any Jeevika Jankar mapped below it, and narrowing by that
+    # empty mapping would blank their box instead of scoping it. Their views stay
+    # exactly as they were.
+    if module_cluster_incharge_login? && !dashboard_agronomics_login? &&
+        !dashboard_source_fcoc_login? && !vrp_login_user?
+      visible_vrp_ids = module_cluster_visible_vrp_ids
+      return [] if visible_vrp_ids.blank?
+
+      # Trimmed on both sides, like the month and FCO filters above: an id saved
+      # with a stray space would otherwise drop the entry out of this total
+      # silently rather than failing loudly.
+      conditions << <<~COND.squish
+        (BTRIM(COALESCE(data::jsonb->>'jeevika_jankar_id', '')) IN (:cluster_vrp_ids)
+          OR BTRIM(COALESCE(data::jsonb->>'target_mapping_id', '')) IN (
+            SELECT id::text FROM target_mappings WHERE vrp_id IN (:cluster_vrp_id_numbers)
+          ))
+      COND
+      binds[:cluster_vrp_ids] = visible_vrp_ids.map(&:to_s)
+      binds[:cluster_vrp_id_numbers] = visible_vrp_ids
     end
 
     sql = <<~SQL.squish
@@ -3963,7 +4003,8 @@ class ModulesController < ApplicationController
       dashboard_group_card("Jeevika Jankar Billing", billing_items, style: "billing")
     ]
     fco_names = dashboard_fco_names
-    gender_month = params[:month].presence || params[:training_month].presence || "August"
+    # Blank stays blank so the card reads "All Months" instead of August.
+    gender_month = @dashboard_month_filter_value.presence || params[:month].presence || params[:training_month].presence
     gender_items = fco_names.flat_map do |fco_name|
       # Same JJ set as the FCO-wise JJ Requirement "Active" box, split by gender.
       fco_vrps = dashboard_fco_active_vrp_records(fco_name, gender_month, vrps)
@@ -4309,9 +4350,13 @@ class ModulesController < ApplicationController
   end
 
   def demonstration_method_cards
+    # Take the month the page already settled on rather than working it out
+    # again: that one has had the "default month has no data" fallback applied,
+    # so this panel cannot stay pinned to an empty month while the rest of the
+    # dashboard shows All Months.
     report = @demonstration_method_report || DemonstrationMethodReport.new(
       targets: @filtered_targets || dashboard_target_mappings,
-      month: params.key?(:month) ? dashboard_filter_param(:month) : DashboardDefaults.month)
+      month: defined?(@dashboard_month_filter_value) ? @dashboard_month_filter_value : (params.key?(:month) ? dashboard_filter_param(:month) : DashboardDefaults.month))
 
     summary_rows = report.summary
 
@@ -4800,21 +4845,27 @@ class ModulesController < ApplicationController
   def dashboard_fco_active_vrp_count(fco_name_or_id, month_name = "August", vrps = nil)
     return 0 if fco_name_or_id.blank?
 
+    # Blank month is "All Months": count the Jeevika Jankars active in any
+    # month rather than silently answering for August. Naming a month keeps
+    # the original single-month query.
+    all_months = month_name.blank?
     selected_month = month_name.presence || "August"
     fco_values = training_fcoc_filter_values(fco_name_or_id)
     fco_values << normalize_dashboard_text(fco_name_or_id)
     fco_values = fco_values.compact_blank.uniq
     fco_conditions = "(LOWER(TRIM(t.fco_id)) IN (:fco_values) OR LOWER(TRIM(t.fco_name)) IN (:fco_values))"
+    month_condition = all_months ? "TRUE" : "LOWER(TRIM(t.month_name)) = :month_name"
 
     sql = <<~SQL.squish
       SELECT COUNT(DISTINCT t.vrp_id) AS active_vrp_count
       FROM public.target_mappings t
       WHERE #{fco_conditions}
-        AND LOWER(TRIM(t.month_name)) = :month_name
+        AND #{month_condition}
         AND t.vrp_id IS NOT NULL AND TRIM(t.vrp_id::text) != '';
     SQL
 
-    binds = { fco_values: fco_values, month_name: selected_month.strip.downcase }
+    binds = { fco_values: fco_values }
+    binds[:month_name] = selected_month.strip.downcase unless all_months
     res = ActiveRecord::Base.connection.exec_query(
       ActiveRecord::Base.send(:sanitize_sql_array, [sql, binds])
     ).first
@@ -4853,21 +4904,26 @@ class ModulesController < ApplicationController
   def dashboard_fco_active_vrp_records(fco_name_or_id, month_name = "August", vrps = nil)
     return [] if fco_name_or_id.blank?
 
+    # Same rule as the count above: blank month means every month.
+    all_months = month_name.blank?
     selected_month = month_name.presence || "August"
     fco_values = training_fcoc_filter_values(fco_name_or_id)
     fco_values << normalize_dashboard_text(fco_name_or_id)
     fco_values = fco_values.compact_blank.uniq
     fco_conditions = "(LOWER(TRIM(t.fco_id)) IN (:fco_values) OR LOWER(TRIM(t.fco_name)) IN (:fco_values))"
+    month_condition = all_months ? "TRUE" : "LOWER(TRIM(t.month_name)) = :month_name"
 
     sql = <<~SQL.squish
       SELECT DISTINCT t.vrp_id
       FROM public.target_mappings t
       WHERE #{fco_conditions}
-        AND LOWER(TRIM(t.month_name)) = :month_name
+        AND #{month_condition}
         AND t.vrp_id IS NOT NULL AND TRIM(t.vrp_id::text) != ''
     SQL
+    record_binds = { fco_values: fco_values }
+    record_binds[:month_name] = selected_month.strip.downcase unless all_months
     ids = ActiveRecord::Base.connection.exec_query(
-      ActiveRecord::Base.send(:sanitize_sql_array, [sql, { fco_values: fco_values, month_name: selected_month.strip.downcase }])
+      ActiveRecord::Base.send(:sanitize_sql_array, [sql, record_binds])
     ).rows.flatten.compact
 
     if ids.present?
@@ -4904,7 +4960,9 @@ class ModulesController < ApplicationController
                nil
              end
 
-    selected_month = month.presence || params[:month].presence || params[:training_month].presence || "August"
+    # Blank stays blank -- All Months counts every month's active JJs.
+    selected_month = month.presence || @dashboard_month_filter_value.presence ||
+                     params[:month].presence || params[:training_month].presence
     active_count   = dashboard_fco_active_vrp_count(fco_name, selected_month, vrps)
 
     if normalized_fco.include?("sausar") || fco_id == "1004"
@@ -6385,10 +6443,13 @@ class ModulesController < ApplicationController
   end
 
   def compute_farmer_training_mapped_farmer_count_and_popups(month_name:, fcoc_name:, to_name: nil)
-    # Extend only user All Months; preserve the admin and monthly queries.
+    # All Months means all months for every login. Excluding admin here left
+    # the admin's Mapped Farmer card quietly filtered to August -- the literal
+    # fallback below -- while Pending beside it and the card's own View List
+    # both counted every month. Picking a month is unchanged.
     selected_month = month_name.presence || "August"
-    user_all_months = month_name.blank? && !admin_dashboard_user?
-    month_filter_sql = user_all_months ? "TRUE" : "LOWER(BTRIM(t.month_name)) = :month_name"
+    all_months = month_name.blank?
+    month_filter_sql = all_months ? "TRUE" : "LOWER(BTRIM(t.month_name)) = :month_name"
     fco_ids = training_fcoc_ids_from_param(fcoc_name)
     fco_filter_sql = "AND LOWER(BTRIM(t.fco_id)) IN (:fco_ids)"
     # TO filter: only ICS explicitly mapped to this TO (Office Setup > ICS TO
@@ -6418,7 +6479,7 @@ class ModulesController < ApplicationController
     SQL
 
     binds = { fco_ids: fco_ids.map(&:downcase) }
-    binds[:month_name] = selected_month.strip.downcase unless user_all_months
+    binds[:month_name] = selected_month.strip.downcase unless all_months
     binds[:to_ics_ids] = to_ics_ids if to_ics_ids.present?
     rows = ActiveRecord::Base.connection.exec_query(
       ActiveRecord::Base.send(:sanitize_sql_array, [dashboard_scoped_training_sql(sql), binds])
@@ -7117,10 +7178,10 @@ class ModulesController < ApplicationController
 
     # Lists and popup breakdowns share the same all-month predicates while
     # dashboard_scoped_training_sql retains the login's authorized scope.
-    # These lists previously defaulted to August for a blank month. Keep
-    # that admin behavior; only user All Months gains the expanded lists.
-    extended_status = %w[unique mapped no_activity no_training_mapping no_training training_mapped_no_entry no_entry].include?(status.to_s)
-    use_all_month_predicates = all_months && (!extended_status || !admin_dashboard_user?)
+    # Admin used to be held back to August here for the mapped/no-entry
+    # statuses, so an admin's All Months list disagreed with the card above it
+    # and with every other login's list. All Months is all months for everyone.
+    use_all_month_predicates = all_months
     month_predicates = {
       "target_month_filter" => use_all_month_predicates ? "TRUE" : "LOWER(TRIM(t.month_name)) = :month_name",
       "entry_month_filter" => use_all_month_predicates ? "TRUE" : "LOWER(TRIM(mr.data::jsonb ->> 'month')) = :month_name"
@@ -9414,6 +9475,10 @@ class ModulesController < ApplicationController
   # without target mappings. Never derive authorization from the selected FCO.
   def dashboard_agronomist_all_months?
     return false if dashboard_global_view_user? || !dashboard_agronomics_login?
+    # Callers that build this controller directly hand it params without a
+    # request. Only bail out when neither is there, or reading params below
+    # would go looking for a request that does not exist.
+    return false unless request || @_params
     return false unless params.key?(:month) || params.key?(:training_month)
 
     @dashboard_agronomist_all_months = dashboard_filter_param(:training_month, :month).blank?

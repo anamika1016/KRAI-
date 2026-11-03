@@ -102,7 +102,8 @@ class TargetMappingsController < ApplicationController
 
     render json: {
       fco_options: fco_options(params[:vrp_id]),
-      ics_options: ics_options_for(params[:fco_id], params[:vrp_id]),
+      to_options: to_options_for(params[:fco_id]),
+      ics_options: ics_options_for(params[:fco_id], params[:vrp_id], params[:to_name]),
       village_options: village_options_for(params[:fco_id], params[:ics_id], params[:vrp_id]),
       farmers: village_target_request ? [] : target_farmers_for(
         vrp_id: params[:vrp_id],
@@ -774,16 +775,109 @@ class TargetMappingsController < ApplicationController
     unique_fco_options(afl_fco_options)
   end
 
-  def ics_options_for(fco_value, vrp_id = nil)
+  def ics_options_for(fco_value, vrp_id = nil, to_value = nil)
     return [] if fco_value.blank?
 
-    unique_location_options(afl_ics_options_for(fco_value))
+    options = unique_location_options(afl_ics_options_for(fco_value))
+    narrow_options_to_sub_office(options, fco_value, to_value)
   end
 
   def village_options_for(fco_value, ics_value, vrp_id = nil)
     return [] if fco_value.blank? || ics_value.blank?
 
     unique_location_options(afl_village_options_for(fco_value, ics_value))
+  end
+
+  # Sub offices configured for this FCO in Office Setup. Reading the master
+  # means a TO added there is offered here with nothing to change in code.
+  def to_options_for(fco_value)
+    return [] unless defined?(ModuleRecord) && ModuleRecord.table_exists?
+
+    fco_key = sub_office_fco_key(fco_value)
+    ModuleRecord
+      .where(module_slug: "office-mapping-add")
+      .filter_map do |record|
+        data = record.data
+        next unless data.is_a?(Hash)
+        next if data["status"].present? && !data["status"].to_s.casecmp("Active").zero?
+
+        name = data["sub_office_name"].to_s.squish
+        next if name.blank?
+        next if fco_key.present? && sub_office_fco_key(data["office_name"]) != fco_key
+
+        # Plain value: this one is matched as text, not as an id||label pair.
+        { value: name, label: name }
+      end
+      .uniq { |option| sub_office_key(option[:value]) }
+      .sort_by { |option| sub_office_key(option[:value]) }
+  rescue StandardError => e
+    Rails.logger.warn("Target mapping TO options failed: #{e.class} - #{e.message}")
+    []
+  end
+
+  # Picking a TO means "only this TO's ICS", and ICS TO MAPPING is the only
+  # thing that says which those are. A TO with nothing mapped to it offers
+  # nothing -- one ICS mapped, one ICS offered -- so the list grows as that
+  # master is filled in. "All TO" is unchanged and always shows everything.
+  def narrow_options_to_sub_office(options, fco_value, to_value)
+    return options if to_value.blank?
+
+    mapped = sub_office_mapped_ics_keys(fco_value, to_value)
+    options.select { |option| (location_match_key(option) & mapped).any? }
+  end
+
+  # ICS TO MAPPING is the one place that records which ICS belongs to which TO,
+  # so that master alone decides what the ICS dropdown offers for a TO.
+  def sub_office_mapped_ics_keys(fco_value, to_value)
+    ics_to_mapping_keys(fco_value, to_value)
+  end
+
+  def ics_to_mapping_keys(fco_value, to_value)
+    return [] unless defined?(ModuleRecord) && ModuleRecord.table_exists?
+
+    to_key = sub_office_key(to_value)
+    fco_key = sub_office_fco_key(fco_value)
+    ModuleRecord
+      .where(module_slug: "ics-to-mapping")
+      .filter_map do |record|
+        data = record.data
+        next unless data.is_a?(Hash)
+        next if data["status"].present? && !data["status"].to_s.casecmp("Active").zero?
+        next unless sub_office_key(data["to_name"]) == to_key
+        next if fco_key.present? && sub_office_fco_key(data["fco_name"]) != fco_key
+
+        location_text_key(data["ics_name"])
+      end
+      .compact_blank
+      .uniq
+  rescue StandardError => e
+    Rails.logger.warn("Target mapping ICS TO MAPPING lookup failed: #{e.class} - #{e.message}")
+    []
+  end
+
+  # "TO-Turekela", "TO- Turekela" and "TO -Turekela" are one office.
+  def sub_office_key(value)
+    value.to_s.squish.sub(/\Ato\s*[-: ]\s*/i, "").squish.downcase
+  end
+
+  # "FCO-C Sausar" and "Sausar" are one FCO.
+  def sub_office_fco_key(value)
+    # The form sends FCO as "id||name"; Office Setup stores a plain name.
+    _id, name = parse_location_value(value)
+    text = name.presence || value
+    text.to_s.squish.sub(/\Afco\s*-?\s*c?\s*[-:]?\s*/i, "").squish.downcase
+  end
+
+  def location_text_key(value)
+    value.to_s.gsub(/[^a-z0-9]+/i, "").downcase
+  end
+
+  # An ICS option carries "id||name" in its value and "Name - id" as its label.
+  # ICS TO MAPPING stores the plain name, so compare on the name (and the id,
+  # for a mapping that was filled in with codes instead).
+  def location_match_key(option)
+    id, name = parse_location_value(option[:value])
+    [location_text_key(name), location_text_key(id)].compact_blank
   end
 
   def afl_fco_options

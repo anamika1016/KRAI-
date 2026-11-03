@@ -82,28 +82,19 @@ class SessionsControllerTest < ActionDispatch::IntegrationTest
 
   test "forgot password otp api returns json success" do
     create_vrp(user_name: "otp_vrp", password: "secret", agreement_accepted_at: Time.current)
-    sender = Minitest::Mock.new
-    sender.expect(:deliver, OtpSmsSender::Result.new(success: true, message: "Gateway accepted OTP request."))
-
-    OtpSmsSender.stub(:new, sender) do
+    sender = with_stubbed_otp_sender(success: true, message: "Gateway accepted OTP request.") do
       post send_forgot_password_otp_path, params: { username: "otp_vrp" }, as: :json
     end
 
     assert_response :success
     assert_equal true, response.parsed_body["success"]
     assert_equal "OTP sent to registered mobile number.", response.parsed_body["message"]
-    sender.verify
+    assert_equal 1, sender.deliveries, "the SMS sender should have been asked to deliver once"
   end
 
   test "forgot password otp api returns json failure when sms gateway fails" do
     create_vrp(user_name: "gateway_fail_vrp", password: "secret", agreement_accepted_at: Time.current)
-    sender = Minitest::Mock.new
-    sender.expect(
-      :deliver,
-      OtpSmsSender::Result.new(success: false, message: "Net::ReadTimeout: timed out")
-    )
-
-    OtpSmsSender.stub(:new, sender) do
+    sender = with_stubbed_otp_sender(success: false, message: "Net::ReadTimeout: timed out") do
       post send_forgot_password_otp_path, params: { username: "gateway_fail_vrp" }, as: :json
     end
 
@@ -111,10 +102,35 @@ class SessionsControllerTest < ActionDispatch::IntegrationTest
     assert_equal false, response.parsed_body["success"]
     assert_equal "OTP could not be sent. Net::ReadTimeout: timed out. Please try again.", response.parsed_body["message"]
     assert_equal "Net::ReadTimeout: timed out", response.parsed_body.dig("sms", "message")
-    sender.verify
+    assert_equal 1, sender.deliveries, "the SMS sender should have been asked to deliver once"
   end
 
   private
+
+  # Minitest 6 no longer ships Minitest::Mock or Object#stub, so stand in a
+  # recorder that answers #deliver with a fixed result and counts the calls.
+  StubOtpSender = Struct.new(:result) do
+    def deliver
+      @deliveries = deliveries + 1
+      result
+    end
+
+    def deliveries
+      @deliveries ||= 0
+    end
+  end
+
+  def with_stubbed_otp_sender(success:, message:)
+    sender = StubOtpSender.new(OtpSmsSender::Result.new(success: success, message: message))
+    singleton = OtpSmsSender.singleton_class
+    singleton.alias_method(:__original_new, :new)
+    singleton.define_method(:new) { |*, **| sender }
+    yield
+    sender
+  ensure
+    singleton.alias_method(:new, :__original_new)
+    singleton.remove_method(:__original_new)
+  end
 
   def create_vrp(attributes = {})
     defaults = {

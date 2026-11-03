@@ -3838,6 +3838,7 @@ function initDeferredLayoutPage() {
 
     const vrpSelect = shell.querySelector("[data-target-vrp]");
     const fcoSelect = shell.querySelector("[data-target-fco]");
+    const toSelect = shell.querySelector("[data-target-to]");
     const icsSelect = shell.querySelector("[data-target-ics]");
     const villageSelect = shell.querySelector("[data-target-village]");
     const villageHidden = shell.querySelector("[data-target-village-hidden]");
@@ -4545,7 +4546,9 @@ function initDeferredLayoutPage() {
       const fcoValue = fcoSelect?.value || fcoSelect?.dataset.selectedValue;
       const icsValue = icsSelect?.value || icsSelect?.dataset.selectedValue;
       const villageValues = targetSelectedValues(villageSelect);
+      const toValue = toSelect?.value || toSelect?.dataset.selectedValue;
       if (fcoValue) url.searchParams.set("fco_id", fcoValue);
+      if (toValue) url.searchParams.set("to_name", toValue);
       if (icsValue) url.searchParams.set("ics_id", icsValue);
       if (villageValues.length) url.searchParams.set("village_ids", JSON.stringify(villageValues));
       if (monthSelect?.value) url.searchParams.set("month_name", monthSelect.value);
@@ -4564,7 +4567,14 @@ function initDeferredLayoutPage() {
 
         if (status) status.hidden = true;
         fillTargetSelect(fcoSelect, data.fco_options || [], "Select FCO Name");
+        fillTargetSelect(toSelect, data.to_options || [], "All TO");
         fillTargetSelect(icsSelect, data.ics_options || [], "Select ICS");
+        // A TO with nothing in ICS TO MAPPING yet has no ICS to offer. Say why,
+        // instead of leaving a bare disabled box the user cannot act on.
+        if (icsSelect && toSelect?.value && !(data.ics_options || []).length) {
+          const blank = icsSelect.options[0];
+          if (blank) blank.textContent = "No ICS mapped to this TO - add it in ICS TO MAPPING";
+        }
         fillTargetSelect(villageSelect, data.village_options || [], "Select Village");
         syncTargetVillageHidden();
 
@@ -4737,10 +4747,21 @@ function initDeferredLayoutPage() {
 
     fcoSelect?.addEventListener("change", () => {
       fcoSelect.dataset.selectedValue = "";
+      if (toSelect) { toSelect.dataset.selectedValue = ""; toSelect.value = ""; }
       if (icsSelect) icsSelect.dataset.selectedValue = "";
       if (villageSelect) villageSelect.dataset.selectedValue = "";
       if (villageSelect) villageSelect.dataset.selectedValues = "[]";
       if (icsSelect) icsSelect.value = "";
+      clearTargetVillageSelection();
+      syncTargetVillageHidden();
+      clearTargetFarmers();
+      loadTargetData();
+    });
+    // TO badalne par ICS/Village dobara chunne padenge -- wahi reset jo FCO karta hai.
+    toSelect?.addEventListener("change", () => {
+      toSelect.dataset.selectedValue = "";
+      if (icsSelect) { icsSelect.dataset.selectedValue = ""; icsSelect.value = ""; }
+      if (villageSelect) { villageSelect.dataset.selectedValue = ""; villageSelect.dataset.selectedValues = "[]"; }
       clearTargetVillageSelection();
       syncTargetVillageHidden();
       clearTargetFarmers();

@@ -1,41 +1,43 @@
 require "test_helper"
 
 class OtherTargetDashboardProgressTest < ActiveSupport::TestCase
-  test "Other cards count distinct completed farmers per month activity only in supported FCOs" do
-    farmers = 3.times.map { |i| Afl.create!(farmer_name: "Other farmer #{i}") }
-    next_id = 10000
-    build = lambda do |fco, activity, ids|
-      TargetMapping.new(id: (next_id += 1), vrp_id: 1, fco_id: fco,
-        ics_id: "ICS", village_id: "V", month_name: "August", main_activity_name: "Farmers WhatsApp Groups",
-        activity_name: activity, target_quantity: ids.size, afl_ids: ids)
-    end
-    ids = farmers.map { |f| f.id.to_s }
-    targets = [build.call("1004", "Group", ids.first(2)), build.call("1006", "Group", ids.last(2)),
-      build.call("1004", "Second activity", ids.first(1)), build.call("9999", "Group", ids)]
+  # The box totals the saved Other Target entries for the selected month (see
+  # dashboard_other_target_entry_rows), so an entry filed against an office
+  # outside the project, or against another month, must stay out of the total.
+  def other_target_entry(fco_name:, month:, target:, achievement:, activity: "Farmers WhatsApp Groups")
+    ModuleRecord.create!(module_slug: "other-target", data: {
+      "fcoc_name" => fco_name, "month" => month, "main_activity" => activity,
+      "sub_activity" => "Group", "target" => target.to_s, "achievement" => achievement.to_s,
+      "approval_status" => "Approved"
+    })
+  end
+
+  def other_totals_for(month)
     c = ModulesController.new
-    c.define_singleton_method(:dashboard_other_activity_rows) do |_rows|
-      [{ "main_activity_name" => "Farmers WhatsApp Groups", "mapped_farmer" => 4, "achievement_farmer" => 4, "pending_farmer" => 0 }]
-    end
-    totals = c.send(:dashboard_other_activity_totals, targets + [targets.first])
+    c.params = ActionController::Parameters.new(month: month)
+    c.instance_variable_set(:@dashboard_month_filter_value, month)
+    c.send(:dashboard_other_activity_totals)
+  end
+
+  test "Other cards count saved entries for the month only in supported FCOs" do
+    other_target_entry(fco_name: "FCO-C Sausar", month: "August", target: 2, achievement: 2)
+    other_target_entry(fco_name: "FCO-C Turekela", month: "August", target: 2, achievement: 2)
+    other_target_entry(fco_name: "Nowhere Office", month: "August", target: 9, achievement: 9)
+    other_target_entry(fco_name: "FCO-C Sausar", month: "September", target: 7, achievement: 7)
+
+    totals = other_totals_for("August")
     assert_equal 4, totals[:mapped_farmer]
     assert_equal 4, totals[:achievement_farmer]
     assert_equal 0, totals[:pending_farmer]
     assert_equal 100.0, totals[:achieved]
+    assert_equal 1, totals[:main_major_work_indicator]
   end
 
-  test "Other cards include existing farmer completion evidence without a numeric achievement" do
-    farmer = Afl.create!(farmer_name: "Completed WhatsApp farmer")
-    target = TargetMapping.new(id: 702, vrp_id: 1, fco_id: "1004", month_name: "August",
-      main_activity_name: "Farmers WhatsApp Groups", activity_name: "Village Group", target_quantity: 1, afl_ids: [farmer.id])
-    ModuleRecord.create!(module_slug: "other-target", data: {
-      "target_mapping_id" => "702", "month" => "August", "selected_farmer_ids" => [farmer.id.to_s]
-    })
-    c = ModulesController.new
-    c.params = ActionController::Parameters.new
-    c.define_singleton_method(:dashboard_other_activity_rows) do |_rows|
-      [{ "main_activity_name" => "Farmers WhatsApp Groups", "mapped_farmer" => 1, "achievement_farmer" => 1, "pending_farmer" => 0 }]
-    end
-    totals = c.send(:dashboard_other_activity_totals, [target])
+  test "Other cards include an entry whose achievement matches its target" do
+    other_target_entry(fco_name: "FCO-C Sausar", month: "August", target: 1, achievement: 1,
+      activity: "Farmers WhatsApp Groups")
+
+    totals = other_totals_for("August")
     assert_equal 1, totals[:mapped_farmer]
     assert_equal 1, totals[:achievement_farmer]
     assert_equal 0, totals[:pending_farmer]
