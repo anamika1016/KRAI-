@@ -471,11 +471,41 @@ module ApplicationHelper
         stakeholder_match && stakeholder_role_match && role_match && role_name_match && user_management_role_match && person_type_match && vrp_type_match && can_view
       end
 
+    # Read the grant from the most specific record that matches this login. A
+    # record that leaves Stakeholder Role / Role Name blank matches everyone, so
+    # letting it add its links on top meant a role granted two lists still saw a
+    # third, and that extra could not be taken away from its own Access Control
+    # screen. Records that are equally specific still combine, so a grant split
+    # across two rows of the same role keeps working.
+    access_records = most_specific_sidebar_access_records(access_records)
+
     access_records.flat_map do |record|
       data = record_data(record)
       access_values(data["sub_module_names"].presence || data["sub_module_name"])
         .flat_map { |name| sidebar_access_name_keys(name) }
     end.uniq
+  end
+
+  def most_specific_sidebar_access_records(records)
+    return records if records.size < 2
+
+    scored = records.map { |record| [sidebar_access_specificity(record), record] }
+    best = scored.map(&:first).max
+    scored.select { |score, _record| score == best }.map(&:last)
+  end
+
+  # How many identity fields the record actually names. A blank field matches
+  # every login, so a record that names more of them is the more deliberate one.
+  def sidebar_access_specificity(record)
+    data = record_data(record)
+    [
+      data["stakeholder_name"].presence || data["stakeholder"],
+      data["stakeholder_role"].presence || data["stakeholder_person_type"],
+      data["role"].presence || data["role_name"],
+      data["user_management_role"].presence || data["user_management_person_type"],
+      data["person_type"],
+      data["jeevika_jankar_type"].presence || data["vrp_type"].presence || data["select_vrp_type"]
+    ].count(&:present?)
   end
 
   def active_sidebar_access_records
