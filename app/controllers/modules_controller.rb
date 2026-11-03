@@ -4842,9 +4842,21 @@ class ModulesController < ApplicationController
     training_fcoc_filter_values(*FcoDirectory.filter_values)
   end
 
+  # FCO-wise JJ Requirement and Gender Count ask this the same question once
+  # per card per FCO -- eight times over in one request. Answer each distinct
+  # (fco, month) pair once; the result cannot change within a request.
   def dashboard_fco_active_vrp_count(fco_name_or_id, month_name = "August", vrps = nil)
     return 0 if fco_name_or_id.blank?
 
+    @dashboard_fco_active_vrp_count_cache ||= {}
+    cache_key = [fco_name_or_id.to_s, month_name.to_s]
+    return @dashboard_fco_active_vrp_count_cache[cache_key] if @dashboard_fco_active_vrp_count_cache.key?(cache_key)
+
+    @dashboard_fco_active_vrp_count_cache[cache_key] =
+      compute_dashboard_fco_active_vrp_count(fco_name_or_id, month_name, vrps)
+  end
+
+  def compute_dashboard_fco_active_vrp_count(fco_name_or_id, month_name, vrps)
     # Blank month is "All Months": count the Jeevika Jankars active in any
     # month rather than silently answering for August. Naming a month keeps
     # the original single-month query.
@@ -4901,9 +4913,20 @@ class ModulesController < ApplicationController
   # distinct vrp_id having a target mapping in this FCO + month. Gender Count splits
   # this same set so the two always agree. Falls back to the fcoc/active-flag set
   # (same fallback the count uses) when no target mappings exist.
+  # Same repetition as the count above -- Gender Count splits this very list
+  # per FCO, so cache each (fco, month) pair for the request.
   def dashboard_fco_active_vrp_records(fco_name_or_id, month_name = "August", vrps = nil)
     return [] if fco_name_or_id.blank?
 
+    @dashboard_fco_active_vrp_records_cache ||= {}
+    cache_key = [fco_name_or_id.to_s, month_name.to_s]
+    return @dashboard_fco_active_vrp_records_cache[cache_key] if @dashboard_fco_active_vrp_records_cache.key?(cache_key)
+
+    @dashboard_fco_active_vrp_records_cache[cache_key] =
+      compute_dashboard_fco_active_vrp_records(fco_name_or_id, month_name, vrps)
+  end
+
+  def compute_dashboard_fco_active_vrp_records(fco_name_or_id, month_name, vrps)
     # Same rule as the count above: blank month means every month.
     all_months = month_name.blank?
     selected_month = month_name.presence || "August"
@@ -5298,8 +5321,17 @@ class ModulesController < ApplicationController
   end
 
   # Billing cards use active bills visible to this login, independently of target filters.
+  # The dashboard reads a bill's status, month and Jeevika Jankar -- never its
+  # bill_items, and that array (with the farmer_details inside it) is the bulk
+  # of a bill's JSON, tens of KB each. Dropping the one key in SQL is cheap and
+  # saves parsing megabytes of JSON per request once bills run into thousands.
+  # Rebuilding the array instead, as the Bill List does, costs more than it
+  # saves here because this screen never reads the items at all.
   def dashboard_billing_records
-    @dashboard_billing_records ||= ModuleRecord.where(module_slug: "jeevika-jankar-bill-process").to_a.select do |record|
+    @dashboard_billing_records ||= ModuleRecord
+      .where(module_slug: "jeevika-jankar-bill-process")
+      .select("module_records.id, module_records.module_slug, module_records.created_at, module_records.updated_at, (module_records.data::jsonb - 'bill_items')::text AS data")
+      .to_a.select do |record|
       jeevika_jankar_bill_blocks_duplicate?(record) &&
         (admin_dashboard_user? || jeevika_jankar_bill_record_visible?(record))
     end

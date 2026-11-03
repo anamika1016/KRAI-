@@ -87,12 +87,24 @@ class OfficeDashboardCalculator < ModulesController
   # Expand equivalent labels only; the existing authorized JJ scope still decides
   # which offices the caller may see.
   def training_fcoc_filter_values(*values)
-    super + Array(values).flatten.flat_map do |value|
+    # The parent caches its own half by argument list; this half did not, so the
+    # lookup below -- and the fresh #invert it allocated -- ran once per row for
+    # every dashboard loop. The same handful of FCO spellings repeat across
+    # hundreds of rows, so cache this half the same way.
+    @office_fcoc_filter_values_cache ||= {}
+    return @office_fcoc_filter_values_cache[values] if @office_fcoc_filter_values_cache.key?(values)
+
+    @office_fcoc_filter_values_cache[values] = super + Array(values).flatten.flat_map do |value|
       text = normalize_dashboard_text(value)
       short_name = text.sub(/\Afco(?:\s*[- ]?\s*c)?\s*[-:]?\s*/i, "").strip
-      id, name = FcoDirectory.id_by_name.invert.find { |id, name| [id, name].include?(short_name) }
+      id, name = fco_name_by_id.find { |candidate_id, candidate_name| [candidate_id, candidate_name].include?(short_name) }
       id ? [id, name, "fco-c #{name}", "fco-#{name}"] : [short_name]
     end.reject(&:blank?).uniq
+  end
+
+  # id => name, built once per calculator rather than once per lookup.
+  def fco_name_by_id
+    @fco_name_by_id ||= FcoDirectory.id_by_name.invert
   end
 
   def compute_dashboard_source_fcoc_login

@@ -480,7 +480,13 @@ module Api
       end
 
       def render_admin_dashboard
+        # The office path below already reports its own timing; the admin path
+        # returned before reaching it, so a slow admin response gave no way to
+        # tell a cache miss from a slow query. Same two signals here.
+        started = Process.clock_gettime(Process::CLOCK_MONOTONIC)
         dashboard = cached_admin_dashboard_summary
+        duration = ((Process.clock_gettime(Process::CLOCK_MONOTONIC) - started) * 1000).round(2)
+        response.set_header("Server-Timing", "dashboard;dur=#{duration}")
 
         render json: {
           success: true,
@@ -490,6 +496,7 @@ module Api
           **dashboard,
           cc_jj_work_status_groups: MobileDashboardReportCards.cc_jj_groups(dashboard[:cc_jj_work_status]),
           demonstration_method_cards: MobileDashboardReportCards.demonstration_cards(dashboard[:demonstration_method]),
+          meta: { server_processing_ms: duration, cache_hit: !!@admin_dashboard_cache_hit },
           generated_at: Time.current.iso8601
         }, status: :ok
       end
@@ -632,7 +639,11 @@ module Api
       def cache_admin_dashboard_payload(suffix, filters: admin_dashboard_cache_filters)
         key = admin_dashboard_cache_key(suffix, filters: filters)
         cached = Rails.cache.read(key)
-        return cached unless cached.nil?
+        if cached
+          @admin_dashboard_cache_hit = true
+          return cached
+        end
+        @admin_dashboard_cache_hit = false
 
         DashboardCacheFill.synchronize(key) do
           Rails.cache.fetch(key, expires_in: 10.minutes, race_condition_ttl: 30.seconds) { yield }
@@ -670,6 +681,10 @@ module Api
       def admin_dashboard_cache_filters
         # The widget selects a value from the same summary; it does not change
         # any calculation. All cards with identical filters share a cache fill.
+        # Callers that build this controller directly, without a request, get an
+        # empty filter set rather than a NoMethodError.
+        return {} unless request
+
         request.query_parameters.to_h.except("widget", "_").sort.to_h
       end
 
@@ -907,11 +922,20 @@ module Api
         office_card_calculator.instance_variable_set(:@office_authorized_vrps, all_vrps)
         office_card_calculator.instance_variable_set(:@office_authorized_vrp_ids, all_vrps.map(&:id).to_set)
         shared_cards = office_card_calculator.send(:dashboard_cards)
-        shared_gender = shared_cards.find { |card| card[:title] == "Gender Count" }[:items]
+        # An FCO with nobody registered yet has no Gender Count item of its own,
+        # and a newly added FCO reaches this list before the card does. Reading
+        # the value straight off the find turned that into a 500 for the whole
+        # dashboard. Only a missing item reads as zero -- an item that is there
+        # keeps its own value, so nothing that worked reads differently.
+        shared_gender = Array(shared_cards.find { |card| card[:title] == "Gender Count" }&.dig(:items))
+        gender_value = lambda do |title|
+          item = shared_gender.find { |card_item| card_item[:title] == title }
+          item ? item[:value] : 0
+        end
         card_data[:fco_wise_jeevika_jankar] = FcoDirectory.names.map do |fco|
           { fco: fco,
-            male: shared_gender.find { |item| item[:title] == "#{fco} Male" }[:value],
-            female: shared_gender.find { |item| item[:title] == "#{fco} Female" }[:value] }
+            male: gender_value.call("#{fco} Male"),
+            female: gender_value.call("#{fco} Female") }
         end
         web_summary_cards = web.send(:dashboard_summary_cards, targets)
         web_demo_cards = web.send(:demonstration_method_cards)

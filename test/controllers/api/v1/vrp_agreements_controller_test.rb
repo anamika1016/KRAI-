@@ -4,7 +4,7 @@ class Api::V1::VrpAgreementsControllerTest < ActionDispatch::IntegrationTest
   SIGNATURE = "data:image/png;base64,aGVsbG8=".freeze
 
   test "JJ can load and accept the first-login agreement then use returned token" do
-    vrp = create_vrp(user_name: "agreement_api_jj", password: "secret", village_ids: [])
+    vrp = create_vrp(user_name: "agreement_api_jj", password: "secret")
 
     get "/api/v1/jeevika-jankar-agreement", params: { username: vrp.user_name, password: "secret" }, as: :json
     assert_response :success
@@ -80,7 +80,7 @@ class Api::V1::VrpAgreementsControllerTest < ActionDispatch::IntegrationTest
       branch: "Test Branch", ifsc_code: "TEST0123456", address: "Test Address",
       mobile_no: "9876543210", email: "agreement-#{SecureRandom.hex(4)}@example.test",
       experience_in_years: 1, office_detail_id: 0, to_office_detail_id: 0,
-      vrp_type_ids: [1], gram_panchayat_ids: [1], village_ids: [], is_active: true, is_deleted: false
+      vrp_type_ids: [1], gram_panchayat_ids: [1], village_ids: [1], is_active: true, is_deleted: false
     }
     Vrp.create!(defaults.merge(attributes))
   end

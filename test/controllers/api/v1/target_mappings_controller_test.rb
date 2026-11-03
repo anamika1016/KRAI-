@@ -2,12 +2,16 @@ require "test_helper"
 
 class Api::V1::TargetMappingsControllerTest < ActionDispatch::IntegrationTest
   setup do
+    # Valid on its own terms: a later update! in this file re-validates the
+    # record, so skipping validation here only moved the failure.
     @vrp = Vrp.new(name: "Mapping API JJ", father_husband_name: "Father", gender: :male,
       date_of_birth: Date.new(1990, 1, 1), date_of_joining: Date.current,
-      aadhar_no: "123456789012", account_no: "1234", branch: "Test", ifsc_code: "TEST0123456",
+      aadhar_no: "123456789012", account_no: "1234", bank_name: "Test Bank",
+      branch: "Test", ifsc_code: "TEST0123456",
       address: "Test", mobile_no: "9876543210", email: "mapping-api@example.test",
-      experience_in_years: 1, office_detail_id: 0, to_office_detail_id: 0)
-    @vrp.save!(validate: false)
+      experience_in_years: 1, office_detail_id: 0, to_office_detail_id: 0,
+      vrp_type_ids: [1], gram_panchayat_ids: [1], village_ids: [1])
+    @vrp.save!
     @headers = { "Authorization" => "Bearer #{ApiAuthToken.encode(@vrp)}" }
     @farmer_1 = Afl.create!(farmer_name: "One")
     @farmer_2 = Afl.create!(farmer_name: "Two")

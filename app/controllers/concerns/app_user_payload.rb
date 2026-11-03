@@ -42,7 +42,11 @@ module AppUserPayload
       "name" => app_user_display_name(user, {}),
       "stakeholder" => nil,
       "stakeholder_role" => nil,
-      "role" => vrp_types.first,
+      # The type master still spells this "VRP"; everything user-facing calls
+      # them Jeevika Jankars. Only this display role is renamed -- vrp_types
+      # below keeps the stored spelling, because Access Control matches a VRP
+      # login on that value alone.
+      "role" => jeevika_jankar_role_label(vrp_types.first),
       "role_name" => nil,
       "user_management_role" => nil,
       "person_type" => nil,
@@ -77,6 +81,12 @@ module AppUserPayload
     return user.user_type if user.respond_to?(:user_type) && user.user_type.present?
 
     data["user_type"].presence || "User"
+  end
+
+  # "VRP" is the old name for a Jeevika Jankar. Any other type (CRP and
+  # anything added later) is shown exactly as the master spells it.
+  def jeevika_jankar_role_label(value)
+    value.to_s.strip.casecmp("vrp").zero? ? "Jeevika Jankar" : value
   end
 
   def app_user_vrp_types(user)

@@ -35,7 +35,8 @@ class FcoDirectory
   # here: it outlived the data it described, which made the dashboard answer
   # depend on whatever happened to populate the cache first.
   class Store < ActiveSupport::CurrentAttributes
-    attribute :afl_rows, :offices, :office_aliases, :office_setup_records
+    attribute :afl_rows, :offices, :office_aliases, :office_setup_records,
+              :name_by_id, :id_by_name
   end
 
   # Imported rows carry the string "NULL" where the source file had no value.
@@ -204,13 +205,16 @@ class FcoDirectory
   end
 
   # { "1004" => "Sausar", ... } across the whole farmer master.
+  # Both lookups are read hundreds of times per dashboard request and rebuilt
+  # the whole map each time. They are pure functions of afl_rows, which is
+  # already held for the request, so hold these beside it.
   def self.name_by_id
-    afl_rows.to_h { |row| [row[:id], row[:name].presence || row[:id]] }
+    Store.name_by_id ||= afl_rows.to_h { |row| [row[:id], row[:name].presence || row[:id]] }
   end
 
   # { "sausar" => "1004", ... }, keyed on the lowercased bare name.
   def self.id_by_name
-    afl_rows.each_with_object({}) do |row, map|
+    Store.id_by_name ||= afl_rows.each_with_object({}) do |row, map|
       key = row[:name].to_s.downcase
       map[key] ||= row[:id] if key.present?
     end
@@ -229,6 +233,8 @@ class FcoDirectory
     Store.offices = nil
     Store.office_aliases = nil
     Store.office_setup_records = nil
+    Store.name_by_id = nil
+    Store.id_by_name = nil
   end
 
   # --- Loading --------------------------------------------------------------
