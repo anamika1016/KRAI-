@@ -271,7 +271,10 @@ module Api
             participation: {}, month: nil, fcoc: nil).other_rows
         else
           fco, kind = office_fco_list_metadata(type, calculator)
-          month = params.key?(:month) ? filter_param(:month) : DashboardDefaults.month
+          # Whatever month the card itself resolved to. Re-deriving it from
+          # params here ignored the All Months fallback, so a card showing a
+          # real number opened a list filtered on an empty month.
+          month = calculator.send(:dashboard_card_month)
           if fco.blank?
             []
           elsif %w[required vacant].include?(kind)
@@ -281,8 +284,12 @@ module Api
             calculator.send(:dashboard_jj_requirement_items, fco, vrps, targets, month: month)
               .select { |item| item[:title].downcase.end_with?(kind) }.map { |item| item.slice(:title, :value) }
           else
+            # No second filter pass. dashboard_fco_active_vrp_records already
+            # applies the card's own approval rule; re-applying
+            # dashboard_vrp_active_for_requirement? on top dropped approved
+            # JJs the card counts, so the list came back shorter than the
+            # number the user tapped.
             rows = calculator.send(:dashboard_fco_active_vrp_records, fco, month, vrps)
-              .select { |vrp| calculator.send(:dashboard_vrp_active_for_requirement?, vrp) }
             rows = rows.select { |vrp| vrp.gender.to_s.casecmp?(kind) } if %w[male female].include?(kind)
             rows.map { |vrp| admin_vrp_list_row(vrp, targets.map { |target| target.vrp_id.to_s }, []) }
           end

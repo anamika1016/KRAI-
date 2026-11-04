@@ -59,6 +59,36 @@ module Api
         render json: body, status: :created
       end
 
+      # Edit. Only the fields sent are changed; anything left out keeps its
+      # saved value, so the app can PATCH a single field.
+      def render_update
+        merge_json_body_params!
+        result = farmer_target_api.update(params[:id], create_attrs)
+
+        unless result[:success]
+          Rails.logger.warn("[farmer_target_api] module=#{self.class::MODULE_SLUG} update_failed id=#{params[:id]} errors=#{result[:errors].to_json}")
+          status = result[:errors].to_a.any? { |error| error.to_s.include?("not found") } ? :not_found : :unprocessable_entity
+          return render json: {
+            success: false,
+            message: "#{self.class::RESOURCE_TITLE} update failed.",
+            errors: result[:errors]
+          }, status: status
+        end
+
+        # A Cluster Incharge's training edit is queued for approval rather than
+        # written to the record. Say so explicitly: the caller must not show
+        # the new values as saved.
+        body = if result[:pending_approval]
+          { success: true, pending_approval: true, status_label: result[:status_label],
+            message: "Training changes submitted for approval. #{result[:status_label]}" }
+        else
+          { success: true, pending_approval: false,
+            message: "#{self.class::RESOURCE_TITLE} updated successfully." }
+        end
+        body[self.class::RESOURCE_KEY.singularize] = farmer_target_api.record_payload(result[:record].reload)
+        render json: body, status: :ok
+      end
+
       def render_form_options
         render json: {
           success: true,

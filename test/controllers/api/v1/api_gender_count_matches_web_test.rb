@@ -247,3 +247,86 @@ class Api::V1::UserDashboardCardsMatchWebTest < ActionDispatch::IntegrationTest
       .to_h { |card| [card["title"].to_s, card["value"]] }
   end
 end
+
+# Found while re-scanning the fix above: the card values were corrected but the
+# drill-down behind them was not, so a card reading 33 opened a list of 7 rows
+# -- or 0. Two causes in UserDashboardController#office_section_list_payload:
+# it re-derived the month from params (skipping the All Months fallback) and
+# re-applied dashboard_vrp_active_for_requirement? on top of a result that had
+# already applied the card's own approval rule.
+class Api::V1::DashboardCardListAgreementTest < ActionDispatch::IntegrationTest
+  setup do
+    @old_cache = Rails.cache
+    Rails.cache = ActiveSupport::Cache::MemoryStore.new
+
+    @cc = User.create!(first_name: "Riya", last_name: "Drill",
+      user_name: "cc_drill_#{SecureRandom.hex(3)}",
+      email: "cc-drill-#{SecureRandom.hex(3)}@example.test",
+      mobile_no: "9876500951", password: "secret", user_type: "User",
+      status: "Active", role: "Cluster Incharge")
+    @headers = { "Authorization" => "Bearer #{ApiAuthToken.encode(@cc)}" }
+
+    # Approved, mapped for June, but deactivated afterwards. The card counts
+    # this JJ, so the list behind the card has to return it too.
+    %w[123456789051 123456789052].each_with_index do |aadhar, index|
+      vrp = Vrp.new(name: "Drill JJ #{index}", father_husband_name: "Father", gender: :male,
+        date_of_birth: Date.new(1990, 1, 1), date_of_joining: Date.current,
+        aadhar_no: aadhar, account_no: "1234", branch: "Test", ifsc_code: "TEST0123456",
+        address: "Test", mobile_no: "98765435#{index}1", email: "#{aadhar}@example.test",
+        fcoc: "Unrelated Office", is_active: index.zero?, status: 55,
+        experience_in_years: 1, office_detail_id: 0, to_office_detail_id: 0)
+      vrp.save!(validate: false)
+      TargetMapping.new(vrp: vrp, fco_id: "1004", fco_name: "Sausar",
+        ics_id: "drill-ics", ics_name: "Drill ICS", village_id: "drill-village",
+        month_name: "June", main_activity_name: "Other", activity_name: "Module-1",
+        target_quantity: 1).save!(validate: false)
+    end
+  end
+
+  teardown do
+    Rails.cache = @old_cache
+  end
+
+  ["June", ""].each do |month|
+    label = month.presence || "All Months"
+
+    test "every Gender Count and JJ Requirement card matches its own list (#{label})" do
+      cards = card_values(month)
+      refute_empty cards, "expected the dashboard to return the two card sections"
+
+      cards.each do |key, value|
+        assert_equal value, list_value(month, key),
+          "card #{key} shows #{value}, but tapping it returns a different list"
+      end
+    end
+  end
+
+  test "a card with a non-zero value never opens an empty list" do
+    cards = card_values("")
+    active = cards.fetch("fco_requirement_sausar_active")
+    assert_operator active, :>, 0
+    assert_equal active, list_value("", "fco_requirement_sausar_active")
+  end
+
+  private
+
+  def card_values(month)
+    get "/api/v1/user-dashboard", params: { month: month }, headers: @headers
+    assert_response :success
+
+    response.parsed_body.fetch("sections")
+      .select { |section| %w[gender fco_requirement].include?(section["key"]) }
+      .flat_map { |section| Array(section["cards"]) }
+      .to_h { |card| [card["key"].to_s, card["value"]] }
+  end
+
+  # Required/Vacant return a single summary row; Active and the gender lists
+  # return the matching JJ rows themselves.
+  def list_value(month, key)
+    get "/api/v1/user-dashboard/lists/#{key}", params: { month: month }, headers: @headers
+    assert_response :success
+
+    records = Array(response.parsed_body.fetch("records"))
+    key.end_with?("_required", "_vacant") ? records.first&.fetch("value") : records.size
+  end
+end

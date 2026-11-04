@@ -81,8 +81,12 @@ class FarmerTargetApi
     return { success: false, errors: upload_errors } if upload_errors.any?
 
     incoming = normalize_incoming(raw_attrs)
-    # Merge new values over existing data so unchanged fields are preserved
-    merged = record.data.merge(incoming)
+    # Merge new values over existing data so unchanged fields are preserved.
+    # A training form edits from the actor's own pending revision when there is
+    # one, exactly as the web edit screen does -- otherwise a second edit would
+    # silently drop the changes still waiting for approval.
+    base = training_form? ? TrainingEditApproval.edit_data(record, current_app_user) : record.data
+    merged = base.merge(incoming)
     # Strip internal stamps from incoming so existing creator stamps are kept
     %w[created_by_id created_by_username created_by_name created_by_email created_by_record_type].each do |key|
       merged[key] = record.data[key] if record.data[key].present?
@@ -90,6 +94,13 @@ class FarmerTargetApi
     data = normalize_for_slug(merged)
     errors = validation_errors(data)
     return { success: false, errors: errors } if errors.any?
+
+    if training_form?
+      # An edit that adds files must not replace the evidence already on the
+      # record, same rule as the web.
+      data = preserve_training_uploads(record.data, data)
+      return submit_training_edit_for_approval(record, data) if training_edit_needs_approval?
+    end
 
     if record.update(data: data)
       { success: true, record: record }
@@ -1433,6 +1444,49 @@ class FarmerTargetApi
       File.binwrite(path, upload.read)
     end
     "/uploads/module_records/#{filename}"
+  end
+
+  def training_form?
+    @module_slug == "training-form"
+  end
+
+  # Mirrors the web edit screen: a Cluster Incharge cannot write a training
+  # form straight back, the change becomes a revision an Agronomist approves.
+  # Letting the API save directly would be a way around that approval.
+  #
+  # The role can be filed under any of these keys, so this reads the same list
+  # the web's compute_module_cluster_incharge_login does -- cluster_incharge_login?
+  # only looks at two of them and is used for list visibility, not for this gate.
+  def training_edit_needs_approval?
+    return false if admin_user? || vrp_login_user?
+
+    %w[role role_name stakeholder_role user_management_role person_type designation]
+      .filter_map { |key| current_app_user[key].presence }
+      .any? { |role| role.to_s.downcase.include?("cluster") }
+  end
+
+  def submit_training_edit_for_approval(record, data)
+    revision = TrainingEditApproval.submit!(record: record, proposed: data, actor: current_app_user)
+    {
+      success: true,
+      record: record,
+      pending_approval: true,
+      status_label: TrainingEditApproval.status_label(revision)
+    }
+  rescue TrainingEditApproval::InvalidTransition => error
+    { success: false, errors: [error.message] }
+  end
+
+  # An edit that uploads more evidence adds to what is already saved instead of
+  # replacing it. Same field list and rule as the web.
+  def preserve_training_uploads(previous_data, next_data)
+    %w[training_register_upload training_photo_upload_with_geo_tag
+       photo_front_view photo_back_view photo_close_up_view photo_long_shot].each do |key|
+      next if next_data[key].blank?
+
+      next_data[key] = (Array(previous_data[key]) + Array(next_data[key])).compact_blank.uniq
+    end
+    next_data
   end
 
   def training_photo_upload_errors(raw_attrs)

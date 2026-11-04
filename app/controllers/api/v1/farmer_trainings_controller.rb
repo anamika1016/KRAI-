@@ -51,6 +51,10 @@ module Api
         render_create
       end
 
+      def update
+        render_update
+      end
+
       def form_options
         render_form_options
       end
