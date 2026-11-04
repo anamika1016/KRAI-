@@ -14,6 +14,26 @@ class OfficeDashboardCalculator < ModulesController
     @office_dashboard_vrps = (own_scope + hierarchy_scope).uniq { |vrp| vrp.id }
   end
 
+  # The JJ scope the *web* dashboard builds for this same login.
+  #
+  # It cannot be taken from super: this class widens training_fcoc_filter_values
+  # with extra FCO id/name aliases and adds the hierarchy expansion above, and
+  # both of those feed scoped_jeevika_vrp_visible?. A Manager login therefore
+  # resolved 15 visible JJs here where the web resolves 9. Cards that have to
+  # report the web's own numbers ask an unmodified ModulesController instead.
+  def web_dashboard_vrps
+    @web_dashboard_vrps ||= begin
+      web = ModulesController.new
+      web.request = request
+      web.params = params
+      web.instance_variable_set(:@current_app_user, current_app_user)
+      Array(web.send(:dashboard_vrps))
+    rescue StandardError => error
+      Rails.logger.warn("Web JJ scope lookup failed: #{error.class}: #{error.message}")
+      Array(dashboard_vrps)
+    end
+  end
+
   def apply_dashboard_scope(vrps:, targets:, bills:, summary_vrps: nil, summary_targets: nil)
     @filtered_vrps = vrps
     @filtered_targets = targets
@@ -29,10 +49,30 @@ class OfficeDashboardCalculator < ModulesController
     # Keep the authorised web scope loaded before API filters. The web FCO/JJ,
     # billing, gender and CC/JJ cards use it for their own reporting queries.
     @dashboard_month_filter_value = params.key?(:month) ? dashboard_filter_param(:month) : DashboardDefaults.month
+    # Same rule the web dashboard applies to its own default: the current month
+    # has no data early on, so a caller that asked for no month in particular
+    # gets All Months instead of a month whose every card reads zero. A month
+    # the caller actually asked for is never second-guessed.
+    if !params.key?(:month) && @dashboard_month_filter_value.present? &&
+        !default_dashboard_month_on_offer?(@dashboard_month_filter_value, summary_targets || targets)
+      @dashboard_month_filter_value = nil
+    end
     @dashboard_fcoc_filter_value = dashboard_filter_param(:fcoc, :fco)
   end
 
   private
+
+  def default_dashboard_month_on_offer?(month, targets)
+    wanted = normalize_dashboard_text(month)
+    return false if wanted.blank?
+
+    offered = Array(targets).map { |target| normalize_dashboard_text(target.month_name) }
+    offered += Array(month_master_month_options).map { |option| normalize_dashboard_text(option) }
+    offered.include?(wanted)
+  rescue StandardError => error
+    Rails.logger.warn("Default dashboard month lookup failed: #{error.class}: #{error.message}")
+    true
+  end
 
   def office_hierarchy_dashboard_reader?
     return true if dashboard_agronomics_login?
@@ -52,33 +92,14 @@ class OfficeDashboardCalculator < ModulesController
     FcoDirectory.names
   end
 
-  def dashboard_cards
-    cards = super.reject { |group| ["Gender Count", "FCO-wise JJ Requirement"].include?(group[:title]) }
-    # Use the same filtered JJ and target sets as the web dashboard cards.
-    # The summary scope intentionally ignores activity filters for summary
-    # sections; using it here inflated Direct to HO required/vacant counts.
-    vrps = Array(@filtered_vrps || @office_authorized_vrps || dashboard_vrps)
-    targets = Array(@filtered_targets || @office_summary_targets || dashboard_target_mappings)
-    fco_names = dashboard_report_fco_names(vrps, targets)
-    month = params[:month].presence || params[:training_month].presence || DashboardDefaults.month
-    month = nil if month.to_s.casecmp("all").zero?
-    gender_items = fco_names.flat_map do |fco_name|
-      fco_vrps = dashboard_fco_active_vrp_records(fco_name, month, vrps)
-      [
-        { title: "#{fco_name} Male", value: fco_vrps.count { |vrp| normalize_dashboard_text(vrp.gender) == "male" } },
-        { title: "#{fco_name} Female", value: fco_vrps.count { |vrp| normalize_dashboard_text(vrp.gender) == "female" } }
-      ]
-    end
-    cards << dashboard_group_card("Gender Count", gender_items, style: "registration")
-    # Same month as Gender Count above -- dashboard_jj_requirement_items
-    # otherwise falls back to its own hardcoded "August" when no month filter
-    # is selected, so the two cards in the same response disagreed about which
-    # month's data they were showing.
-    cards << dashboard_group_card("FCO-wise JJ Requirement",
-      fco_names.flat_map { |fco_name| dashboard_jj_requirement_items(fco_name, vrps, targets, month: month) }, style: "fco")
-    cards
-  end
-
+  # Gender Count and FCO-wise JJ Requirement are deliberately NOT rebuilt here.
+  # They used to be, from the activity-filtered JJ set and the API's own month
+  # fallback, which made every login read different numbers than the web it is
+  # mirroring: a CC saw only its own JJs where the web shows the whole FCO, a
+  # Manager saw more than the web because of the hierarchy expansion below, and
+  # any month whose activity filter matched no JJ reported a flat zero (an
+  # empty array is truthy, so the `||` chain never reached the fallback).
+  # The web cards are the contract -- let them through untouched.
   def dashboard_report_fco_names(vrps, targets)
     dashboard_fco_names(vrps)
   end
@@ -111,34 +132,20 @@ class OfficeDashboardCalculator < ModulesController
     super || office_dashboard_roles.any? { |role| role.match?(/\Afco(?:[-\s]|$)/) }
   end
 
-  # Use the same month/FCO target query as the web cards, then keep only JJs
-  # already authorised for this API login. This prevents activity filters from
-  # shrinking card values and prevents the SQL helper from exposing other JJs.
-  def dashboard_fco_active_vrp_records(fco, month = nil, vrps = nil)
-    source = vrps || @office_authorized_vrps
-    allowed_ids = Array(source).map { |vrp| vrp.id.to_s }.to_set
+  # The web result is authoritative. The only thing re-applied on top is the
+  # approval rule: a stale target mapping naming a JJ who was never
+  # final-approved must not count as Active. Nothing else may be re-filtered
+  # here -- an is_active/is_deleted/authorised-scope pass on top is what made
+  # these cards disagree with the web for every non-admin login.
+  def dashboard_fco_active_vrp_records(fco, month = nil, _vrps = nil)
     month = nil if month.to_s.casecmp("all").zero?
-    mapped_records = super(fco, month, source)
-    has_mappings = TargetMapping.where(vrp_id: mapped_records.map(&:id)).exists?
-    records = mapped_records.select do |vrp|
-      allowed_ids.include?(vrp.id.to_s) &&
-        (!vrp.respond_to?(:is_active) || vrp.is_active == true || vrp.is_active == 1) &&
-        !(vrp.respond_to?(:is_deleted) && (vrp.is_deleted == true || vrp.is_deleted == 1)) &&
-        send(:dashboard_vrp_active_for_requirement?, vrp)
-    end
-
-    # Raw target mappings can contain stale, inactive or deleted JJ IDs. Keep
-    # the web card's approved/active rule authoritative for both Active and
-    # Gender Count, then use the FCO assignment only when no mappings exist.
-    if records.empty? && !has_mappings
-      records = Array(source).select do |vrp|
-        training_fcoc_text_matches?(vrp.fcoc, fco) &&
-        (!vrp.respond_to?(:is_active) || vrp.is_active == true || vrp.is_active == 1) &&
-        !(vrp.respond_to?(:is_deleted) && (vrp.is_deleted == true || vrp.is_deleted == 1)) &&
-        send(:dashboard_vrp_active_for_requirement?, vrp)
-      end
-    end
-    records
+    # web_dashboard_vrps, not the caller's list: when an FCO has no target
+    # mapping for the month the web falls back to matching vrp.fcoc against
+    # its own JJ scope, so an Agronomist/Manager login counted the whole
+    # hierarchy here and read higher than the web it mirrors.
+    records = super(fco, month, web_dashboard_vrps)
+    approved_ids = dashboard_approved_vrps(records).map(&:id).to_set
+    records.select { |vrp| approved_ids.include?(vrp.id) }
   end
 
   def dashboard_fco_active_vrp_count(fco, month = nil, vrps = nil)

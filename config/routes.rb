@@ -106,13 +106,13 @@ Rails.application.routes.draw do
       get "farmer-trainings/farmers", to: "farmer_trainings#farmers"
       get "farmer-trainings/mapped-farmers", to: "farmer_trainings#mapped_farmers"
       get "farmer-trainings/:id/photos", to: "farmer_trainings#photos"
-      resources :farmer_trainings, path: "farmer-trainings", only: [ :index, :create, :show ]
+      resources :farmer_trainings, path: "farmer-trainings", only: [ :index, :create, :show, :update ]
 
       get "other-targets/form-options", to: "other_targets#form_options"
       get "other-targets/form-data", to: "other_targets#form_data"
       get "other-targets/farmers", to: "other_targets#farmers"
       get "other-targets/mapped-farmers", to: "other_targets#mapped_farmers"
-      resources :other_targets, path: "other-targets", only: [:index, :create, :show]
+      resources :other_targets, path: "other-targets", only: [:index, :create, :show, :update]
       get "demonstration-methods/summary", to: "demonstration_methods#summary"
       get "demonstration-methods", to: "demonstration_methods#index"
 

@@ -73,6 +73,31 @@ class FarmerTargetApi
     end
   end
 
+  def update(id, raw_attrs)
+    record = find(id)
+    return { success: false, errors: ["Record not found or not accessible."] } unless record
+
+    upload_errors = training_photo_upload_errors(raw_attrs) + training_register_upload_errors(raw_attrs)
+    return { success: false, errors: upload_errors } if upload_errors.any?
+
+    incoming = normalize_incoming(raw_attrs)
+    # Merge new values over existing data so unchanged fields are preserved
+    merged = record.data.merge(incoming)
+    # Strip internal stamps from incoming so existing creator stamps are kept
+    %w[created_by_id created_by_username created_by_name created_by_email created_by_record_type].each do |key|
+      merged[key] = record.data[key] if record.data[key].present?
+    end
+    data = normalize_for_slug(merged)
+    errors = validation_errors(data)
+    return { success: false, errors: errors } if errors.any?
+
+    if record.update(data: data)
+      { success: true, record: record }
+    else
+      { success: false, errors: record.errors.full_messages }
+    end
+  end
+
   def form_options(include_farmers: true)
     case @module_slug
     when "training-form"
