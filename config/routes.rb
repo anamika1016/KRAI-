@@ -54,6 +54,7 @@ Rails.application.routes.draw do
       get "jeevika-jankar-dashboard/lists/:list_type/export", to: "jeevika_jankar_dashboard#vrp_export"
       get "jeevika-jankar-bills", to: "jeevika_jankar_payments#bills"
       get "jeevika-jankar-bills/:id/download", to: "jeevika_jankar_payments#download_bill"
+      get "jeevika-jankar-bills/:id/invoice", to: "jeevika_jankar_payments#invoice"
       get "jeevika-jankar-bills/:id", to: "jeevika_jankar_payments#bill"
       patch "jeevika-jankar-bills/:id/send-for-approval", to: "jeevika_jankar_payments#send_bill_for_approval"
       patch "jeevika-jankar-bills/:id/approve", to: "jeevika_jankar_payments#approve_bill"

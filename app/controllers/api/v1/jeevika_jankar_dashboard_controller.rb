@@ -352,22 +352,60 @@ module Api
         fco = filter_param(:fcoc, :fco)
         fco = nil unless fcos.any? { |value| matches.call(value, fco) }
         rows = rows.select { |row| matches.call(row.vrp&.fcoc, fco) } if fco.present?
+        # TO sits between FCO and ICS, same as the web filter bar. The list is
+        # the sub offices of the JJs in view plus the Office Setup masters for
+        # the selected FCO, so a newly added TO is selectable immediately.
+        to_key = ->(label) { calculator.send(:dashboard_to_filter_key, label) }
+        # Same as the web: the master is read for the FCO the page is showing,
+        # which is this login's own office when nothing is selected.
+        to_master_fco = fco.presence ||
+          calculator.send(:dashboard_default_visible_fcoc, fcos.presence || login_scope_fco_names(calculator))
+        tos = (rows.map { |row| row.vrp&.to_name } + Array(calculator.send(:dashboard_master_to_options, to_master_fco)))
+          .filter_map { |label| label.to_s.squish.presence }
+          .uniq { |label| to_key.call(label) }
+          .sort_by { |label| to_key.call(label) }
+        # A login carrying its own Sub Office Name only ever sees that TO.
+        user_to_value = calculator.send(:dashboard_user_sub_office_to_value)
+        tos = [user_to_value] if user_to_value.present?
+        to = filter_param(:to_name, :to) || user_to_value
+        to = nil unless to.present? && tos.any? { |value| to_key.call(value) == to_key.call(to) }
+        rows = rows.select { |row| to_key.call(row.vrp&.to_name) == to_key.call(to) } if to.present?
         ics_names = values.call(rows) { |row| row.ics_name.presence || row.ics_id }
+        # A JJ's own to_name can disagree with its ICS TO MAPPING assignment,
+        # so prefer the TO's actually mapped ICS when that mapping exists.
+        if to.present?
+          to_ics_ids = calculator.send(:dashboard_to_mapped_ics_ids, to_master_fco, to)
+          if to_ics_ids.present?
+            mapped = to_ics_ids.to_set
+            ics_names = values.call(rows.select { |row| mapped.include?(row.ics_id.to_s.strip.downcase) }) { |row| row.ics_name.presence || row.ics_id }
+          end
+        end
         ics = filter_param(:ics, :ics_name)
         ics = nil unless ics_names.any? { |value| matches.call(value, ics) }
         {
           filters: dashboard_filter_groups(main_activities: mains, sub_activities: subs,
-            fcos: fcos, ics_names: ics_names, months: months),
-          applied_filters: { month: month, main_activity: main, sub_activity: sub, fco: fco, ics: ics },
-          filter_order: %w[month main_activity sub_activity fco ics]
+            fcos: fcos, tos: tos, ics_names: ics_names, months: months),
+          applied_filters: { month: month, main_activity: main, sub_activity: sub, fco: fco, to: to, ics: ics },
+          filter_order: %w[month main_activity sub_activity fco to ics]
         }
       end
 
-      def dashboard_filter_groups(main_activities:, sub_activities:, fcos:, ics_names:, months:)
+      # The offices this login can see at all, used when the filtered rows are
+      # empty and the FCO default would otherwise resolve to nil -- which would
+      # list every TO in the company. web_dashboard_vrps only exists on
+      # OfficeDashboardCalculator; a plain ModulesController has no such scope.
+      def login_scope_fco_names(calculator)
+        return [] unless calculator.respond_to?(:web_dashboard_vrps, true)
+
+        Array(calculator.send(:web_dashboard_vrps)).filter_map { |vrp| vrp.fcoc.to_s.strip.presence }.uniq
+      end
+
+      def dashboard_filter_groups(main_activities:, sub_activities:, fcos:, ics_names:, months:, tos: [])
         [
           { key: "main_activity", heading: "Main Major Work Indicator", all_option: "All Main Major Work Indicators", options: Array(main_activities) },
           { key: "sub_activity", heading: "Sub Major Work Indicator", all_option: "All Sub Major Work Indicators", options: Array(sub_activities) },
           { key: "fco", heading: "FCO", all_option: "All FCO", options: Array(fcos) },
+          { key: "to", heading: "TO", all_option: "All TO", options: Array(tos) },
           { key: "ics", heading: "ICS Name", all_option: "All ICS", options: Array(ics_names) },
           { key: "month", heading: "Month", all_option: "All Months", options: Array(months) }
         ]
@@ -784,6 +822,27 @@ module Api
         options[:fcos] = vrps.map(&:fcoc).compact_blank.uniq.sort
         if selected_fcoc.present?
           vrps.select! { |vrp| vrp.fcoc == selected_fcoc }
+          vrp_ids = id_lookup(vrps)
+          targets.select! { |target| target.vrp_id.present? && vrp_ids.key?(target.vrp_id.to_s) }
+        end
+
+        # TO filter, same step and same rules as the web dashboard: the list is
+        # the sub offices of the JJs in view plus the Office Setup masters for
+        # the FCO on screen, deduplicated on the normalised key so the several
+        # spellings of one TO ("TO-Turekela", "TO- Turekela") list once.
+        to_key = ->(label) { web.send(:dashboard_to_filter_key, label) }
+        to_master_fco = selected_fcoc.presence ||
+          web.send(:dashboard_default_visible_fcoc, options[:fcos])
+        options[:tos] = (vrps.map(&:to_name) + Array(web.send(:dashboard_master_to_options, to_master_fco)))
+          .filter_map { |label| label.to_s.squish.presence }
+          .uniq { |label| to_key.call(label) }
+          .sort_by { |label| to_key.call(label) }
+        user_to_value = web.send(:dashboard_user_sub_office_to_value)
+        options[:tos] = [user_to_value] if user_to_value.present?
+        selected_to = filter_param(:to_name, :to) || user_to_value
+        if selected_to.present?
+          selected_to_key = to_key.call(selected_to)
+          vrps.select! { |vrp| to_key.call(vrp.to_name) == selected_to_key }
           vrp_ids = id_lookup(vrps)
           targets.select! { |target| target.vrp_id.present? && vrp_ids.key?(target.vrp_id.to_s) }
         end
@@ -1623,6 +1682,7 @@ module Api
           activity: filter_param(:activity, :main_activity),
           fco: filter_param(:fco, :fcoc),
           cluster_incharge: filter_param(:cluster_incharge),
+          to: filter_param(:to_name, :to),
           month: filter_param(:month),
           post_wise_name: filter_param(:post_wise_name, :post),
           vrp_id: filter_param(:vrp_id),

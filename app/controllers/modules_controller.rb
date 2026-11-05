@@ -6937,7 +6937,7 @@ class ModulesController < ApplicationController
             a.father_name,
             a.mobile_no,
             COUNT(DISTINCT at.training_id) AS training_count,
-            MIN(at.training_date) AS training_date,
+            STRING_AGG(DISTINCT NULLIF(BTRIM(at.training_date), ''), '|') AS training_dates_raw,
             MIN(at.sub_activity) AS sub_activity,
             STRING_AGG(DISTINCT NULLIF(BTRIM(at.training_method), ''), ', ') AS training_method,
             MIN(at.trainer_name) AS trainer_name,
@@ -6975,6 +6975,15 @@ class ModulesController < ApplicationController
       )
 
       return raw_rows.map do |row|
+        # A farmer with 5 trainings (training_count) only ever showed the
+        # single earliest date here (SQL used MIN(at.training_date) for both
+        # columns) -- so the last trained month looked stuck on whichever
+        # month that farmer's first session happened to be in, even though
+        # the count itself already included every later session. Sort every
+        # distinct date this query found for the farmer and use the actual
+        # latest one for "Last Training Date".
+        training_date_values = row["training_dates_raw"].to_s.split("|").map(&:strip).reject(&:blank?)
+        sorted_training_dates = training_date_values.sort_by { |date| parse_module_date(date) || Date.new(1, 1, 1) }
         {
           farmer_id: row["farmer_id"].to_s,
           farmer_name: row["farmer_name"].to_s.presence || "Farmer ##{row['farmer_id']}",
@@ -6995,8 +7004,8 @@ class ModulesController < ApplicationController
           attendance_count: row["training_count"].to_i,
           status: "green",
           status_label: "1+ Trainings",
-          training_dates: row["training_date"].to_s.presence || "-",
-          last_training_date: row["training_date"].to_s.presence || "-",
+          training_dates: sorted_training_dates.join(", ").presence || "-",
+          last_training_date: sorted_training_dates.last.presence || "-",
           training_register_urls: module_upload_public_urls(row["training_register_urls"]),
           training_photo_urls: module_upload_public_urls(row["training_photo_urls"])
         }

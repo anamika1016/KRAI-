@@ -14,6 +14,18 @@ class OfficeDashboardCalculator < ModulesController
     @office_dashboard_vrps = (own_scope + hierarchy_scope).uniq { |vrp| vrp.id }
   end
 
+  # The month the Gender Count / FCO-wise JJ Requirement cards resolved to.
+  # A drill-down list must not re-derive this from params: that skips the
+  # All Months fallback applied in apply_dashboard_scope, so tapping a card
+  # showing 33 opened a list filtered on an empty month and returned nothing.
+  def dashboard_card_month
+    month = @dashboard_month_filter_value.presence || params[:month].presence ||
+      params[:training_month].presence
+    return nil if month.to_s.casecmp("all").zero?
+
+    month.presence
+  end
+
   # The JJ scope the *web* dashboard builds for this same login.
   #
   # It cannot be taken from super: this class widens training_fcoc_filter_values
@@ -58,6 +70,12 @@ class OfficeDashboardCalculator < ModulesController
       @dashboard_month_filter_value = nil
     end
     @dashboard_fcoc_filter_value = dashboard_filter_param(:fcoc, :fco)
+    # Same resolution as the web's TO filter, including the rule that a login
+    # carrying its own Sub Office Name is pinned to that TO. Every card that
+    # reads @dashboard_to_filter_value -- the Summary SQL, Demonstration
+    # Method, Other -- then scopes to the selected TO without its own change.
+    @dashboard_to_filter_value = dashboard_filter_param(:to_name, :to) ||
+      dashboard_user_sub_office_to_value
   end
 
   private

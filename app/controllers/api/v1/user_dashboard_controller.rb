@@ -712,11 +712,52 @@ module Api
         options[:fcos] = values(vrps, :fcoc)
         @calculation_stage = "dashboard_fcoc_filter"
         vrps, targets = filter_vrps(vrps, targets, :fcoc, filter_param(:fcoc, :fco))
+        # TO filter, same step and same rules as the web dashboard: the list is
+        # whatever sub offices exist under the FCO in view plus the Office
+        # Setup masters, so a TO added later appears with no code change.
+        @calculation_stage = "dashboard_to_filter"
+        to_key = ->(label) { calculator.send(:dashboard_to_filter_key, label) }
+        # The Office Setup master is keyed by FCO, and the web reads the FCO
+        # the page is actually showing -- the selected one, or this login's own
+        # when nothing is selected. Passing only the param listed every TO in
+        # the company to an FCO-C who can see one office.
+        # options[:fcos] is empty whenever the month/activity filter matched no
+        # JJ, which would make the default resolve to nil and list every TO in
+        # the company. Fall back to the offices this login can see at all.
+        to_master_fco = filter_param(:fcoc, :fco) ||
+          calculator.send(:dashboard_default_visible_fcoc,
+            options[:fcos].presence || values(calculator.send(:web_dashboard_vrps), :fcoc))
+        options[:tos] = (vrps.map(&:to_name) + Array(calculator.send(:dashboard_master_to_options, to_master_fco)))
+          .filter_map { |label| label.to_s.squish.presence }
+          .uniq { |label| to_key.call(label) }
+          .sort_by { |label| to_key.call(label) }
+        # A login with its own Sub Office Name sees only that TO, as value and
+        # as the only choice -- same as the web.
+        user_to_value = calculator.send(:dashboard_user_sub_office_to_value)
+        options[:tos] = [user_to_value] if user_to_value.present?
+        selected_to = filter_param(:to_name, :to) || user_to_value
+        if selected_to.present?
+          selected_to_key = to_key.call(selected_to)
+          vrps = vrps.select { |vrp| to_key.call(vrp.to_name) == selected_to_key }
+          to_vrp_ids = id_lookup(vrps)
+          targets = targets.select { |target| to_vrp_ids.key?(target.vrp_id.to_s) }
+        end
         options[:cluster_incharges] = values(vrps, :cluster_incharge)
         @calculation_stage = "dashboard_cluster_filter"
         vrps, targets = filter_vrps(vrps, targets, :cluster_incharge, filter_param(:cluster_incharge))
         @calculation_stage = "dashboard_ics_filter"
         options[:ics_names] = targets.filter_map { |target| (target.ics_name.presence || target.ics_id).to_s.strip.presence }.uniq.sort
+        # A JJ's own to_name can disagree with its ICS TO MAPPING assignment, so
+        # narrow the ICS list to the TO's actually mapped ICS when that mapping
+        # exists. No mapping yet for this TO leaves the FCO-wide list alone.
+        if selected_to.present?
+          to_ics_ids = calculator.send(:dashboard_to_mapped_ics_ids, to_master_fco, selected_to)
+          if to_ics_ids.present?
+            to_ics_id_set = to_ics_ids.to_set
+            options[:ics_names] = targets.select { |target| to_ics_id_set.include?(target.ics_id.to_s.strip.downcase) }
+              .filter_map { |target| (target.ics_name.presence || target.ics_id).to_s.strip.presence }.uniq.sort
+          end
+        end
         selected_ics = filter_param(:ics, :ics_name)
         if selected_ics.present?
           targets = targets.select { |target| same?(target.ics_name.presence || target.ics_id, selected_ics) }
@@ -1029,7 +1070,7 @@ module Api
       end
 
       def applied_filters
-        explicit = %i[search activity main_activity sub_activity fcoc fco cluster_incharge ics ics_name month post post_wise_name vrp_id participation_month participation_fcoc weekly_target_month weekly_target_fcoc weekly_target_week ics_report_month ics_report_ics]
+        explicit = %i[search activity main_activity sub_activity fcoc fco to to_name cluster_incharge ics ics_name month post post_wise_name vrp_id participation_month participation_fcoc weekly_target_month weekly_target_fcoc weekly_target_week ics_report_month ics_report_ics]
           .filter_map { |key| value = filter_param(key); [key, value] if value.present? }
           .to_h
         explicit[:month] = DashboardDefaults.month unless params.key?(:month)

@@ -112,6 +112,20 @@ module Api
           disposition: "attachment"
       end
 
+      # The printable invoice -- the sheet the web renders at
+      # /modules/jeevika-jankar-bill-list/records/:id/download_bill -- as JSON,
+      # so the app can lay it out or make its own PDF. Every value is read
+      # through the same helpers that print view calls, so the two cannot
+      # drift apart.
+      def invoice
+        record = downloadable_bill
+        return bill_not_found unless record
+
+        render json: { success: true,
+                       message: "Jeevika Jankar invoice fetched successfully.",
+                       invoice: bill_invoice_payload(record) }, status: :ok
+      end
+
       def payment_details
         return payment_access_denied unless payment_list_user?("jeevika-jankar-payment-list-detail")
 
@@ -173,6 +187,103 @@ module Api
         return unless record && calculator.send(:jeevika_jankar_bill_record_visible?, record)
 
         record
+      end
+
+      # Same rule the web's download_bill applies: a payment-list user may also
+      # pull a final-approved bill that is outside their own reporting scope.
+      def downloadable_bill
+        record = ModuleRecord.find_by(id: params[:id], module_slug: BILL_SLUG)
+        return unless record && calculator.send(:jeevika_jankar_bill_downloadable?, record)
+
+        record
+      end
+
+      def bill_invoice_payload(record)
+        data = record.data
+        summary = calculator.send(:jeevika_bill_summary, record)
+        vrp = calculator.send(:jeevika_bill_vrp, record)
+        status = calculator.send(:jeevika_bill_status_label, record).to_s
+        vrp_label = data["select_vrp_name"].presence || calculator.send(:jeevika_jankar_vrp_label, data["select_vrp"])
+        fco = summary[:fco].presence || "-"
+        to_name = summary[:to].presence || vrp&.to_name.presence || "-"
+        # ApplicationHelper is not mixed into the API controllers; this helper
+        # is a pure lookup, so borrow it rather than restate the block rule.
+        block = ApplicationController.helpers.bill_print_block_name(vrp)
+
+        {
+          bill_id: record.id,
+          worksheet_id: "##{record.id}",
+          invoice_date: calculator.send(:bill_display_date, data["invoice_date"].presence || record.created_at),
+          invoice_month: data["bill_month"].presence || "-",
+          status: status,
+          # The sheet carries an APPROVED stamp only once the bill is final
+          # approved; everything else prints PENDING.
+          stamp: status.downcase.include?("final approved") ? "approved" : "pending",
+          jeevika_jankar: {
+            name: calculator.send(:jeevika_jankar_display_name, vrp_label).presence || "-",
+            mobile_no: vrp&.mobile_no.presence || "-",
+            photo_url: bill_vrp_photo_url(vrp)
+          },
+          office: {
+            fco: fco, to: to_name, block: block,
+            line: "FCO: #{fco}, #{to_name}, Block: #{block}"
+          },
+          worksheet: invoice_worksheet_rows(record),
+          total_payment: summary[:total_amount].to_f,
+          total_payment_label: ActiveSupport::NumberHelper.number_to_currency(
+            summary[:total_amount].to_f, unit: "₹", delimiter: ",", precision: 2
+          ),
+          bank_details: calculator.send(:jeevika_bill_bank_rows, record).map.with_index(1) do |row, index|
+            { serial: index, bank_name: row[:bank_name], account_number: row[:account_number],
+              ifsc_code: row[:ifsc_code], address: row[:address] }
+          end,
+          approvals: invoice_approval_rows(record)
+        }
+      end
+
+      # The invoice lists only the dates work was actually recorded on: rows
+      # with a zero achievement are dropped and the rest renumbered, exactly as
+      # the print view does. The payments API's time_slots still returns every
+      # row -- that contract is unchanged.
+      def invoice_worksheet_rows(record)
+        calculator.send(:jeevika_bill_time_slot_rows, record)
+          .reject { |row| row[:number].to_i.zero? }
+          .map.with_index(1) do |row, index|
+            { serial: index,
+              working_period: row[:working_date],
+              village_visited: row[:village],
+              # The printed columns read the row this way round.
+              major_work_indicator: row[:activity],
+              activity: row[:tci],
+              achievement: row[:number].to_i }
+          end
+      end
+
+      def invoice_approval_rows(record)
+        prepared = calculator.send(:jeevika_bill_prepared_by, record)
+        approvers = calculator.send(:jeevika_bill_approved_by_rows, record).map do |level, approver, at, action_by|
+          { label: invoice_approver_label(level), name: approver.presence || action_by.presence || "-", at: at }
+        end
+        { prepared_by: { label: "Prepared by", name: prepared[:name], at: prepared[:at] },
+          approvers: approvers }
+      end
+
+      # The stored step names ("Second Approval", "Fourth Approver", "Finance")
+      # are relabelled for the printed sheet; keep the app's wording identical.
+      def invoice_approver_label(level)
+        level.to_s.gsub(/Approval/i, "Approver")
+          .gsub(/\bFinance\b/i, "Financial")
+          .gsub(/Fourth Approver/i, "Financial Approver")
+      end
+
+      def bill_vrp_photo_url(vrp)
+        photo = vrp&.photo
+        return nil unless photo.respond_to?(:attached?) && photo.attached?
+
+        Rails.application.routes.url_helpers.rails_blob_url(photo, host: request.base_url)
+      rescue StandardError => error
+        Rails.logger.warn("Invoice photo URL failed: #{error.class}: #{error.message}")
+        nil
       end
 
       def bill_not_found
@@ -462,6 +573,9 @@ module Api
         attachment = vrp&.bank_passbook_upload
         payload[:passbook_url] = attachment_url(attachment) if attachment&.attached?
         payload[:download_bill_url] = "#{request.base_url}/api/v1/jeevika-jankar-bills/#{record.id}/download"
+        # The printable sheet as JSON, so a list row can open the invoice
+        # without the app having to know how to build the URL.
+        payload[:invoice_url] = "#{request.base_url}/api/v1/jeevika-jankar-bills/#{record.id}/invoice"
         payload
       end
 
