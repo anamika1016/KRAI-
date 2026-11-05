@@ -72,25 +72,26 @@ class ModulesController < ApplicationController
   # English so the existing language switcher can translate them like the rest
   # of the UI; only the option key is persisted.
   JEEVIKA_JANKAR_OBSERVATION_OPTIONS = [
-    { key: "good", label: "Good" },
-    { key: "needs_improvement", label: "Needs Improvement" },
-    { key: "no_progress", label: "No Progress" }
+    { key: "excellent", label: "Excellent - fully meets standard" },
+    { key: "good", label: "Good - meets standard with minor gaps" },
+    { key: "needs_improvement", label: "Needs improvement - clear gaps" },
+    { key: "no_progress", label: "Poor - standard not met" }
   ].freeze
   JEEVIKA_JANKAR_OBSERVATION_PARAMETERS = [
     { key: "timing",
-      short_label: "Timing",
+      short_label: "Timely Activity & Reporting",
       label: "Delivery target / training was started and completed at the scheduled time" },
     { key: "farmer_behaviour",
-      short_label: "Farmer Behaviour",
+      short_label: "Farmer Engagement Skill",
       label: "Behaviour with farmers was good and local, simple language was used in question-answer / discussion" },
     { key: "subject_clarity",
-      short_label: "Subject Clarity",
+      short_label: "Module / Subject Knowledge",
       label: "Subject information was explained clearly and correctly as per the given target / topic, and by asking questions / discussing with farmers it was ensured that they understood the main subject" },
     { key: "iec_material",
-      short_label: "IEC Material",
+      short_label: "IEC / Demo Material Usage",
       label: "Required IEC material / poster / flip chart / other material was used effectively as per the given target / topic and, where necessary, farmers were explained through subject related Practical / Field Demonstration" },
     { key: "technology",
-      short_label: "Technology",
+      short_label: "Training (Module) Delivery",
       label: "Status of JJ in operating technology (all APP / Web / Mobile / Scanner / Photo Capture) etc." }
   ].freeze
   DASHBOARD_CARDS = [
@@ -513,6 +514,12 @@ class ModulesController < ApplicationController
       purpose: "Saved Jeevika Jankar bill aur invoice records dekhne ke liye.",
       fields: ["Jeevika Jankar Name", "Bill Month", "Total Target", "Total Achievement"]
     },
+    "jeevika-jankar-pending-bill-list" => {
+      title: "Pending Approval List",
+      group: "Jeevika Jankar Bill",
+      purpose: "Sirf wahi bills jo aapke approval ka intezaar kar rahe hain, Approve/Reject seedhe isi list se.",
+      fields: ["Jeevika Jankar Name", "Bill Month"]
+    },
     "jeevika-jankar-observation-list" => {
       title: "Jeevika Jankar Observation List",
       group: "Jeevika Jankar Bill",
@@ -667,6 +674,7 @@ class ModulesController < ApplicationController
     "access-control-list" => "access-control",
     "vrp-bill-list" => "vrp-bill-add",
     "jeevika-jankar-bill-list" => "jeevika-jankar-bill-process",
+    "jeevika-jankar-pending-bill-list" => "jeevika-jankar-bill-process",
     "jeevika-jankar-payment-list" => "jeevika-jankar-bill-process",
     "jeevika-jankar-payment-list-detail" => "jeevika-jankar-bill-process",
     "jeevika-jankar-completed-payment-list" => "jeevika-jankar-payment-detail",
@@ -911,9 +919,16 @@ class ModulesController < ApplicationController
         format.html { render :demonstration_method_list }
         format.json { render json: { success: true, records: @demonstration_method_rows, count: @demonstration_method_rows.size } }
         format.xlsx do
-          send_xlsx(headers: DemonstrationMethodReport::EXPORT_HEADERS,
-            rows: @demonstration_method_rows.map { |row| DemonstrationMethodReport::EXPORT_HEADERS.map { |key| row[key] } },
-            filename: "demonstration-method.xlsx", sheet_name: "Demonstration Method")
+          if params[:all_data] == "true"
+            date_wise_rows = @demonstration_method_report.date_wise_rows
+            send_xlsx(headers: DemonstrationMethodReport::EXPORT_DATE_WISE_HEADERS,
+              rows: date_wise_rows.map { |row| DemonstrationMethodReport::EXPORT_DATE_WISE_HEADERS.map { |key| row[key] } },
+              filename: "demonstration-method-all-data.xlsx", sheet_name: "Demonstration Method (Date-wise)")
+          else
+            send_xlsx(headers: DemonstrationMethodReport::EXPORT_HEADERS,
+              rows: @demonstration_method_rows.map { |row| DemonstrationMethodReport::EXPORT_HEADERS.map { |key| row[key] } },
+              filename: "demonstration-method.xlsx", sheet_name: "Demonstration Method")
+          end
         end
       end
       return
@@ -8503,10 +8518,16 @@ class ModulesController < ApplicationController
           training_record_matches_dashboard_target?(record, target, [farmer_id.to_s])
         end
         summary_rows = matching_records.map { |record| training_summary(record) }
+        # matching_records comes from dashboard_training_participation_records,
+        # which is ordered by created_at (newest first) -- not by training_date.
+        # Picking .last off that order picked whichever record happened to be
+        # entered first, not the actual latest training date, so a farmer
+        # trained July through October could show July here. Sort by the
+        # parsed training date instead so "last" means chronologically last.
         training_dates = matching_records.map do |record|
           summary = training_summary(record)
           bill_display_date(summary[:training_date]).presence || bill_display_date(record.created_at)
-        end.compact_blank.uniq
+        end.compact_blank.uniq.sort_by { |date| parse_module_date(date) || Date.new(1, 1, 1) }
 
         {
           farmer_id: farmer_id.to_s,
@@ -8544,8 +8565,15 @@ class ModulesController < ApplicationController
       .values
       .map do |grouped|
         first = grouped.first
+        # Each grouped row's own training_dates already lists every date that
+        # row matched (see above) -- combine all of them here instead of only
+        # row[:training_date] (one date per row), which silently dropped every
+        # other date a target/farmer combination had once more than one row
+        # merged into the same group.
+        combined_dates = grouped.flat_map { |row| row[:training_dates].to_s.split(", ") }
+          .compact_blank.uniq.sort_by { |date| parse_module_date(date) || Date.new(1, 1, 1) }
         first.merge(
-          training_dates: grouped.map { |row| row[:training_date] }.compact_blank.uniq.join(", ").presence || "-",
+          training_dates: combined_dates.join(", ").presence || "-",
           training_register_urls: grouped.flat_map { |row| Array(row[:training_register_urls]) }.compact_blank.uniq,
           training_photo_urls: grouped.flat_map { |row| Array(row[:training_photo_urls]) }.compact_blank.uniq,
           participation_count: grouped.sum { |row| row[:participation_count].to_i }
@@ -11100,9 +11128,11 @@ class ModulesController < ApplicationController
     @observation_selected_month = selected_month
   end
 
-  # Overall red / yellow / green marker: Good scores 2, Needs Improvement 1,
-  # No Progress (or unrated) 0, expressed as a percentage of the maximum.
-  OBSERVATION_SCORE_POINTS = { "good" => 2, "needs_improvement" => 1, "no_progress" => 0 }.freeze
+  # Overall red / yellow / green marker: Excellent scores 3, Good 2, Needs
+  # Improvement 1, Poor/no_progress (or unrated) 0, expressed as a percentage
+  # of the maximum. The "no_progress" key now displays as "Poor" -- kept as-is
+  # internally so existing saved ratings keep scoring correctly.
+  OBSERVATION_SCORE_POINTS = { "excellent" => 3, "good" => 2, "needs_improvement" => 1, "no_progress" => 0 }.freeze
 
   def jeevika_jankar_observation_score(ratings)
     maximum = ratings.size * OBSERVATION_SCORE_POINTS.values.max

@@ -280,6 +280,7 @@ module ApplicationHelper
       links: [
         ["Bill Process", :module, "jeevika-jankar-bill-process"],
         ["Bill List", :module, "jeevika-jankar-bill-list"],
+        ["Pending Approval List", :module, "jeevika-jankar-pending-bill-list"],
         ["Observation List", :module, "jeevika-jankar-observation-list"],
         ["Payment List", :module, "jeevika-jankar-payment-list"],
         ["Payment List Detail", :module, "jeevika-jankar-payment-list-detail"],
@@ -599,7 +600,7 @@ module ApplicationHelper
       keys.concat(["bill-process", "jeevika-jankar-bill", "jeevika-jankar-bill-process"])
     end
     if ["Bill List", "Jeevika Jankar Bill List"].include?(name.to_s.strip)
-      keys.concat(["bill-list", "jeevika-jankar-bill-list"])
+      keys.concat(["bill-list", "jeevika-jankar-bill-list", "jeevika-jankar-pending-bill-list"])
     end
     if ["Observation List", "Jeevika Jankar Observation List"].include?(name.to_s.strip)
       keys.concat(["observation-list", "jeevika-jankar-observation-list"])

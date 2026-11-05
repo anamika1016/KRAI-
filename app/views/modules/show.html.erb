@@ -2032,6 +2032,106 @@
       </dialog>
     </section>
 
+  <% elsif @slug == "jeevika-jankar-pending-bill-list" && @record.blank? %>
+    <% table_id = "jeevika_jankar_pending_bill_table" %>
+    <% pending_bill_rows = jeevika_bill_rows(@records).select { |row| row[:current_approver] && row[:status].to_s.include?("Pending") } %>
+    <section class="module-card list-only-card">
+      <div class="module-card-header list-title-header">
+        <h2>Pending Approval List</h2>
+        <p class="field-hint">Sirf wahi bills jo abhi aapke approval ka intezaar kar rahe hain.</p>
+      </div>
+
+      <div class="list-controls">
+        <div class="list-search">
+          <span>⌕</span>
+          <input type="search" placeholder="Search bills" data-table-search="<%= table_id %>">
+        </div>
+        <strong><%= pending_bill_rows.size %> record(s)</strong>
+      </div>
+
+      <div class="table-shell">
+        <table class="module-table user-list-table" id="<%= table_id %>" data-paginated-table data-page-size="15" data-preserve-order="true">
+          <thead>
+            <tr>
+              <th>View</th>
+              <th>Download Bill</th>
+              <th>Jeevika Jankar ID</th>
+              <th>Status</th>
+              <th>Name</th>
+              <th>Bill Created By (CC)</th>
+              <th>Financial Year</th>
+              <th>Bill Month</th>
+              <th>Major Work Indicator Group</th>
+              <th>Total Payment</th>
+              <th>Major Work Indicator Name</th>
+              <th>Total Target</th>
+              <th>Total Achievement</th>
+              <th>Approval Action</th>
+              <th>Remarks</th>
+              <th>Approval Remarks</th>
+            </tr>
+          </thead>
+          <tbody>
+            <% if pending_bill_rows.any? %>
+              <% pending_bill_rows.each do |row| %>
+                <tr data-bill-list-row data-bill-month="<%= row[:bill_month] %>" data-bill-status="pending">
+                  <td>
+                    <%= link_to row[:view_path], class: "table-action icon-action", title: "View", aria: { label: "View" } do %>
+                      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M2 12s3.5-6 10-6 10 6 10 6-3.5 6-10 6S2 12 2 12Z"></path><circle cx="12" cy="12" r="3"></circle></svg>
+                    <% end %>
+                  </td>
+                  <td>
+                    <%= link_to row[:download_path], class: "table-action icon-action", title: "Download", target: "_blank", rel: "noopener", aria: { label: "Download" } do %>
+                      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3v11"></path><path d="m7 10 5 5 5-5"></path><path d="M5 21h14"></path></svg>
+                    <% end %>
+                  </td>
+                  <td><%= row[:vrp_id].presence || "-" %></td>
+                  <td><span class="grid-status <%= row[:status_class] %>"><%= row[:status] %></span></td>
+                  <td><%= row[:name].presence || "-" %></td>
+                  <td><%= row[:created_by_name] %></td>
+                  <td><%= row[:financial_year] %></td>
+                  <td><%= row[:bill_month] %></td>
+                  <td><%= row[:activity_groups] %></td>
+                  <td><%= row[:amount] %></td>
+                  <td><%= row[:activity_names] %></td>
+                  <td><%= row[:target] %></td>
+                  <td><%= row[:achievement] %></td>
+                  <td>
+                    <div class="table-actions">
+                      <button type="button" class="list-btn active" data-open-approval-modal data-approval-action="approve" data-approval-url="<%= row[:approve_path] %>">Approve</button>
+                      <button type="button" class="list-btn deactive" data-open-approval-modal data-approval-action="reject" data-approval-url="<%= row[:reject_path] %>">Reject</button>
+                    </div>
+                  </td>
+                  <td><%= row[:remarks] %></td>
+                  <td><%= row[:approval_remarks] %></td>
+                </tr>
+              <% end %>
+            <% else %>
+              <tr>
+                <td colspan="16">Koi bill aapke approval ka intezaar nahi kar raha hai.</td>
+              </tr>
+            <% end %>
+          </tbody>
+        </table>
+      </div>
+      <div class="table-pagination" data-pagination-for="<%= table_id %>"></div>
+
+      <dialog class="approval-remarks-modal" data-approval-modal>
+        <%= form_with url: "#", method: :patch, class: "approval-modal-form", data: { approval_modal_form: true } do %>
+          <div class="approval-modal-header">
+            <h2 data-approval-modal-title>Approval Remarks</h2>
+            <button type="button" data-close-approval-modal aria-label="Close">×</button>
+          </div>
+          <label for="pending_bill_list_approval_modal_remarks">Remarks</label>
+          <textarea id="pending_bill_list_approval_modal_remarks" name="remarks" rows="4" placeholder="Enter remarks" required></textarea>
+          <div class="approval-modal-actions">
+            <button type="button" class="table-action" data-close-approval-modal>Cancel</button>
+            <button type="submit" class="list-btn active" data-approval-modal-submit>Submit</button>
+          </div>
+        <% end %>
+      </dialog>
+    </section>
+
   <% elsif list_only_slugs.include?(@slug) && @record.blank? %>
     <% table_id = "#{@slug.tr("-", "_")}_table" %>
     <section class="module-card list-only-card">

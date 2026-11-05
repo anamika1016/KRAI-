@@ -23,6 +23,21 @@ class DemonstrationMethodReport
     "Status"
   ].freeze
 
+  # "All Data" export: the same monthly Target/Achievement totals, but broken
+  # into one row per calendar date so each day's contribution toward the
+  # month's Achievement count is visible (Target stays the monthly figure --
+  # targets are assigned per month, not per day, so it repeats on every date
+  # row for that JJ).
+  EXPORT_DATE_WISE_HEADERS = [
+    "fco_id", "fco_name", "Cluster Coordinator", "vrp_id", "VRP Name", "Date",
+    "OPG Target", "OPG Achievement (This Date)",
+    "General Training/Meeting Target", "General Training/Meeting Achievement (This Date)",
+    "Input Demo INM Target", "Input Demo INM Achievement (This Date)",
+    "Input Demo PM Target", "Input Demo PM Achievement (This Date)",
+    "FFS Target", "FFS Achievement (This Date)",
+    "CC Target", "CC Achievement (This Date)"
+  ].freeze
+
   def initialize(targets:, month: "August")
     if targets.is_a?(ActiveRecord::Relation) && !targets.loaded?
       @target_ids = targets.pluck(:id).uniq
@@ -181,6 +196,127 @@ class DemonstrationMethodReport
     end
   end
 
+  # One row per JJ per calendar date that has at least one training-form
+  # entry in the selected month -- days with nothing entered produce no row.
+  # Target columns repeat the same monthly target used in #rows; only the
+  # Achievement columns are date-scoped.
+  def date_wise_rows
+    @date_wise_rows ||= begin
+      connection = TargetMapping.connection
+      scope = demonstration_target_scope
+      scope = scope.where("LOWER(TRIM(month_name)) = ?", @month) unless @month.blank? || @month == "all"
+      month_filter = if @month.blank? || @month == "all"
+        "TRUE"
+      else
+        "LOWER(TRIM(mr.data::jsonb ->> 'month')) = #{connection.quote(@month)}"
+      end
+      raw_rows = connection.select_all(<<~SQL).to_a
+        WITH scoped_targets AS (
+          #{scope.to_sql}
+        ), village_target AS (
+          SELECT
+            t.fco_id, t.fco_name, t.vrp_id, t.village_id,
+            MAX(COALESCE(t.week_wise_opg_target, 0)) AS general_training_target,
+            MAX(COALESCE(t.input_demo_inm_target, 0)) AS input_demo_inm_target,
+            MAX(COALESCE(t.input_demo_pm_target, 0)) AS input_demo_pm_target,
+            MAX(COALESCE(t.ffs_target, 0)) AS ffs_target,
+            MAX(COALESCE(t.cc_target, 0)) AS cc_target
+          FROM scoped_targets t
+          GROUP BY t.fco_id, t.fco_name, t.vrp_id, t.village_id
+        ), vrp_target AS (
+          SELECT
+            fco_id, fco_name, vrp_id,
+            SUM(general_training_target) AS general_training_target,
+            SUM(input_demo_inm_target) AS input_demo_inm_target,
+            SUM(input_demo_pm_target) AS input_demo_pm_target,
+            SUM(ffs_target) AS ffs_target,
+            SUM(cc_target) AS cc_target
+          FROM village_target
+          GROUP BY fco_id, fco_name, vrp_id
+        ), entry_data_by_date AS (
+          SELECT
+            TRIM(mr.data::jsonb ->> 'created_by_id') AS vrp_id,
+            NULLIF(BTRIM(mr.data::jsonb ->> 'training_date'), '') AS training_date_raw,
+            COUNT(*) FILTER (WHERE LOWER(TRIM(mr.data::jsonb ->> 'training_method')) = 'general training/meeting') AS general_training_done,
+            COUNT(*) FILTER (WHERE LOWER(TRIM(mr.data::jsonb ->> 'training_method')) = 'input demo inm') AS input_demo_inm_done,
+            COUNT(*) FILTER (WHERE LOWER(TRIM(mr.data::jsonb ->> 'training_method')) = 'input demo pm') AS input_demo_pm_done,
+            COUNT(*) FILTER (WHERE LOWER(TRIM(mr.data::jsonb ->> 'training_method')) = 'ffs') AS ffs_done,
+            -- Same CC exclusion rule as #rows: a session only counts toward CC
+            -- achievement if it still names a Cluster Coordinator.
+            COUNT(*) FILTER (
+              WHERE LOWER(TRIM(mr.data::jsonb ->> 'training_method'))
+                      IN ('general training/meeting', 'input demo inm', 'input demo pm', 'ffs')
+                AND NOT (
+                  (mr.data::jsonb ? 'cluster_coordinator_name')
+                  AND COALESCE(TRIM(mr.data::jsonb ->> 'cluster_coordinator_name'), '') ~* '^(|n\\.?/?a\\.?|none|nil|null|-+)$'
+                )
+            ) AS cc_done
+          FROM module_records mr
+          WHERE mr.module_slug = 'training-form' AND #{month_filter}
+            AND TRIM(mr.data::jsonb ->> 'created_by_id') IN (
+              SELECT DISTINCT vt.vrp_id::text FROM vrp_target vt
+            )
+          GROUP BY TRIM(mr.data::jsonb ->> 'created_by_id'), NULLIF(BTRIM(mr.data::jsonb ->> 'training_date'), '')
+        )
+        SELECT
+          vt.fco_id, vt.fco_name,
+          COALESCE(v.cluster_incharge, '') AS "Cluster Coordinator",
+          vt.vrp_id,
+          COALESCE(v.name, '') AS "VRP Name",
+          ed.training_date_raw,
+          vt.general_training_target AS gen_target,
+          ed.general_training_done AS gen_done,
+          vt.input_demo_inm_target AS inm_target,
+          ed.input_demo_inm_done AS inm_done,
+          vt.input_demo_pm_target AS pm_target,
+          ed.input_demo_pm_done AS pm_done,
+          vt.ffs_target AS ffs_target,
+          ed.ffs_done AS ffs_done,
+          COALESCE(vt.cc_target, 0) AS cc_target,
+          ed.cc_done AS cc_done
+        FROM vrp_target vt
+        INNER JOIN entry_data_by_date ed ON ed.vrp_id = vt.vrp_id::text
+        LEFT JOIN vrps v ON v.id::text = vt.vrp_id::text
+        ORDER BY vt.fco_id, "Cluster Coordinator", vt.vrp_id, ed.training_date_raw
+      SQL
+
+      raw_rows.map do |r|
+        cc_t = r["cc_target"].to_i
+        cc_d = cc_t.positive? ? r["cc_done"].to_i : 0
+        gen_t = r["gen_target"].to_i
+        inm_t = r["inm_target"].to_i
+        pm_t  = r["pm_target"].to_i
+        ffs_t = r["ffs_target"].to_i
+        gen_d = r["gen_done"].to_i
+        inm_d = r["inm_done"].to_i
+        pm_d  = r["pm_done"].to_i
+        ffs_d = r["ffs_done"].to_i
+
+        {
+          "fco_id"              => r["fco_id"],
+          "fco_name"            => r["fco_name"],
+          "Cluster Coordinator" => r["Cluster Coordinator"],
+          "vrp_id"              => r["vrp_id"],
+          "VRP Name"            => r["VRP Name"],
+          "Date"                => display_date(r["training_date_raw"]),
+          "OPG Target"                              => gen_t + inm_t + pm_t + ffs_t,
+          "OPG Achievement (This Date)"              => gen_d + inm_d + pm_d + ffs_d,
+          "General Training/Meeting Target"          => gen_t,
+          "General Training/Meeting Achievement (This Date)" => gen_d,
+          "Input Demo INM Target"                    => inm_t,
+          "Input Demo INM Achievement (This Date)"    => inm_d,
+          "Input Demo PM Target"                      => pm_t,
+          "Input Demo PM Achievement (This Date)"      => pm_d,
+          "FFS Target"                                => ffs_t,
+          "FFS Achievement (This Date)"                => ffs_d,
+          "CC Target"                                  => cc_t,
+          "CC Achievement (This Date)"                 => cc_d,
+          "_sort_date" => parsed_date(r["training_date_raw"])
+        }
+      end.sort_by { |row| [row["fco_id"].to_s, row["Cluster Coordinator"].to_s, row["vrp_id"].to_s, row["_sort_date"] || Date.new(1, 1, 1)] }
+    end
+  end
+
   def summary
     @summary ||= begin
       connection = TargetMapping.connection
@@ -253,5 +389,16 @@ class DemonstrationMethodReport
     # Preserve the caller's JJ/month/activity scope, including an empty scope.
     # Expanding to the whole FCO reintroduces unrelated CC achievements.
     TargetMapping.where(id: @target_ids)
+  end
+
+  # training_date is saved as either DD/MM/YYYY or YYYY-MM-DD text.
+  def parsed_date(value)
+    Date.parse(value.to_s)
+  rescue ArgumentError, TypeError
+    nil
+  end
+
+  def display_date(value)
+    parsed_date(value)&.strftime("%d/%m/%Y") || value.to_s.presence || "-"
   end
 end
