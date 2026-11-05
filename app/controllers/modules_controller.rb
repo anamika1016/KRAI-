@@ -8192,38 +8192,57 @@ class ModulesController < ApplicationController
       "Sub Activities",
       "Training Count",
       "Status",
-      "Training Dates",
+      "Training Date",
       "Last Training Date",
       "Training Register Upload",
       "Training Photo Upload with Geo Tag"
     ]
   end
 
+  # One row per training date. The dates used to arrive squashed into a single
+  # cell ("2026-07-05, 2026-08-14, 2026-09-21"), which cannot be sorted,
+  # filtered or pivoted in Excel. Every other column is repeated so each row
+  # still carries the farmer's full detail, and Training Count / Last Training
+  # Date keep reporting the farmer's totals. The View List table on the page is
+  # unchanged -- only this download expands.
   def training_participation_export_rows(rows)
-    Array(rows).map do |row|
-      [
-        row[:farmer_id],
-        row[:farmer_name],
-        row[:father_name],
-        row[:mobile_no],
-        row[:tracenet_no],
-        row[:ics],
-        row[:village],
-        row[:fcoc],
-        row[:cluster_incharge],
-        row[:jeevika_jankar_name].presence || row[:target_owner].presence || row[:vrp],
-        row[:registered_by],
-        row[:months],
-        row[:main_activities],
-        row[:sub_activities],
-        row[:attendance_count],
-        row[:status_label],
-        row[:training_dates],
-        row[:last_training_date],
-        Array(row[:training_register_urls]).join(", "),
-        Array(row[:training_photo_urls]).join(", ")
-      ]
+    Array(rows).flat_map do |row|
+      training_participation_export_dates(row).map do |training_date|
+        training_participation_export_row(row, training_date)
+      end
     end
+  end
+
+  # A farmer with no recorded date still gets one row rather than dropping out
+  # of the sheet entirely.
+  def training_participation_export_dates(row)
+    dates = row[:training_dates].to_s.split(",").map(&:strip).reject(&:blank?)
+    dates.presence || [row[:training_dates].presence || "-"]
+  end
+
+  def training_participation_export_row(row, training_date)
+    [
+      row[:farmer_id],
+      row[:farmer_name],
+      row[:father_name],
+      row[:mobile_no],
+      row[:tracenet_no],
+      row[:ics],
+      row[:village],
+      row[:fcoc],
+      row[:cluster_incharge],
+      row[:jeevika_jankar_name].presence || row[:target_owner].presence || row[:vrp],
+      row[:registered_by],
+      row[:months],
+      row[:main_activities],
+      row[:sub_activities],
+      row[:attendance_count],
+      row[:status_label],
+      training_date,
+      row[:last_training_date],
+      Array(row[:training_register_urls]).join(", "),
+      Array(row[:training_photo_urls]).join(", ")
+    ]
   end
 
   def training_participation_attachments_zip(rows)
