@@ -90,3 +90,111 @@ class TrainingParticipationExportDatesTest < ActiveSupport::TestCase
     @controller.send(:training_participation_export_rows, rows)
   end
 end
+
+# The same list showed the training date two different ways: the Training Form
+# List renders the JJ's entered date through bill_display_date ("31/10/2026")
+# while this list printed the stored value raw ("2026-10-31"), so the two
+# screens looked like they disagreed about the same training. Formatting at the
+# source fixes the page, the Excel and the CSV together.
+class TrainingParticipationDisplayDatesTest < ActiveSupport::TestCase
+  setup do
+    @controller = ModulesController.new
+    @controller.request = ActionDispatch::TestRequest.create
+  end
+
+  test "dates read the way the Training Form List renders the JJ's date" do
+    stored = ["2026-07-18", "2026-08-21", "2026-09-09", "2026-11-20"]
+
+    assert_equal stored.map { |date| @controller.send(:bill_display_date, date) },
+      display(stored)
+    assert_equal ["18/07/2026", "21/08/2026", "09/09/2026", "20/11/2026"], display(stored)
+  end
+
+  test "no raw ISO date survives" do
+    assert display(["2026-10-31"]).none? { |date| date.match?(/\A\d{4}-\d{2}-\d{2}\z/) }
+  end
+
+  test "dates come back oldest first so Last Training Date is the real latest" do
+    out = display(["2026-11-20", "2026-07-18", "2026-09-09"])
+
+    assert_equal ["18/07/2026", "09/09/2026", "20/11/2026"], out
+    assert_equal "20/11/2026", out.last
+  end
+
+  test "blank and missing values are dropped without blowing up" do
+    assert_equal ["31/10/2026"], display(["2026-10-31", "", nil, "   "])
+    assert_empty display([])
+    assert_empty display(nil)
+  end
+
+  # The export splits the joined string on commas, so the formatted value has
+  # to stay comma-free for one row per date to keep working.
+  test "the formatted dates still split into one export row each" do
+    joined = display(["2026-07-18", "2026-08-21"]).join(", ")
+    rows = @controller.send(:training_participation_export_rows,
+      [{ training_dates: joined, training_register_urls: [], training_photo_urls: [] }])
+
+    date_index = @controller.send(:training_participation_export_headers).index("Training Date")
+    assert_equal ["18/07/2026", "21/08/2026"], rows.map { |row| row[date_index] }
+  end
+
+  private
+
+  def display(values)
+    @controller.send(:training_participation_display_dates, values)
+  end
+end
+
+# Re-scan finding: formatting the 1+ Trainings list left the "Only 1 Training"
+# list still printing the stored "2026-10-31". Every status has to read the
+# JJ's date the same way, so this drives the real query for that status.
+class TrainingParticipationYellowDateTest < ActiveSupport::TestCase
+  setup do
+    @controller = ModulesController.new
+    @controller.request = ActionDispatch::TestRequest.create
+    admin = User.create!(first_name: "Yellow", last_name: "Date",
+      user_name: "yellow_date_#{SecureRandom.hex(3)}",
+      email: "yellow-date-#{SecureRandom.hex(3)}@example.test",
+      mobile_no: "9876500995", password: "secret", user_type: "admin", status: "Active")
+    @controller.instance_variable_set(:@current_app_user,
+      ApplicationController.new.send(:app_user_session_payload, admin))
+
+    @farmer = Afl.create!(farmer_name: "Yellow Farmer", fco_id: "1004", fco: "Sausar",
+      ics_id: "ics-1", ics_name: "ICS One", village_id: "v1", village_name: "Village One",
+      tracenet_no: "TN-YELLOW-1")
+    # Exactly one training -> this farmer lands in "Only 1 Training".
+    ModuleRecord.create!(module_slug: "training-form", data: {
+      "month" => "October", "training_date" => "2026-10-31",
+      "main_activity" => "Farmers' Training", "sub_activity" => "Module-1",
+      "training_method" => "General Training/Meeting", "trainer_name" => "Prachi Kale",
+      "selected_farmer_ids" => [@farmer.id.to_s]
+    })
+  end
+
+  test "the Only 1 Training list shows the JJ's date the way the Training Form List does" do
+    row = yellow_rows.find { |candidate| candidate[:farmer_id].to_s == @farmer.id.to_s }
+    skip "query returned no yellow row in this environment" if row.nil?
+
+    assert_equal "31/10/2026", row[:training_dates]
+    assert_equal "31/10/2026", row[:last_training_date]
+    refute_match(/\A\d{4}-\d{2}-\d{2}\z/, row[:training_dates], "no raw ISO date may survive")
+    assert_equal @controller.send(:bill_display_date, "2026-10-31"), row[:training_dates]
+  end
+
+  test "its export row carries the same formatted date" do
+    row = yellow_rows.find { |candidate| candidate[:farmer_id].to_s == @farmer.id.to_s }
+    skip "query returned no yellow row in this environment" if row.nil?
+
+    headers = @controller.send(:training_participation_export_headers)
+    exported = @controller.send(:training_participation_export_rows, [row])
+    assert_equal 1, exported.size
+    assert_equal "31/10/2026", exported.first[headers.index("Training Date")]
+  end
+
+  private
+
+  def yellow_rows
+    @yellow_rows ||= Array(@controller.send(:farmer_training_participation_rows_from_sql,
+      "yellow", month_name: "October", fcoc_name: "Sausar"))
+  end
+end

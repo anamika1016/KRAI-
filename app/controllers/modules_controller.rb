@@ -1389,7 +1389,7 @@ class ModulesController < ApplicationController
     end
     if @mapped_farmer_details && request.format.xlsx?
       send_xlsx(headers: @mapped_farmer_details.columns, rows: @mapped_farmer_details.rows,
-        filename: "#{@training_participation_status}-farmers-#{selected_month.presence || 'August'}.xlsx", sheet_name: "Farmer Details")
+        filename: "#{@training_participation_status}-farmers-#{selected_month.presence || 'all-months'}.xlsx", sheet_name: "Farmer Details")
       return
     end
 
@@ -6997,8 +6997,7 @@ class ModulesController < ApplicationController
         # the count itself already included every later session. Sort every
         # distinct date this query found for the farmer and use the actual
         # latest one for "Last Training Date".
-        training_date_values = row["training_dates_raw"].to_s.split("|").map(&:strip).reject(&:blank?)
-        sorted_training_dates = training_date_values.sort_by { |date| parse_module_date(date) || Date.new(1, 1, 1) }
+        sorted_training_dates = training_participation_display_dates(row["training_dates_raw"].to_s.split("|"))
         {
           farmer_id: row["farmer_id"].to_s,
           farmer_name: row["farmer_name"].to_s.presence || "Farmer ##{row['farmer_id']}",
@@ -7105,6 +7104,9 @@ class ModulesController < ApplicationController
       )
 
       return raw_rows.map do |row|
+        # Same formatting as the 1+ Trainings list above, so the JJ's date
+        # reads the same on every status and matches the Training Form List.
+        training_date = training_participation_display_dates([row["training_date"]]).first
         {
           farmer_id: row["farmer_id"].to_s,
           farmer_name: row["farmer_name"].to_s.presence || "Farmer ##{row['farmer_id']}",
@@ -7125,8 +7127,8 @@ class ModulesController < ApplicationController
           attendance_count: row["training_count"].to_i,
           status: "yellow",
           status_label: "Only 1 Training",
-          training_dates: row["training_date"].to_s.presence || "-",
-          last_training_date: row["training_date"].to_s.presence || "-",
+          training_dates: training_date.presence || "-",
+          last_training_date: training_date.presence || "-",
           training_register_urls: module_upload_public_urls(row["training_register_urls"]),
           training_photo_urls: module_upload_public_urls(row["training_photo_urls"])
         }
@@ -7712,7 +7714,7 @@ class ModulesController < ApplicationController
       farmer = farmers_by_id[farmer_id]
       attendance_count = membership[:attendance_count].to_i
       status = training_participation_status_for_count(attendance_count)
-      dates = membership[:training_dates].sort_by { |date| parse_module_date(date)&.to_time || Time.zone.local(1900, 1, 1) }
+      dates = training_participation_display_dates(membership[:training_dates])
 
       {
         farmer_id: farmer_id,
@@ -8215,6 +8217,19 @@ class ModulesController < ApplicationController
 
   # A farmer with no recorded date still gets one row rather than dropping out
   # of the sheet entirely.
+  # The Training Form List shows the date the Jeevika Jankar entered on the
+  # form as dd/mm/yyyy. This list stored the same value but printed the raw
+  # "2026-10-31", so the two screens disagreed about the same training. Format
+  # once here and the page, the Excel and the CSV all read the JJ's date the
+  # way the rest of the app writes it.
+  def training_participation_display_dates(values)
+    Array(values)
+      .map { |value| value.to_s.strip }
+      .reject(&:blank?)
+      .sort_by { |value| parse_module_date(value) || Date.new(1, 1, 1) }
+      .filter_map { |value| bill_display_date(value).presence || value }
+  end
+
   def training_participation_export_dates(row)
     dates = row[:training_dates].to_s.split(",").map(&:strip).reject(&:blank?)
     dates.presence || [row[:training_dates].presence || "-"]
