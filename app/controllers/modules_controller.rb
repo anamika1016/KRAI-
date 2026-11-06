@@ -1741,6 +1741,10 @@ class ModulesController < ApplicationController
 
     @records = module_records_required_for_show? ? module_records : []
     @jeevika_bill_user_filters = !admin_dashboard_user? if @slug == "jeevika-jankar-bill-list"
+    # Admin isn't anyone's named approver in the chain, so the personal "is it
+    # my turn" filter always came back empty for them -- they see the whole
+    # pending queue instead, same bills everyone else's turn is waiting on.
+    @jeevika_pending_bill_list_admin_view = admin_dashboard_user? if @slug == "jeevika-jankar-pending-bill-list"
     prepare_lg_directory_data if @slug == "lg-directory-list"
     prepare_vrp_bill_data if @slug == "vrp-bill-add"
     prepare_jeevika_jankar_bill_data if @slug == "jeevika-jankar-bill-process"
