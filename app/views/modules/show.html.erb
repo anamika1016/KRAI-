@@ -374,7 +374,12 @@
         <h2>Jeevika Jankar Bill Approval Progress</h2>
         <div class="approval-progress-grid">
           <% jeevika_bill_approval_steps(detail_record).each do |step| %>
-            <% step_history = jeevika_bill_approval_history(detail_record).find { |history| approval_sequence_from_level(history.data["approval_level"]) == approval_sequence_from_level(step.data["approval_level"]) && ["Approved", "Rejected", "Returned"].include?(history.data["action"]) } %>
+            <%# A step's card must only reflect the CURRENT submission cycle --
+                jeevika_bill_approval_history keeps every past cycle too, so after
+                a Rejected bill was edited and sent for approval again, this card
+                kept showing the old rejection (cross icon, stale timestamp)
+                instead of resetting to pending/current for the fresh attempt. %>
+            <% step_history = jeevika_bill_current_cycle_approval_history(detail_record).find { |history| approval_sequence_from_level(history.data["approval_level"]) == approval_sequence_from_level(step.data["approval_level"]) && ["Approved", "Rejected", "Returned"].include?(history.data["action"]) } %>
             <% closing_action = step_history&.data&.[]("action") %>
             <% state = ["Rejected", "Returned"].include?(closing_action) ? "rejected" : (step_history ? "approved" : (jeevika_bill_current_approval_step(detail_record)&.id == step.id ? "current" : "pending")) %>
             <div class="approval-progress-card <%= state %>">
@@ -1877,7 +1882,7 @@
     <% default_bill_month = recent_month %>
     <% bill_months = (bill_months + Array(@bill_list_master_months) + [default_bill_month, params[:bill_month].presence_in(Date::MONTHNAMES.compact)]).compact_blank.map(&:strip).uniq { |month| month.downcase } %>
     <% bill_months.sort_by! { |month| Date::MONTHNAMES.index { |name| name.to_s.casecmp(month.to_s).zero? } || 99 } %>
-    <% selected_bill_status = params[:bill_status].presence_in(["pending", "final-approved"]) || "pending" %>
+    <% selected_bill_status = params[:bill_status].presence_in(["pending", "final-approved", "rejected"]) || "pending" %>
     <% selected_record_state = params[:record_state].presence_in(["Active", "Inactive"]) %>
     <% dashboard_status_link = params[:bill_status].present? || params[:record_state].present? %>
     <% selected_bill_month = params[:bill_month].presence || (dashboard_status_link ? nil : default_bill_month) %>
@@ -1886,7 +1891,11 @@
       <% bill_records = bill_records.select { |record| selected_bill_month.blank? || selected_bill_month == "all" || (record.data["bill_month"].presence || "-").to_s.strip.casecmp(selected_bill_month.to_s.strip).zero? } %>
       <% bill_records = bill_records.select do |record|
         row_status = jeevika_bill_status_label(record).to_s.downcase
-        selected_bill_status == "final-approved" ? row_status.include?("final approved") : (row_status.include?("pending") || row_status.include?("not sent for approval"))
+        case selected_bill_status
+        when "final-approved" then row_status.include?("final approved")
+        when "rejected" then row_status.include?("rejected")
+        else row_status.include?("pending") || row_status.include?("not sent for approval")
+        end
       end %>
       <% bill_records = bill_records.select { |record| selected_record_state.blank? || (record.data["record_state"].presence || "Active").to_s.casecmp(selected_record_state).zero? } %>
     <% end %>
@@ -1922,6 +1931,7 @@
             <select name="bill_status" data-bill-status-filter onchange="this.form.requestSubmit()">
               <option value="pending" <%= "selected" if selected_bill_status == "pending" %>>Pending</option>
               <option value="final-approved" <%= "selected" if selected_bill_status == "final-approved" %>>Final Approved</option>
+              <option value="rejected" <%= "selected" if selected_bill_status == "rejected" %>>Rejected</option>
             </select>
           </label>
         <% end %>

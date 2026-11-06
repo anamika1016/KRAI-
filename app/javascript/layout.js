@@ -166,13 +166,21 @@ if (!window.__vrpLayoutGlobalsReady) {
 }
 
 const vrpUiLabel = "Jeevika Jankar";
+// "Timely Activity & Reporting" (the Observation Parameter name) is the one
+// place "Activity" is a fixed proper-noun label, not the generic work-activity
+// term this app renames everywhere else -- the blanket activity/activities
+// swap below was turning it into "Timely Major Work Indicator & Reporting".
+// Shield that exact phrase through the swap, then put it back untouched.
+const timelyActivityReportingPlaceholder = "__TIMELY_ACTIVITY_REPORTING__";
 const replaceVrpUiText = (value) => `${value || ""}`
+  .replace(/\bTimely Activity & Reporting\b/gi, timelyActivityReportingPlaceholder)
   .replace(/\bactivities\b/gi, "Major Work Indicators")
   .replace(/\bactivity\b/gi, "Major Work Indicator")
   .replace(/\bvrp\b/gi, vrpUiLabel)
   .replace(/वीआरपी/g, vrpUiLabel)
   .replace(/व्हीआरपी/g, vrpUiLabel)
-  .replace(/ଭିଆରପି/g, vrpUiLabel);
+  .replace(/ଭିଆରପି/g, vrpUiLabel)
+  .replaceAll(timelyActivityReportingPlaceholder, "Timely Activity & Reporting");
 
 const fetchJson = async (url, params = {}) => {
   const requestUrl = new URL(url, window.location.origin);

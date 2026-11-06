@@ -17,6 +17,7 @@ class ModulesController < ApplicationController
                 :jeevika_bill_status_label, :jeevika_bill_status_class, :jeevika_bill_rows,
                 :jeevika_bill_detail_rows, :jeevika_bill_current_approval_step,
                 :jeevika_bill_approval_history, :jeevika_bill_current_approver?,
+                :jeevika_bill_current_cycle_approval_history,
                 :jeevika_bill_approval_steps, :jeevika_bill_summary, :jeevika_bill_approver_display_name,
                 :jeevika_bill_attachment_rows, :jeevika_bill_observation_row, :jeevika_jankar_display_name,
                 :jeevika_jankar_vrp_label, :jeevika_bill_time_slot_rows,
@@ -8276,26 +8277,38 @@ class ModulesController < ApplicationController
   end
 
   def training_participation_attachment_files(rows)
+    # One training session's register/photo upload is the same URL on every
+    # farmer row who attended it -- a session with 30 farmers read and zipped
+    # that file 30 times, ballooning the zip (and the time/memory to build it)
+    # well past what the distinct attachments actually need. Read each unique
+    # URL from disk once, no matter how many rows reference it.
+    seen_urls = {}
     used_names = Hash.new(0)
 
-    Array(rows).flat_map do |row|
+    Array(rows).each do |row|
       attachment_urls = Array(row[:training_register_urls]) + Array(row[:training_photo_urls])
-      attachment_urls.filter_map do |url|
-        attachment = module_upload_attachment_file(url)
-        next if attachment.blank?
+      attachment_urls.each do |url|
+        next if url.blank? || seen_urls.key?(url)
 
-        base_name = attachment[:name].presence || "attachment"
-        used_names[base_name] += 1
-        file_name = if used_names[base_name] > 1
-          extension = File.extname(base_name)
-          stem = File.basename(base_name, extension)
-          "#{stem}-#{used_names[base_name]}#{extension}"
-        else
-          base_name
-        end
-
-        { name: file_name, content: attachment[:content] }
+        seen_urls[url] = true
       end
+    end
+
+    seen_urls.keys.filter_map do |url|
+      attachment = module_upload_attachment_file(url)
+      next if attachment.blank?
+
+      base_name = attachment[:name].presence || "attachment"
+      used_names[base_name] += 1
+      file_name = if used_names[base_name] > 1
+        extension = File.extname(base_name)
+        stem = File.basename(base_name, extension)
+        "#{stem}-#{used_names[base_name]}#{extension}"
+      else
+        base_name
+      end
+
+      { name: file_name, content: attachment[:content] }
     end
   end
 
@@ -11944,12 +11957,29 @@ class ModulesController < ApplicationController
     step_sequence = approval_sequence_from_level(step.data["approval_level"])
     step_approver = step.data["approver_approved_by"]
 
-    jeevika_bill_approval_history(record).any? do |history|
+    jeevika_bill_current_cycle_approval_history(record).any? do |history|
       next false unless ["Approved", "Rejected"].include?(history.data["action"].to_s)
 
       approval_sequence_from_level(history.data["approval_level"]) == step_sequence ||
         dashboard_user_label_matches?(history.data["approver"], [step_approver])
     end
+  end
+
+  # A Rejected bill's old "Rejected" history entry still matched step 1's
+  # sequence/approver, so after the owner edited the bill and sent it for
+  # approval again, step 1 looked already closed (from the PRIOR cycle) and
+  # jeevika_bill_current_approval_step skipped straight past the L1 approver
+  # -- with a single-step chain this left current_approval_step returning nil,
+  # so jeevika_bill_current_approver? was false for everyone and the bill
+  # could never actually be approved again. Scope "is this step closed" to
+  # only the history recorded since the most recent "Sent for Approval",
+  # so a prior rejection cycle never leaks into the fresh resubmission.
+  def jeevika_bill_current_cycle_approval_history(record)
+    history = jeevika_bill_approval_history(record)
+    latest_sent_index = history.rindex { |entry| entry.data["action"].to_s == "Sent for Approval" }
+    return history if latest_sent_index.nil?
+
+    history[latest_sent_index..]
   end
 
   def jeevika_bill_approved_sequences(record)
@@ -13660,7 +13690,14 @@ class ModulesController < ApplicationController
     return true if admin_dashboard_user?
     return false unless record&.data.present?
     if module_cluster_incharge_login? && !dashboard_agronomics_login? && !dashboard_source_fcoc_login? && !vrp_login_user?
-      return jeevika_bill_created_by_current_user?(record)
+      return true if jeevika_bill_created_by_current_user?(record)
+      # A bill someone else (e.g. an admin) submitted on behalf of a JJ in this
+      # CC's own cluster was invisible here -- this branch only ever checked
+      # "did I personally submit it", never the cluster match that scoped_jeevika_vrp_visible?
+      # already applies for every other login type. The CC could then never find,
+      # edit, or resend a bill for their own JJ after a rejection.
+      vrp = jeevika_bill_vrp_for_visibility(record)
+      return vrp.present? && module_cluster_vrp_visible?(vrp)
     end
     vrp = jeevika_bill_vrp_for_visibility(record)
     return false unless vrp

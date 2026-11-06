@@ -2919,6 +2919,7 @@ body {
 .approval-progress-section {
   display: grid;
   gap: 16px;
+  min-width: 0;
 }
 
 .approval-progress-section h2 {
@@ -11897,6 +11898,11 @@ body {
   border: 1px solid var(--vrp-line);
   border-radius: 14px;
   box-shadow: var(--vrp-shadow);
+  /* A grid item defaults to min-width: auto, so the observation table's full
+     intrinsic width (5 columns, nowrap headers) forced this whole section --
+     and the page's grid track -- wider than the viewport at browser zoom
+     instead of letting .table-shell's own horizontal scrollbar handle it. */
+  min-width: 0;
 }
 .bill-observation-header {
   display: flex;
