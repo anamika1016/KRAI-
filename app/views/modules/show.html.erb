@@ -2085,7 +2085,11 @@
                         <button type="button" class="list-btn deactive" data-open-approval-modal data-approval-action="reject" data-approval-url="<%= row[:reject_path] %>">Reject</button>
                       </div>
                     <% else %>
-                      -
+                      <%# Admin (or anyone else not named in the chain) can't act on
+                          someone else's turn -- show who it is actually pending
+                          with instead of a blank "-", same name the Status column
+                          already carries ("Pending at <name>"). %>
+                      <%= row[:status].to_s[/\APending at (.+)\z/i, 1] || "-" %>
                     <% end %>
                   </td>
                   <td>
