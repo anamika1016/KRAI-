@@ -8562,23 +8562,35 @@ class ModulesController < ApplicationController
     farmer_profiles_by_id = dashboard_farmer_profiles_by_id(farmer_ids)
 
     rows = targets.flat_map do |target|
+      # training_record_matches_dashboard_target? never reads its target_farmer_ids
+      # argument -- its result depends only on (record, target), so every farmer
+      # under this target was getting the identical matching_records value back.
+      # Computing it once per target instead of once per farmer skips re-scanning
+      # every training record for each additional farmer on the same target.
+      matching_records = records.select do |record|
+        training_record_matches_dashboard_target?(record, target, [])
+      end
+      summary_rows = matching_records.map { |record| training_summary(record) }
+      # matching_records comes from dashboard_training_participation_records,
+      # which is ordered by created_at (newest first) -- not by training_date.
+      # Picking .last off that order picked whichever record happened to be
+      # entered first, not the actual latest training date, so a farmer
+      # trained July through October could show July here. Sort by the
+      # parsed training date instead so "last" means chronologically last.
+      training_dates = matching_records.map do |record|
+        summary = training_summary(record)
+        bill_display_date(summary[:training_date]).presence || bill_display_date(record.created_at)
+      end.compact_blank.uniq.sort_by { |date| parse_module_date(date) || Date.new(1, 1, 1) }
+      # Same reasoning: these only depend on matching_records (itself only on
+      # target), so every farmer on this target shares the same attachments --
+      # build the list once instead of re-scanning matching_records per farmer.
+      training_register_urls = matching_records.flat_map { |record| module_upload_public_urls(record.data["training_register_upload"]) }.compact_blank.uniq
+      training_photo_urls = matching_records.flat_map { |record| module_upload_public_urls(record.data["training_photo_upload_with_geo_tag"]) }.compact_blank.uniq
+      trained = matching_records.any?
+
       target_farmer_ids(target).map do |farmer_id|
         farmer = farmers_by_id[farmer_id.to_s]
         farmer_profile = farmer_profiles_by_id[farmer_id.to_s] || {}
-        matching_records = records.select do |record|
-          training_record_matches_dashboard_target?(record, target, [farmer_id.to_s])
-        end
-        summary_rows = matching_records.map { |record| training_summary(record) }
-        # matching_records comes from dashboard_training_participation_records,
-        # which is ordered by created_at (newest first) -- not by training_date.
-        # Picking .last off that order picked whichever record happened to be
-        # entered first, not the actual latest training date, so a farmer
-        # trained July through October could show July here. Sort by the
-        # parsed training date instead so "last" means chronologically last.
-        training_dates = matching_records.map do |record|
-          summary = training_summary(record)
-          bill_display_date(summary[:training_date]).presence || bill_display_date(record.created_at)
-        end.compact_blank.uniq.sort_by { |date| parse_module_date(date) || Date.new(1, 1, 1) }
 
         {
           farmer_id: farmer_id.to_s,
@@ -8594,9 +8606,9 @@ class ModulesController < ApplicationController
           sub_activity: target.activity_name.presence || "-",
           training_date: training_dates.last.presence || "-",
           training_dates: training_dates.join(", ").presence || "-",
-          training_register_urls: matching_records.flat_map { |record| module_upload_public_urls(record.data["training_register_upload"]) }.compact_blank.uniq,
-          training_photo_urls: matching_records.flat_map { |record| module_upload_public_urls(record.data["training_photo_upload_with_geo_tag"]) }.compact_blank.uniq,
-          trained: matching_records.any?,
+          training_register_urls: training_register_urls,
+          training_photo_urls: training_photo_urls,
+          trained: trained,
           participation_count: summary_rows.size
         }
       end
