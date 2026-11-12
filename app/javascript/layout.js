@@ -6029,7 +6029,11 @@ function initDeferredLayoutPage() {
 
     const money = (value) => value.toFixed(2);
     const selectedDate = () => String(dateSelect?.value || "");
-    const rowMatchesSelectedDate = (row) => selectedDate() && row.dataset.paymentBillDate === selectedDate();
+    // Rows are grouped by bill month (data-payment-month); older markup used
+    // the approval date, which stays as the fallback.
+    const rowPeriod = (row) => row.dataset.paymentMonth ?? row.dataset.paymentBillDate;
+    const periodLabel = dateSelect?.name?.includes("payment_month") ? "Bill Month" : "Approval Date";
+    const rowMatchesSelectedDate = (row) => selectedDate() && rowPeriod(row) === selectedDate();
     const selectableRows = () => rows.filter(rowMatchesSelectedDate);
     const selectableCheckboxes = () => selectableRows()
       .map((row) => row.querySelector("[data-payment-user-checkbox]"))
@@ -6059,7 +6063,7 @@ function initDeferredLayoutPage() {
       const date = selectedDate();
 
       rows.forEach((row) => {
-        const matches = date && row.dataset.paymentBillDate === date;
+        const matches = date && rowPeriod(row) === date;
         row.style.display = matches ? "" : "none";
         const checkbox = row.querySelector("[data-payment-user-checkbox]");
         if (!checkbox) return;
@@ -6084,7 +6088,7 @@ function initDeferredLayoutPage() {
 
     selectAllButton?.addEventListener("click", () => {
       if (!selectedDate()) {
-        window.alert("Approval Date select karein.");
+        window.alert(`${periodLabel} select karein.`);
         dateSelect?.focus();
         return;
       }
@@ -6095,7 +6099,7 @@ function initDeferredLayoutPage() {
     selectAllCheckbox?.addEventListener("change", () => {
       if (!selectedDate()) {
         selectAllCheckbox.checked = false;
-        window.alert("Approval Date select karein.");
+        window.alert(`${periodLabel} select karein.`);
         dateSelect?.focus();
         return;
       }
@@ -6112,7 +6116,7 @@ function initDeferredLayoutPage() {
       if (checkedCount > 0) return;
 
       event.preventDefault();
-      window.alert(dateSelect?.value ? "Kam se kam ek Jeevika Jankar select karein." : "Approval Date select karein.");
+      window.alert(dateSelect?.value ? "Kam se kam ek Jeevika Jankar select karein." : `${periodLabel} select karein.`);
     });
 
     dateSelect?.addEventListener("change", syncPaymentRows);

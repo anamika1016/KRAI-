@@ -7,7 +7,7 @@
       <div>
         <p class="vrp-eyebrow"><%= @module[:group] %></p>
         <h1><%= @slug == "new-user" ? "Registration" : @module[:title] %></h1>
-        <p><%= @module[:purpose] %></p>
+        <% if @module[:purpose].present? %><p><%= @module[:purpose] %></p><% end %>
       </div>
       <% if @slug == "ics-to-mapping" %>
         <div class="module-hero-actions">
