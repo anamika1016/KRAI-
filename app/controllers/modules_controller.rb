@@ -13770,7 +13770,7 @@ class ModulesController < ApplicationController
       end
 
       if JeevikaPaymentMailRelay.enabled?
-        JeevikaPaymentMailRelay.deliver!(recipient, details, test_mode: JeevikaPaymentMailer.test_recipient.present?)
+        JeevikaPaymentMailRelay.deliver!(recipient, details)
       else
         JeevikaPaymentMailer.payment_updated(recipient, details).deliver_now
       end
