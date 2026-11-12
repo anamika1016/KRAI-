@@ -33,7 +33,7 @@ class JeevikaPaymentMailer < ApplicationMailer
   end
 
   def self.from_address
-    ENV["MAIL_FROM"].presence || ENV["SMTP_USERNAME"].presence || "notification@asabhopal.org"
+    ENV["MAIL_FROM"].presence || ENV["SMTP_USERNAME"].presence || "notification@ploughmanagro.com"
   end
 
   # details: hash built by ModulesController#jeevika_payment_mail_details
