@@ -3,14 +3,14 @@
 # password must be supplied, through an environment variable; it is never
 # stored in code.
 #   SMTP_PASSWORD  password of notification@ploughmanagro.com   (required)
-#   SMTP_ADDRESS   default smtp.rediffmailpro.com
+#   SMTP_ADDRESS   default smtp.gmail.com (ploughmanagro.com is on Google Workspace)
 #   SMTP_PORT      default 587 (STARTTLS); 465 uses SSL
 #   SMTP_USERNAME  default notification@ploughmanagro.com
 #   MAIL_FROM      default SMTP_USERNAME
 #   SMTP_AUTH      default "login"
 # Without SMTP_PASSWORD the app keeps Rails' default delivery settings.
 SMTP_DEFAULTS = {
-  address: "smtp.rediffmailpro.com",
+  address: "smtp.gmail.com",
   port: "587",
   user_name: "notification@ploughmanagro.com"
 }.freeze
