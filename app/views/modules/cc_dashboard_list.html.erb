@@ -1,0 +1,34 @@
+<% content_for :title, "CC Target / Achievement View List" %>
+<section class="dashboard-page">
+  <div class="dashboard-topbar">
+    <h1>CC Target / Achievement View List</h1>
+    <div class="dashboard-actions">
+      <%= link_to "Back to Dashboard", dashboard_path(request.query_parameters.except("cc_list", "format")), class: "list-btn active" %>
+      <%= link_to "Export Excel", dashboard_path(request.query_parameters.except("format").merge(cc_list: "true", format: :xlsx)), class: "list-btn export" %>
+    </div>
+  </div>
+  <%= form_with url: dashboard_path, method: :get, class: "module-card", local: true do %>
+    <% request.query_parameters.except("month", "format", "cc_list").each do |key, value| %>
+      <%= hidden_field_tag key, value if value.is_a?(String) %>
+    <% end %>
+    <%= hidden_field_tag :cc_list, "true" %>
+    <%= label_tag :cc_report_month, "Month" %>
+    <%= select_tag :month, options_for_select([["All Months", "all"]] + @filter_month_options.map { |month| [month, month] }, @dashboard_month_filter_value.presence || "all"), id: "cc_report_month" %>
+    <%= submit_tag "Apply", class: "list-btn active", name: nil %>
+  <% end %>
+  <section class="module-card">
+    <p>CC Target: <%= @cc_dashboard_report.target %> · CC Achievement: <%= @cc_dashboard_report.achievement %></p>
+    <p>Training columns show Target / Achievement. JJ Achievement is the sum of General Training/Meeting, Input Demo INM, Input Demo PM and FFS Exposure sessions.</p>
+    <div class="table-shell">
+      <table class="module-table compact-table">
+        <thead><tr><% CcDashboardReport::HEADERS.each do |header| %><th><%= header %></th><% end %></tr></thead>
+        <tbody>
+          <% @cc_dashboard_report.rows.each do |row| %>
+            <tr><% CcDashboardReport::HEADERS.each do |header| %><td><%= row[header] %></td><% end %></tr>
+          <% end %>
+          <% if @cc_dashboard_report.rows.empty? %><tr><td colspan="<%= CcDashboardReport::HEADERS.size %>">No JJ data found for the selected filters.</td></tr><% end %>
+        </tbody>
+      </table>
+    </div>
+  </section>
+</section>

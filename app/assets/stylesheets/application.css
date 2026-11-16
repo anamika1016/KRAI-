@@ -12062,3 +12062,23 @@ body {
   line-height: 1.5;
   white-space: pre-wrap;
 }
+/* Only the CC dashboard's new performance cards. */
+#cc_dashboard_boxes { padding: 22px; margin-bottom: 20px; }
+#cc_dashboard_boxes .cc-overview-heading { display: flex; align-items: center; justify-content: space-between; gap: 16px; margin-bottom: 18px; }
+#cc_dashboard_boxes .cc-overview-eyebrow { margin: 0 0 5px; font-size: 10px; font-weight: 700; letter-spacing: .14em; color: #52716c; }
+#cc_dashboard_boxes h2 { margin: 0; font-size: 18px; }
+#cc_dashboard_boxes .cc-overview-note { font-size: 12px; color: #65778a; }
+#cc_dashboard_boxes .cc-overview-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 18px; }
+#cc_dashboard_boxes .cc-overview-card { border: 1px solid #c8dcec; border-radius: 12px; padding: 20px 22px 0; background: linear-gradient(120deg, #edf5fd, #f8fbff); color: #193f64; overflow: hidden; }
+#cc_dashboard_boxes .cc-overview-achievement { border-color: #bcded1; background: linear-gradient(120deg, #eaf7ef, #f7fcf9); color: #206249; }
+#cc_dashboard_boxes .cc-overview-card-top { display: flex; align-items: center; justify-content: space-between; font-size: 14px; font-weight: 700; }
+#cc_dashboard_boxes .cc-overview-icon { display: grid; place-items: center; width: 34px; height: 34px; border: 1px solid currentColor; border-radius: 10px; font-size: 21px; }
+#cc_dashboard_boxes .cc-overview-value { display: block; margin-top: 6px; font-size: 36px; line-height: 1.25; font-variant-numeric: tabular-nums; }
+#cc_dashboard_boxes .cc-overview-card p { margin: 7px 0 18px; font-size: 12px; opacity: .8; }
+#cc_dashboard_boxes .cc-overview-link { display: flex; justify-content: space-between; align-items: center; border-top: 1px solid #cbdde4; padding: 12px 0; color: inherit; font-size: 12px; font-weight: 700; text-decoration: none; }
+#cc_dashboard_boxes .cc-overview-link:hover { text-decoration: underline; }
+#cc_dashboard_boxes .cc-overview-link:focus-visible { outline: 2px solid currentColor; outline-offset: 3px; }
+@media (max-width: 640px) {
+  #cc_dashboard_boxes .cc-overview-grid { grid-template-columns: 1fr; }
+  #cc_dashboard_boxes .cc-overview-heading { align-items: flex-start; flex-direction: column; gap: 8px; }
+}

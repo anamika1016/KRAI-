@@ -913,6 +913,24 @@ class ModulesController < ApplicationController
 
     @filtered_vrps = v_scope
     @filtered_targets = t_scope
+    if dashboard_cluster_coordinator_scope?
+      @cc_dashboard_report = CcDashboardReport.new(targets: t_scope, vrps: v_scope, month: @dashboard_month_filter_value)
+      if params[:cc_list] == "true"
+        respond_to do |format|
+          format.html { render :cc_dashboard_list }
+          format.json { render json: { success: true, records: @cc_dashboard_report.rows } }
+          format.xlsx do
+            send_xlsx(headers: CcDashboardReport::HEADERS,
+              rows: @cc_dashboard_report.rows.map { |row| CcDashboardReport::HEADERS.map { |header| row[header] } },
+              filename: "cc-target-achievement.xlsx", sheet_name: "CC Performance")
+          end
+        end
+        return
+      end
+    elsif params[:cc_list] == "true"
+      head :forbidden
+      return
+    end
     if params[:demonstration_list] == "true"
       @demonstration_method_report = DemonstrationMethodReport.new(targets: t_scope, month: @dashboard_month_filter_value)
       @demonstration_method_rows = @demonstration_method_report.rows
