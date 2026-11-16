@@ -27,7 +27,8 @@ class CcDashboardReportUnitTest < Minitest::Test
       assert_equal 4, report.achievement
       assert_equal 8, report.jj_target
       assert_equal 6, report.jj_achievement
-      assert_equal ["CC Target", "CC Achievement", "JJ Target", "JJ Achievement"], CcDashboardReport::HEADERS[2, 4]
+      assert_equal ["CC Target", "CC Achievement", "Total OPG JJ Target", "Total OPG JJ Achievement"], CcDashboardReport::HEADERS[1, 4]
+      refute_includes CcDashboardReport::HEADERS, "Total OPG"
       assert_equal ["august", "september"], calls
       assert_equal ["Own JJ", "Empty JJ"], report.rows.map { |row| row["JJ Name"] }
       assert_equal 7, report.rows.first["Total OPG"]

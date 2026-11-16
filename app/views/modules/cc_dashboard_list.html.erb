@@ -18,7 +18,6 @@
   <% end %>
   <section class="module-card">
     <p>CC Target: <%= @cc_dashboard_report.target %> · CC Achievement: <%= @cc_dashboard_report.achievement %></p>
-    <p>Training columns show Target / Achievement. JJ Achievement is the sum of General Training/Meeting, Input Demo INM, Input Demo PM and FFS Exposure sessions.</p>
     <div class="table-shell">
       <table class="module-table compact-table">
         <thead><tr><% CcDashboardReport::HEADERS.each do |header| %><th><%= header %></th><% end %></tr></thead>

@@ -1,5 +1,5 @@
 class CcDashboardReport
-  HEADERS = ["JJ Name", "Total OPG", "CC Target", "CC Achievement", "JJ Target", "JJ Achievement",
+  HEADERS = ["JJ Name", "CC Target", "CC Achievement", "Total OPG JJ Target", "Total OPG JJ Achievement",
     "OPG Training", "General Training/Meeting", "Input Demo INM", "Input Demo PM", "FFS Exposure"].freeze
 
   def initialize(targets:, vrps:, month:)
@@ -25,8 +25,8 @@ class CcDashboardReport
         {
           "JJ Name" => jj.name, "Total OPG" => opg,
           "CC Target" => total.call("CC Target"),
-          "JJ Target" => total.call("OPG Target"),
-          "JJ Achievement" => total.call("OPG Achievement"),
+          "Total OPG JJ Target" => total.call("OPG Target"),
+          "Total OPG JJ Achievement" => total.call("OPG Achievement"),
           "CC Achievement" => total.call("CC Achievement"),
           "OPG Training" => "#{opg} / #{total.call('OPG Achievement')}",
           "General Training/Meeting" => "#{total.call('General Training/Meeting Target')} / #{total.call('General Training/Meeting Achievement')}",
@@ -47,10 +47,10 @@ class CcDashboardReport
   end
 
   def jj_target
-    rows.sum { |row| row["JJ Target"] }
+    rows.sum { |row| row["Total OPG JJ Target"] }
   end
 
   def jj_achievement
-    rows.sum { |row| row["JJ Achievement"] }
+    rows.sum { |row| row["Total OPG JJ Achievement"] }
   end
 end
