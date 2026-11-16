@@ -503,16 +503,16 @@
   <% if @cc_dashboard_report.present? %>
     <section class="module-card" id="cc_dashboard_boxes" aria-label="CC Target and Achievement">
       <div class="cc-overview-heading">
-        <div><p class="cc-overview-eyebrow">CLUSTER COORDINATOR</p><h2>Your CC Performance</h2></div>
+        <div><p class="cc-overview-eyebrow">CLUSTER COORDINATOR</p><h2>CC &amp; JJ Performance</h2></div>
         <%= link_to "View List →", dashboard_path(request.query_parameters.except("format").merge(cc_list: "true")), class: "list-btn active", data: { dashboard_card: true } %>
       </div>
       <div class="cc-overview-grid">
-        <% { "CC Target" => @cc_dashboard_report.target, "CC Achievement" => @cc_dashboard_report.achievement, "JJ Target" => @cc_dashboard_report.jj_target, "JJ Achievement" => @cc_dashboard_report.jj_achievement }.each do |title, value| %>
+        <% { "CC Target" => @cc_dashboard_report.target, "CC Achievement" => @cc_dashboard_report.achievement, "Total JJ" => @cc_dashboard_total_jj, "JJ Target" => @cc_dashboard_report.jj_target, "JJ Achievement" => @cc_dashboard_report.jj_achievement }.each do |title, value| %>
           <% target_card = title.end_with?("Target") %>
           <article class="cc-overview-card <%= target_card ? 'cc-overview-target' : 'cc-overview-achievement' %>">
             <div class="cc-overview-card-top"><span><%= title %></span><span class="cc-overview-icon" aria-hidden="true"><%= target_card ? '◎' : '✓' %></span></div>
             <strong class="cc-overview-value"><%= value %></strong>
-            <p><%= title.start_with?("JJ") ? (target_card ? 'Assigned JJ training sessions' : 'Completed JJ training sessions') : (target_card ? 'Assigned CC target across your JJ' : 'Completed CC training sessions') %></p>
+            <p><%= title == "Total JJ" ? 'All JJ mapped under you' : (title.start_with?("JJ") ? (target_card ? 'Assigned JJ training sessions' : 'Completed JJ training sessions') : (target_card ? 'Assigned CC target across your JJ' : 'Completed CC training sessions')) %></p>
           </article>
         <% end %>
       </div>

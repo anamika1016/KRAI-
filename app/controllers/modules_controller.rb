@@ -914,6 +914,7 @@ class ModulesController < ApplicationController
     @filtered_vrps = v_scope
     @filtered_targets = t_scope
     if dashboard_cluster_coordinator_scope?
+      @cc_dashboard_total_jj = module_cluster_visible_vrps.map(&:id).uniq.size
       @cc_dashboard_report = CcDashboardReport.new(targets: t_scope, vrps: v_scope, month: @dashboard_month_filter_value)
       if params[:cc_list] == "true"
         respond_to do |format|

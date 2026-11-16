@@ -12068,7 +12068,7 @@ body {
 #cc_dashboard_boxes .cc-overview-eyebrow { margin: 0 0 5px; font-size: 10px; font-weight: 700; letter-spacing: .14em; color: #52716c; }
 #cc_dashboard_boxes h2 { margin: 0; font-size: 18px; }
 #cc_dashboard_boxes .cc-overview-note { font-size: 12px; color: #65778a; }
-#cc_dashboard_boxes .cc-overview-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 18px; }
+#cc_dashboard_boxes .cc-overview-grid { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 18px; }
 #cc_dashboard_boxes .cc-overview-card { border: 1px solid #c8dcec; border-radius: 12px; padding: 20px 22px 0; background: linear-gradient(120deg, #edf5fd, #f8fbff); color: #193f64; overflow: hidden; }
 #cc_dashboard_boxes .cc-overview-achievement { border-color: #bcded1; background: linear-gradient(120deg, #eaf7ef, #f7fcf9); color: #206249; }
 #cc_dashboard_boxes .cc-overview-card-top { display: flex; align-items: center; justify-content: space-between; font-size: 14px; font-weight: 700; }
