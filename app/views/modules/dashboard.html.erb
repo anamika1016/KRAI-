@@ -500,23 +500,11 @@
   <% all_dashboard_summary_cards = Array(@dashboard_summary_cards) %>
   <% demonstration_method_cards = Array(@demonstration_method_cards).presence || all_dashboard_summary_cards.select { |card| demonstration_method_titles.include?(card[:title].to_s) } %>
   <% dashboard_summary_cards = all_dashboard_summary_cards.reject { |card| demonstration_method_titles.include?(card[:title].to_s) } %>
-  <% if @cc_dashboard_report.present? %>
-    <section class="module-card" id="cc_dashboard_boxes" aria-label="CC Target and Achievement">
-      <div class="cc-overview-heading">
-        <div><p class="cc-overview-eyebrow">CLUSTER COORDINATOR</p><h2>CC &amp; JJ Performance</h2></div>
-        <%= link_to "View List →", dashboard_path(request.query_parameters.except("format").merge(cc_list: "true")), class: "list-btn active", data: { dashboard_card: true } %>
-      </div>
-      <div class="cc-overview-grid">
-        <% { "CC Target" => @cc_dashboard_report.target, "CC Achievement" => @cc_dashboard_report.achievement, "Total JJ" => @cc_dashboard_total_jj, "Total OPG JJ Target" => @cc_dashboard_report.jj_target, "Total OPG JJ Achievement" => @cc_dashboard_report.jj_achievement }.each do |title, value| %>
-          <% target_card = title.end_with?("Target") %>
-          <article class="cc-overview-card <%= target_card ? 'cc-overview-target' : 'cc-overview-achievement' %>">
-            <div class="cc-overview-card-top"><span><%= title %></span><span class="cc-overview-icon" aria-hidden="true"><%= target_card ? '◎' : '✓' %></span></div>
-            <strong class="cc-overview-value"><%= value %></strong>
-            <p><%= title == "Total JJ" ? 'All JJ mapped under you' : (title.start_with?("Total OPG JJ") ? (target_card ? 'Assigned JJ training sessions' : 'Completed JJ training sessions') : (target_card ? 'Assigned CC target across your JJ' : 'Completed CC training sessions')) %></p>
-          </article>
-        <% end %>
-      </div>
-    </section>
+  <%# The cluster coordinator reads this panel first. Admin, FCO and agronomist
+      logins get the same panel lower down, under Main Major Work Indicator -
+      Other, so their own summary keeps the top of the page. %>
+  <% if @cc_dashboard_report.present? && @cc_dashboard_at_top %>
+    <%= render "cc_performance_panel" %>
   <% end %>
 
   <%# Dashboard Summary is training-specific, so it stays hidden for Other activities. %>
@@ -636,6 +624,13 @@
           </div>
         </div>
       </section>
+    <% end %>
+
+    <%# Admin, FCO and agronomist logins read the CC & JJ Performance panel here,
+        under Main Major Work Indicator - Other. The cluster coordinator already
+        has it at the top of the page. %>
+    <% if @cc_dashboard_report.present? && !@cc_dashboard_at_top %>
+      <%= render "cc_performance_panel" %>
     <% end %>
 
     <div class="dashboard-grid premium dashboard-training-secondary-summaries">

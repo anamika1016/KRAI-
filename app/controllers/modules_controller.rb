@@ -914,8 +914,19 @@ class ModulesController < ApplicationController
 
     @filtered_vrps = v_scope
     @filtered_targets = t_scope
-    if dashboard_cluster_coordinator_scope?
-      @cc_dashboard_total_jj = module_cluster_visible_vrps.map(&:id).uniq.size
+    if dashboard_cc_performance_visible?
+      # Only active Jeevika Jankars are counted here. An inactive, deleted or
+      # still-unapproved JJ stays mapped under the cluster coordinator, so the
+      # plain mapping count read higher than the JJ they actually work with.
+      # Same rule the FCO Requirement cards use for "active".
+      #
+      # A cluster coordinator counts the JJ mapped below them; every other login
+      # counts the JJ its own dashboard scope already resolved to.
+      @cc_dashboard_at_top = dashboard_cluster_coordinator_scope?
+      countable_vrps = @cc_dashboard_at_top ? module_cluster_visible_vrps : v_scope
+      @cc_dashboard_total_jj = countable_vrps
+        .select { |vrp| dashboard_vrp_active_for_requirement?(vrp) }
+        .map(&:id).uniq.size
       @cc_dashboard_report = CcDashboardReport.new(targets: t_scope, vrps: v_scope, month: @dashboard_month_filter_value)
       if params[:cc_list] == "true"
         respond_to do |format|
@@ -9825,6 +9836,17 @@ class ModulesController < ApplicationController
   def dashboard_cluster_coordinator_scope?
     module_cluster_incharge_login? && !dashboard_agronomics_login? &&
       !dashboard_source_fcoc_login? && !vrp_login_user?
+  end
+
+  # Who sees the "CC & JJ Performance" panel. The cluster coordinator reads it at
+  # the top of their dashboard; admin, FCO and agronomist logins get the same
+  # panel lower down, under Main Major Work Indicator - Other. A Jeevika Jankar
+  # login has its own dashboard and is left out.
+  def dashboard_cc_performance_visible?
+    return false if vrp_login_user?
+
+    dashboard_cluster_coordinator_scope? || admin_dashboard_user? ||
+      dashboard_source_fcoc_login? || dashboard_agronomics_login?
   end
 
   def dashboard_user_visible_farmer_scope
