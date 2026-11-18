@@ -1,4 +1,4 @@
-<section class="module-card" id="cc_dashboard_boxes" aria-label="CC Target and Achievement">
+<section class="module-card <%= @cc_dashboard_at_top ? 'cc-performance-at-top' : 'cc-performance-after-indicators' %>" id="cc_dashboard_boxes" aria-label="CC Target and Achievement">
   <div class="cc-overview-heading">
     <div><p class="cc-overview-eyebrow">CLUSTER COORDINATOR</p><h2>CC &amp; JJ Performance</h2></div>
     <%= link_to "View List →", dashboard_path(request.query_parameters.except("format").merge(cc_list: "true")), class: "list-btn active", data: { dashboard_card: true } %>

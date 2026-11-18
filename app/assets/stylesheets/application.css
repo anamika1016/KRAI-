@@ -662,6 +662,8 @@ body {
 .dashboard-page > .dashboard-training-primary-summaries { order: 1; }
 .dashboard-page > .training-status-panel { order: 2; }
 .dashboard-page > #demonstration_method_boxes { order: 3; }
+.dashboard-page > #cc_dashboard_boxes.cc-performance-at-top { order: 0; }
+.dashboard-page > #cc_dashboard_boxes.cc-performance-after-indicators { order: 4; }
 .dashboard-page > #other_major_work_indicator_boxes {
   order: 4;
   position: relative;

@@ -626,13 +626,15 @@
       </section>
     <% end %>
 
-    <%# Admin, FCO and agronomist logins read the CC & JJ Performance panel here,
-        under Main Major Work Indicator - Other. The cluster coordinator already
-        has it at the top of the page. %>
-    <% if @cc_dashboard_report.present? && !@cc_dashboard_at_top %>
-      <%= render "cc_performance_panel" %>
-    <% end %>
+  <% end %>
 
+  <%# Keep this below the work indicators for every activity view. Only the
+      cluster coordinator gets the performance panel at the top. %>
+  <% if @cc_dashboard_report.present? && !@cc_dashboard_at_top %>
+    <%= render "cc_performance_panel" %>
+  <% end %>
+
+  <% if farmer_activity_mode %>
     <div class="dashboard-grid premium dashboard-training-secondary-summaries">
       <% Array(@dashboard_cards).sort_by { |card| ["FCO-wise JJ Requirement", "Jeevika Jankar Billing", "Gender Count"].index(card[:title]) || 99 }.each do |card| %>
         <% next if card.blank? %>

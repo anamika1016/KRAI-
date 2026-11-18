@@ -923,6 +923,10 @@ class ModulesController < ApplicationController
       # A cluster coordinator counts the JJ mapped below them; every other login
       # counts the JJ its own dashboard scope already resolved to.
       @cc_dashboard_at_top = dashboard_cluster_coordinator_scope?
+      Rails.logger.warn("CCPANEL-DEBUG user=#{current_app_user&.dig('username').inspect} " \
+        "user_type=#{current_app_user&.dig('user_type').inspect} " \
+        "admin=#{admin_dashboard_user?} cluster=#{module_cluster_incharge_login?} " \
+        "at_top=#{@cc_dashboard_at_top.inspect}")
       countable_vrps = @cc_dashboard_at_top ? module_cluster_visible_vrps : v_scope
       @cc_dashboard_total_jj = countable_vrps
         .select { |vrp| dashboard_vrp_active_for_requirement?(vrp) }
