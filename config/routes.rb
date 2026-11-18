@@ -35,6 +35,7 @@ Rails.application.routes.draw do
       post "translate", to: "translations#create"
       get "translate/languages", to: "translations#languages"
       get "user-dashboard", to: "user_dashboard#show"
+      get "cc-performance", to: "cc_performance#show"
       get "user-dashboard/boxes", to: "user_dashboard#boxes"
       get "user-dashboard/configuration", to: "user_dashboard#configuration"
       get "user-dashboard/filters", to: "user_dashboard#filters"

@@ -25,7 +25,7 @@ class CcDashboardReport
         {
           "JJ Name" => jj.name, "Total OPG" => opg,
           "CC Target" => total.call("CC Target"),
-          "Total OPG JJ Target" => total.call("OPG Target"),
+          "Total OPG JJ Target" => opg,
           "Total OPG JJ Achievement" => total.call("OPG Achievement"),
           "CC Achievement" => total.call("CC Achievement"),
           "OPG Training" => "#{opg} / #{total.call('OPG Achievement')}",
@@ -47,7 +47,11 @@ class CcDashboardReport
   end
 
   def jj_target
-    rows.sum { |row| row["Total OPG JJ Target"] }
+    # OPG is an assigned village target, not the sum of training-method
+    # targets. Use the dashboard's FCO/village deduplication so a village
+    # mapped to multiple JJs (or months in All Months) is not counted twice.
+    @jj_target ||= DemonstrationMethodReport.new(targets: @targets, month: @month)
+      .summary.sum { |row| row["OPG Target"].to_i }
   end
 
   def jj_achievement
