@@ -33,6 +33,30 @@ class TrainingAttachmentExportTest < ActionDispatch::IntegrationTest
     end
   end
 
+  test "Excel photo columns contain full URLs without JSON brackets" do
+    @record.update!(data: @record.data.merge(
+      "photo_front_view" => [ "/uploads/module_records/front.webp" ],
+      "photo_long_shot" => '["/uploads/module_records/long1.webp","/uploads/module_records/long2.webp"]',
+      "photo_back_view" => [ "https://images.example.test/back.webp" ]
+    ))
+    host! "krai.ploughmanagro.com"
+    https!
+    post login_path, params: { login: "training_export_admin", password: "secret" }
+    get export_module_path("training-form-list", format: :xlsx)
+    assert_response :success
+    Zip::File.open_buffer(response.body) do |zip|
+      sheet = Nokogiri::XML(zip.read("xl/worksheets/sheet1.xml"))
+      rows = sheet.xpath("//*[local-name()='row']").map do |row|
+        row.xpath(".//*[local-name()='t']").map(&:text)
+      end
+      values = rows.first.zip(rows.second).to_h
+      assert_equal "https://krai.ploughmanagro.com/uploads/module_records/front.webp", values["Photo Front View"]
+      assert_equal "https://krai.ploughmanagro.com/uploads/module_records/long1.webp\nhttps://krai.ploughmanagro.com/uploads/module_records/long2.webp", values["Photo Long Shot"]
+      assert_equal "https://images.example.test/back.webp", values["Photo Back View"]
+      assert_equal "https://krai.ploughmanagro.com/uploads/module_records/#{@filename}", values["Photo Close-up View"]
+    end
+  end
+
   test "ZIP keeps repeated attachments and does not route or update edit approvals" do
     ModuleRecord.create!(module_slug: "training-form", data: @record.data.deep_dup)
     saved_data = { "record_id" => @record.id, "status" => "Pending", "step" => 7,

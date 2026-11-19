@@ -2200,13 +2200,12 @@ class ModulesController < ApplicationController
       format.xlsx do
         if @slug == "training-form-list"
           fields = @module[:fields].map do |field|
-            [field.parameterize(separator: "_"), field.downcase.include?("upload") || field.downcase.include?("file")]
+            [field, field.parameterize(separator: "_")]
           end
           rows = Enumerator.new do |output|
             each_training_export_record do |record|
-              output << fields.map do |key, upload|
-                value = record.data[key].to_s
-                upload ? module_upload_public_url(value) : value
+              output << fields.map do |field, key|
+                module_record_export_value(record, field, key)
               end
             end
           end
@@ -11188,15 +11187,20 @@ class ModulesController < ApplicationController
       csv << fields
       records.each do |record|
         csv << fields.zip(field_keys).map do |field, key|
-          value = record.data[key].to_s
-          if field == "Training Register Upload" || field == "Training Photo Upload with Geo Tag" || field.downcase.include?("upload") || field.downcase.include?("file")
-            module_upload_public_url(value)
-          else
-            value
-          end
+          module_record_export_value(record, field, key)
         end
       end
     end
+  end
+
+  def module_record_export_value(record, field, key)
+    if record.module_slug == "training-form" &&
+        ["Photo Front View", "Photo Long Shot", "Photo Back View", "Photo Close-up View"].include?(field)
+      return module_upload_public_urls(module_record_field_value(record, field)).join("\n")
+    end
+
+    value = record.data[key].to_s
+    field.downcase.include?("upload") || field.downcase.include?("file") ? module_upload_public_url(value) : value
   end
 
   def module_records_attachments_zip(records)
