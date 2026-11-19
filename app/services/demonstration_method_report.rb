@@ -376,6 +376,7 @@ class DemonstrationMethodReport
           COALESCE(ed.ffs, 0) AS "FFS Done"
         FROM fco_target ft
         LEFT JOIN entry_data ed ON ed.fco_id::text = ft.fco_id::text
+          AND ed.fco_name IS NOT DISTINCT FROM ft.fco_name
         ORDER BY ft.fco_id
       SQL
     end

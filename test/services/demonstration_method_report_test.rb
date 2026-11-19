@@ -44,6 +44,23 @@ class DemonstrationMethodReportTest < ActiveSupport::TestCase
     assert_empty DemonstrationMethodReport.new(targets: []).summary
   end
 
+  test "FCO labels sharing an ID do not multiply summary achievements" do
+    @targets.last.update!(fco_name: "Demo FCO legacy label")
+    entry(@second, "General Training/Meeting")
+    ["all", "August"].each do |month|
+      report = DemonstrationMethodReport.new(targets: @targets, month: month)
+      expected_rows = report.rows.sum { |row| row["OPG Achievement"].to_i }
+      summary_done = report.summary.sum do |row|
+        ["General Training/Meeting Done", "Input Demo INM Done", "Input Demo PM Done", "FFS Done"].sum { |key| row[key].to_i }
+      end
+      assert_equal month == "all" ? 7 : 5, expected_rows
+      assert_equal expected_rows, summary_done
+      cc = CcDashboardReport.new(targets: @targets, vrps: [@vrp, @second], month: month)
+      assert_equal summary_done, cc.jj_achievement
+      assert_equal 2, report.summary.size, "keep both existing target groups"
+    end
+  end
+
   test "CC OPG achievements match demonstration method across months without a monthly mapping" do
     [nil, "", "all", "August"].each do |month|
       demo = DemonstrationMethodReport.new(targets: @targets, month: month)
