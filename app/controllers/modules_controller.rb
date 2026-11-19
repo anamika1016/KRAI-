@@ -914,6 +914,9 @@ class ModulesController < ApplicationController
 
     @filtered_vrps = v_scope
     @filtered_targets = t_scope
+    @demonstration_method_report = DemonstrationMethodReport.new(
+      targets: t_scope, month: @dashboard_month_filter_value, visible_vrp_ids: v_scope.map(&:id)
+    )
     if dashboard_cc_performance_visible?
       # Only active Jeevika Jankars are counted here. An inactive, deleted or
       # still-unapproved JJ stays mapped under the cluster coordinator, so the
@@ -931,7 +934,8 @@ class ModulesController < ApplicationController
       @cc_dashboard_total_jj = countable_vrps
         .select { |vrp| dashboard_vrp_active_for_requirement?(vrp) }
         .map(&:id).uniq.size
-      @cc_dashboard_report = CcDashboardReport.new(targets: t_scope, vrps: v_scope, month: @dashboard_month_filter_value)
+      @cc_dashboard_report = CcDashboardReport.new(targets: t_scope, vrps: v_scope, month: @dashboard_month_filter_value,
+        demonstration_report: @demonstration_method_report)
       if params[:cc_list] == "true"
         respond_to do |format|
           format.html { render :cc_dashboard_list }
@@ -949,7 +953,6 @@ class ModulesController < ApplicationController
       return
     end
     if params[:demonstration_list] == "true"
-      @demonstration_method_report = DemonstrationMethodReport.new(targets: t_scope, month: @dashboard_month_filter_value)
       @demonstration_method_rows = @demonstration_method_report.rows
       respond_to do |format|
         format.html { render :demonstration_method_list }
@@ -4560,21 +4563,22 @@ class ModulesController < ApplicationController
       month: defined?(@dashboard_month_filter_value) ? @dashboard_month_filter_value : (params.key?(:month) ? dashboard_filter_param(:month) : DashboardDefaults.month))
 
     summary_rows = report.summary
+    achievements = report.achievement_totals
 
     gen_target = summary_rows.sum { |r| r["General Training/Meeting Target"].to_f }.to_i
-    gen_done   = summary_rows.sum { |r| r["General Training/Meeting Done"].to_f }.to_i
+    gen_done   = achievements.fetch("General Training/Meeting Achievement")
     gen_val    = "#{gen_target} / #{gen_done}"
 
     inm_target = summary_rows.sum { |r| r["Input Demo INM Target"].to_f }.to_i
-    inm_done   = summary_rows.sum { |r| r["Input Demo INM Done"].to_f }.to_i
+    inm_done   = achievements.fetch("Input Demo INM Achievement")
     inm_val    = "#{inm_target} / #{inm_done}"
 
     pm_target  = summary_rows.sum { |r| r["Input Demo PM Target"].to_f }.to_i
-    pm_done    = summary_rows.sum { |r| r["Input Demo PM Done"].to_f }.to_i
+    pm_done    = achievements.fetch("Input Demo PM Achievement")
     pm_val     = "#{pm_target} / #{pm_done}"
 
     ffs_target = summary_rows.sum { |r| r["FFS Target"].to_f }.to_i
-    ffs_done   = summary_rows.sum { |r| r["FFS Done"].to_f }.to_i
+    ffs_done   = achievements.fetch("FFS Achievement")
     ffs_val    = "#{ffs_target} / #{ffs_done}"
 
     # OPG Training Target's own count stays the Target half; its Achievement

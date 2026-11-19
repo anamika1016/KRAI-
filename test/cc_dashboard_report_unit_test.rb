@@ -1,8 +1,7 @@
 require "minitest/autorun"
 require "ostruct"
 require_relative "../app/services/cc_dashboard_report"
-
-class DemonstrationMethodReport; end unless defined?(DemonstrationMethodReport)
+require_relative "../app/services/demonstration_method_report"
 
 class CcDashboardReportUnitTest < Minitest::Test
   # Minitest 6 no longer ships minitest/mock, so Object#stub is gone. Swap the
@@ -21,13 +20,13 @@ class CcDashboardReportUnitTest < Minitest::Test
     targets = [[1, "August", "v1", 4], [1, "August", "v1", 4], [1, "September", "v1", 3]].map do |id, month, village, opg|
       OpenStruct.new(vrp_id: id, month_name: month, village_id: village, opg_training_target: opg)
     end
-    details = OpenStruct.new(summary: [{ "OPG Target" => 7 }], rows: [
+    details = OpenStruct.new(achievements_by_jj: { "1" => { "General Training/Meeting Achievement" => 3 } }, summary: [{ "OPG Target" => 7 }], rows: [
       { "vrp_id" => 1, "CC Target" => 5, "CC Achievement" => 2, "OPG Target" => 4, "OPG Achievement" => 3,
         "General Training/Meeting Target" => 4, "General Training/Meeting Achievement" => 3 },
       { "vrp_id" => 99, "CC Target" => 100, "CC Achievement" => 100 }
     ])
     calls = []
-    factory = lambda do |targets:, month:|
+    factory = lambda do |targets:, month:, visible_vrp_ids: nil|
       calls << month
       assert targets.all? { |target| target.month_name.downcase == month } if month
       details

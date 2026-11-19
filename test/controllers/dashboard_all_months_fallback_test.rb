@@ -63,6 +63,30 @@ class DashboardAllMonthsFallbackTest < ActionDispatch::IntegrationTest
     assert_predicate filtered_targets, :positive?
   end
 
+  test "OPG panels use one live calculation for all months and selected month" do
+    training = ModuleRecord.create!(module_slug: "training-form", data: {
+      "created_by_id" => @vrp.id.to_s, "month" => other_month, "training_method" => "FFS"
+    })
+    ["", other_month].each do |month|
+      get "/dashboard", params: { month: month, main_activity: "Farmers' Training" }
+      assert_response :success
+      demonstration = @controller.instance_variable_get(:@demonstration_method_report)
+      cc = @controller.instance_variable_get(:@cc_dashboard_report)
+      assert_same demonstration, cc.instance_variable_get(:@demonstration_report)
+      cards = @controller.instance_variable_get(:@demonstration_method_cards)
+      card = cards.find { |item| item[:title] == "OPG Training Target" }
+      assert_equal 1, card[:value].split("/").last.to_i
+      assert_equal 1, cc.jj_achievement
+    end
+    training.update!(data: training.data.merge("training_method" => "Other"))
+    get "/dashboard", params: { month: "", main_activity: "Farmers' Training" }
+    assert_response :success
+    cc = @controller.instance_variable_get(:@cc_dashboard_report)
+    cards = @controller.instance_variable_get(:@demonstration_method_cards)
+    assert_equal 0, cc.jj_achievement
+    assert_equal 0, cards.find { |item| item[:title] == "OPG Training Target" }[:value].split("/").last.to_i
+  end
+
   test "a current month that does have data is still the default" do
     TargetMapping.create!(vrp: @vrp, fco_id: "1004", fco_name: "Sausar", ics_id: "ics-am",
       ics_name: "ICS AM", village_id: "v-am", village_name: "Village AM", month_name: current_month,

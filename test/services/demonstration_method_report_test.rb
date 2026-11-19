@@ -44,6 +44,35 @@ class DemonstrationMethodReportTest < ActiveSupport::TestCase
     assert_empty DemonstrationMethodReport.new(targets: []).summary
   end
 
+  test "both dashboard panels share unique sessions and the same visible JJ scope" do
+    duplicate_mapping = @targets.first.dup
+    duplicate_mapping.assign_attributes(fco_id: "another-fco", fco_name: "Historical office")
+    duplicate_mapping.save!
+    targets = @targets + [duplicate_mapping]
+
+    { nil => 5, "" => 5, "all" => 5, "August" => 4, "July" => 0 }.each do |month, expected|
+      shared = DemonstrationMethodReport.new(targets: targets, month: month, visible_vrp_ids: [@vrp.id])
+      cc = CcDashboardReport.new(targets: targets, vrps: [@vrp], month: month, demonstration_report: shared)
+      web = ModulesController.new
+      web.request = ActionDispatch::TestRequest.create
+      web.instance_variable_set(:@demonstration_method_report, shared)
+      cards = web.send(:demonstration_method_cards)
+      opg = cards.find { |card| card[:title] == "OPG Training Target" }[:value].split("/").last.to_i
+      method_total = cards.select { |card| ["General Training/Meeting", "Input Demo INM", "Input Demo PM", "FFS Exposure"].include?(card[:title]) }
+        .sum { |card| card[:value].split("/").last.to_i }
+      assert_equal expected, opg, "period=#{month.inspect}"
+      assert_equal expected, method_total
+      assert_equal expected, cc.jj_achievement
+      assert_equal expected, cc.rows.sum { |row| row["Total OPG JJ Achievement"] }
+    end
+
+    assert_equal 0, DemonstrationMethodReport.new(targets: targets, month: "all", visible_vrp_ids: []).achievement_totals.values.sum
+    assert_equal 0, DemonstrationMethodReport.new(targets: [], month: "all").achievement_totals.values.sum
+    entry(@vrp, "Input Demo PM", "September")
+    refreshed = DemonstrationMethodReport.new(targets: targets, month: "all", visible_vrp_ids: [@vrp.id])
+    assert_equal 6, refreshed.achievement_totals.values.sum, "a new saved session must update the next calculation"
+  end
+
   test "FCO labels sharing an ID do not multiply summary achievements" do
     @targets.last.update!(fco_name: "Demo FCO legacy label")
     entry(@second, "General Training/Meeting")

@@ -2,10 +2,11 @@ class CcDashboardReport
   HEADERS = ["JJ Name", "CC Target", "CC Achievement", "Total OPG JJ Target", "Total OPG JJ Achievement",
     "OPG Training", "General Training/Meeting", "Input Demo INM", "Input Demo PM", "FFS Exposure"].freeze
 
-  def initialize(targets:, vrps:, month:)
+  def initialize(targets:, vrps:, month:, demonstration_report: nil)
     @targets = targets
     @vrps = vrps
     @month = month
+    @demonstration_report = demonstration_report
   end
 
   def rows
@@ -18,12 +19,15 @@ class CcDashboardReport
       # Method achievements use the selected period as a whole, just like the
       # Demonstration Method panel. Monthly target grouping must not discard a
       # training merely because its JJ has no target in that training's month.
-      achievement_details = demonstration_report.rows.group_by { |row| row["vrp_id"].to_s }
+      achievement_details = demonstration_report.achievements_by_jj
       targets_by_jj = @targets.group_by(&:vrp_id)
       @vrps.map do |jj|
         entries = details.fetch(jj.id.to_s, [])
         total = ->(key) { entries.sum { |entry| entry[key].to_i } }
-        achieved = ->(key) { achievement_details.fetch(jj.id.to_s, []).sum { |entry| entry[key].to_i } }
+        achieved = ->(key) do
+          counts = achievement_details.fetch(jj.id.to_s, {})
+          key == "OPG Achievement" ? DemonstrationMethodReport::METHOD_ACHIEVEMENT_KEYS.values.sum { |method| counts[method].to_i } : counts[key].to_i
+        end
         opg = targets_by_jj.fetch(jj.id, [])
           .group_by { |target| [target.month_name, target.village_id] }
           .sum { |_key, targets| targets.map { |target| target.opg_training_target.to_i }.max.to_i }
@@ -66,6 +70,6 @@ class CcDashboardReport
   private
 
   def demonstration_report
-    @demonstration_report ||= DemonstrationMethodReport.new(targets: @targets, month: @month)
+    @demonstration_report ||= DemonstrationMethodReport.new(targets: @targets, month: @month, visible_vrp_ids: @vrps.map(&:id))
   end
 end

@@ -38,7 +38,15 @@ class DemonstrationMethodReport
     "CC Target", "CC Achievement (This Date)"
   ].freeze
 
-  def initialize(targets:, month: "August")
+  METHOD_ACHIEVEMENT_KEYS = {
+    "general training/meeting" => "General Training/Meeting Achievement",
+    "input demo inm" => "Input Demo INM Achievement",
+    "input demo pm" => "Input Demo PM Achievement",
+    "ffs" => "FFS Achievement"
+  }.freeze
+
+  def initialize(targets:, month: "August", visible_vrp_ids: nil)
+    @visible_vrp_ids = visible_vrp_ids&.map(&:to_s)
     if targets.is_a?(ActiveRecord::Relation) && !targets.loaded?
       @target_ids = targets.pluck(:id).uniq
       @fco_ids = nil
@@ -51,6 +59,36 @@ class DemonstrationMethodReport
         .map(&:to_s).reject(&:blank?).uniq.presence
     end
     @month = month.to_s.strip.downcase
+  end
+
+  # Count saved sessions once per JJ. Joining FCO/village/month target rows
+  # here would multiply sessions or lose months without a monthly mapping.
+  def achievements_by_jj
+    @achievements_by_jj ||= begin
+      connection = TargetMapping.connection
+      scope = demonstration_target_scope
+      scope = scope.where(vrp_id: @visible_vrp_ids) unless @visible_vrp_ids.nil?
+      scope = scope.where("LOWER(TRIM(month_name)) = ?", @month) unless @month.blank? || @month == "all"
+      month_filter = @month.blank? || @month == "all" ? "TRUE" : "LOWER(TRIM(mr.data::jsonb ->> 'month')) = #{connection.quote(@month)}"
+      counts = METHOD_ACHIEVEMENT_KEYS.map do |method, key|
+        "COUNT(*) FILTER (WHERE LOWER(TRIM(mr.data::jsonb ->> 'training_method')) = #{connection.quote(method)}) AS #{connection.quote_column_name(key)}"
+      end.join(", ")
+      connection.select_all(<<~SQL).to_a.to_h { |row| [row["vrp_id"].to_s, row] }
+        SELECT TRIM(mr.data::jsonb ->> 'created_by_id') AS vrp_id, #{counts}
+        FROM module_records mr
+        WHERE mr.module_slug = 'training-form' AND #{month_filter}
+          AND TRIM(mr.data::jsonb ->> 'created_by_id') IN (
+            SELECT DISTINCT scoped.vrp_id::text FROM (#{scope.to_sql}) scoped
+          )
+        GROUP BY TRIM(mr.data::jsonb ->> 'created_by_id')
+      SQL
+    end
+  end
+
+  def achievement_totals
+    @achievement_totals ||= METHOD_ACHIEVEMENT_KEYS.values.index_with do |key|
+      achievements_by_jj.values.sum { |row| row[key].to_i }
+    end
   end
 
   def rows
