@@ -9,7 +9,9 @@ module Api
       PARAM_KEY = :farmer_training
 
       def index
-        records = farmer_target_api.training_list(request: request, show_all: params[:all].present?)
+        records = farmer_target_api.training_list(request: request, show_all: params[:all].present?,
+          month: current_month_lists? ? current_list_month : nil)
+        records = current_month_module_rows(records)
         render json: {
           success: true,
           message: "#{RESOURCE_TITLE} list fetched successfully.",

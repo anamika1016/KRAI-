@@ -10,6 +10,10 @@ module Api
           .order(created_at: :asc).to_a.group_by { |record| record.data["vrp_id"].to_i }
         Vrp.pluck(:id).each { |id| @approval_history_for_cache[id] ||= [] }
         queue = approval_queue
+        if current_month_lists?
+          start = Time.current.beginning_of_month
+          queue = queue.select { |vrp| vrp.created_at && (start...start.next_month).cover?(vrp.created_at) }
+        end
         preload_vrp_creator_lookup_data!(queue)
         rows = queue.map { |vrp| approval_queue_row_payload(vrp) }
 

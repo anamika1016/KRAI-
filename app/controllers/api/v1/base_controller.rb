@@ -7,6 +7,42 @@ module Api
 
       private
 
+      # Restrict mobile work lists only; dashboards and web controllers do not
+      # use these helpers. A supplied old month/All must not bypass the rule.
+      def current_month_lists?
+        payload = current_api_user_payload || {}
+        return true if payload["record_type"] == "Vrp"
+
+        %w[role role_name stakeholder_role user_management_role person_type].any? do |key|
+          payload[key].to_s.strip.match?(/\A(?:cc|cluster[ _-]*(?:incharge|coordinator))\z/i)
+        end
+      end
+
+      def current_list_month
+        Date.current.strftime("%B")
+      end
+
+      def current_month_created_scope(scope)
+        return scope unless current_month_lists?
+
+        start = Time.current.beginning_of_month
+        scope.where(created_at: start...start.next_month)
+      end
+
+      def current_month_module_rows(rows)
+        return rows unless current_month_lists?
+
+        rows.select do |row|
+          month = row[:data]["month"].to_s.strip
+          if month.present?
+            month.casecmp?(current_list_month)
+          else
+            created = row[:created_at]&.in_time_zone
+            created && created.year == Date.current.year && created.month == Date.current.month
+          end
+        end
+      end
+
       def authenticate_api_user!
         user = current_api_user
         return if user

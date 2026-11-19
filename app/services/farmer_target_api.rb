@@ -32,8 +32,11 @@ class FarmerTargetApi
   # Match the web Training Form List: select the latest screen window before
   # applying its role visibility, then put pending edit requests first.
   # The web's Show all link is available to API clients via all=1.
-  def training_list(request:, show_all: false)
+  def training_list(request:, show_all: false, month: nil)
     scope = ModuleRecord.where(module_slug: "training-form").order(created_at: :desc, id: :desc)
+    if month.present?
+      scope = scope.where("LOWER(BTRIM(data->>'month')) = ?", month.downcase)
+    end
     scope = scope.limit(ModulesController::SCREEN_RECORD_LIMIT) unless show_all
     records = scope.to_a
     web = ModulesController.new

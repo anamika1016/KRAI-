@@ -519,6 +519,8 @@ module Api
       end
 
       def selected_month
+        return current_list_month if current_month_lists?
+
         params[:month].presence || params[:payment_month].presence
       end
 

@@ -46,6 +46,8 @@ module Api
       private
 
       def selected_month
+        return current_list_month.downcase if action_name == "index" && current_month_lists?
+
         @selected_month ||= (params[:month].presence || DashboardDefaults.month).to_s.strip.downcase
       end
 

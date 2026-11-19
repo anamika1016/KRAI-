@@ -298,6 +298,8 @@ module Api
           values.delete(key) if all_filter_value?(values[key])
         end
 
+        values["month"] = current_list_month if current_month_lists?
+
         fco = values["fcoc"].presence || values["fco_id"].presence || values["fco"].presence
         values.delete("fco")
         if all_filter_value?(fco)
