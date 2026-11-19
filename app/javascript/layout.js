@@ -5373,7 +5373,8 @@ function initDeferredLayoutPage() {
   document.querySelectorAll("[data-paginated-table]").forEach((table, index) => {
     const rows = Array.from(table.querySelectorAll("tbody tr"));
     rows.forEach((row) => {
-      if (row.children.length === 1 || row.innerText.toLowerCase().includes("no records")) {
+      const rowText = table.id === "training_form_list_table" ? row.textContent : row.innerText;
+      if (row.children.length === 1 || rowText.toLowerCase().includes("no records")) {
         row.dataset.emptyRow = "true";
       }
     });

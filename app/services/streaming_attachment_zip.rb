@@ -1,0 +1,102 @@
+require "zlib"
+require "set"
+
+# ZIP64 entries with data descriptors allow non-seekable HTTP output.
+# Photos/PDFs are stored; worksheet XML uses fast streaming compression.
+class StreamingAttachmentZip
+  CHUNK_SIZE = 64 * 1024
+  DIRECTORY = "training_attachments/".freeze
+
+  def initialize(paths = [], entries: nil, compress: false)
+    @paths = paths
+    @entries = entries
+    @compress = compress
+  end
+
+  def each
+    return enum_for(:each) unless block_given?
+
+    offset = 0
+    entries = []
+    names = Set.new
+    emit = ->(bytes) { offset += bytes.bytesize; yield bytes }
+    write_entry = lambda do |name, chunks|
+      name = name.encode(Encoding::UTF_8).b
+      start = offset
+      # UTF-8 names, trailing CRC/sizes, ZIP64 size placeholders.
+      method = @compress ? 8 : 0
+      emit.call([ 0x04034b50, 45, 0x0808, method, 0, 33, 0, 0xffffffff, 0xffffffff,
+        name.bytesize, 20 ].pack("VvvvvvVVVvv") + name + [ 1, 16, 0, 0 ].pack("vvQ<Q<"))
+      crc = 0
+      size = 0
+      compressed_size = 0
+      compressor = Zlib::Deflate.new(Zlib::BEST_SPEED, -Zlib::MAX_WBITS) if @compress
+      chunks&.each do |chunk|
+        chunk = chunk.b
+        crc = Zlib.crc32(chunk, crc)
+        size += chunk.bytesize
+        bytes = compressor ? compressor.deflate(chunk, Zlib::SYNC_FLUSH) : chunk
+        compressed_size += bytes.bytesize
+        emit.call(bytes) unless bytes.empty?
+      end
+      if compressor
+        bytes = compressor.finish
+        compressed_size += bytes.bytesize
+        emit.call(bytes)
+      end
+      emit.call([ 0x08074b50, crc, compressed_size, size ].pack("VVQ<Q<"))
+      entries << [ name, crc, size, compressed_size, start, method ]
+    ensure
+      compressor&.close
+    end
+
+    # Start the response before enumerating records or opening attachments.
+    if @entries
+      @entries.each { |name, chunks| write_entry.call(name, chunks) }
+    else
+      write_attachment_entries(write_entry, names)
+    end
+
+    directory_offset = offset
+    entries.each do |name, crc, size, compressed_size, start, method|
+      extra = [ 1, 24, size, compressed_size, start ].pack("vvQ<Q<Q<")
+      emit.call([ 0x02014b50, 45, 45, 0x0808, method, 0, 33, crc, 0xffffffff, 0xffffffff,
+        name.bytesize, extra.bytesize, 0, 0, 0, 0, 0xffffffff ].pack("VvvvvvvVVVvvvvvVV") + name + extra)
+    end
+    directory_size = offset - directory_offset
+    zip64_offset = offset
+    emit.call([ 0x06064b50, 44, 45, 45, 0, 0, entries.size, entries.size,
+      directory_size, directory_offset ].pack("VQ<vvVVQ<Q<Q<Q<"))
+    emit.call([ 0x07064b50, 0, zip64_offset, 1 ].pack("VVQ<V"))
+    emit.call([ 0x06054b50, 0, 0, 0xffff, 0xffff, 0xffffffff, 0xffffffff, 0 ].pack("VvvvvVVv"))
+  end
+
+  private
+
+  def write_attachment_entries(write_entry, names)
+    write_entry.call(DIRECTORY, nil)
+    @paths.each do |path|
+      base = File.basename(path.to_s)
+      name = base
+      suffix = 1
+      while names.include?(name)
+        suffix += 1
+        extension = File.extname(base)
+        name = "#{File.basename(base, extension)}-#{suffix}#{extension}"
+      end
+      begin
+        File.open(path, "rb") do |io|
+          names.add(name)
+          chunks = Enumerator.new do |output|
+            while (chunk = io.read(CHUNK_SIZE))
+              output << chunk
+            end
+          end
+          write_entry.call("#{DIRECTORY}#{name}", chunks)
+        end
+      rescue Errno::ENOENT, Errno::EACCES => error
+        Rails.logger.warn("Training attachment unavailable: #{error.class}")
+      end
+    end
+  end
+end

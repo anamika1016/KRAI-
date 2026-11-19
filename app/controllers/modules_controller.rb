@@ -2198,6 +2198,25 @@ class ModulesController < ApplicationController
 
     respond_to do |format|
       format.xlsx do
+        if @slug == "training-form-list"
+          fields = @module[:fields].map do |field|
+            [field.parameterize(separator: "_"), field.downcase.include?("upload") || field.downcase.include?("file")]
+          end
+          rows = Enumerator.new do |output|
+            each_training_export_record do |record|
+              output << fields.map do |key, upload|
+                value = record.data[key].to_s
+                upload ? module_upload_public_url(value) : value
+              end
+            end
+          end
+          stream_module_download(
+            XlsxExporter.stream(headers: @module[:fields], rows: rows, sheet_name: @module[:title]),
+            filename: "training_form_records_#{Date.current}.xlsx", type: XlsxExporter::MIME_TYPE
+          )
+          return
+        end
+
         if @slug == "jeevika-jankar-observation-list"
           prepare_jeevika_jankar_observation_list
           headers, rows = jeevika_jankar_observation_export_rows
@@ -2232,11 +2251,13 @@ class ModulesController < ApplicationController
           redirect_to module_path(@slug), alert: "Attachment download is available only for Training Form List." and return
         end
 
-        send_data(
-          module_records_attachments_zip(module_records),
-          filename: "training_form_attachments_#{Time.current.strftime("%Y%m%d%H%M")}.zip",
-          type: "application/zip"
-        )
+        paths = Enumerator.new do |output|
+          each_training_export_record do |record|
+            TrainingAttachmentPaths.for_record(record).each { |path| output << path }
+          end
+        end
+        filename = "training_form_attachments_#{Time.current.strftime("%Y%m%d%H%M")}.zip"
+        stream_module_download(StreamingAttachmentZip.new(paths), filename: filename, type: "application/zip")
       end
     end
   end
@@ -10645,6 +10666,27 @@ class ModulesController < ApplicationController
   # (?all=1). Only the HTML screen is capped — xlsx/zip exports load everything.
   SCREEN_RECORD_LIMIT = 800
 
+  def stream_module_download(body, filename:, type:)
+    response.headers["Content-Type"] = type
+    response.headers["Content-Disposition"] = ActionDispatch::Http::ContentDisposition.format(disposition: "attachment", filename: filename)
+    response.headers["X-Accel-Buffering"] = "no"
+    response.headers["Cache-Control"] = "no-store"
+    # Prevent middleware from collecting the body to calculate an ETag.
+    response.headers["Last-Modified"] = Time.current.httpdate
+    self.response_body = body
+  end
+
+  def each_training_export_record
+    pending_ids = helpers.pending_training_approvals.map { |revision| revision.data["record_id"].to_s }.to_set
+    scope = bill_list_records_scope
+    scopes = pending_ids.empty? ? [scope] : [scope.where(id: pending_ids.to_a), scope.where.not(id: pending_ids.to_a)]
+    scopes.each do |ordered_scope|
+      ordered_scope.find_each(batch_size: 100, cursor: [:created_at, :id], order: [:desc, :desc]) do |record|
+        yield record if target_record_visible?(record)
+      end
+    end
+  end
+
   def module_records
     return [] unless ModuleRecord.table_exists?
 
@@ -10710,10 +10752,16 @@ class ModulesController < ApplicationController
   def training_edit_revision_for(record)
     return unless record&.module_slug == "training-form"
 
-    @training_edit_revisions_by_record ||= TrainingEditApproval.summary_scope
-      .order(id: :desc).to_a.each_with_object({}) do |revision, index|
-        index[revision.data["record_id"].to_s] ||= revision
+    @training_edit_revisions_by_record ||= begin
+      scope = ModuleRecord.where(module_slug: TrainingEditApproval::SLUG)
+      if @records
+        scope = scope.where("data::jsonb ->> 'record_id' IN (?)", @records.map { |item| item.id.to_s })
       end
+      TrainingEditApproval.summary_scope(scope)
+        .order(id: :desc).to_a.each_with_object({}) do |revision, index|
+          index[revision.data["record_id"].to_s] ||= revision
+        end
+    end
     revision = @training_edit_revisions_by_record[record.id.to_s]
     if revision && revision.data["status"] == "Pending" && revision.data["approval_role"] != "agronomist"
       @training_edit_staff_catalogue ||= TrainingStaffScope.staff_catalogue

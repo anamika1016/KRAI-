@@ -15,6 +15,43 @@ class XlsxExporter
     generate(headers: table.shift || [], rows: table, sheet_name: sheet_name)
   end
 
+  # Keeps the existing cell representation while consuming rows only as the
+  # download is written. No CSV round trip or complete worksheet string.
+  def self.stream(headers:, rows:, sheet_name: "Sheet1")
+    new(headers: headers, rows: [], sheet_name: sheet_name).stream(rows)
+  end
+
+  def stream(rows)
+    entries = Enumerator.new do |output|
+      {
+        "[Content_Types].xml" => content_types_xml,
+        "_rels/.rels" => root_rels_xml,
+        "docProps/app.xml" => app_props_xml,
+        "docProps/core.xml" => core_props_xml,
+        "xl/workbook.xml" => workbook_xml,
+        "xl/_rels/workbook.xml.rels" => workbook_rels_xml,
+        "xl/styles.xml" => styles_xml
+      }.each { |name, xml| output << [ name, [ xml ] ] }
+      sheet = Enumerator.new do |chunks|
+        chunks << %(<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"><sheetViews><sheetView workbookViewId="0"/></sheetViews><sheetFormatPr defaultRowHeight="15"/><sheetData>)
+        chunks << sheet_rows_xml([ @headers ])
+        buffer = +""
+        rows.each.with_index(2) do |row, number|
+          cells = Array(row).map.with_index(1) { |value, column| cell_xml(value, number, column) }.join
+          buffer << %(<row r="#{number}">#{cells}</row>\n)
+          if buffer.bytesize >= StreamingAttachmentZip::CHUNK_SIZE
+            chunks << buffer
+            buffer = +""
+          end
+        end
+        chunks << buffer unless buffer.empty?
+        chunks << "</sheetData></worksheet>"
+      end
+      output << [ "xl/worksheets/sheet1.xml", sheet ]
+    end
+    StreamingAttachmentZip.new(entries: entries, compress: true)
+  end
+
   def initialize(headers:, rows:, sheet_name:)
     @headers = Array(headers)
     @rows = Array(rows)
@@ -44,8 +81,8 @@ class XlsxExporter
   end
 
   def worksheet_xml
-    rows = [@headers] + @rows
-    dimension = "A1:#{cell_reference([@headers.size, rows.map { |row| Array(row).size }.max.to_i].max, rows.size)}"
+    rows = [ @headers ] + @rows
+    dimension = "A1:#{cell_reference([ @headers.size, rows.map { |row| Array(row).size }.max.to_i ].max, rows.size)}"
 
     <<~XML
       <?xml version="1.0" encoding="UTF-8" standalone="yes"?>
