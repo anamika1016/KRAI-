@@ -37,15 +37,15 @@ class CcDashboardReportUnitTest < Minitest::Test
       assert_equal 10, report.target
       assert_equal 4, report.achievement
       assert_equal 7, report.jj_target
-      assert_equal 6, report.jj_achievement
+      assert_equal 3, report.jj_achievement
       assert_equal ["CC Target", "CC Achievement", "Total OPG JJ Target", "Total OPG JJ Achievement"], CcDashboardReport::HEADERS[1, 4]
       refute_includes CcDashboardReport::HEADERS, "Total OPG"
       assert_equal ["august", "september", nil], calls
       assert_equal ["Own JJ", "Empty JJ"], report.rows.map { |row| row["JJ Name"] }
       assert_equal 7, report.rows.first["Total OPG"]
       assert_equal 7, report.rows.first["Total OPG JJ Target"]
-      assert_equal "7 / 6", report.rows.first["OPG Training"]
-      assert_equal "8 / 6", report.rows.first["General Training/Meeting"]
+      assert_equal "7 / 3", report.rows.first["OPG Training"]
+      assert_equal "8 / 3", report.rows.first["General Training/Meeting"]
       assert_equal 0, report.rows.last["CC Target"]
     end
   end

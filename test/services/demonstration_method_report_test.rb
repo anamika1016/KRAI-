@@ -44,6 +44,26 @@ class DemonstrationMethodReportTest < ActiveSupport::TestCase
     assert_empty DemonstrationMethodReport.new(targets: []).summary
   end
 
+  test "CC OPG achievements match demonstration method across months without a monthly mapping" do
+    [nil, "", "all", "August"].each do |month|
+      demo = DemonstrationMethodReport.new(targets: @targets, month: month)
+      expected = demo.summary.sum do |row|
+        ["General Training/Meeting Done", "Input Demo INM Done", "Input Demo PM Done", "FFS Done"].sum { |key| row[key].to_i }
+      end
+      cc = CcDashboardReport.new(targets: @targets, vrps: [@vrp, @second], month: month)
+      assert_equal expected, cc.jj_achievement, "period=#{month.inspect}"
+      assert_equal month == "August" ? 4 : 6, cc.jj_achievement
+      assert_equal cc.jj_achievement, cc.rows.sum { |row| row["OPG Training"].split("/").last.to_i }
+    end
+    # A JJ outside the supplied mappings still contributes nothing.
+    outsider = build_vrp("Outside scope")
+    outsider.save!(validate: false)
+    entry(outsider, "FFS", "July")
+    cc = CcDashboardReport.new(targets: @targets, vrps: [@vrp, @second, outsider], month: "all")
+    assert_equal 6, cc.jj_achievement
+    assert_equal 0, cc.rows.find { |row| row["JJ Name"] == outsider.name }["Total OPG JJ Achievement"]
+  end
+
   test "summary and view list both trim padded creator IDs" do
     ModuleRecord.create!(module_slug: "training-form", data: { created_by_id: " #{@vrp.id} ", month: "August", training_method: "FFS" })
     report = DemonstrationMethodReport.new(targets: @targets)
