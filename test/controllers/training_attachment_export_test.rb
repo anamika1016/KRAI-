@@ -33,6 +33,34 @@ class TrainingAttachmentExportTest < ActionDispatch::IntegrationTest
     end
   end
 
+  test "ZIP keeps repeated attachments and does not route or update edit approvals" do
+    ModuleRecord.create!(module_slug: "training-form", data: @record.data.deep_dup)
+    saved_data = { "record_id" => @record.id, "status" => "Pending", "step" => 7,
+      "before" => { "selected_farmer_names" => [ "large snapshot" * 10_000 ] },
+      "requester" => {}, "evidence" => [ { "base64" => "x" * 100_000 } ] }
+    revision = ModuleRecord.create!(module_slug: TrainingEditApproval::SLUG, data: saved_data)
+    queries = []
+    subscriber = ->(*args) do
+      payload = args.last
+      queries << [ payload[:sql], Array(payload[:binds]).map { |bind| bind.value_for_database.to_s } ]
+    end
+    body = nil
+    ActiveSupport::Notifications.subscribed(subscriber, "sql.active_record") do
+      get export_module_path("training-form-list", format: :zip)
+      assert_response :success
+      body = response.body
+    end
+    refute queries.any? { |sql, binds| sql.include?(TrainingEditApproval::SLUG) || binds.include?(TrainingEditApproval::SLUG) },
+      "ZIP must not load the approval queue"
+    Zip::File.open_buffer(body) do |zip|
+      files = zip.entries.reject(&:directory?)
+      assert_equal 2, files.size
+      assert_equal [ "training evidence", "training evidence" ], files.map { |file| file.get_input_stream.read }
+      assert_equal files.size, files.map(&:name).uniq.size
+    end
+    assert_equal saved_data, revision.reload.data
+  end
+
   test "streamed export includes only records visible to the signed in user" do
     user = User.create!(first_name: "Export", last_name: "Staff", user_name: "training_export_staff",
       email: "training-export-staff@example.test", mobile_no: "9876500034", password: "secret",

@@ -2252,8 +2252,16 @@ class ModulesController < ApplicationController
         end
 
         paths = Enumerator.new do |output|
-          each_training_export_record do |record|
-            TrainingAttachmentPaths.for_record(record).each { |path| output << path }
+          attachment_paths = TrainingAttachmentPaths.new
+          # ZIP entry order does not need approval routing. Avoid loading or
+          # updating revision snapshots just to download saved attachments.
+          scope = ModuleRecord.where(module_slug: record_source_slug)
+            .select(:id, :module_slug, :created_at, :updated_at)
+            .select("(module_records.data::jsonb - ARRAY['selected_farmer_ids', 'selected_farmer_names'])::text AS data")
+          scope.find_each(batch_size: 100) do |record|
+            next unless target_record_visible?(record)
+
+            attachment_paths.for_record(record).each { |path| output << path }
           end
         end
         filename = "training_form_attachments_#{Time.current.strftime("%Y%m%d%H%M")}.zip"

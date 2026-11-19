@@ -5,23 +5,35 @@ class TrainingAttachmentPaths
     photo_front_view photo_back_view photo_close_up_view photo_long_shot].freeze
 
   def self.for_record(record)
-    root = Rails.root.join("public", "uploads", "module_records").realpath
+    new.for_record(record)
+  end
+
+  def initialize
+    @resolved_paths = {}
+  end
+
+  def for_record(record)
     FIELDS.flat_map do |field|
       value = record.data[field]
       value = value.presence || record.data["photo_close-up_view"] if field == "photo_close_up_view"
       ModuleUploadPaths.call(value).filter_map do |url|
-        begin
-          path = URI.parse(url).path.to_s
-          next unless path.start_with?("/uploads/module_records/")
-
-          file = Rails.root.join("public", path.delete_prefix("/")).realpath
-          file if file.file? && file.to_s.start_with?("#{root}/")
-        rescue URI::InvalidURIError, Errno::ENOENT, Errno::EACCES
-          nil
+        @resolved_paths.fetch(url) do
+          @resolved_paths[url] = resolve(url)
         end
       end
     end.uniq
-  rescue Errno::ENOENT
-    []
+  end
+
+  private
+
+  def resolve(url)
+    @root ||= Rails.root.join("public", "uploads", "module_records").realpath
+    path = URI.parse(url).path.to_s
+    return unless path.start_with?("/uploads/module_records/")
+
+    file = Rails.root.join("public", path.delete_prefix("/")).realpath
+    file if file.file? && file.to_s.start_with?("#{@root}/")
+  rescue URI::InvalidURIError, Errno::ENOENT, Errno::EACCES
+    nil
   end
 end

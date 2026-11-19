@@ -49,7 +49,9 @@ class XlsxExporter
       end
       output << [ "xl/worksheets/sheet1.xml", sheet ]
     end
-    StreamingAttachmentZip.new(entries: entries, compress: true)
+    # Excel packaging uses conventional ZIP headers and 32-bit descriptors.
+    # Keep ZIP64 available for large attachment archives, not normal workbooks.
+    StreamingAttachmentZip.new(entries: entries, compress: true, zip64: false)
   end
 
   def initialize(headers:, rows:, sheet_name:)
@@ -130,7 +132,12 @@ class XlsxExporter
   end
 
   def escape_xml(value)
-    CGI.escapeHTML(value.to_s).gsub("\n", "&#10;")
+    text = value.to_s.encode(Encoding::UTF_8, invalid: :replace, undef: :replace)
+    # OOXML escapes preserve characters that XML 1.0 cannot represent directly.
+    # Escape literal escape sequences first so Excel does not reinterpret them.
+    text = text.gsub(/_x[0-9a-fA-F]{4}_/) { |match| "_x005F_#{match.delete_prefix('_')}" }
+      .gsub(/[\u0000-\u0008\u000B\u000C\u000E-\u001F\uFFFE\uFFFF]/) { |character| "_x%04X_" % character.ord }
+    CGI.escapeHTML(text).gsub("\n", "&#10;")
   end
 
   def safe_sheet_name(value)
