@@ -12181,3 +12181,76 @@ body {
   #cc_dashboard_boxes .cc-overview-grid { grid-template-columns: 1fr; }
   #cc_dashboard_boxes .cc-overview-heading { align-items: flex-start; flex-direction: column; gap: 8px; }
 }
+
+/* ── Login Detail by App ─────────────────────────────────────────────────── */
+.app-login-filter-card { padding: 16px 18px; }
+
+.app-login-filter {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: 14px;
+}
+
+.app-login-filter .module-field { margin: 0; min-width: 190px; }
+.app-login-filter .module-field[hidden] { display: none; }
+
+.app-login-filter-actions {
+  display: flex;
+  gap: 8px;
+  margin-left: auto;
+}
+
+.app-login-stats { padding: 16px 18px; }
+.app-login-stats .dashboard-summary-boxes { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+.app-login-stats .dashboard-summary-box { min-height: 112px; }
+
+.app-login-subtitle {
+  margin: 2px 0 0;
+  color: var(--vrp-muted);
+  font-size: 0.82rem;
+}
+
+.app-login-table .app-login-serial { width: 56px; color: var(--vrp-muted); }
+.app-login-table .app-login-time { font-variant-numeric: tabular-nums; white-space: nowrap; }
+
+.app-login-person {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.app-login-avatar {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 30px;
+  height: 30px;
+  flex: 0 0 30px;
+  border-radius: 999px;
+  font-size: 0.78rem;
+  font-weight: 800;
+  letter-spacing: 0;
+}
+
+.app-login-avatar.is-jj { background: #effbf8; color: var(--vrp-primary-dark); }
+.app-login-avatar.is-user { background: #eef4fb; color: #2b5a86; }
+.app-login-name { font-weight: 600; }
+
+.app-login-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  padding: 34px 16px;
+  text-align: center;
+}
+
+.app-login-empty-icon { font-size: 1.9rem; color: var(--vrp-muted); line-height: 1; }
+.app-login-empty strong { color: #15262f; font-size: 0.98rem; }
+.app-login-empty p { margin: 0; color: var(--vrp-muted); font-size: 0.85rem; }
+
+@media (max-width: 900px) {
+  .app-login-stats .dashboard-summary-boxes { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .app-login-filter-actions { margin-left: 0; width: 100%; }
+}

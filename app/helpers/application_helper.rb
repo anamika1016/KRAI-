@@ -192,7 +192,8 @@ module ApplicationHelper
       icon: "▩",
       links: [
         ["All User", :route, :users_path],
-        ["Registration", :route, :new_user_path]
+        ["Registration", :route, :new_user_path],
+        ["Login Detail by App", :route, :app_login_events_path]
       ]
     },
     {

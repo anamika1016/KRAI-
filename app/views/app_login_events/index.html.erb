@@ -1,0 +1,136 @@
+<% content_for :title, "Login Detail by App" %>
+
+<section class="module-page app-login-page">
+  <div class="module-hero">
+    <div>
+      <p class="vrp-eyebrow">User Register</p>
+      <h1>Login Detail by App</h1>
+      <p>Jeevika Jankar aur User — jisne bhi mobile app se login kiya, uski detail.</p>
+    </div>
+    <div class="module-hero-actions">
+      <%= link_to app_login_events_path(period: @period, date: @selected_date.to_s,
+            month: @selected_month.strftime("%Y-%m"), format: :xlsx), class: "list-btn export" do %>
+        Export Excel
+      <% end %>
+    </div>
+  </div>
+
+  <section class="module-card app-login-filter-card">
+    <%= form_with url: app_login_events_path, method: :get, local: true, class: "app-login-filter" do %>
+      <label class="module-field">
+        <span>Filter</span>
+        <%= select_tag :period,
+              options_for_select([["Day wise", "day"], ["Month wise", "month"], ["All", "all"]], @period),
+              data: { app_login_period: true } %>
+      </label>
+      <label class="module-field" data-app-login-field="day" <%= "hidden" unless @period == "day" %>>
+        <span>Date</span>
+        <%= date_field_tag :date, @selected_date.to_s, max: Date.current.to_s %>
+      </label>
+      <label class="module-field" data-app-login-field="month" <%= "hidden" unless @period == "month" %>>
+        <span>Month</span>
+        <%= month_field_tag :month, @selected_month.strftime("%Y-%m"), max: Date.current.strftime("%Y-%m") %>
+      </label>
+      <div class="app-login-filter-actions">
+        <%= submit_tag "Show", class: "list-btn upload", data: { disable_with: false } %>
+        <%= link_to "Today", app_login_events_path, class: "list-btn" %>
+      </div>
+    <% end %>
+  </section>
+
+  <section class="module-card dashboard-summary-panel app-login-stats">
+    <div class="training-participation-boxes dashboard-summary-boxes">
+      <% [["Total Logins", @login_count, "App khulne ki ginti"],
+          ["Jeevika Jankar", @jj_login_count, "JJ ke login"],
+          ["User", @user_login_count, "Staff/office login"],
+          ["Unique People", @unique_people_count, "Alag-alag log"]].each do |title, value, caption| %>
+        <div class="training-participation-box total dashboard-summary-box">
+          <span><%= title %></span>
+          <strong><%= value %></strong>
+          <small><%= caption %></small>
+        </div>
+      <% end %>
+    </div>
+  </section>
+
+  <section class="module-card">
+    <div class="module-card-header">
+      <div>
+        <h2><%= period_label %></h2>
+        <p class="app-login-subtitle">
+          <%= @login_count.zero? ? "Koi login nahi" : "#{@login_count} login#{'s' unless @login_count == 1} · #{@unique_people_count} log" %>
+        </p>
+      </div>
+      <div class="list-search">
+        <span>⌕</span>
+        <input type="search" placeholder="Search name, username or role" data-table-search="app_login_events">
+      </div>
+    </div>
+
+    <div class="table-shell">
+      <table class="module-table app-login-table" id="app_login_events" data-paginated-table data-page-size="25">
+        <thead>
+          <tr>
+            <th class="app-login-serial">#</th>
+            <th>Name</th>
+            <th>Username</th>
+            <th>Type</th>
+            <th>Role</th>
+            <th>Login Date</th>
+            <th>Login Time</th>
+          </tr>
+        </thead>
+        <tbody>
+          <% if @login_events.any? %>
+            <% @login_events.each_with_index do |event, index| %>
+              <% jeevika_jankar = event.account_type == "Vrp" %>
+              <% name = event.display_name.presence || event.user_name.presence || "—" %>
+              <tr>
+                <td class="app-login-serial"><%= index + 1 %></td>
+                <td>
+                  <span class="app-login-person">
+                    <span class="app-login-avatar <%= jeevika_jankar ? "is-jj" : "is-user" %>" aria-hidden="true"><%= name.to_s.strip.first.to_s.upcase %></span>
+                    <span class="app-login-name"><%= name %></span>
+                  </span>
+                </td>
+                <td><%= event.user_name.presence || "—" %></td>
+                <td>
+                  <span class="status-pill <%= jeevika_jankar ? "active" : "inactive" %>">
+                    <%= jeevika_jankar ? "Jeevika Jankar" : "User" %>
+                  </span>
+                </td>
+                <td><%= event.role.presence || "—" %></td>
+                <td><%= event.logged_in_at&.strftime("%d %b %Y") %></td>
+                <td class="app-login-time"><%= event.logged_in_at&.strftime("%I:%M %p") %></td>
+              </tr>
+            <% end %>
+          <% else %>
+            <tr>
+              <td colspan="7">
+                <div class="app-login-empty">
+                  <span class="app-login-empty-icon" aria-hidden="true">◴</span>
+                  <strong>
+                    <% if @first_recorded_on.nil? %>
+                      Abhi tak koi app login record nahi hua
+                    <% else %>
+                      Is <%= @period == "month" ? "month" : "date" %> me kisi ne app se login nahi kiya
+                    <% end %>
+                  </strong>
+                  <p>
+                    <% if @first_recorded_on.nil? %>
+                      Recording is page ke live hone ke baad shuru hoti hai.
+                    <% elsif @period == "day" && @selected_date < @first_recorded_on %>
+                      Login recording <%= @first_recorded_on.strftime("%d %B %Y") %> se shuru hui thi.
+                    <% else %>
+                      Koi doosri date ya month chun kar dekhiye.
+                    <% end %>
+                  </p>
+                </div>
+              </td>
+            </tr>
+          <% end %>
+        </tbody>
+      </table>
+    </div>
+  </section>
+</section>

@@ -5433,6 +5433,22 @@ function initDeferredLayoutPage() {
     });
   });
 
+  // Login Detail by App: the filter decides which input the page asks for --
+  // a date for Day wise, a month for Month wise, neither for All.
+  document.querySelectorAll("[data-app-login-period]").forEach((select) => {
+    const form = select.closest("form");
+    if (!form) return;
+
+    const showFieldsFor = (period) => {
+      form.querySelectorAll("[data-app-login-field]").forEach((field) => {
+        field.hidden = field.dataset.appLoginField !== period;
+      });
+    };
+
+    showFieldsFor(select.value);
+    select.addEventListener("change", () => showFieldsFor(select.value));
+  });
+
   document.querySelectorAll("[data-upload-selected]").forEach((button) => {
     button.addEventListener("click", () => {
       const controls = button.closest(".list-controls") || button.closest(".dashboard-actions");

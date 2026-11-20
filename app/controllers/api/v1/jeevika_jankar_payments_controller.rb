@@ -129,9 +129,13 @@ module Api
       def payment_details
         return payment_access_denied unless payment_list_user?("jeevika-jankar-payment-list-detail")
 
-        set_calculator_visible_bill_ids(bill_records)
-        rows = calculator.send(:jeevika_payment_selectable_rows, bill_records)
-        approval_dates = calculator.send(:jeevika_payment_bill_date_options, bill_records)
+        records = bill_records
+        if current_month_lists?
+          records = records.select { |record| same_text?(record.data["bill_month"], current_list_month) }
+        end
+        set_calculator_visible_bill_ids(records)
+        rows = calculator.send(:jeevika_payment_selectable_rows, records)
+        approval_dates = calculator.send(:jeevika_payment_bill_date_options, records)
         rows = rows.select { |row| row[:approval_date].to_s == params[:approval_date].to_s } if params[:approval_date].present?
 
         render json: {

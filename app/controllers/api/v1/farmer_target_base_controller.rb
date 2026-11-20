@@ -17,7 +17,7 @@ module Api
       end
 
       def render_list(resource_key)
-        records = current_month_module_rows(farmer_target_api.list)
+        records = current_month_module_rows(farmer_target_api.list(month: current_month_lists? ? current_list_month : nil))
         render json: {
           success: true,
           message: "#{self.class::RESOURCE_TITLE} list fetched successfully.",

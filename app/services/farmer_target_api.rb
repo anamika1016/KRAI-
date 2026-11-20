@@ -16,11 +16,9 @@ class FarmerTargetApi
     @exclude_record_id = exclude_record_id
   end
 
-  def list
-    records = ModuleRecord
-      .where(module_slug: @module_slug)
-      .order(created_at: :desc)
-      .to_a
+  def list(month: nil)
+    scope = ModuleRecord.where(module_slug: @module_slug).order(created_at: :desc)
+    records = list_month_scope(scope, month).to_a
 
     preload_visibility_vrps!(records) unless admin_user?
 
@@ -34,9 +32,7 @@ class FarmerTargetApi
   # The web's Show all link is available to API clients via all=1.
   def training_list(request:, show_all: false, month: nil)
     scope = ModuleRecord.where(module_slug: "training-form").order(created_at: :desc, id: :desc)
-    if month.present?
-      scope = scope.where("LOWER(BTRIM(data->>'month')) = ?", month.downcase)
-    end
+    scope = list_month_scope(scope, month)
     scope = scope.limit(ModulesController::SCREEN_RECORD_LIMIT) unless show_all
     records = scope.to_a
     web = ModulesController.new
@@ -51,6 +47,20 @@ class FarmerTargetApi
     end
     records.map { |record| record_payload(record) }
   end
+
+  # Apply the mobile month window before the training screen limit. Legacy
+  # rows without an activity month use their creation date, as other lists do.
+  def list_month_scope(scope, month)
+    return scope if month.blank?
+
+    start = Time.current.beginning_of_month
+    scope.where(
+      "LOWER(BTRIM(data->>'month')) = :month OR " \
+      "(NULLIF(BTRIM(data->>'month'), '') IS NULL AND created_at >= :start AND created_at < :finish)",
+      month: month.to_s.strip.downcase, start: start, finish: start.next_month
+    )
+  end
+  private :list_month_scope
 
   def find(id)
     record = ModuleRecord.find_by(id: id, module_slug: @module_slug)

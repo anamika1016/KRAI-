@@ -35,4 +35,44 @@ class Api::V1::CurrentMonthListsTest < ActiveSupport::TestCase
     rows = [{ data: { "month" => "October" } }]
     assert_equal rows, @controller.send(:current_month_module_rows, rows)
   end
+
+  test "all farmer work lists enforce current month for JJ and CC even with old month params" do
+    controllers = [Api::V1::FarmerTrainingsController, Api::V1::OtherTargetsController,
+      Api::V1::SeedDistributionTargetsController, Api::V1::Papl360TargetsController,
+      Api::V1::AddFarmerFormsController]
+    travel_to Time.zone.local(2026, 11, 20) do
+      [{ "record_type" => "Vrp" }, { "role" => "Cluster Incharge" }].each do |payload|
+        controllers.each do |klass|
+          controller = klass.new
+          controller.instance_variable_set(:@current_api_user_payload, payload)
+          controller.params = ActionController::Parameters.new(month: "October", all: "1")
+          rows = %w[October November December].map { |month| { data: { "month" => month } } }
+          service = Object.new
+          service.define_singleton_method(:list) { |month:| rows }
+          service.define_singleton_method(:training_list) { |**options| rows }
+          controller.define_singleton_method(:farmer_target_api) { service }
+          controller.define_singleton_method(:render) { |json:, **options| @rendered = json }
+          controller.index
+          result = controller.instance_variable_get(:@rendered)
+          assert_equal 1, result[:count], klass.name
+          assert_equal "November", result[klass::RESOURCE_KEY].first[:data]["month"], klass.name
+        end
+      end
+    end
+  end
+
+  test "bill list month cannot be overridden by an old month or All" do
+    controller = Api::V1::JeevikaJankarPaymentsController.new
+    travel_to Time.zone.local(2026, 12, 1) do
+      [{ "record_type" => "Vrp" }, { "role" => "CC" }].each do |payload|
+        controller.instance_variable_set(:@current_api_user_payload, payload)
+        %w[November All].each do |month|
+          controller.params = ActionController::Parameters.new(month: month)
+          rows = [{ bill_month: "November" }, { bill_month: "December" }]
+          assert_equal [rows.last], controller.send(:filter_month, rows)
+        end
+      end
+    end
+  end
+
 end

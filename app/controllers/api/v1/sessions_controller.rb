@@ -27,6 +27,7 @@ module Api
         end
 
         token = ApiAuthToken.encode(user)
+        AppLoginEvent.record!(user)
 
         render json: {
           success: true,
@@ -56,6 +57,8 @@ module Api
             message: "Please accept the VRP agreement on the web portal before using the app."
           }, status: :forbidden
         end
+
+        AppLoginEvent.record!(user)
 
         render json: {
           success: true,

@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2026_09_24_133000) do
+ActiveRecord::Schema[8.1].define(version: 2026_09_25_090000) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "pg_catalog.plpgsql"
 
@@ -95,6 +95,19 @@ ActiveRecord::Schema[8.1].define(version: 2026_09_24_133000) do
     t.index ["mobile_no"], name: "index_afls_on_mobile_no"
     t.index ["slip_no"], name: "index_afls_on_slip_no"
     t.index ["tracenet_no"], name: "index_afls_on_tracenet_no"
+  end
+
+  create_table "app_login_events", force: :cascade do |t|
+    t.bigint "account_id"
+    t.string "account_type", null: false
+    t.datetime "created_at", null: false
+    t.string "display_name"
+    t.datetime "logged_in_at", null: false
+    t.string "role"
+    t.datetime "updated_at", null: false
+    t.string "user_name"
+    t.index ["account_type", "account_id"], name: "index_app_login_events_on_account_type_and_account_id"
+    t.index ["logged_in_at", "id"], name: "index_app_login_events_on_logged_in_at", order: :desc
   end
 
   create_table "contamination_control_records", force: :cascade do |t|

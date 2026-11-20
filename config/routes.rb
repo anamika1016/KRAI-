@@ -173,6 +173,9 @@ Rails.application.routes.draw do
   get "dashboard/ics-wise-farmer-report", to: "modules#ics_wise_farmer_report", as: :ics_wise_farmer_report
   get "dashboard/farmer-participation-report", to: "modules#farmer_participation_report", as: :farmer_participation_report
 
+  # Who signed in from the mobile app, one day at a time.
+  get "login-detail-by-app", to: "app_login_events#index", as: :app_login_events
+
   resources :users, except: [:show] do
     patch :toggle_status, on: :member
     patch :set_status, on: :member
