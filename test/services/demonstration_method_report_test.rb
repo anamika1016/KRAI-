@@ -194,40 +194,6 @@ class DemonstrationMethodReportTest < ActiveSupport::TestCase
     assert_equal 6, all.rows.sum { |row| row["OPG Achievement"] }
   end
 
-  test "CC summary farmer ownership does not count historical mappings twice" do
-    @vrp.update_columns(cluster_incharge: "First CC")
-    @second.update_columns(cluster_incharge: "Second CC")
-    farmers = 3.times.map do |index|
-      farmer = Afl.new(fco_id: "demo", tracenet_no: "ownership-#{index}", ics_id: "ownership-ics-#{index}", village_id: "ownership-village-#{index}")
-      farmer.save!(validate: false)
-      farmer
-    end
-    @targets.first.update!(afl_ids: farmers.first(2).map { |farmer| farmer.id.to_s })
-    @targets.last.update!(afl_ids: farmers.last(2).map { |farmer| farmer.id.to_s }, updated_at: 1.minute.from_now)
-    counts = [@vrp, @second].map do |jj|
-      web = ModulesController.new
-      web.define_singleton_method(:module_cluster_visible_vrp_ids) { [jj.id] }
-      owned = web.send(:dashboard_cc_owned_farmer_scope, Afl.where(id: farmers.map(&:id)))
-      owned.count
-    end
-    assert_equal [1, 2], counts
-    assert_equal 3, counts.sum
-    # Ownership is a Farmer Count rule; it must not shrink ICS/village cards.
-    web = ModulesController.new
-    visible_ids = [@vrp.id]
-    scope = Afl.where(id: farmers.map(&:id))
-    web.define_singleton_method(:module_cluster_visible_vrp_ids) { visible_ids }
-    web.define_singleton_method(:dashboard_total_afl_farmer_scope) { scope }
-    web.define_singleton_method(:dashboard_cluster_coordinator_scope?) { true }
-    web.define_singleton_method(:dashboard_total_farmer_count_for_direct_to_ho?) { false }
-    assert_equal 1, web.send(:dashboard_total_afl_farmer_count)
-    assert_equal 3, web.send(:dashboard_total_afl_ics_count)
-    assert_equal 3, web.send(:dashboard_total_afl_village_count)
-    web = ModulesController.new
-    web.define_singleton_method(:module_cluster_visible_vrp_ids) { [] }
-    assert_empty web.send(:dashboard_cc_owned_farmer_scope, Afl.all)
-  end
-
   private
 
   def build_vrp(name)

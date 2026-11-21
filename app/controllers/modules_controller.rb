@@ -4963,8 +4963,10 @@ class ModulesController < ApplicationController
   end
 
   # A farmer can remain on historical mappings for several coordinators.
-  # Its latest saved mapping identifies the current owner, so adding the CC
-  # summaries counts the farmer once rather than once per historical CC.
+  # Its latest saved target or registration mapping identifies the current
+  # owner, so every registered farmer is counted once across the CCs. The
+  # registration fallback covers a farmer assigned to a JJ but not yet added
+  # to a monthly target mapping.
   def dashboard_cc_owned_farmer_scope(scope)
     visible_ids = module_cluster_visible_vrp_ids
     return scope.none if visible_ids.empty?
@@ -4972,15 +4974,29 @@ class ModulesController < ApplicationController
     scope.where(<<~SQL.squish, visible_ids: visible_ids)
       afls.id::text IN (
         SELECT current_owner.farmer_id FROM (
-          SELECT DISTINCT ON (farmer.value) farmer.value AS farmer_id, ownership.vrp_id
-          FROM target_mappings ownership
-          INNER JOIN vrps owner_jj ON owner_jj.id = ownership.vrp_id
-          CROSS JOIN LATERAL jsonb_array_elements_text(
-            CASE WHEN jsonb_typeof(ownership.afl_ids::jsonb) = 'array'
-              THEN ownership.afl_ids::jsonb ELSE '[]'::jsonb END
-          ) farmer(value)
-          WHERE NULLIF(BTRIM(owner_jj.cluster_incharge), '') IS NOT NULL
-          ORDER BY farmer.value, ownership.updated_at DESC, ownership.id DESC
+          SELECT DISTINCT ON (assignment.farmer_id) assignment.farmer_id, assignment.vrp_id
+          FROM (
+            SELECT farmer.value AS farmer_id, ownership.vrp_id, ownership.updated_at, ownership.id, 2 AS source_priority
+            FROM target_mappings ownership
+            INNER JOIN vrps owner_jj ON owner_jj.id = ownership.vrp_id
+            CROSS JOIN LATERAL jsonb_array_elements_text(
+              CASE WHEN jsonb_typeof(ownership.afl_ids::jsonb) = 'array'
+                THEN ownership.afl_ids::jsonb ELSE '[]'::jsonb END
+            ) farmer(value)
+            WHERE NULLIF(BTRIM(owner_jj.cluster_incharge), '') IS NOT NULL
+
+            UNION ALL
+
+            SELECT farmer.value AS farmer_id, registration.vrp_id, registration.updated_at, registration.id, 1 AS source_priority
+            FROM vrp_ics_mappings registration
+            INNER JOIN vrps registered_jj ON registered_jj.id = registration.vrp_id
+            CROSS JOIN LATERAL jsonb_array_elements_text(
+              CASE WHEN jsonb_typeof(registration.afl_ids::jsonb) = 'array'
+                THEN registration.afl_ids::jsonb ELSE '[]'::jsonb END
+            ) farmer(value)
+            WHERE NULLIF(BTRIM(registered_jj.cluster_incharge), '') IS NOT NULL
+          ) assignment
+          ORDER BY assignment.farmer_id, assignment.updated_at DESC, assignment.source_priority DESC, assignment.id DESC
         ) current_owner
         WHERE current_owner.vrp_id IN (:visible_ids)
       )

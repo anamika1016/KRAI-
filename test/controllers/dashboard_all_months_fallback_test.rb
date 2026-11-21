@@ -67,7 +67,7 @@ class DashboardAllMonthsFallbackTest < ActionDispatch::IntegrationTest
     training = ModuleRecord.create!(module_slug: "training-form", data: {
       "created_by_id" => @vrp.id.to_s, "month" => other_month, "training_method" => "FFS"
     })
-    ["", other_month].each do |month|
+    ["", "all", other_month].each do |month|
       get "/dashboard", params: { month: month, main_activity: "Farmers' Training" }
       assert_response :success
       demonstration = @controller.instance_variable_get(:@demonstration_method_report)

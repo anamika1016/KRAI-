@@ -19,8 +19,17 @@
       <span class="record-count"><%= @accepted_agreements.size %> records</span>
     </div>
 
+    <div class="list-controls">
+      <div class="list-search">
+        <span>⌕</span>
+        <input type="search" placeholder="Search name, FCO, village or mobile number"
+               data-table-search="accepted_agreements_table">
+      </div>
+    </div>
+
     <div class="table-shell">
-      <table class="module-table compact-table agreement-archive-table" data-column-filters-enabled>
+      <table class="module-table compact-table agreement-archive-table"
+             id="accepted_agreements_table" data-column-filters-enabled>
         <thead>
           <tr>
             <th>View</th>
@@ -48,7 +57,7 @@
               </tr>
             <% end %>
           <% else %>
-            <tr>
+            <tr data-empty-row>
               <td colspan="8">No signed agreements found yet.</td>
             </tr>
           <% end %>

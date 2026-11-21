@@ -252,6 +252,42 @@ class ModulesControllerDashboardTest < ActiveSupport::TestCase
     assert_equal [farmer.id.to_s], rows.map { |row| row[:farmer_id] }
   end
 
+  test "CC Total Farmer Count includes registered farmers once across CCs" do
+    first = create_vrp(user_name: "ownership_first", cluster_incharge: "First CC")
+    second = create_vrp(user_name: "ownership_second", cluster_incharge: "Second CC",
+      mobile_no: "9876500998", aadhar_no: "123456780998")
+    farmers = 4.times.map do |index|
+      Afl.create!(fco_id: "1004", tracenet_no: "ownership-#{index}", farmer_name: "Ownership #{index}",
+        ics_id: "ownership-ics-#{index}", village_id: "ownership-village-#{index}")
+    end
+    TargetMapping.create!(vrp: first, fco_id: "1004", ics_id: "ownership-ics", village_id: "ownership-village",
+      month_name: "August", main_activity_name: "Farmers' Training", activity_name: "Training",
+      target_quantity: 1, afl_ids: farmers.first(2).map { |farmer| farmer.id.to_s })
+    TargetMapping.create!(vrp: second, fco_id: "1004", ics_id: "ownership-ics", village_id: "ownership-village",
+      month_name: "August", main_activity_name: "Farmers' Training", activity_name: "Training",
+      target_quantity: 1, afl_ids: farmers[1, 2].map { |farmer| farmer.id.to_s }, updated_at: 1.minute.from_now)
+    VrpIcsMapping.create!(vrp: first, fco_id: "1004", ics_id: "ownership-ics", village_id: "ownership-village",
+      afl_ids: [farmers.last.id.to_s])
+
+    counts = [first, second].map do |jj|
+      controller = ModulesController.new
+      controller.define_singleton_method(:module_cluster_visible_vrp_ids) { [jj.id] }
+      controller.send(:dashboard_cc_owned_farmer_scope, Afl.where(id: farmers.map(&:id))).count
+    end
+    assert_equal [2, 2], counts
+    assert_equal 4, counts.sum
+
+    controller = ModulesController.new
+    scope = Afl.where(id: farmers.map(&:id))
+    controller.define_singleton_method(:module_cluster_visible_vrp_ids) { [first.id] }
+    controller.define_singleton_method(:dashboard_total_afl_farmer_scope) { scope }
+    controller.define_singleton_method(:dashboard_cluster_coordinator_scope?) { true }
+    controller.define_singleton_method(:dashboard_total_farmer_count_for_direct_to_ho?) { false }
+    assert_equal 2, controller.send(:dashboard_total_afl_farmer_count)
+    assert_equal 4, controller.send(:dashboard_total_afl_ics_count)
+    assert_equal 4, controller.send(:dashboard_total_afl_village_count)
+  end
+
   test "unmapped CC sees zero counts and query results are reused within request" do
     controller = ModulesController.new
     controller.define_singleton_method(:current_app_user) { { "id" => "501", "name" => "Unmapped CC", "role" => "Cluster Coordinator" } }
