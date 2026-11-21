@@ -7,13 +7,16 @@ class SessionsControllerTest < ActionDispatch::IntegrationTest
     get login_path
     assert_response :success
     assert_includes response.headers["Cache-Control"], "no-store"
-    assert_select 'meta[name="turbo-cache-control"][content="no-cache"]'
+    assert_select 'meta[name="turbo-cache-control"]', count: 1
+    assert_select 'meta[name="turbo-cache-control"][content="no-cache"]', count: 1
     post login_path, params: { login: "anyone", password: "secret", authenticity_token: "expired" }
     assert_response :see_other
     assert_redirected_to login_path
     follow_redirect!
     assert_response :success
     assert_includes response.body, "Login page expired"
+    assert_select 'meta[name="turbo-cache-control"]', count: 1
+    assert_select 'meta[name="turbo-cache-control"][content="no-cache"]', count: 1
     assert_select 'input[name="authenticity_token"]'
   ensure
     ActionController::Base.allow_forgery_protection = previous

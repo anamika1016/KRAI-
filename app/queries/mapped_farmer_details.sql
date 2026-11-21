@@ -1,4 +1,12 @@
-WITH august_any_mapping AS (
+-- Keep the selected farmer population separate from mapping aggregates. Without
+-- this boundary PostgreSQL can estimate one joined row and repeatedly rebuild
+-- the VRP aggregate for thousands of farmers on production-sized data.
+WITH selected_farmers AS MATERIALIZED (
+    SELECT a.*
+    FROM public.afls a
+    WHERE a.fco_id IN (:fco_ids) AND a.id IN (:visible_farmer_ids)
+),
+august_any_mapping AS (
     SELECT
         t.fco_id,
         v.afl_id,
@@ -25,6 +33,7 @@ WITH august_any_mapping AS (
     ) AS v(afl_id)
 
     WHERE %{target_month_filter}
+      AND t.fco_id IN (:fco_ids)
 
     GROUP BY
         t.fco_id,
@@ -48,6 +57,7 @@ august_training_mapping AS (
     ) AS v(afl_id)
 
     WHERE %{target_month_filter}
+      AND t.fco_id IN (:fco_ids)
       AND LOWER(COALESCE(t.main_activity_name, ''))
           LIKE '%farmers'' training%'
 
@@ -90,7 +100,7 @@ august_training_done AS MATERIALIZED (
 ),
 
 
-farmer_vrp_details AS (
+farmer_vrp_details AS MATERIALIZED (
     SELECT
         am.fco_id,
         am.afl_id,
@@ -192,7 +202,7 @@ SELECT
         ELSE 'Completed'
     END AS farmer_status
 
-FROM public.afls a
+FROM selected_farmers a
 
 LEFT JOIN august_any_mapping am
     ON am.fco_id = a.fco_id
@@ -214,8 +224,7 @@ LEFT JOIN farmer_vrp_details fvd
 -- the same card's "View List", so it must be restricted the same way — without
 -- the am.afl_id filter it returns every farmer in the FCO (mapped + unmapped),
 -- so the list total (e.g. 11,742) overshoots the card (e.g. 9,378).
-WHERE a.fco_id IN (:fco_ids) AND a.id IN (:visible_farmer_ids)
-  AND am.afl_id IS NOT NULL
+WHERE am.afl_id IS NOT NULL
 
 ORDER BY
     a.fco_id,

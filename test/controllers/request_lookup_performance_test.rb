@@ -1,6 +1,25 @@
 require "test_helper"
 
 class RequestLookupPerformanceTest < ActiveSupport::TestCase
+  test "mobile agreement batch retains individual labels and missing village fallbacks" do
+    villages = 3.times.map { |i| ModuleRecord.create!(module_slug: "village-master", data: { "village_name" => "Village #{i}" }) }
+    ids = villages.map(&:id) + ["0#{villages.first.id}", "missing-village", nil]
+    vrps = ids.map { |id| Vrp.new(village_ids: [id].compact) }
+    original = Api::V1::VrpAgreementsController.new
+    expected = vrps.map { |vrp| original.send(:agreement_village_name, vrp) }
+    controller = Api::V1::VrpAgreementsController.new
+    queries = []
+    subscriber = ActiveSupport::Notifications.subscribe("sql.active_record") do |*args|
+      payload = args.last
+      queries << payload[:sql] if payload[:name] != "SCHEMA" && payload[:sql].include?('FROM "module_records"')
+    end
+    controller.send(:preload_agreement_villages, vrps)
+    assert_equal expected, vrps.map { |vrp| controller.send(:agreement_village_name, vrp) }
+    assert_equal 1, queries.size
+  ensure
+    ActiveSupport::Notifications.unsubscribe(subscriber) if subscriber
+  end
+
   test "agreement village label keeps source precedence and skips unused fallbacks" do
     controller = VrpAgreementsController.new
     calls = []

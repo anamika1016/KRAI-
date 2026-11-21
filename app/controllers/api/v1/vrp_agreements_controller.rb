@@ -70,6 +70,7 @@ module Api
         end
 
         rows = accepted_agreement_vrps
+        preload_agreement_villages(rows)
         render json: { success: true, agreements: rows.map { |vrp| agreement_list_row(vrp) }, count: rows.size,
           generated_at: Time.current.iso8601 }, status: :ok
       end
@@ -192,7 +193,7 @@ module Api
       end
 
       def agreement_village_name(vrp)
-        village_id = vrp.vrp_profile&.village_id.presence || Array(vrp.village_ids).map(&:to_s).reject(&:blank?).first
+        village_id = agreement_village_id(vrp)
         return "-" if village_id.blank?
 
         @agreement_village_labels ||= {}
@@ -201,8 +202,24 @@ module Api
         @agreement_village_labels[village_id.to_s] = agreement_village_label(village_id)
       end
 
+      def agreement_village_id(vrp)
+        vrp.vrp_profile&.village_id.presence || Array(vrp.village_ids).map(&:to_s).reject(&:blank?).first
+      end
+
+      def preload_agreement_villages(vrps)
+        ids = vrps.map { |vrp| agreement_village_id(vrp) }.reject(&:blank?).uniq
+        records = ModuleRecord.where(id: ids).index_by(&:id)
+        id_type = ModuleRecord.type_for_attribute("id")
+        @agreement_village_records = ids.to_h { |id| [id.to_s, records[id_type.cast(id)]] }
+      end
+
       def agreement_village_label(village_id)
-        village_name = ModuleRecord.find_by(id: village_id)&.data&.values_at("village_name", "village", "name", "title")&.compact_blank&.first
+        record = if @agreement_village_records&.key?(village_id.to_s)
+          @agreement_village_records[village_id.to_s]
+        else
+          ModuleRecord.find_by(id: village_id)
+        end
+        village_name = record&.data&.values_at("village_name", "village", "name", "title")&.compact_blank&.first
         village_name.presence || (TargetMapping.where(village_id: village_id.to_s).limit(1).pick(:village_name) if defined?(TargetMapping))&.presence ||
           (VrpIcsMapping.where(village_id: village_id.to_s).limit(1).pick(:village_name) if defined?(VrpIcsMapping))&.presence ||
           (Afl.where(village_id: village_id.to_s).limit(1).pick(:village_name) if defined?(Afl))&.presence || village_id.to_s

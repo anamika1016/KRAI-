@@ -1304,27 +1304,31 @@ class ModulesController < ApplicationController
       farmer_training_participation_rows_from_sql(
         "unique",
         month_name: selected_month,
-        fcoc_name: selected_fcoc
+        fcoc_name: selected_fcoc,
+        to_name: selected_to
       )
     elsif %w[no_activity no_training_mapping no_training training_mapped_no_entry no_entry red total_red pending].include?(selected_status)
       farmer_training_participation_rows_from_sql(
         selected_status,
         month_name: selected_month,
-        fcoc_name: selected_fcoc
+        fcoc_name: selected_fcoc,
+        to_name: selected_to
       )
     elsif selected_status == "yellow" || selected_status == "only_1_training" || selected_status == "1_training"
       farmer_training_participation_rows_from_sql(
         "yellow",
         month_name: selected_month,
         fcoc_name: selected_fcoc,
-        week_number: selected_week
+        week_number: selected_week,
+        to_name: selected_to
       )
     elsif selected_status == "green" || selected_status == "1_plus_trainings" || selected_status == "more_than_1"
       farmer_training_participation_rows_from_sql(
         "green",
         month_name: selected_month,
         fcoc_name: selected_fcoc,
-        week_number: selected_week
+        week_number: selected_week,
+        to_name: selected_to
       )
     elsif selected_status == "training_unique"
       record_rows = training_participation_farmer_rows_from_records(training_records)
@@ -7086,13 +7090,29 @@ class ModulesController < ApplicationController
     SQL
   end
 
-  def farmer_training_participation_rows_from_sql(status, month_name:, fcoc_name:, week_number: nil)
+  # Same Condition 1/2 rule the cards use: an ICS mapped to the selected TO
+  # narrows the list, and a TO with no mapping at all leaves it untouched.
+  def participation_to_filtered_sql(sql, to_ics_ids)
+    return sql if to_ics_ids.blank?
+
+    # The FCO predicate is written both plainly and wrapped in LOWER(BTRIM(...)),
+    # here and in the .sql files these lists load. Pin the TO filter to every
+    # occurrence so no branch of the drill-down is left unnarrowed.
+    sql.gsub(/(?:LOWER\(BTRIM\(a\.fco_id\)\)|a\.fco_id)\s+IN\s+\(:fco_ids\)/) do |predicate|
+      "#{predicate} AND LOWER(BTRIM(a.ics_id)) IN (:to_ics_ids)"
+    end
+  end
+
+  def farmer_training_participation_rows_from_sql(status, month_name:, fcoc_name:, week_number: nil, to_name: nil)
     # "All Months" selected: drop the month filter (and the week filter, which
     # only means anything inside one month) so every list below spans all
     # months. Picking a specific month keeps the original behaviour untouched.
     all_months = month_name.blank?
     selected_month = month_name.presence || "August"
     fco_ids = training_fcoc_ids_from_param(fcoc_name)
+    # The cards narrow by TO; this drill-down has to narrow the same way or the
+    # list reads a different total than the card it was opened from.
+    to_ics_ids = to_name.present? ? dashboard_to_mapped_ics_ids(fcoc_name, to_name) : nil
     week_filter = all_months ? "" : training_participation_week_filter_sql(week_number || selected_participation_sql_week)
     entry_month_filter = all_months ? "" : "AND LOWER(TRIM(mr.data::jsonb ->> 'month')) = :month_name"
     month_label = all_months ? "All Months" : selected_month
@@ -7170,9 +7190,10 @@ class ModulesController < ApplicationController
       SQL
 
       binds = { fco_ids: fco_ids.map(&:downcase) }
+      binds[:to_ics_ids] = to_ics_ids if to_ics_ids.present?
       binds[:month_name] = selected_month.strip.downcase unless all_months
       raw_rows = ActiveRecord::Base.connection.exec_query(
-        ActiveRecord::Base.send(:sanitize_sql_array, [dashboard_scoped_training_sql(sql), binds])
+        ActiveRecord::Base.send(:sanitize_sql_array, [dashboard_scoped_training_sql(participation_to_filtered_sql(sql, to_ics_ids)), binds])
       )
 
       return raw_rows.map do |row|
@@ -7284,9 +7305,10 @@ class ModulesController < ApplicationController
       SQL
 
       binds = { fco_ids: fco_ids.map(&:downcase) }
+      binds[:to_ics_ids] = to_ics_ids if to_ics_ids.present?
       binds[:month_name] = selected_month.strip.downcase unless all_months
       raw_rows = ActiveRecord::Base.connection.exec_query(
-        ActiveRecord::Base.send(:sanitize_sql_array, [dashboard_scoped_training_sql(sql), binds])
+        ActiveRecord::Base.send(:sanitize_sql_array, [dashboard_scoped_training_sql(participation_to_filtered_sql(sql, to_ics_ids)), binds])
       )
 
       return raw_rows.map do |row|
@@ -7437,8 +7459,9 @@ class ModulesController < ApplicationController
       # dashboard_scoped_training_sql already injects the authorised farmer scope.
       # Do not materialise that scope into a large Ruby ID array: on big FCOs it
       # produces a massive IN clause and was responsible for 9–13 second list spikes.
-      scoped_sql = dashboard_scoped_training_sql(sql).gsub(" AND a.id IN (:visible_farmer_ids)", "")
+      scoped_sql = dashboard_scoped_training_sql(participation_to_filtered_sql(sql, to_ics_ids)).gsub(" AND a.id IN (:visible_farmer_ids)", "")
       binds = { month_name: selected_month.strip.downcase, fco_ids: fco_ids }
+      binds[:to_ics_ids] = to_ics_ids if to_ics_ids.present?
       @mapped_farmer_details = ActiveRecord::Base.connection.exec_query(
         ActiveRecord::Base.send(:sanitize_sql_array, [scoped_sql, binds])
       )
@@ -7453,8 +7476,9 @@ class ModulesController < ApplicationController
     end
 
     binds = { month_name: selected_month.strip.downcase, fco_ids: fco_ids.flat_map { |id| [id.to_s, id.to_s.downcase] }.uniq }
+    binds[:to_ics_ids] = to_ics_ids if to_ics_ids.present?
     raw_rows = ActiveRecord::Base.connection.exec_query(
-      ActiveRecord::Base.send(:sanitize_sql_array, [dashboard_scoped_training_sql(sql), binds])
+      ActiveRecord::Base.send(:sanitize_sql_array, [dashboard_scoped_training_sql(participation_to_filtered_sql(sql, to_ics_ids)), binds])
     )
 
     raw_rows.map do |row|
@@ -8008,6 +8032,7 @@ class ModulesController < ApplicationController
     # farmers in batches before the target loop instead of one SELECT per ID.
     training_farmers_by_id(valid_farmer_ids)
     memberships = targets.each_with_object({}) do |target, memberships|
+      target_metadata = nil
       training_participation_target_farmer_ids(target).each do |farmer_id|
         unique_farmer_key = training_participation_target_farmer_key(farmer_id)
         membership_key = training_participation_membership_key(unique_farmer_key, target.month_name)
@@ -8030,18 +8055,23 @@ class ModulesController < ApplicationController
           pending_available: false
         }
 
-        memberships[membership_key][:months] |= [target.month_name.to_s.strip].reject(&:blank?)
-        memberships[membership_key][:ics] |= [target_ics_label(target).to_s.strip].reject(&:blank?)
-        memberships[membership_key][:village] |= [target_village_label(target).to_s.strip].reject(&:blank?)
-        memberships[membership_key][:vrp] |= [target.vrp&.name.to_s.strip].reject(&:blank?)
-        memberships[membership_key][:fcoc] |= [target.fco_name.to_s.strip, target.vrp&.fcoc.to_s.strip].reject(&:blank?)
-        memberships[membership_key][:cluster_incharge] |= [target.vrp&.cluster_incharge.to_s.strip].reject(&:blank?)
-        memberships[membership_key][:jeevika_jankar_name] |= [target.vrp&.name.to_s.strip].reject(&:blank?)
-        memberships[membership_key][:target_owner] |= [target.vrp&.name.to_s.strip].reject(&:blank?)
-        memberships[membership_key][:registered_by] |= [target_mapping_registered_by_name(target)].reject(&:blank?)
-        memberships[membership_key][:main_activities] |= [target.main_activity_name.to_s.strip].reject(&:blank?)
-        memberships[membership_key][:sub_activities] |= [target.activity_name.to_s.strip].reject(&:blank?)
-        memberships[membership_key][:assigned_activity_keys] |= training_participation_target_activity_keys(target)
+        # These labels and activity keys belong to the target, so reuse them
+        # across its farmers. Keep evaluation lazy for targets with no farmers.
+        target_metadata ||= {
+          months: [target.month_name.to_s.strip].reject(&:blank?),
+          ics: [target_ics_label(target).to_s.strip].reject(&:blank?),
+          village: [target_village_label(target).to_s.strip].reject(&:blank?),
+          vrp: [target.vrp&.name.to_s.strip].reject(&:blank?),
+          fcoc: [target.fco_name.to_s.strip, target.vrp&.fcoc.to_s.strip].reject(&:blank?),
+          cluster_incharge: [target.vrp&.cluster_incharge.to_s.strip].reject(&:blank?),
+          jeevika_jankar_name: [target.vrp&.name.to_s.strip].reject(&:blank?),
+          target_owner: [target.vrp&.name.to_s.strip].reject(&:blank?),
+          registered_by: [target_mapping_registered_by_name(target)].reject(&:blank?),
+          main_activities: [target.main_activity_name.to_s.strip].reject(&:blank?),
+          sub_activities: [target.activity_name.to_s.strip].reject(&:blank?),
+          assigned_activity_keys: training_participation_target_activity_keys(target)
+        }
+        target_metadata.each { |key, values| memberships[membership_key][key] |= values }
         memberships[membership_key][:pending_available] ||= training_participation_month_open?(target.month_name)
         memberships[membership_key][:source_farmer_ids] |= [farmer_id.to_s]
       end
@@ -10738,16 +10768,18 @@ class ModulesController < ApplicationController
   end
 
   def bill_summary_scope(base)
-    base.select(<<~SQL.squish)
+    # OFFSET 0 keeps the lateral projection from being inlined: parse each
+    # bill once before inspecting and trimming its potentially large items.
+    base.joins("CROSS JOIN LATERAL (SELECT module_records.data::jsonb AS payload OFFSET 0) bill_payload").select(<<~SQL.squish)
       module_records.id, module_records.module_slug,
       module_records.created_at, module_records.updated_at,
       CASE
-        WHEN jsonb_typeof(module_records.data::jsonb -> 'bill_items') = 'array'
+        WHEN jsonb_typeof(bill_payload.payload -> 'bill_items') = 'array'
         THEN jsonb_set(
-               module_records.data::jsonb, '{bill_items}',
+               bill_payload.payload, '{bill_items}',
                COALESCE((
                  SELECT jsonb_agg(elem - 'farmer_details' ORDER BY ord)
-                 FROM jsonb_array_elements(module_records.data::jsonb -> 'bill_items')
+                 FROM jsonb_array_elements(bill_payload.payload -> 'bill_items')
                    WITH ORDINALITY AS t(elem, ord)
                ), '[]'::jsonb)
              )::text
