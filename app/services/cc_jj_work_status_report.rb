@@ -48,6 +48,48 @@ class CcJjWorkStatusReport
     @month.blank? || @month.downcase.start_with?("all")
   end
 
+  # Resolve saved JJ labels to current user records. Old target mappings can
+  # retain an inactive CC's name, and username/full-name variants can name the
+  # same coordinator. Only a currently active account contributes a CC.
+  def active_cc_expression(connection, column)
+    @active_cc_labels ||= begin
+      users = User.order(:id).to_a
+      legacy_users = ModuleRecord.where(module_slug: "new-user").order(updated_at: :desc, id: :desc).to_a
+      Vrp.where.not(cluster_incharge: [nil, ""]).distinct.pluck(:cluster_incharge).to_h do |label|
+        user = matching_cc_account(users, label) { |candidate| [candidate.user_name, candidate.full_name] }
+        if user
+          name = user.active? ? (user.full_name.presence || user.user_name) : nil
+        else
+          legacy = matching_cc_account(legacy_users, label) do |record|
+            data = record.data
+            [data["user_name"], data["name"], [data["first_name"], data["last_name"]].compact_blank.join(" ")]
+          end
+          name = if legacy && @calculator.send(:active_module_record?, legacy)
+            data = legacy.data
+            [data["first_name"], data["last_name"]].compact_blank.join(" ").presence || data["name"].presence || data["user_name"]
+          end
+        end
+        [label, name]
+      end
+    end
+    clauses = @active_cc_labels.filter_map do |label, name|
+      "WHEN #{connection.quote(label)} THEN #{connection.quote(name)}" if name.present?
+    end
+    return "NULL::text" if clauses.empty?
+
+    "CASE #{column} #{clauses.join(' ')} ELSE NULL END"
+  end
+
+  def matching_cc_account(accounts, label)
+    values = @calculator.send(:cluster_label_match_values, label)
+    exact = accounts.find do |account|
+      yield(account).any? { |name| (values & @calculator.send(:cluster_label_match_values, name)).any? }
+    end
+    exact || accounts.find do |account|
+      yield(account).any? { |name| @calculator.send(:cluster_label_matches?, name, label) }
+    end
+  end
+
   def execute(kind)
     sql = Rails.root.join("app/queries/cc_jj_work_status", "#{kind}.sql").read
     connection = ActiveRecord::Base.connection
@@ -70,6 +112,8 @@ class CcJjWorkStatusReport
     list_to_filter = to_ics_ids.present? ? "LOWER(BTRIM(a.ics_id)) IN (#{to_ics_quoted})" : "TRUE"
     summary_to_filter = to_ics_ids.present? ? "fvm.afl_id IN (SELECT id::text FROM public.afls WHERE LOWER(BTRIM(ics_id)) IN (#{to_ics_quoted}))" : "TRUE"
     replacements = {
+      active_cc_label: active_cc_expression(connection, "cluster_incharge"),
+      registered_active_cc_label: active_cc_expression(connection, "v.cluster_incharge"),
       assignment_visibility_filter: assignment_scope,
       summary_fco_filter: selected_fcos.empty? ? "FALSE" : "LOWER(TRIM(fvm.fco_id)) IN (#{fcos})",
       list_fco_filter: selected_fcos.empty? ? "FALSE" : "LOWER(TRIM(a.fco_id)) IN (#{stored_fcos})",

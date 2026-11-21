@@ -138,7 +138,7 @@ module VrpAccess
     email_key = vrp.email.to_s.strip.downcase
     @registered_by_user_cache[cache_key] = @preloaded_creator_records_by_email&.[](email_key) ||
       ModuleRecord.where(module_slug: "new-user")
-        .where("LOWER(COALESCE(data->>'email', '')) = ?", email_key)
+        .where("LOWER(COALESCE(data::jsonb->>'email', '')) = ?", email_key)
         .order(created_at: :desc)
         .first
   end

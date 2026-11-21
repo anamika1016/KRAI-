@@ -115,6 +115,10 @@ class AflsController < ApplicationController
     policy.request = request
     policy.instance_variable_set(:@current_app_user, current_app_user)
     scope = scope.merge(policy.send(:dashboard_visible_farmer_scope))
+    if @summary_mode == "farmer" && policy.send(:dashboard_cluster_coordinator_scope?) &&
+        !policy.send(:dashboard_total_farmer_count_for_direct_to_ho?)
+      scope = policy.send(:dashboard_cc_owned_farmer_scope, scope)
+    end
     @fco_filter = FcoDirectory.ids if @fco_filter.to_s.strip.casecmp("All FCO").zero?
     if @fco_filter.present?
       fco_values = afl_fco_filter_values(@fco_filter)

@@ -50,7 +50,7 @@ class DemonstrationMethodReportTest < ActiveSupport::TestCase
     duplicate_mapping.save!
     targets = @targets + [duplicate_mapping]
 
-    { nil => 5, "" => 5, "all" => 5, "August" => 4, "July" => 0 }.each do |month, expected|
+    { nil => 4, "" => 4, "all" => 4, "August" => 4, "July" => 0 }.each do |month, expected|
       shared = DemonstrationMethodReport.new(targets: targets, month: month, visible_vrp_ids: [@vrp.id])
       cc = CcDashboardReport.new(targets: targets, vrps: [@vrp], month: month, demonstration_report: shared)
       web = ModulesController.new
@@ -70,7 +70,10 @@ class DemonstrationMethodReportTest < ActiveSupport::TestCase
     assert_equal 0, DemonstrationMethodReport.new(targets: [], month: "all").achievement_totals.values.sum
     entry(@vrp, "Input Demo PM", "September")
     refreshed = DemonstrationMethodReport.new(targets: targets, month: "all", visible_vrp_ids: [@vrp.id])
-    assert_equal 6, refreshed.achievement_totals.values.sum, "a new saved session must update the next calculation"
+    assert_equal 4, refreshed.achievement_totals.values.sum, "an unmapped month must not inflate All Months"
+    september = target(@vrp, 1, "September")
+    refreshed = DemonstrationMethodReport.new(targets: targets + [september], month: "all", visible_vrp_ids: [@vrp.id])
+    assert_equal 5, refreshed.achievement_totals.values.sum
   end
 
   test "FCO labels sharing an ID do not multiply summary achievements" do
@@ -82,7 +85,7 @@ class DemonstrationMethodReportTest < ActiveSupport::TestCase
       summary_done = report.summary.sum do |row|
         ["General Training/Meeting Done", "Input Demo INM Done", "Input Demo PM Done", "FFS Done"].sum { |key| row[key].to_i }
       end
-      assert_equal month == "all" ? 7 : 5, expected_rows
+      assert_equal 5, expected_rows
       assert_equal expected_rows, summary_done
       cc = CcDashboardReport.new(targets: @targets, vrps: [@vrp, @second], month: month)
       assert_equal summary_done, cc.jj_achievement
@@ -90,7 +93,7 @@ class DemonstrationMethodReportTest < ActiveSupport::TestCase
     end
   end
 
-  test "CC OPG achievements match demonstration method across months without a monthly mapping" do
+  test "CC OPG achievements exclude sessions without a monthly mapping" do
     [nil, "", "all", "August"].each do |month|
       demo = DemonstrationMethodReport.new(targets: @targets, month: month)
       expected = demo.summary.sum do |row|
@@ -98,7 +101,7 @@ class DemonstrationMethodReportTest < ActiveSupport::TestCase
       end
       cc = CcDashboardReport.new(targets: @targets, vrps: [@vrp, @second], month: month)
       assert_equal expected, cc.jj_achievement, "period=#{month.inspect}"
-      assert_equal month == "August" ? 4 : 6, cc.jj_achievement
+      assert_equal 4, cc.jj_achievement
       assert_equal cc.jj_achievement, cc.rows.sum { |row| row["OPG Training"].split("/").last.to_i }
     end
     # A JJ outside the supplied mappings still contributes nothing.
@@ -106,7 +109,7 @@ class DemonstrationMethodReportTest < ActiveSupport::TestCase
     outsider.save!(validate: false)
     entry(outsider, "FFS", "July")
     cc = CcDashboardReport.new(targets: @targets, vrps: [@vrp, @second, outsider], month: "all")
-    assert_equal 6, cc.jj_achievement
+    assert_equal 4, cc.jj_achievement
     assert_equal 0, cc.rows.find { |row| row["JJ Name"] == outsider.name }["Total OPG JJ Achievement"]
   end
 
@@ -146,7 +149,7 @@ class DemonstrationMethodReportTest < ActiveSupport::TestCase
     assert_equal "0 / 4", row["FFS"]
     assert_equal 4, report.summary.first["FFS"]
     assert_equal "4 / 7", row["OPG Target / Done"]
-    assert_equal "0 / 5", DemonstrationMethodReport.new(targets: @targets, month: "all").rows.find { |item| item["vrp_id"] == @vrp.id }["FFS"]
+    assert_equal "0 / 4", DemonstrationMethodReport.new(targets: @targets, month: "all").rows.find { |item| item["vrp_id"] == @vrp.id }["FFS"]
   end
 
   test "saving a removed CC recalculates achievement without removing training achievement" do
@@ -165,6 +168,64 @@ class DemonstrationMethodReportTest < ActiveSupport::TestCase
     end
     record.update!(data: record.data.merge("cluster_coordinator_name" => "Coordinator"))
     assert_equal "1 / 1", report_row.call["CC TARGET STATUS"]
+  end
+
+  test "all months adds recurring village targets and ignores duplicate activity rows" do
+    july = target(@vrp, 350, "July")
+    october = target(@vrp, 300, "October")
+    duplicate = target(@vrp, 300, " October ")
+    report = DemonstrationMethodReport.new(targets: [july, october, duplicate], month: "all")
+    assert_equal 650, report.summary.sum { |row| row["OPG Target"].to_i }
+    assert_equal 650, report.rows.sum { |row| row["General Training/Meeting Target"] }
+    cc = CcDashboardReport.new(targets: [july, october, duplicate], vrps: [@vrp], month: "all")
+    assert_equal 650, cc.jj_target
+    assert_equal 650, cc.rows.first["Total OPG JJ Target"]
+  end
+
+  test "all months achievement is the sum of the twelve monthly achievements" do
+    [nil, "", "All", "unknown"].each { |month| entry(@vrp, "FFS", month) }
+    targets = @targets + TargetMapping.where(vrp_id: @vrp.id, month_name: "July").to_a + [target(@second, 0, "July")]
+    totals = Date::MONTHNAMES.compact.sum do |month|
+      DemonstrationMethodReport.new(targets: targets, month: month).achievement_totals.values.sum
+    end
+    all = DemonstrationMethodReport.new(targets: targets, month: "all")
+    assert_equal 6, all.achievement_totals.values.sum
+    assert_equal totals, all.achievement_totals.values.sum
+    assert_equal 6, all.rows.sum { |row| row["OPG Achievement"] }
+  end
+
+  test "CC summary farmer ownership does not count historical mappings twice" do
+    @vrp.update_columns(cluster_incharge: "First CC")
+    @second.update_columns(cluster_incharge: "Second CC")
+    farmers = 3.times.map do |index|
+      farmer = Afl.new(fco_id: "demo", tracenet_no: "ownership-#{index}", ics_id: "ownership-ics-#{index}", village_id: "ownership-village-#{index}")
+      farmer.save!(validate: false)
+      farmer
+    end
+    @targets.first.update!(afl_ids: farmers.first(2).map { |farmer| farmer.id.to_s })
+    @targets.last.update!(afl_ids: farmers.last(2).map { |farmer| farmer.id.to_s }, updated_at: 1.minute.from_now)
+    counts = [@vrp, @second].map do |jj|
+      web = ModulesController.new
+      web.define_singleton_method(:module_cluster_visible_vrp_ids) { [jj.id] }
+      owned = web.send(:dashboard_cc_owned_farmer_scope, Afl.where(id: farmers.map(&:id)))
+      owned.count
+    end
+    assert_equal [1, 2], counts
+    assert_equal 3, counts.sum
+    # Ownership is a Farmer Count rule; it must not shrink ICS/village cards.
+    web = ModulesController.new
+    visible_ids = [@vrp.id]
+    scope = Afl.where(id: farmers.map(&:id))
+    web.define_singleton_method(:module_cluster_visible_vrp_ids) { visible_ids }
+    web.define_singleton_method(:dashboard_total_afl_farmer_scope) { scope }
+    web.define_singleton_method(:dashboard_cluster_coordinator_scope?) { true }
+    web.define_singleton_method(:dashboard_total_farmer_count_for_direct_to_ho?) { false }
+    assert_equal 1, web.send(:dashboard_total_afl_farmer_count)
+    assert_equal 3, web.send(:dashboard_total_afl_ics_count)
+    assert_equal 3, web.send(:dashboard_total_afl_village_count)
+    web = ModulesController.new
+    web.define_singleton_method(:module_cluster_visible_vrp_ids) { [] }
+    assert_empty web.send(:dashboard_cc_owned_farmer_scope, Afl.all)
   end
 
   private

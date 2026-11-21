@@ -69,7 +69,7 @@ class DemonstrationMethodReport
       scope = demonstration_target_scope
       scope = scope.where(vrp_id: @visible_vrp_ids) unless @visible_vrp_ids.nil?
       scope = scope.where("LOWER(TRIM(month_name)) = ?", @month) unless @month.blank? || @month == "all"
-      month_filter = @month.blank? || @month == "all" ? "TRUE" : "LOWER(TRIM(mr.data::jsonb ->> 'month')) = #{connection.quote(@month)}"
+      month_filter = @month.blank? || @month == "all" ? all_months_filter : "LOWER(TRIM(mr.data::jsonb ->> 'month')) = #{connection.quote(@month)}"
       counts = METHOD_ACHIEVEMENT_KEYS.map do |method, key|
         "COUNT(*) FILTER (WHERE LOWER(TRIM(mr.data::jsonb ->> 'training_method')) = #{connection.quote(method)}) AS #{connection.quote_column_name(key)}"
       end.join(", ")
@@ -98,7 +98,7 @@ class DemonstrationMethodReport
       scope = demonstration_target_scope
       scope = scope.where("LOWER(TRIM(month_name)) = ?", @month) unless @month.blank? || @month == "all"
       month_filter = if @month.blank? || @month == "all"
-        "TRUE"
+        all_months_filter
       else
         "LOWER(TRIM(mr.data::jsonb ->> 'month')) = #{connection.quote(@month)}"
       end
@@ -115,7 +115,7 @@ class DemonstrationMethodReport
             MAX(COALESCE(t.ffs_target, 0)) AS ffs_target,
             MAX(COALESCE(t.cc_target, 0)) AS cc_target
           FROM scoped_targets t
-          GROUP BY t.fco_id, t.fco_name, t.vrp_id, t.village_id
+          GROUP BY t.fco_id, t.fco_name, t.vrp_id, t.village_id, LOWER(TRIM(t.month_name))
         ), vrp_target AS (
           SELECT
             fco_id, fco_name, vrp_id,
@@ -245,7 +245,7 @@ class DemonstrationMethodReport
       scope = demonstration_target_scope
       scope = scope.where("LOWER(TRIM(month_name)) = ?", @month) unless @month.blank? || @month == "all"
       month_filter = if @month.blank? || @month == "all"
-        "TRUE"
+        all_months_filter
       else
         "LOWER(TRIM(mr.data::jsonb ->> 'month')) = #{connection.quote(@month)}"
       end
@@ -261,7 +261,7 @@ class DemonstrationMethodReport
             MAX(COALESCE(t.ffs_target, 0)) AS ffs_target,
             MAX(COALESCE(t.cc_target, 0)) AS cc_target
           FROM scoped_targets t
-          GROUP BY t.fco_id, t.fco_name, t.vrp_id, t.village_id
+          GROUP BY t.fco_id, t.fco_name, t.vrp_id, t.village_id, LOWER(TRIM(t.month_name))
         ), vrp_target AS (
           SELECT
             fco_id, fco_name, vrp_id,
@@ -361,7 +361,7 @@ class DemonstrationMethodReport
       connection = TargetMapping.connection
       scope = demonstration_target_scope
       scope = scope.where("LOWER(TRIM(month_name)) = ?", @month) unless @month.blank? || @month == "all"
-      month_filter = @month.blank? || @month == "all" ? "TRUE" : "LOWER(TRIM(mr.data::jsonb ->> 'month')) = #{connection.quote(@month)}"
+      month_filter = @month.blank? || @month == "all" ? all_months_filter : "LOWER(TRIM(mr.data::jsonb ->> 'month')) = #{connection.quote(@month)}"
       connection.select_all(<<~SQL).to_a
         WITH #{training_records_cte(month_filter)}, scoped_targets AS (
           #{scope.to_sql}
@@ -374,7 +374,7 @@ class DemonstrationMethodReport
             MAX(COALESCE(t.ffs_target, 0)) AS ffs_target,
             MAX(COALESCE(t.cc_target, 0)) AS cc_target
           FROM scoped_targets t
-          GROUP BY t.fco_id, t.fco_name, t.village_id
+          GROUP BY t.fco_id, t.fco_name, t.village_id, LOWER(TRIM(t.month_name))
         ), fco_target AS (
           SELECT fco_id, fco_name,
             SUM(opg_training_target) AS opg_training_target,
@@ -423,10 +423,22 @@ class DemonstrationMethodReport
 
   private
 
-  # ModuleRecord stores JSON as text, including large evidence payloads. Parse
-  # each month's training payload once for the aggregates and joins. Keep the
-  # indexed month predicate inside the CTE to avoid parsing unrelated months.
-  # Materialization is per statement, so saved edits are immediately visible.
+  # Use the same JJ/month population as selecting each month individually.
+  # A session without a mapping in its own month must not appear only when
+  # switching to All Months.
+  def all_months_filter
+    scope = demonstration_target_scope
+    <<~SQL.squish
+      EXISTS (
+        SELECT 1 FROM (#{scope.to_sql}) monthly_target
+        WHERE monthly_target.vrp_id::text = TRIM(mr.data::jsonb ->> 'created_by_id')
+          AND NULLIF(LOWER(TRIM(monthly_target.month_name)), '') =
+              LOWER(TRIM(mr.data::jsonb ->> 'month'))
+      )
+    SQL
+  end
+
+  # Parse training JSON once per statement; saved edits remain visible.
   def training_records_cte(month_filter)
     "training_records AS MATERIALIZED (SELECT mr.data::jsonb AS data FROM module_records mr WHERE mr.module_slug = 'training-form' AND #{month_filter})"
   end

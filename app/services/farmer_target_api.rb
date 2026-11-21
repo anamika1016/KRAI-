@@ -55,8 +55,8 @@ class FarmerTargetApi
 
     start = Time.current.beginning_of_month
     scope.where(
-      "LOWER(BTRIM(data->>'month')) = :month OR " \
-      "(NULLIF(BTRIM(data->>'month'), '') IS NULL AND created_at >= :start AND created_at < :finish)",
+      "LOWER(BTRIM(data::jsonb->>'month')) = :month OR " \
+      "(NULLIF(BTRIM(data::jsonb->>'month'), '') IS NULL AND created_at >= :start AND created_at < :finish)",
       month: month.to_s.strip.downcase, start: start, finish: start.next_month
     )
   end

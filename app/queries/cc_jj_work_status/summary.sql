@@ -2,7 +2,7 @@ WITH vrp_details AS (
     SELECT
         id::text AS vrp_id,
         name AS vrp_name,
-        cluster_incharge
+        %{active_cc_label} AS cluster_incharge
     FROM public.vrps
 ),
 

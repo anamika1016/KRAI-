@@ -3067,7 +3067,7 @@ class ModulesController < ApplicationController
     targets.flat_map { |target| target.respond_to?(:afl_ids) ? Array(target.afl_ids).map(&:to_s) : [] }.reject(&:blank?).uniq
   end
 
-  def vrp_dashboard_target_progress_rows(targets, bills)
+  def vrp_dashboard_target_progress_rows(targets, bills, totals_only: false)
     activity_settings = jeevika_jankar_main_activity_settings
     sub_activity_settings = jeevika_jankar_sub_activity_settings(activity_settings)
     other_target_achievement_index = approved_other_target_achievement_index
@@ -3076,10 +3076,15 @@ class ModulesController < ApplicationController
 
     raw_rows = Array(targets).map do |target|
       assigned_farmer_ids = target_farmer_ids(target)
-      completed_farmer_ids = vrp_dashboard_completed_farmer_ids_for_target(target) & assigned_farmer_ids
+      completed_farmer_ids = vrp_dashboard_completed_farmer_ids_for_target(target) & assigned_farmer_ids unless totals_only
       activity_setting = jeevika_jankar_activity_setting_for(target, activity_settings, sub_activity_settings)
       other_completion = other_target_achievement_index[target.id.to_s]
       training_completion = other_completion.blank? && (activity_setting.blank? || training_main_activity_type?(activity_setting[:main_activity_type]))
+      if totals_only
+        # Grouped training completion below replaces these per-target values.
+        # Other activities still require their existing individual calculation.
+        completed_farmer_ids = training_completion ? [] : vrp_dashboard_completed_farmer_ids_for_target(target) & assigned_farmer_ids
+      end
       completion_uses_farmer_ids = training_completion || (other_completion.blank? && completed_farmer_ids.any?)
       target_quantity = target.target_quantity.to_f
       effective_target = assigned_farmer_ids.any? ? assigned_farmer_ids.size.to_f : target_quantity
@@ -3097,7 +3102,7 @@ class ModulesController < ApplicationController
       completed = [completed.to_f, effective_target].min
       pending = [effective_target - completed, 0].max
       week_targets = target.respond_to?(:weekly_target_values) ? target.weekly_target_values : [0, 0, 0, 0]
-      weekly_completed_farmer_ids = training_weekly_achievement_farmer_ids(target, assigned_farmer_ids)
+      weekly_completed_farmer_ids = totals_only ? [[], [], [], []] : training_weekly_achievement_farmer_ids(target, assigned_farmer_ids)
 
       {
         month: target.month_name,
@@ -4826,6 +4831,7 @@ class ModulesController < ApplicationController
       # must show every Direct to HO AFL farmer for non-admin role dashboards.
       return summary_scope.count(:id) if dashboard_total_farmer_count_for_direct_to_ho?
 
+      summary_scope = dashboard_cc_owned_farmer_scope(summary_scope) if dashboard_cluster_coordinator_scope?
       summary_scope.count("NULLIF(BTRIM(tracenet_no), '')")
     end
   rescue StandardError => e
@@ -4954,6 +4960,31 @@ class ModulesController < ApplicationController
     end
 
     scope
+  end
+
+  # A farmer can remain on historical mappings for several coordinators.
+  # Its latest saved mapping identifies the current owner, so adding the CC
+  # summaries counts the farmer once rather than once per historical CC.
+  def dashboard_cc_owned_farmer_scope(scope)
+    visible_ids = module_cluster_visible_vrp_ids
+    return scope.none if visible_ids.empty?
+
+    scope.where(<<~SQL.squish, visible_ids: visible_ids)
+      afls.id::text IN (
+        SELECT current_owner.farmer_id FROM (
+          SELECT DISTINCT ON (farmer.value) farmer.value AS farmer_id, ownership.vrp_id
+          FROM target_mappings ownership
+          INNER JOIN vrps owner_jj ON owner_jj.id = ownership.vrp_id
+          CROSS JOIN LATERAL jsonb_array_elements_text(
+            CASE WHEN jsonb_typeof(ownership.afl_ids::jsonb) = 'array'
+              THEN ownership.afl_ids::jsonb ELSE '[]'::jsonb END
+          ) farmer(value)
+          WHERE NULLIF(BTRIM(owner_jj.cluster_incharge), '') IS NOT NULL
+          ORDER BY farmer.value, ownership.updated_at DESC, ownership.id DESC
+        ) current_owner
+        WHERE current_owner.vrp_id IN (:visible_ids)
+      )
+    SQL
   end
 
   # ICS names recorded by the "ICS TO MAPPING" module, matched against this
@@ -12869,7 +12900,7 @@ class ModulesController < ApplicationController
     if totals_only
       # Bill lists need the same assignment totals, but not farmer profiles,
       # training evidence or per-farmer display hashes for the Bill Process form.
-      rows = vrp_dashboard_target_progress_rows(targets, []).map do |progress|
+      rows = vrp_dashboard_target_progress_rows(targets, [], totals_only: true).map do |progress|
         target = progress[:target_record]
         {
           target_mapping_id: progress[:target_mapping_id],

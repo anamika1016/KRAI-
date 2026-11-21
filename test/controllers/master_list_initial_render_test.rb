@@ -12,7 +12,7 @@ class MasterListInitialRenderTest < ActionDispatch::IntegrationTest
     post login_path, params: { login: admin.user_name, password: "secret" }
     get module_path("state-master")
     assert_response :success
-    assert_select 'meta[name="turbo-cache-control"][content="no-preview"]', count: 1
+    assert_select 'meta[name="turbo-cache-control"]', count: 0
     assert_select 'meta[name="turbo-visit-control"][content="reload"]', count: 0
     rows = css_select("#module_saved_records tbody tr")
     assert_operator rows.size, :>=, 251

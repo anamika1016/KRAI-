@@ -2,6 +2,7 @@ require "test_helper"
 
 class CcJjWorkStatusReportTest < ActiveSupport::TestCase
   test "one pending farmer makes the JJ and shared CC red while list retains unmapped farmers" do
+    User.create!(user_name: "shared_cc_work_status", password: "secret", first_name: "Shared", last_name: "CC", status: "Active")
     vrps = [build_vrp("Pending JJ"), build_vrp("Completed JJ")]
     vrps.each { |vrp| vrp.cluster_incharge = "Shared CC"; vrp.save!(validate: false) }
     farmers = 5.times.map { |i| Afl.create!(fco_id: "1004", fpo_id: "test", fpo_name: "Test FPO", farmer_name: "Farmer #{i}") }
@@ -28,7 +29,7 @@ class CcJjWorkStatusReportTest < ActiveSupport::TestCase
     all_fcos = CcJjWorkStatusReport.new(calculator: calculator, month: "August")
     all_fcos.define_singleton_method(:rows) { raise "summary must not generate full detail rows" }
     assert_equal ["1004", "1006"], all_fcos.summary.map { |row| row["fco_id"] }.uniq.sort
-    assert_equal "August · Sausar and Turekela", all_fcos.caption
+    assert_equal "August · #{FcoDirectory.names.to_sentence}", all_fcos.caption
     excluded = CcJjWorkStatusReport.new(calculator: calculator, month: "August", fco: "1009")
     assert_empty excluded.summary
     assert_empty excluded.rows
@@ -74,6 +75,71 @@ class CcJjWorkStatusReportTest < ActiveSupport::TestCase
       "Cluster Coordinator Involved" => 2, "Agronomist Involved" => 2 }.each do |key, count|
       assert_equal count, report.rows.sum { |row| row[key] }, key
     end
+  end
+
+  test "Sausar counts five active CCs once and recalculates saved status changes" do
+    users = 6.times.map do |index|
+      User.create!(user_name: "work_status_cc_#{index}", password: "secret",
+        first_name: "Coordinator", last_name: "#{index}", status: index == 5 ? "Inactive" : "Active")
+    end
+    targets = []
+    farmers = []
+    # The first CC is saved once by full name and once by username.
+    (users.map(&:full_name) + [users.first.user_name]).each_with_index do |label, index|
+      jj = build_vrp("Status JJ #{index}")
+      jj.cluster_incharge = label
+      jj.save!(validate: false)
+      farmer = Afl.create!(fco_id: "1004", farmer_name: "Status farmer #{index}")
+      farmers << farmer
+      targets << TargetMapping.create!(vrp: jj, fco_id: "1004", ics_id: "1", village_id: "1",
+        month_name: "August", main_activity_name: "Farmers' Training", activity_name: "Activity",
+        target_quantity: 1, afl_ids: [farmer.id.to_s])
+    end
+    calculator = ModulesController.new
+    calculator.define_singleton_method(:dashboard_global_view_user?) { true }
+    calculator.define_singleton_method(:dashboard_scoped_training_sql) do |sql|
+      sql.gsub("public.target_mappings", "(#{TargetMapping.where(id: targets.map(&:id)).to_sql})")
+        .gsub("public.afls", "(#{Afl.where(id: farmers.map(&:id)).to_sql})")
+    end
+    fresh_report = -> { CcJjWorkStatusReport.new(calculator: calculator, month: "August", fco: "Sausar") }
+    report = fresh_report.call
+    assert_equal 5, report.summary.sum { |row| row["toatl_cc"] }
+    assert_equal 7, report.summary.sum { |row| row["toatl_jj"] }
+    refute_includes report.rows.map { |row| row["cluster_incharge"] }, users.last.full_name
+    assert_equal 1, report.rows.map { |row| row["cluster_incharge"] }.uniq.count(users.first.full_name)
+
+    users.first.update!(status: "Inactive")
+    assert_equal 4, fresh_report.call.summary.sum { |row| row["toatl_cc"] }
+    users.last.update!(status: "Active")
+    assert_equal 5, fresh_report.call.summary.sum { |row| row["toatl_cc"] }
+  end
+
+  test "legacy CC accounts respect inactive and deleted status" do
+    legacy = ModuleRecord.create!(module_slug: "new-user", data: {
+      "first_name" => "Legacy", "last_name" => "Coordinator", "user_name" => "legacy_cc_status", "status" => "Active"
+    })
+    jj = build_vrp("Legacy status JJ")
+    jj.cluster_incharge = "Legacy Coordinator"
+    jj.save!(validate: false)
+    calculator = ModulesController.new
+    report = -> { CcJjWorkStatusReport.new(calculator: calculator) }
+    expression = -> { report.call.send(:active_cc_expression, ActiveRecord::Base.connection, "cluster_incharge") }
+    assert_includes expression.call, "Legacy Coordinator"
+    legacy.update!(data: legacy.data.merge("status" => "Inactive"))
+    refute_includes expression.call, "Legacy Coordinator"
+    legacy.update!(data: legacy.data.merge("status" => "Active", "is_deleted" => "true"))
+    refute_includes expression.call, "Legacy Coordinator"
+  end
+
+  test "exact CC identity takes priority over a similar inactive name" do
+    User.create!(user_name: "similar_inactive_cc", password: "secret", first_name: "Reena", last_name: "Patel", status: "Inactive")
+    User.create!(user_name: "exact_active_cc", password: "secret", first_name: "Reema", last_name: "Patel", status: "Active")
+    jj = build_vrp("Exact identity JJ")
+    jj.cluster_incharge = "Reema Patel"
+    jj.save!(validate: false)
+    report = CcJjWorkStatusReport.new(calculator: ModulesController.new)
+    expression = report.send(:active_cc_expression, ActiveRecord::Base.connection, "cluster_incharge")
+    assert_includes expression, "THEN 'Reema Patel'"
   end
 
   private

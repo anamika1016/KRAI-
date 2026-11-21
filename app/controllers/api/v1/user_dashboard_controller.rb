@@ -235,6 +235,9 @@ module Api
           end
           columns = %i[fco_id fco fpo_id fpo_name ics_id ics_name]
           if type == "summary_farmers"
+            if calculator.send(:dashboard_cluster_coordinator_scope?) && !calculator.send(:dashboard_total_farmer_count_for_direct_to_ho?)
+              scope = calculator.send(:dashboard_cc_owned_farmer_scope, scope)
+            end
             scope.where("NULLIF(BTRIM(tracenet_no), '') IS NOT NULL")
               .order(:fco_id, :ics_id, :id)
               .pluck(:id, :farmer_name, :father_name, :mobile_no, :tracenet_no, *columns, :village_id, :village_name)

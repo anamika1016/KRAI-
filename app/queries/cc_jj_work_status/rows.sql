@@ -46,7 +46,7 @@ vrp_details AS (
     SELECT
         id::text AS vrp_id,
         name AS vrp_name,
-        cluster_incharge
+        %{active_cc_label} AS cluster_incharge
     FROM public.vrps
 ),
 
@@ -146,7 +146,7 @@ registered_farmer_vrp_details AS (
         CASE LOWER(TRIM(m.fco_id)) WHEN 'sausar' THEN '1004' WHEN 'turekela' THEN '1006' WHEN 'direct to ho' THEN '1095' ELSE TRIM(m.fco_id) END AS fco_id,
         farmer.afl_id,
         STRING_AGG(DISTINCT NULLIF(TRIM(v.name), ''), ', ') AS vrp_name,
-        STRING_AGG(DISTINCT NULLIF(TRIM(v.cluster_incharge), ''), ', ') AS cluster_incharge
+        STRING_AGG(DISTINCT %{registered_active_cc_label}, ', ') AS cluster_incharge
     FROM public.vrp_ics_mappings m
     JOIN public.vrps v ON v.id = m.vrp_id
     CROSS JOIN LATERAL jsonb_array_elements_text(m.afl_ids::jsonb) farmer(afl_id)

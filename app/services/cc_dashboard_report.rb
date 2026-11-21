@@ -11,14 +11,12 @@ class CcDashboardReport
 
   def rows
     @rows ||= begin
-      # Calculate each month separately: the shared report deduplicates villages,
-      # so passing all months together would lose recurring monthly targets.
+      # Keep CC achievements scoped to the month in which their target was assigned.
       details = @targets.group_by { |target| target.month_name.to_s.strip.downcase }.flat_map do |month, targets|
         DemonstrationMethodReport.new(targets: targets, month: month).rows
       end.group_by { |row| row["vrp_id"].to_s }
       # Method achievements use the selected period as a whole, just like the
-      # Demonstration Method panel. Monthly target grouping must not discard a
-      # training merely because its JJ has no target in that training's month.
+      # Demonstration Method panel, including its monthly mapping scope.
       achievement_details = demonstration_report.achievements_by_jj
       targets_by_jj = @targets.group_by(&:vrp_id)
       @vrps.map do |jj|
@@ -29,7 +27,7 @@ class CcDashboardReport
           key == "OPG Achievement" ? DemonstrationMethodReport::METHOD_ACHIEVEMENT_KEYS.values.sum { |method| counts[method].to_i } : counts[key].to_i
         end
         opg = targets_by_jj.fetch(jj.id, [])
-          .group_by { |target| [target.month_name, target.village_id] }
+          .group_by { |target| [target.month_name.to_s.strip.downcase, target.village_id] }
           .sum { |_key, targets| targets.map { |target| target.opg_training_target.to_i }.max.to_i }
         {
           "JJ Name" => jj.name, "Total OPG" => opg,
@@ -58,7 +56,7 @@ class CcDashboardReport
   def jj_target
     # OPG is an assigned village target, not the sum of training-method
     # targets. Use the dashboard's FCO/village deduplication so a village
-    # mapped to multiple JJs (or months in All Months) is not counted twice.
+    # mapped to multiple JJs is not counted twice within the same month.
     @jj_target ||= demonstration_report
       .summary.sum { |row| row["OPG Target"].to_i }
   end

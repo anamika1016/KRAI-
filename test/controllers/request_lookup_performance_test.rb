@@ -1,6 +1,16 @@
 require "test_helper"
 
 class RequestLookupPerformanceTest < ActiveSupport::TestCase
+  test "legacy creator email fallback reads JSON stored as text and keeps newest match" do
+    email = "legacy-#{SecureRandom.hex(4)}@example.test"
+    old = ModuleRecord.create!(module_slug: "new-user", data: { "email" => email, "user_name" => "older" }, created_at: 2.days.ago)
+    recent = ModuleRecord.create!(module_slug: "new-user", data: { "email" => email.upcase, "user_name" => "newer" }, created_at: 1.day.ago)
+    controller = Api::V1::JeevikaJankarsController.new
+    creator = controller.send(:registered_by_user, Vrp.new(id: 9999991, email: " #{email.upcase} "))
+    assert_equal recent.id, creator.id
+    refute_equal old.id, creator.id
+  end
+
   test "mobile agreement batch retains individual labels and missing village fallbacks" do
     villages = 3.times.map { |i| ModuleRecord.create!(module_slug: "village-master", data: { "village_name" => "Village #{i}" }) }
     ids = villages.map(&:id) + ["0#{villages.first.id}", "missing-village", nil]
