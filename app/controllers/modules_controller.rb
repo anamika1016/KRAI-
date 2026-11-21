@@ -11502,6 +11502,8 @@ class ModulesController < ApplicationController
         (selected_month.blank? || record.data["bill_month"].to_s.strip.casecmp(selected_month.to_s.strip).zero?)
     end
 
+    preload_jeevika_bill_passbooks(filtered_records)
+
     filtered_by_id = filtered_records.index_by(&:id)
     jeevika_bill_rows(filtered_records).map do |row|
       record = filtered_by_id[row[:id]]
@@ -11515,6 +11517,14 @@ class ModulesController < ApplicationController
         passbook_attachment: vrp&.bank_passbook_upload
       )
     end
+  end
+
+  # Shared by the web payment table and mobile payment/export payloads.
+  def preload_jeevika_bill_passbooks(records)
+    vrps = Array(records).filter_map { |record| jeevika_bill_vrp(record) }.uniq(&:id)
+    ActiveRecord::Associations::Preloader.new(
+      records: vrps, associations: { bank_passbook_upload_attachment: :blob }
+    ).call if vrps.any?
   end
 
   def jeevika_payment_transaction_types
@@ -13396,8 +13406,11 @@ class ModulesController < ApplicationController
 
   def module_record_sort_value(record)
     visible_fields = @module&.dig(:fields) || []
-    sort_field = visible_fields.reject { |field| field == "Status" }.first
-    sort_key = sort_field&.parameterize(separator: "_")
+    @module_record_sort_fields ||= {}
+    sort_field, sort_key = @module_record_sort_fields[visible_fields] ||= begin
+      field = visible_fields.reject { |value| value == "Status" }.first
+      [field, field&.parameterize(separator: "_")]
+    end
 
     module_record_field_value(record, sort_field).presence ||
       record.data[sort_key].presence ||
@@ -13509,7 +13522,11 @@ class ModulesController < ApplicationController
     block = normalize_dashboard_text(first_present_data(record, "block", "block_name", "cd_block_name"))
     return "" if state.blank? || district.blank? || block.blank?
 
-    gram_panchayat_location_records.find do |candidate|
+    @gram_panchayat_name_by_location_cache ||= {}
+    key = [normalized_code, state, district, block]
+    return @gram_panchayat_name_by_location_cache[key] if @gram_panchayat_name_by_location_cache.key?(key)
+
+    @gram_panchayat_name_by_location_cache[key] = gram_panchayat_location_records.find do |candidate|
         code_matches = %w[gp_code gram_code gram_panchayat_code gram_panchayat_id gram_panchayat gram_panchayat_name gp_name gram_name name].any? do |key|
           normalize_dashboard_text(candidate.data[key]) == normalized_code
         end
@@ -13655,7 +13672,7 @@ class ModulesController < ApplicationController
     data
   end
 
-  def preload_jeevika_bill_process_totals(records)
+  def preload_jeevika_bill_process_totals(records, preserve_individual_fallbacks: false)
     @jeevika_bill_process_totals ||= {}
     Array(records).group_by { |record| normalize_dashboard_text(record.data["bill_month"]) }.each_value do |bills|
       month = bills.first.data["bill_month"]
@@ -13671,7 +13688,15 @@ class ModulesController < ApplicationController
         bills.each do |bill|
           id = bill.data["select_vrp"].to_s
           month_key = normalize_dashboard_text(month)
-          @jeevika_bill_process_totals[[id, month_key]] = @jeevika_jankar_target_summary&.dig(id, month_key)
+          key = [id, month_key]
+          summary = @jeevika_jankar_target_summary&.dig(id, month_key)
+          if preserve_individual_fallbacks && summary.nil?
+            # A mixed batch can omit a JJ whose original individual lookup
+            # uses a legacy label or the existing mapping-scope fallback.
+            @jeevika_bill_process_totals.delete(key)
+          else
+            @jeevika_bill_process_totals[key] = summary
+          end
         end
       ensure
         @bill_list_batch_totals = previous_batch_mode
@@ -16293,9 +16318,14 @@ class ModulesController < ApplicationController
   end
 
   def static_field_options(field)
+    # Dynamic lookups run only for their own field. Building a hash of eager
+    # values used to load every JJ even for an unrelated State/Status field.
+    return Date::MONTHNAMES.compact if field == "Month Name"
+    return financial_year_options if field == "Financial Year"
+    return vrp_name_options if field == "VRP Name"
+    return sidebar_submodule_names if field == "Sub Module Name"
+
     {
-      "Month Name" => Date::MONTHNAMES.compact,
-      "Financial Year" => financial_year_options,
       "Approval Level" => ["First Approval", "Second Approval", "Third Approval"],
       "Priority" => ["High", "Medium", "Low"],
       "Payment Status" => ["Pending", "Paid", "Rejected"],
@@ -16312,9 +16342,7 @@ class ModulesController < ApplicationController
       "Achievement Fill" => ["Auto Fill", "Self"],
       "Office Level" => ["State", "District", "Block", "Gram Panchayat", "Village"],
       "Parent Office Type" => ["Parent Office", "Sub Parent Office"],
-      "Module Name" => ["Jeevika Jankar Registration", "Jeevika Jankar Bill", "Training Form Edit"],
-      "VRP Name" => vrp_name_options,
-      "Sub Module Name" => sidebar_submodule_names
+      "Module Name" => ["Jeevika Jankar Registration", "Jeevika Jankar Bill", "Training Form Edit"]
     }[field] || []
   end
 

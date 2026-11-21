@@ -2970,6 +2970,10 @@
             <%= link_to "Export Excel", export_module_path(@slug, format: :xlsx), class: "list-btn export" %>
           <% end %>
         </div>
+        <% initially_page_saved_records = @records.size > 250 %>
+        <% if initially_page_saved_records %>
+          <noscript><style>#module_saved_records tr[data-initial-page-hidden] { display: table-row !important; }</style></noscript>
+        <% end %>
         <div class="table-shell">
           <table class="module-table" id="module_saved_records" data-paginated-table data-page-size="15">
             <thead>
@@ -2984,8 +2988,8 @@
             </thead>
             <tbody>
               <% if @records.any? %>
-                <% @records.each do |record| %>
-                  <tr>
+                <% @records.each_with_index do |record, row_index| %>
+                  <tr<% if initially_page_saved_records && row_index >= 15 %> hidden data-initial-page-hidden<% end %>>
                     <% saved_record_fields.each do |field| %>
                       <td><%= module_record_field_value(record, field).presence || "-" %></td>
                     <% end %>

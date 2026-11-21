@@ -108,16 +108,20 @@ module VrpAccess
       end
       if creator.blank?
         creator_class = { "User" => User, "ModuleRecord" => ModuleRecord }[vrp.created_by_type]
-        creator = creator_class.find_by(id: vrp.created_by_id) if creator_class&.respond_to?(:find_by)
+        creator = if creator_class == User
+          cached_vrp_creator_user(vrp.created_by_id)
+        elsif creator_class == ModuleRecord
+          cached_vrp_creator_record(vrp.created_by_id)
+        end
       end
       return @registered_by_user_cache[cache_key] = creator if creator
     end
 
     if vrp.created_by_id.present?
       user = @preloaded_creator_users_by_id&.[](vrp.created_by_id)
-      user ||= User.find_by(id: vrp.created_by_id) if model_ready?(:User)
+      user ||= cached_vrp_creator_user(vrp.created_by_id) if model_ready?(:User)
       record = @preloaded_creator_records_by_id&.[](vrp.created_by_id)
-      record ||= ModuleRecord.find_by(id: vrp.created_by_id) if model_ready?(:ModuleRecord)
+      record ||= cached_vrp_creator_record(vrp.created_by_id) if model_ready?(:ModuleRecord)
       creator = legacy_registered_by_candidate(vrp, user, record)
       return @registered_by_user_cache[cache_key] = creator if creator
     end
@@ -1610,12 +1614,14 @@ module VrpAccess
     ids = Array(ids).reject(&:blank?)
     return "" if ids.blank?
 
-    if model_ready?(:VrpType)
-      labels = VrpType.where(id: ids).pluck(:type_name)
-      return labels.join(", ") if labels.any?
-    end
+    @vrp_type_labels_cache ||= {}
+    return @vrp_type_labels_cache[ids] if @vrp_type_labels_cache.key?(ids)
 
-    module_record_labels("add-vrp-type", ids, ["jeevika_jankar_type_name", "vrp_type_name"])
+    @vrp_type_labels_cache[ids] = if model_ready?(:VrpType) && (labels = VrpType.where(id: ids).pluck(:type_name)).any?
+      labels.join(", ")
+    else
+      module_record_labels("add-vrp-type", ids, ["jeevika_jankar_type_name", "vrp_type_name"])
+    end
   end
 
   def module_record_display_label(module_slug, record, field_key)

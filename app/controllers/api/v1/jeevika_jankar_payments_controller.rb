@@ -8,7 +8,7 @@ module Api
       def bills
         records = bill_records.select { |record| calculator.send(:jeevika_jankar_bill_record_visible?, record) }
         set_calculator_visible_bill_ids(records)
-        calculator.send(:preload_jeevika_bill_process_totals, records)
+        calculator.send(:preload_jeevika_bill_process_totals, records, preserve_individual_fallbacks: true)
         all_rows = records.map { |record| bill_payload_for(record) }
         rows = filter_month(all_rows)
 
@@ -68,6 +68,8 @@ module Api
             (month.blank? || same_text?(record.data["bill_month"], month))
         end
         set_calculator_visible_bill_ids(records)
+        calculator.send(:preload_jeevika_bill_process_totals, records, preserve_individual_fallbacks: true)
+        calculator.send(:preload_jeevika_bill_passbooks, records)
         rows = records.map { |record| payment_payload_for(record) }
 
         render json: {
@@ -89,6 +91,8 @@ module Api
           calculator.send(:jeevika_bill_final_approved?, record) &&
             (month.blank? || same_text?(record.data["bill_month"], month))
         end
+        calculator.send(:preload_jeevika_bill_process_totals, records, preserve_individual_fallbacks: true)
+        calculator.send(:preload_jeevika_bill_passbooks, records)
         rows = records.map { |record| payment_payload_for(record) }
         headers = ["Bill ID", "Jeevika Jankar", "Financial Year", "Bill Month", "Activity Groups", "Activity Names", "Target", "Achievement", "Amount", "Status"]
         data_rows = rows.map do |row|

@@ -126,7 +126,7 @@ module Api
 
         visible = Vrp.all.select { |vrp| agreement_vrp_visible_to_current_user?(vrp) }.map(&:id)
         Vrp.where(id: visible).where.not(agreement_accepted_at: nil)
-          .where.not(agreement_signature_data: [nil, ""]).order(agreement_accepted_at: :desc).to_a
+          .where.not(agreement_signature_data: [nil, ""]).includes(:vrp_profile).order(agreement_accepted_at: :desc).to_a
       end
 
       def agreement_list_authorized?
@@ -166,12 +166,13 @@ module Api
       # The web archive uses the logged-in office account. Mobile/API clients
       # can authenticate the same account with a bearer token or credentials.
       def agreement_list_user
-        return current_api_user if current_api_user.present?
+        return @agreement_list_user if defined?(@agreement_list_user)
+        return @agreement_list_user = current_api_user if current_api_user.present?
 
         login = params[:login].presence || params[:username].presence || params[:user_name].presence
-        return if login.blank? || params[:password].blank?
+        return @agreement_list_user = nil if login.blank? || params[:password].blank?
 
-        AppUserAuthenticator.authenticate(login: login, password: params[:password])
+        @agreement_list_user = AppUserAuthenticator.authenticate(login: login, password: params[:password])
       end
 
       def selected_agreement_vrp
@@ -194,6 +195,13 @@ module Api
         village_id = vrp.vrp_profile&.village_id.presence || Array(vrp.village_ids).map(&:to_s).reject(&:blank?).first
         return "-" if village_id.blank?
 
+        @agreement_village_labels ||= {}
+        return @agreement_village_labels[village_id.to_s] if @agreement_village_labels.key?(village_id.to_s)
+
+        @agreement_village_labels[village_id.to_s] = agreement_village_label(village_id)
+      end
+
+      def agreement_village_label(village_id)
         village_name = ModuleRecord.find_by(id: village_id)&.data&.values_at("village_name", "village", "name", "title")&.compact_blank&.first
         village_name.presence || (TargetMapping.where(village_id: village_id.to_s).limit(1).pick(:village_name) if defined?(TargetMapping))&.presence ||
           (VrpIcsMapping.where(village_id: village_id.to_s).limit(1).pick(:village_name) if defined?(VrpIcsMapping))&.presence ||

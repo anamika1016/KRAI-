@@ -5144,8 +5144,10 @@ function initDeferredLayoutPage() {
     const start = (currentPage - 1) * pageSize;
     const visibleRows = matchedRows.slice(start, start + pageSize);
 
+    const visibleRowSet = new Set(visibleRows);
     dataRows.forEach((row) => {
-      row.hidden = !visibleRows.includes(row);
+      const hidden = !visibleRowSet.has(row);
+      if (row.hidden !== hidden) row.hidden = hidden;
     });
 
     const pagination = document.querySelector(`[data-pagination-for='${table.id}']`);
@@ -5372,12 +5374,13 @@ function initDeferredLayoutPage() {
 
   document.querySelectorAll("[data-paginated-table]").forEach((table, index) => {
     const rows = Array.from(table.querySelectorAll("tbody tr"));
-    rows.forEach((row) => {
+    // Read rendered text before writing attributes, so large lists do not
+    // alternate layout reads and DOM writes once for every table row.
+    const emptyRows = rows.filter((row) => {
       const rowText = table.id === "training_form_list_table" ? row.textContent : row.innerText;
-      if (row.children.length === 1 || rowText.toLowerCase().includes("no records")) {
-        row.dataset.emptyRow = "true";
-      }
+      return row.children.length === 1 || rowText.toLowerCase().includes("no records");
     });
+    emptyRows.forEach((row) => { row.dataset.emptyRow = "true"; });
     const largeTable = table.dataset.fastOpenTable === "true" || rows.length > 250;
     ensureTableSearch(table, index);
     ensureTablePagination(table);

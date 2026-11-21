@@ -74,9 +74,10 @@ class DemonstrationMethodReport
         "COUNT(*) FILTER (WHERE LOWER(TRIM(mr.data::jsonb ->> 'training_method')) = #{connection.quote(method)}) AS #{connection.quote_column_name(key)}"
       end.join(", ")
       connection.select_all(<<~SQL).to_a.to_h { |row| [row["vrp_id"].to_s, row] }
+        WITH #{training_records_cte(month_filter)}
         SELECT TRIM(mr.data::jsonb ->> 'created_by_id') AS vrp_id, #{counts}
-        FROM module_records mr
-        WHERE mr.module_slug = 'training-form' AND #{month_filter}
+        FROM training_records mr
+        WHERE #{month_filter}
           AND TRIM(mr.data::jsonb ->> 'created_by_id') IN (
             SELECT DISTINCT scoped.vrp_id::text FROM (#{scope.to_sql}) scoped
           )
@@ -102,7 +103,7 @@ class DemonstrationMethodReport
         "LOWER(TRIM(mr.data::jsonb ->> 'month')) = #{connection.quote(@month)}"
       end
       raw_rows = connection.select_all(<<~SQL).to_a
-        WITH scoped_targets AS (
+        WITH #{training_records_cte(month_filter)}, scoped_targets AS (
           #{scope.to_sql}
         ), village_target AS (
           SELECT
@@ -146,8 +147,8 @@ class DemonstrationMethodReport
                   AND COALESCE(TRIM(mr.data::jsonb ->> 'cluster_coordinator_name'), '') ~* '^(|n\\.?/?a\\.?|none|nil|null|-+)$'
                 )
             ) AS cc_done
-          FROM module_records mr
-          WHERE mr.module_slug = 'training-form' AND #{month_filter}
+          FROM training_records mr
+          WHERE #{month_filter}
             -- Only in-scope JJ records; the final LEFT JOIN discards the rest anyway,
             -- so results are identical but the scan/group is far smaller.
             AND TRIM(mr.data::jsonb ->> 'created_by_id') IN (
@@ -249,7 +250,7 @@ class DemonstrationMethodReport
         "LOWER(TRIM(mr.data::jsonb ->> 'month')) = #{connection.quote(@month)}"
       end
       raw_rows = connection.select_all(<<~SQL).to_a
-        WITH scoped_targets AS (
+        WITH #{training_records_cte(month_filter)}, scoped_targets AS (
           #{scope.to_sql}
         ), village_target AS (
           SELECT
@@ -289,8 +290,8 @@ class DemonstrationMethodReport
                   AND COALESCE(TRIM(mr.data::jsonb ->> 'cluster_coordinator_name'), '') ~* '^(|n\\.?/?a\\.?|none|nil|null|-+)$'
                 )
             ) AS cc_done
-          FROM module_records mr
-          WHERE mr.module_slug = 'training-form' AND #{month_filter}
+          FROM training_records mr
+          WHERE #{month_filter}
             AND TRIM(mr.data::jsonb ->> 'created_by_id') IN (
               SELECT DISTINCT vt.vrp_id::text FROM vrp_target vt
             )
@@ -362,7 +363,7 @@ class DemonstrationMethodReport
       scope = scope.where("LOWER(TRIM(month_name)) = ?", @month) unless @month.blank? || @month == "all"
       month_filter = @month.blank? || @month == "all" ? "TRUE" : "LOWER(TRIM(mr.data::jsonb ->> 'month')) = #{connection.quote(@month)}"
       connection.select_all(<<~SQL).to_a
-        WITH scoped_targets AS (
+        WITH #{training_records_cte(month_filter)}, scoped_targets AS (
           #{scope.to_sql}
         ), village_target AS (
           SELECT t.fco_id, t.fco_name, t.village_id,
@@ -392,9 +393,9 @@ class DemonstrationMethodReport
             COUNT(*) FILTER (WHERE LOWER(TRIM(mr.data::jsonb ->> 'training_method')) = 'input demo inm') AS input_demo_inm,
             COUNT(*) FILTER (WHERE LOWER(TRIM(mr.data::jsonb ->> 'training_method')) = 'input demo pm') AS input_demo_pm,
             COUNT(*) FILTER (WHERE LOWER(TRIM(mr.data::jsonb ->> 'training_method')) = 'ffs') AS ffs
-          FROM module_records mr
+          FROM training_records mr
           INNER JOIN vrp_fco vf ON vf.vrp_id::text = TRIM(mr.data::jsonb ->> 'created_by_id')
-          WHERE mr.module_slug = 'training-form' AND #{month_filter}
+          WHERE #{month_filter}
           GROUP BY vf.fco_id, vf.fco_name
         )
         SELECT ft.fco_id, ft.fco_name,
@@ -421,6 +422,14 @@ class DemonstrationMethodReport
   end
 
   private
+
+  # ModuleRecord stores JSON as text, including large evidence payloads. Parse
+  # each month's training payload once for the aggregates and joins. Keep the
+  # indexed month predicate inside the CTE to avoid parsing unrelated months.
+  # Materialization is per statement, so saved edits are immediately visible.
+  def training_records_cte(month_filter)
+    "training_records AS MATERIALIZED (SELECT mr.data::jsonb AS data FROM module_records mr WHERE mr.module_slug = 'training-form' AND #{month_filter})"
+  end
 
   # Preserve the selected FCO(s), but use every mapping in those FCOs for the
   # month. This is the same population as the supplied FCO-wise SQL query.

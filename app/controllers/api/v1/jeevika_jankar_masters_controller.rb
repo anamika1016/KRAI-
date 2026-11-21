@@ -3,6 +3,10 @@ module Api
     class JeevikaJankarMastersController < BaseController
       include VrpAccess
 
+      # Read-only lookup payloads need these three values, not a mutable
+      # ActiveRecord instance and its attribute/dirty-tracking state per row.
+      MasterRow = Struct.new(:id, :module_slug, :data, keyword_init: true)
+
       MASTER_CONFIG = {
         "all_list" => [ "lg-directory-list", %w[state_name state_code district_name district_code block_name block_code gram_name gram_code village_name village_code] ],
         "states" => [ "state-master", %w[state_name state_code status] ],
@@ -125,6 +129,7 @@ module Api
         return render_all_list(slug, fields) if resource_name == "all_list"
 
         records = ModuleRecord.where(module_slug: slug).order(created_at: :desc)
+          .pluck(:id, :data).map { |id, data| MasterRow.new(id: id, module_slug: slug, data: data) }
         records = records.select { |record| active_record?(record) } unless include_inactive?
         records = records.select { |record| matches_filters?(record) }
         rows = records.map { |record| record_payload(record, fields) }

@@ -53,6 +53,8 @@ class VrpAgreementsController < ApplicationController
     policy.set_request!(request)
     policy.set_response!(response)
     policy.instance_variable_set(:@current_app_user, current_app_user)
+    return Vrp.all if policy.send(:admin_dashboard_user?)
+
     Vrp.where(id: Vrp.all.select { |vrp| policy.send(:scoped_jeevika_vrp_visible?, vrp) }.map(&:id))
   end
 
@@ -117,12 +119,12 @@ class VrpAgreementsController < ApplicationController
     cached_label = @agreement_village_label_cache[village_id.to_s]
     return cached_label if @agreement_village_label_cache.key?(village_id.to_s)
 
-    @agreement_village_label_cache[village_id.to_s] = [
-      agreement_village_name_from_module_records(village_id),
-      agreement_village_name_from_target_mapping(village_id),
-      agreement_village_name_from_vrp_ics_mapping(village_id),
-      agreement_village_name_from_afl(village_id)
-    ].compact_blank.first.to_s
+    @agreement_village_label_cache[village_id.to_s] = (
+      agreement_village_name_from_module_records(village_id).presence ||
+      agreement_village_name_from_target_mapping(village_id).presence ||
+      agreement_village_name_from_vrp_ics_mapping(village_id).presence ||
+      agreement_village_name_from_afl(village_id).presence
+    ).to_s
   end
 
   def agreement_village_name_from_afl(village_id)
