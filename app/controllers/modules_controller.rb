@@ -2514,7 +2514,7 @@ class ModulesController < ApplicationController
 
       true
     end
-    achievement_index = approved_other_target_achievement_index
+    achievement_index = approved_other_target_achievement_index(candidate_targets: targets)
     targets.map do |target|
       quantity = target.target_quantity.to_f
       completed = vrp_target_completed_quantity(target, [], activity_settings: settings,
@@ -3782,7 +3782,7 @@ class ModulesController < ApplicationController
     return @approved_other_target_completed_farmer_ids_by_target unless model_ready?(:ModuleRecord)
 
     records = ModuleRecord.where(module_slug: OTHER_TARGET_MODULE_SLUGS)
-    candidate_months = other_target_candidate_targets.map { |target| normalize_dashboard_text(target.month_name) }.reject(&:blank?).uniq
+    candidate_months = (candidate_targets || other_target_candidate_targets).map { |target| normalize_dashboard_text(target.month_name) }.reject(&:blank?).uniq
     records = records.where("LOWER(BTRIM(data::jsonb ->> 'month')) IN (?)", candidate_months) if candidate_months.present?
     records = records
       .order(created_at: :asc)
@@ -12767,7 +12767,7 @@ class ModulesController < ApplicationController
     record.data["record_state"].to_s.casecmp("Inactive") != 0
   end
 
-  def approved_other_target_achievement_index
+  def approved_other_target_achievement_index(candidate_targets: nil)
     return {} unless model_ready?(:ModuleRecord)
 
     records = ModuleRecord.where(module_slug: OTHER_TARGET_MODULE_SLUGS)
@@ -12778,7 +12778,7 @@ class ModulesController < ApplicationController
       .order(updated_at: :desc)
       .select { |record| approved_other_target_record?(record) }
       .each_with_object({}) do |record, index|
-        target_mapping_ids = other_target_record_target_mapping_ids(record)
+        target_mapping_ids = other_target_record_target_mapping_ids(record, candidate_targets: candidate_targets)
         next if target_mapping_ids.blank?
 
         achievement = decimal_value(record.data["achievement"])
@@ -12821,9 +12821,9 @@ class ModulesController < ApplicationController
     end
   end
 
-  def other_target_record_target_mapping_ids(record)
+  def other_target_record_target_mapping_ids(record, candidate_targets: nil)
     saved_id = record.data["target_mapping_id"].to_s.strip
-    target_by_id = other_target_candidate_targets_by_id
+    target_by_id = candidate_targets ? candidate_targets.index_by { |target| target.id.to_s } : other_target_candidate_targets_by_id
     direct_ids = saved_id.present? && (target_by_id.blank? || target_by_id.key?(saved_id)) ? [saved_id] : []
     return direct_ids if direct_ids.present? && !model_ready?(:TargetMapping)
     return [] unless model_ready?(:TargetMapping)
@@ -12837,7 +12837,7 @@ class ModulesController < ApplicationController
     selected_subject = normalize_dashboard_text(data["training_subject"].presence || data["sub_activity"])
     return direct_ids if [selected_vrp, selected_month, selected_ics, selected_village, selected_topic, selected_subject].any?(&:blank?)
 
-    matched_ids = other_target_candidates_for_match(selected_vrp, selected_month).select do |target|
+    matched_ids = (candidate_targets || other_target_candidates_for_match(selected_vrp, selected_month)).select do |target|
       other_target_record_matches_target?(target, selected_vrp, selected_month, selected_ics, selected_village, selected_topic, selected_subject)
     end.map { |target| target.id.to_s }
 
