@@ -971,8 +971,7 @@ class ModulesController < ApplicationController
     # View List behind the "Main Major Work Indicator - Other" box: the saved
     # Other Target entries the box totals, for the same month and FCO.
     if params[:other_indicator_list] == "true"
-      @other_indicator_rows = dashboard_other_target_entry_rows
-      @other_indicator_rows = dashboard_other_mapping_progress_rows if @other_indicator_rows.empty?
+      @other_indicator_rows = dashboard_other_mapping_progress_rows
       # Month dropdown comes from the Month Master, with any month that already
       # has entries added so a saved record is never unreachable.
       @other_indicator_month_options = (
@@ -2458,8 +2457,7 @@ class ModulesController < ApplicationController
   # Other Target entries: target and achievement are summed from those entries,
   # and the hover popup breaks them down per FCO. Only this panel uses them.
   def dashboard_other_activity_totals(_targets = nil)
-    rows = dashboard_other_target_entry_rows
-    rows = dashboard_other_mapping_progress_rows if rows.empty?
+    rows = dashboard_other_mapping_progress_rows
     target = rows.sum { |row| row["target"].to_f }
     achievement = rows.sum { |row| row["achievement"].to_f }
     activities = rows.filter_map { |row| row["main_activity"].presence }.uniq
@@ -2516,12 +2514,17 @@ class ModulesController < ApplicationController
 
       true
     end
-    vrp_dashboard_target_progress_rows(targets, []).map do |row|
+    achievement_index = approved_other_target_achievement_index
+    targets.map do |target|
+      quantity = target.target_quantity.to_f
+      completed = vrp_target_completed_quantity(target, [], activity_settings: settings,
+        sub_activity_settings: sub_settings, other_target_achievement_index: achievement_index).to_f
       {
-        "main_activity" => row[:main_activity], "sub_activity" => row[:activity],
-        "fco_name" => row[:fco], "month" => row[:month],
-        "target_mapping_id" => row[:target_mapping_id],
-        "target" => row[:target], "achievement" => row[:completed]
+        "main_activity" => target.main_activity_name, "sub_activity" => target.activity_name,
+        "fco_name" => target.fco_name, "month" => target.month_name,
+        "jeevika_jankar_name" => target.vrp&.name,
+        "target_mapping_id" => target.id.to_s,
+        "target" => quantity, "achievement" => [completed, quantity].min
       }
     end
   end
