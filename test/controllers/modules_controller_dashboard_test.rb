@@ -13,6 +13,25 @@ class ModulesControllerDashboardTest < ActiveSupport::TestCase
     keyword_init: true
   )
 
+  test "JJ dashboard indexes only approved other target farmers for candidate months" do
+    controller = ModulesController.new
+    controller.instance_variable_set(:@filtered_targets, [Target.new(id: 901, month_name: " November ")])
+    [
+      ["November", "Approved", %w[11 12]],
+      ["November", "Approved", %w[12 13]],
+      ["November", "Pending", %w[14]],
+      ["October", "Approved", %w[15]]
+    ].each do |month, status, farmer_ids|
+      ModuleRecord.create!(module_slug: "other-target", data: {
+        "target_mapping_id" => "901", "month" => month,
+        "approval_status" => status, "selected_farmer_ids" => farmer_ids
+      })
+    end
+
+    assert_equal %w[11 12 13], controller.send(:approved_other_target_completed_farmer_ids_for, 901)
+    assert_empty controller.send(:approved_other_target_completed_farmer_ids_for, 902)
+  end
+
   test "generic field options match JSON data keys without treating the JSONB operator as a bind" do
     source = ModuleRecord.create!(module_slug: "generic-field-source", data: {
       "cluster_coordinator_name" => "Coordinator One"

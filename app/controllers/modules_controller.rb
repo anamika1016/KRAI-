@@ -3782,7 +3782,7 @@ class ModulesController < ApplicationController
     return @approved_other_target_completed_farmer_ids_by_target unless model_ready?(:ModuleRecord)
 
     records = ModuleRecord.where(module_slug: OTHER_TARGET_MODULE_SLUGS)
-    candidate_months = (candidate_targets || other_target_candidate_targets).map { |target| normalize_dashboard_text(target.month_name) }.reject(&:blank?).uniq
+    candidate_months = other_target_candidate_targets.map { |target| normalize_dashboard_text(target.month_name) }.reject(&:blank?).uniq
     records = records.where("LOWER(BTRIM(data::jsonb ->> 'month')) IN (?)", candidate_months) if candidate_months.present?
     records = records
       .order(created_at: :asc)
