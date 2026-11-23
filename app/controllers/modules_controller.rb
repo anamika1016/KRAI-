@@ -972,6 +972,7 @@ class ModulesController < ApplicationController
     # Other Target entries the box totals, for the same month and FCO.
     if params[:other_indicator_list] == "true"
       @other_indicator_rows = dashboard_other_target_entry_rows
+      @other_indicator_rows = dashboard_other_mapping_progress_rows if @other_indicator_rows.empty?
       # Month dropdown comes from the Month Master, with any month that already
       # has entries added so a saved record is never unreachable.
       @other_indicator_month_options = (
@@ -2458,6 +2459,7 @@ class ModulesController < ApplicationController
   # and the hover popup breaks them down per FCO. Only this panel uses them.
   def dashboard_other_activity_totals(_targets = nil)
     rows = dashboard_other_target_entry_rows
+    rows = dashboard_other_mapping_progress_rows if rows.empty?
     target = rows.sum { |row| row["target"].to_f }
     achievement = rows.sum { |row| row["achievement"].to_f }
     activities = rows.filter_map { |row| row["main_activity"].presence }.uniq
@@ -2501,6 +2503,29 @@ class ModulesController < ApplicationController
   end
 
   # "FCO-C Sausar" and "Sausar" are the same office; compare on the bare name.
+  def dashboard_other_mapping_progress_rows
+    settings = jeevika_jankar_main_activity_settings
+    sub_settings = jeevika_jankar_sub_activity_settings(settings)
+    month = normalize_dashboard_text(@dashboard_month_filter_value)
+    fco = dashboard_filter_param(:fcoc, :fco).presence || @dashboard_fcoc_filter_value
+    targets = dashboard_target_mappings.select do |target|
+      setting = jeevika_jankar_activity_setting_for(target, settings, sub_settings)
+      next false unless normalize_dashboard_text(setting&.dig(:main_activity_type)) == "other"
+      next false if month.present? && normalize_dashboard_text(target.month_name) != month
+      next false if fco.present? && dashboard_bare_fco_name(target.fco_name) != dashboard_bare_fco_name(fco)
+
+      true
+    end
+    vrp_dashboard_target_progress_rows(targets, []).map do |row|
+      {
+        "main_activity" => row[:main_activity], "sub_activity" => row[:activity],
+        "fco_name" => row[:fco], "month" => row[:month],
+        "target_mapping_id" => row[:target_mapping_id],
+        "target" => row[:target], "achievement" => row[:completed]
+      }
+    end
+  end
+
   def dashboard_bare_fco_name(value)
     normalize_dashboard_text(value.to_s.sub(/\Afco\s*-?\s*c?\s*/i, ""))
   end
