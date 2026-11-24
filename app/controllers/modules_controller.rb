@@ -12601,9 +12601,13 @@ class ModulesController < ApplicationController
   end
 
   # The sidebar label of the screen being rendered, so a transfer made for one
-  # menu does not leak access into another.
+  # menu does not leak access into another. current_slug reads params, which
+  # needs a real request -- scoped_jeevika_vrp_visible? (dashboard_vrps) now
+  # reaches this through jeevika_jankar_transferred_vrps, and that method runs
+  # in plenty of lightweight contexts (unit tests building a bare
+  # ModulesController.new, console/report helpers) that never set one.
   def current_sidebar_menu_title
-    slug = (@slug || current_slug).to_s
+    slug = (@slug || (request ? current_slug : nil)).to_s
     return "" if slug.blank?
 
     ApplicationHelper::SIDEBAR_SECTIONS
@@ -14280,6 +14284,13 @@ class ModulesController < ApplicationController
     # Cluster Incharge. A JJ pointing at this user is reason enough, and it is the
     # same rule the Jeevika Jankar list already applies.
     return true if module_cluster_vrp_visible?(vrp)
+    # module_cluster_visible_vrps (used by the dashboard's own Main Major Work
+    # Indicator - Other box total query) already treats a transferred JJ as
+    # visible on this page; this method -- which drives dashboard_vrps and so
+    # every other dashboard total, including that same box's target_mapping
+    # scope -- did not, so a transferred JJ's entries silently dropped out of
+    # the box total while still being visible elsewhere on the same page.
+    return true if jeevika_jankar_transferred_vrps.any? { |transferred| transferred.id == vrp.id }
 
     jeevika_bill_vrp_registered_by_current_user?(vrp)
   end
