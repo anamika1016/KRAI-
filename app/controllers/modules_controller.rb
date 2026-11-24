@@ -4857,46 +4857,14 @@ class ModulesController < ApplicationController
       # number. An Agricultural Specialist's normal farmer scope contains only
       # farmers already mapped to their targets, whereas the Direct to HO card
       # must show every Direct to HO AFL farmer for non-admin role dashboards.
-      # Direct to HO counts a row even when its Tracenet is missing, which is
-      # why it never used the Tracenet-only rule. It still must not count one
-      # farmer twice: every Direct to HO row here does carry a Tracenet and 502
-      # of them repeat, so a plain row count read 2285 where 1783 farmers
-      # exist. Identify by Tracenet when there is one, by row id otherwise --
-      # that keeps the "never drop a row without a Tracenet" intent and
-      # collapses the repeats.
-      return summary_scope.distinct.count(dashboard_farmer_row_identity_sql) if dashboard_total_farmer_count_for_direct_to_ho?
+      return summary_scope.count(:id) if dashboard_total_farmer_count_for_direct_to_ho?
 
       summary_scope = dashboard_cc_owned_farmer_scope(summary_scope) if dashboard_cluster_coordinator_scope?
-      summary_scope.distinct.count(dashboard_farmer_identity_sql)
+      summary_scope.count("NULLIF(BTRIM(tracenet_no), '')")
     end
   rescue StandardError => e
     Rails.logger.warn("Dashboard total AFL #{kind} count failed: #{e.class} - #{e.message}")
     0
-  end
-
-  # One farmer, counted once. The AFL import repeats a farmer row -- the same
-  # Tracenet, name, FCO, ICS and village saved 8 times in the worst case here
-  # -- and a plain COUNT reported that person 8 times, so the card could read
-  # higher than the number of farmers that actually exist.
-  #
-  # The farmer is still identified by Tracenet exactly as before: a row with no
-  # Tracenet is not counted here, same as the original rule. Only the repeats
-  # are collapsed.
-  def dashboard_farmer_identity_sql
-    Arel.sql("LOWER(NULLIF(BTRIM(afls.tracenet_no), ''))")
-  end
-
-  # Direct to HO only: a Tracenet identifies the farmer when present, otherwise
-  # the row id does, so a farmer whose Tracenet was never filled in is still
-  # counted and is never merged with another blank-Tracenet farmer.
-  def dashboard_farmer_row_identity_sql
-    Arel.sql(<<~SQL.squish)
-      CASE
-        WHEN LOWER(BTRIM(COALESCE(afls.tracenet_no, ''))) NOT IN ('', 'null')
-          THEN CONCAT('tracenet:', LOWER(BTRIM(afls.tracenet_no)))
-        ELSE CONCAT('id:', afls.id::text)
-      END
-    SQL
   end
 
   def dashboard_total_farmer_count_for_direct_to_ho?
