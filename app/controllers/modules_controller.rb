@@ -4831,6 +4831,14 @@ class ModulesController < ApplicationController
   def dashboard_total_afl_distinct_count(kind)
     return 0 unless model_ready?(:Afl)
 
+    # A Cluster Incharge's Summary reports the chain the CC actually owns:
+    # the JJs under them -> the ICS those JJs are mapped to -> the villages in
+    # those ICS -> the farmers in those villages. The AFL/ownership scope below
+    # answers a different question and left every one of these three cards on
+    # zero for a CC login. Only the CC dashboard takes this branch.
+    cc_count = dashboard_cluster_summary_count(kind) if dashboard_cluster_coordinator_scope?
+    return cc_count unless cc_count.nil?
+
     # On role-scoped dashboards, Direct to HO must not shrink to only the
     # user's mapped farmers. Admin continues to use the original summary scope.
     summary_scope = if dashboard_total_farmer_count_for_direct_to_ho?
@@ -4865,6 +4873,53 @@ class ModulesController < ApplicationController
   rescue StandardError => e
     Rails.logger.warn("Dashboard total AFL #{kind} count failed: #{e.class} - #{e.message}")
     0
+  end
+
+  # ICS, Villages and Farmers for a Cluster Incharge, read from the JJs under
+  # them. Returns nil when this login has no JJ at all, so the caller falls
+  # back to its own scope rather than reporting a misleading zero.
+  def dashboard_cluster_summary_count(kind)
+    jj_ids = module_cluster_visible_vrp_ids
+    return nil if jj_ids.blank?
+
+    ics_keys = dashboard_cluster_mapped_ics_keys(jj_ids)
+    return 0 if ics_keys.blank?
+    return ics_keys.size if kind == :ics
+
+    # Villages and farmers come from the ICS themselves, not from the target
+    # rows: the Summary describes what is available in the CC's ICS, while the
+    # Mapped Farmer card below it reports the subset actually targeted.
+    scope = Afl.where("LOWER(BTRIM(COALESCE(ics_id, ''))) IN (:keys)", keys: ics_keys)
+    if kind == :village
+      scope.where.not(village_id: [nil, ""]).distinct.count(Arel.sql("LOWER(BTRIM(village_id))"))
+    else
+      # Same farmer-counting rule the other dashboards use.
+      scope.count("NULLIF(BTRIM(tracenet_no), '')")
+    end
+  rescue StandardError => error
+    Rails.logger.warn("Cluster summary #{kind} count failed: #{error.class} - #{error.message}")
+    nil
+  end
+
+  # The ICS the CC's JJs are mapped to, honouring the dashboard's month and ICS
+  # filters so the cards move with the filter bar like every other card.
+  def dashboard_cluster_mapped_ics_keys(jj_ids)
+    return [] unless model_ready?(:TargetMapping)
+
+    scope = TargetMapping.where(vrp_id: jj_ids).where.not(ics_id: [nil, ""])
+    month = @dashboard_month_filter_value.presence || dashboard_filter_param(:month)
+    scope = scope.where("LOWER(BTRIM(month_name)) = ?", normalize_dashboard_text(month)) if month.present?
+    keys = scope.distinct.pluck(Arel.sql("LOWER(BTRIM(ics_id))")).compact_blank
+
+    selected_ics = dashboard_filter_param(:ics, :ics_name)
+    if selected_ics.present?
+      wanted = normalize_dashboard_text(selected_ics)
+      matching = TargetMapping.where(vrp_id: jj_ids)
+        .where("LOWER(BTRIM(COALESCE(ics_name, ''))) = :v OR LOWER(BTRIM(COALESCE(ics_id, ''))) = :v", v: wanted)
+        .distinct.pluck(Arel.sql("LOWER(BTRIM(ics_id))")).compact_blank
+      keys &= matching
+    end
+    keys
   end
 
   def dashboard_total_farmer_count_for_direct_to_ho?
@@ -6763,7 +6818,14 @@ class ModulesController < ApplicationController
     all_months = month_name.blank?
     month_filter_sql = all_months ? "TRUE" : "LOWER(BTRIM(t.month_name)) = :month_name"
     fco_ids = training_fcoc_ids_from_param(fcoc_name)
-    fco_filter_sql = "AND LOWER(BTRIM(t.fco_id)) IN (:fco_ids)"
+    # A target row stores its office either as the code ("1004") or as the name
+    # ("Sausar"), so matching the code alone found nothing for any JJ whose
+    # targets were saved with the name -- a Cluster Incharge whose whole team
+    # saves them that way read Mapped Farmer 0. Match the office's aliases on
+    # both columns, the same rule the Pending/Only 1/1+ cards beside this one
+    # already use.
+    fco_values = fco_ids.flat_map { |id| training_fcoc_filter_values(id) }.uniq.map(&:downcase)
+    fco_filter_sql = "AND (LOWER(BTRIM(t.fco_id)) IN (:fco_values) OR LOWER(BTRIM(t.fco_name)) IN (:fco_values))"
     # TO filter: only ICS explicitly mapped to this TO (Office Setup > ICS TO
     # MAPPING) count -- same Condition 1/2 rule as the Dashboard Summary cards.
     # No afls join existed here before; added one so a.ics_id is available.
@@ -6790,7 +6852,7 @@ class ModulesController < ApplicationController
       ORDER BY t.fco_id;
     SQL
 
-    binds = { fco_ids: fco_ids.map(&:downcase) }
+    binds = { fco_ids: fco_ids.map(&:downcase), fco_values: fco_values }
     binds[:month_name] = selected_month.strip.downcase unless all_months
     binds[:to_ics_ids] = to_ics_ids if to_ics_ids.present?
     rows = ActiveRecord::Base.connection.exec_query(

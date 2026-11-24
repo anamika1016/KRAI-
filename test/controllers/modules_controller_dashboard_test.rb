@@ -296,15 +296,26 @@ class ModulesControllerDashboardTest < ActiveSupport::TestCase
     assert_equal [2, 2], counts
     assert_equal 4, counts.sum
 
+    # The CC Summary now reports the chain the CC owns -- the JJs under them,
+    # the ICS those JJs are mapped to, and the villages and farmers inside
+    # those ICS -- instead of the per-farmer ownership scope asserted above.
+    # The ownership scope itself is unchanged and still covered by the first
+    # half of this test; it is what the Mapped Farmer card builds on.
+    in_ics = Afl.create!(fco_id: "1004", tracenet_no: "ownership-in-ics",
+      farmer_name: "Inside the CC's ICS", ics_id: "ownership-ics", village_id: "ownership-village")
+
     controller = ModulesController.new
-    scope = Afl.where(id: farmers.map(&:id))
     controller.define_singleton_method(:module_cluster_visible_vrp_ids) { [first.id] }
-    controller.define_singleton_method(:dashboard_total_afl_farmer_scope) { scope }
     controller.define_singleton_method(:dashboard_cluster_coordinator_scope?) { true }
     controller.define_singleton_method(:dashboard_total_farmer_count_for_direct_to_ho?) { false }
-    assert_equal 2, controller.send(:dashboard_total_afl_farmer_count)
-    assert_equal 4, controller.send(:dashboard_total_afl_ics_count)
-    assert_equal 4, controller.send(:dashboard_total_afl_village_count)
+
+    assert_equal 1, controller.send(:dashboard_total_afl_ics_count),
+      "the one ICS this CC's JJ is mapped to"
+    assert_equal 1, controller.send(:dashboard_total_afl_village_count),
+      "the villages inside that ICS"
+    assert_equal 1, controller.send(:dashboard_total_afl_farmer_count),
+      "the farmers inside that ICS"
+    assert_equal "ownership-ics", in_ics.ics_id
   end
 
   test "unmapped CC sees zero counts and query results are reused within request" do
