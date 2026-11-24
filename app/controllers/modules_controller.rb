@@ -6818,14 +6818,7 @@ class ModulesController < ApplicationController
     all_months = month_name.blank?
     month_filter_sql = all_months ? "TRUE" : "LOWER(BTRIM(t.month_name)) = :month_name"
     fco_ids = training_fcoc_ids_from_param(fcoc_name)
-    # A target row stores its office either as the code ("1004") or as the name
-    # ("Sausar"), so matching the code alone found nothing for any JJ whose
-    # targets were saved with the name -- a Cluster Incharge whose whole team
-    # saves them that way read Mapped Farmer 0. Match the office's aliases on
-    # both columns, the same rule the Pending/Only 1/1+ cards beside this one
-    # already use.
-    fco_values = fco_ids.flat_map { |id| training_fcoc_filter_values(id) }.uniq.map(&:downcase)
-    fco_filter_sql = "AND (LOWER(BTRIM(t.fco_id)) IN (:fco_values) OR LOWER(BTRIM(t.fco_name)) IN (:fco_values))"
+    fco_filter_sql = "AND LOWER(BTRIM(t.fco_id)) IN (:fco_ids)"
     # TO filter: only ICS explicitly mapped to this TO (Office Setup > ICS TO
     # MAPPING) count -- same Condition 1/2 rule as the Dashboard Summary cards.
     # No afls join existed here before; added one so a.ics_id is available.
@@ -6852,7 +6845,7 @@ class ModulesController < ApplicationController
       ORDER BY t.fco_id;
     SQL
 
-    binds = { fco_ids: fco_ids.map(&:downcase), fco_values: fco_values }
+    binds = { fco_ids: fco_ids.map(&:downcase) }
     binds[:month_name] = selected_month.strip.downcase unless all_months
     binds[:to_ics_ids] = to_ics_ids if to_ics_ids.present?
     rows = ActiveRecord::Base.connection.exec_query(
