@@ -306,11 +306,12 @@ class AflsController < ApplicationController
     report_path = REPORT_DIR.join("#{report_id}.csv")
 
     CSV.open(report_path, "w") do |csv|
-      csv << ["Row", "Reason", "Farm_ID", "Tracenet_No", "Longitude", "Lattitude", "Khasara_NO", "Farmer_Name", "Father_Name", "Village_ID", "Village_Name"]
+      csv << ["Row", "ID", "Reason", "Farm_ID", "Tracenet_No", "Longitude", "Lattitude", "Khasara_NO", "Farmer_Name", "Father_Name", "Village_ID", "Village_Name"]
       skipped_rows.each do |skipped_row|
         row = normalize_skipped_row(skipped_row)
         csv << [
           row[:row],
+          row[:id],
           row[:reason],
           row[:farm_id],
           row[:tracenet_no],
@@ -328,14 +329,27 @@ class AflsController < ApplicationController
     report_id
   end
 
-  def skipped_summary(skipped_rows)
-    reason_counts = skipped_rows
-      .map { |skipped_row| normalize_skipped_row(skipped_row)[:reason] }
-      .tally
-      .map { |reason, count| "#{count} #{reason}" }
-      .join(" | ")
+  # Flash messages ride in the session cookie, which browsers cap at 4KB. A
+  # 36,000-row upload where every row is skipped produced a summary far past
+  # that and the whole import died with CookieOverflow -- after the work was
+  # already done. Keep only the commonest reasons and point at the report for
+  # the rest.
+  MAX_SKIPPED_SUMMARY_REASONS = 5
+  MAX_SKIPPED_SUMMARY_LENGTH = 800
 
-    "Skipped reason summary: #{reason_counts}"
+  def skipped_summary(skipped_rows)
+    tally = skipped_rows
+      .map { |skipped_row| normalize_skipped_row(skipped_row)[:reason].to_s }
+      .tally
+      .sort_by { |_reason, count| -count }
+
+    shown = tally.first(MAX_SKIPPED_SUMMARY_REASONS)
+    summary = shown.map { |reason, count| "#{count} #{reason}" }.join(" | ")
+    remaining = tally.drop(MAX_SKIPPED_SUMMARY_REASONS).sum { |_reason, count| count }
+    summary += " | #{remaining} more rows skipped for other reasons" if remaining.positive?
+    summary = "#{summary.first(MAX_SKIPPED_SUMMARY_LENGTH)}..." if summary.length > MAX_SKIPPED_SUMMARY_LENGTH
+
+    "Skipped reason summary: #{summary} Download the skipped report for the full list."
   end
 
   def normalize_skipped_row(skipped_row)

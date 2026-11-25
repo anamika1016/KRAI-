@@ -105,3 +105,81 @@ class AflIdSearchableTest < ActiveSupport::TestCase
     assert_includes Afl.search("178026").pluck(:id), 178026
   end
 end
+
+# Requested: re-uploading a sheet must not save the same ID twice -- it should
+# report "already exists" instead. Checked before the insert so the report
+# names the id, rather than surfacing a raw Postgres unique-violation.
+class AflImportDuplicateIdTest < ActiveSupport::TestCase
+  setup do
+    @path = Rails.root.join("tmp", "afl_dup_#{SecureRandom.hex(4)}.csv")
+  end
+
+  teardown do
+    File.delete(@path) if File.exist?(@path)
+  end
+
+  test "re-uploading the same file saves nothing and says the id already exists" do
+    write_csv([[910301, "First Upload"]])
+    assert_equal 1, Afl.import_csv(@path.to_s)[:imported]
+
+    result = Afl.import_csv(@path.to_s)
+
+    assert_equal 0, result[:imported], "nothing may be uploaded the second time"
+    assert_equal 1, result[:skipped].size
+    assert_match(/910301 already exists/, result[:skipped].first[:reason])
+    assert_equal 2, result[:skipped].first[:row], "the sheet row number is reported"
+  end
+
+  test "an existing row is left exactly as it was" do
+    write_csv([[910302, "Original Name"]])
+    Afl.import_csv(@path.to_s)
+
+    write_csv([[910302, "Changed Name"]])
+    Afl.import_csv(@path.to_s)
+
+    assert_equal "Original Name", Afl.find(910302).farmer_name,
+      "a re-upload must not quietly overwrite the saved row"
+    assert_equal 1, Afl.where(id: 910302).count
+  end
+
+  test "the same id twice inside one file imports only the first" do
+    write_csv([[910303, "Keep Me"], [910303, "Drop Me"], [910304, "Other Row"]])
+
+    result = Afl.import_csv(@path.to_s)
+
+    assert_equal 2, result[:imported]
+    assert_equal 1, result[:skipped].size
+    assert_match(/more than once in this file/, result[:skipped].first[:reason])
+    assert_equal "Keep Me", Afl.find(910303).farmer_name
+  end
+
+  test "rows without an id are unaffected by the duplicate check" do
+    write_csv([[nil, "No Id One"], [nil, "No Id Two"]])
+
+    result = Afl.import_csv(@path.to_s)
+
+    assert_equal 2, result[:imported]
+    assert_empty result[:skipped]
+  end
+
+  test "new ids still import alongside duplicates in the same file" do
+    write_csv([[910305, "Already Here"]])
+    Afl.import_csv(@path.to_s)
+
+    write_csv([[910305, "Duplicate"], [910306, "Brand New"]])
+    result = Afl.import_csv(@path.to_s)
+
+    assert_equal 1, result[:imported], "the new id still goes in"
+    assert_equal 1, result[:skipped].size
+    assert Afl.exists?(910306)
+  end
+
+  private
+
+  def write_csv(rows)
+    CSV.open(@path, "w") do |csv|
+      csv << %w[id FCO_ID Farmer_Name]
+      rows.each { |id, name| csv << [id, "1004", name] }
+    end
+  end
+end

@@ -95,13 +95,14 @@ class Afl < ApplicationRecord
     imported = 0
     skipped = []
     batch = []
+    seen_ids = Set.new
 
     rows.each_with_index do |row, index|
       queue_import_row(row, index + 2, attributes_by_index, batch, skipped)
-      imported += flush_import_batch(batch, skipped) if batch.size >= IMPORT_BATCH_SIZE
+      imported += flush_import_batch(batch, skipped, seen_ids) if batch.size >= IMPORT_BATCH_SIZE
     end
 
-    imported += flush_import_batch(batch, skipped)
+    imported += flush_import_batch(batch, skipped, seen_ids)
     realign_id_sequence!
     { imported: imported, skipped: skipped }
   end
@@ -115,13 +116,14 @@ class Afl < ApplicationRecord
     imported = 0
     skipped = []
     batch = []
+    seen_ids = Set.new
 
     csv.each.with_index(2) do |row, row_number|
       queue_import_row(row, row_number, attributes_by_index, batch, skipped)
-      imported += flush_import_batch(batch, skipped) if batch.size >= IMPORT_BATCH_SIZE
+      imported += flush_import_batch(batch, skipped, seen_ids) if batch.size >= IMPORT_BATCH_SIZE
     end
 
-    imported += flush_import_batch(batch, skipped)
+    imported += flush_import_batch(batch, skipped, seen_ids)
     realign_id_sequence!
     { imported: imported, skipped: skipped }
   ensure
@@ -164,7 +166,10 @@ class Afl < ApplicationRecord
     batch << [row_number, attrs.merge(created_at: timestamp, updated_at: timestamp)]
   end
 
-  def self.flush_import_batch(batch, skipped)
+  def self.flush_import_batch(batch, skipped, seen_ids = Set.new)
+    return 0 if batch.blank?
+
+    batch = reject_existing_ids(batch, skipped, seen_ids)
     return 0 if batch.blank?
 
     rows = batch.map(&:last)
@@ -174,6 +179,34 @@ class Afl < ApplicationRecord
     insert_batch_one_by_one(batch, skipped)
   ensure
     batch.clear
+  end
+
+  # An id that is already saved, or repeated earlier in the same sheet, is not
+  # uploaded again -- re-running a file must not quietly change saved rows, and
+  # the user needs to see which lines were left out. Checked here, before the
+  # insert, so the report says "ID 178026 already exists" instead of a raw
+  # Postgres unique-violation message.
+  def self.reject_existing_ids(batch, skipped, seen_ids)
+    numbered = batch.select { |_row_number, attrs| attrs[:id].present? }
+    return batch if numbered.empty?
+
+    already_saved = where(id: numbered.map { |_row_number, attrs| attrs[:id] }).pluck(:id).to_set
+
+    batch.reject do |row_number, attrs|
+      id = attrs[:id]
+      next false if id.blank?
+
+      if already_saved.include?(id)
+        skipped << skipped_row(row_number, "ID already exists. This row was not uploaded.", attrs)
+        true
+      elsif seen_ids.include?(id)
+        skipped << skipped_row(row_number, "ID appears more than once in this file. Only the first row was uploaded.", attrs)
+        true
+      else
+        seen_ids << id
+        false
+      end
+    end
   end
 
   def self.insert_batch_one_by_one(batch, skipped)
@@ -286,6 +319,7 @@ class Afl < ApplicationRecord
     {
       row: row_number,
       reason: reason,
+      id: attrs[:id],
       farm_id: attrs[:farm_id],
       tracenet_no: attrs[:tracenet_no],
       longitude: attrs[:longitude],
