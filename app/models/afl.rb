@@ -8,6 +8,7 @@ class Afl < ApplicationRecord
   IMPORT_BATCH_SIZE = 2_000
 
   IMPORT_COLUMNS = %i[
+    id
     farm_id fco_id fco fpo_id fpo_name ics_id ics_name village_id village_name ginning_id broker_id farmer_name father_name
     tracenet_no total_farm_area purchase_quantity_amount estimate_quantity purchase_quantity
     purchase_date dispoce ip date estimate_quantity_admin slip_no mobile_no purchase_product
@@ -30,6 +31,10 @@ class Afl < ApplicationRecord
   DATETIME_COLUMNS = %i[qrcode_date].freeze
 
   HEADER_ALIASES = {
+    # The sheet's own ID is the farmer's identity: target mappings store these
+    # numbers in afl_ids, so a re-upload has to land on the same row instead of
+    # getting a fresh auto-increment id and orphaning every mapping.
+    "ID" => :id,
     "Farm_ID" => :farm_id,
     "FCO_ID" => :fco_id,
     "FCO" => :fco,
@@ -97,6 +102,7 @@ class Afl < ApplicationRecord
     end
 
     imported += flush_import_batch(batch, skipped)
+    realign_id_sequence!
     { imported: imported, skipped: skipped }
   end
 
@@ -116,6 +122,7 @@ class Afl < ApplicationRecord
     end
 
     imported += flush_import_batch(batch, skipped)
+    realign_id_sequence!
     { imported: imported, skipped: skipped }
   ensure
     csv&.close
@@ -131,6 +138,22 @@ class Afl < ApplicationRecord
     return text if text.valid_encoding?
 
     File.read(path, encoding: "Windows-1252:UTF-8", invalid: :replace, undef: :replace)
+  end
+
+  # The sheet supplies its own ids, so Postgres' sequence can fall behind the
+  # highest imported id. Left behind, the next row saved without an id would
+  # reuse an id that already exists and that insert would fail. Push the
+  # sequence past the current maximum after every import.
+  def self.realign_id_sequence!
+    connection.execute(<<~SQL.squish)
+      SELECT setval(
+        pg_get_serial_sequence('afls', 'id'),
+        GREATEST(COALESCE((SELECT MAX(id) FROM afls), 0) + 1, 1),
+        false
+      )
+    SQL
+  rescue StandardError => error
+    Rails.logger.warn("AFL id sequence realign failed: #{error.class} - #{error.message}")
   end
 
   def self.queue_import_row(row, row_number, attributes_by_index, batch, skipped)
@@ -171,8 +194,13 @@ class Afl < ApplicationRecord
     HEADER_ALIASES[raw_header] || IMPORT_COLUMNS.find { |column| normalized_header(column) == normalized_header(raw_header) }
   end
 
+  # id stays in: the sheet supplies it, the list shows it as the first column,
+  # and it is the number target mappings store in afl_ids -- so it is the one
+  # value a user is most likely to look a farmer up by. Leaving it out made the
+  # ID heading filter silently do nothing. Timestamps stay out; casting them to
+  # text only ever matches by accident.
   def self.searchable_columns
-    column_names.map(&:to_sym) - %i[id created_at updated_at]
+    column_names.map(&:to_sym) - %i[created_at updated_at]
   end
 
   def self.search(query)
@@ -282,11 +310,21 @@ class Afl < ApplicationRecord
     value = value.to_s.strip if value.is_a?(String)
     return if value.blank?
 
+    return parse_integer(value) if column == :id
     return parse_decimal(value) if DECIMAL_COLUMNS.include?(column)
     return parse_date(value) if DATE_COLUMNS.include?(column)
     return parse_datetime(value) if DATETIME_COLUMNS.include?(column)
 
     value
+  end
+
+  # A blank or non-numeric ID returns nil so the row keeps the database's own
+  # auto-increment id -- an upload without the column behaves exactly as before.
+  def self.parse_integer(value)
+    text = value.to_s.strip.delete(",")
+    return unless text.match?(/\A\d+\z/)
+
+    text.to_i
   end
 
   def self.parse_decimal(value)

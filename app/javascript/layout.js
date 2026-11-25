@@ -5223,12 +5223,17 @@ function initDeferredLayoutPage() {
     header.classList.toggle("filtered", Boolean(value));
 
     clearTimeout(table.__columnFilterTimer);
-    if (immediate) {
-      form.requestSubmit();
-    } else {
-      // Let the typing settle instead of reloading on every keystroke.
-      table.__columnFilterTimer = setTimeout(() => form.requestSubmit(), 450);
+    if (!immediate) return;
+
+    // Remember which box was being typed in. The submit reloads the page, so
+    // without this the caret lands nowhere and the next character goes into
+    // the void -- which is what "fir refresh ho jata hai" was describing.
+    try {
+      sessionStorage.setItem("columnFilterFocus", header.dataset.columnFilterParam || "");
+    } catch (error) {
+      // Private mode or storage disabled: focus restore is a nicety, not a must.
     }
+    form.requestSubmit();
   };
 
   const setupColumnFilters = (table) => {
@@ -5297,21 +5302,49 @@ function initDeferredLayoutPage() {
 
       const applyFilter = () => {
         if (serverSide) {
-          submitColumnFilterToServer(table, header, operator.value, input.value.trim());
+          // Server-side columns search the whole table, so each submit is a
+          // full page reload. Reloading per keystroke threw the user out of
+          // the box mid-number; wait until they say they are done.
+          submitColumnFilterToServer(table, header, operator.value, input.value.trim(), true);
         } else {
           renderColumnFilterState(table, header, columnIndex, operator.value, input.value.trim());
         }
       };
 
       operator.addEventListener("change", applyFilter);
-      input.addEventListener("input", applyFilter);
+      if (serverSide) {
+        // Enter, or clicking away, means "search now".
+        input.addEventListener("change", applyFilter);
+      } else {
+        // Client-side columns filter the rows already on screen -- no reload,
+        // so they stay live as you type.
+        input.addEventListener("input", applyFilter);
+      }
       input.addEventListener("keydown", (event) => {
         if (event.key !== "Enter" || !serverSide) return;
 
-        // Enter means "now", not "in another 450ms".
         event.preventDefault();
         submitColumnFilterToServer(table, header, operator.value, input.value.trim(), true);
       });
+
+      // Put the caret back where it was before the reload.
+      if (serverSide && header.dataset.columnFilterParam) {
+        let wanted = null;
+        try {
+          wanted = sessionStorage.getItem("columnFilterFocus");
+          if (wanted) sessionStorage.removeItem("columnFilterFocus");
+        } catch (error) {
+          wanted = null;
+        }
+        if (wanted && wanted === header.dataset.columnFilterParam) {
+          panel.classList.add("open");
+          requestAnimationFrame(() => {
+            input.focus();
+            const end = input.value.length;
+            try { input.setSelectionRange(end, end); } catch (error) { /* type=search */ }
+          });
+        }
+      }
     });
   };
 
